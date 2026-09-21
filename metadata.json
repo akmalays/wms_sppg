@@ -1,0 +1,8 @@
+{
+  "name": "Remix SPPG Warehouse Management",
+  "description": "Warehouse Management System (WMS) MVP for SPPG (Satuan Pelayanan Pemenuhan Gizi) to manage food inventory, operational supplies, receiving, stock opname, equipment tracking, and warehouse ledger.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
