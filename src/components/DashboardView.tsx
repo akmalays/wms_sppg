@@ -112,7 +112,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
       {/* Critical Operational Attention Alerts */}
       {(lowStockItems.length > 0 || outOfStockItems.length > 0 || pendingOpnames.length > 0 || damagedEquipment.length > 0) && (
         <div className="space-y-2.5">
-          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+          <h3 className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
             <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
             Perhatian Operasional Mendesak
           </h3>
@@ -205,7 +205,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
 
       {/* TODAY'S FLOW BALANCE & OPERATIONAL METRICS */}
       <div>
-        <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2.5">
+        <h3 className="text-xs font-semibold text-slate-700 mb-2.5">
           Neraca Aliran Pangan Hari Ini (Daily Food Balance)
         </h3>
 
@@ -267,7 +267,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
           <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
             <div className="flex items-center gap-2">
               <Truck className="w-4 h-4 text-emerald-600" />
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+              <h4 className="text-xs font-semibold text-slate-900">
                 Barang Masuk Hari Ini ({todaysReceivings.length} Dokumen)
               </h4>
             </div>
@@ -319,7 +319,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
           <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
             <div className="flex items-center gap-2">
               <Package className="w-4 h-4 text-slate-700" />
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+              <h4 className="text-xs font-semibold text-slate-900">
                 Status Stok Kritis & Minimum
               </h4>
             </div>

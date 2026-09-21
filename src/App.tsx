@@ -10,6 +10,7 @@ import { StockOpnameModule } from './components/StockOpnameModule';
 import { EquipmentModule } from './components/EquipmentModule';
 import { SuppliersModule } from './components/SuppliersModule';
 import { AuditLogModule } from './components/AuditLogModule';
+import { ToolsPrintModule } from './components/ToolsPrintModule';
 import { warehouseDb } from './db/storage';
 
 const MainLayout: React.FC = () => {
@@ -76,6 +77,8 @@ const MainLayout: React.FC = () => {
           {activeTab === 'suppliers' && (
             <SuppliersModule onRefreshData={handleRefresh} />
           )}
+
+          {activeTab === 'tools_forms' && <ToolsPrintModule />}
 
           {activeTab === 'audit' && <AuditLogModule />}
         </div>

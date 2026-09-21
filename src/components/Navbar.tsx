@@ -13,7 +13,8 @@ import {
   RotateCcw,
   Utensils,
   User,
-  History
+  History,
+  Printer
 } from 'lucide-react';
 import { warehouseDb } from '../db/storage';
 
@@ -39,6 +40,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
     { id: 'stock_opname', label: 'Stock Opname', icon: ClipboardCheck },
     { id: 'equipment', label: 'Peralatan', icon: Wrench },
     { id: 'suppliers', label: 'Supplier', icon: Building2 },
+    { id: 'tools_forms', label: 'Cetak Form', icon: Printer },
     { id: 'audit', label: 'Audit Log', icon: ShieldAlert },
   ];
 
@@ -73,7 +75,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
             <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-1.5 px-3">
               <User className="w-3.5 h-3.5 text-slate-500 hidden sm:block" />
               <div className="text-left hidden lg:block">
-                <div className="text-[10px] uppercase font-bold text-slate-400 leading-none">Simulasi Role</div>
+                <div className="text-[11px] font-medium text-slate-500 leading-none">Simulasi Role</div>
                 <div className="text-xs font-bold text-slate-800 leading-tight">{currentUser.name}</div>
               </div>
               <select

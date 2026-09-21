@@ -100,7 +100,7 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
           {/* Line Items Table */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600">
+              <h4 className="text-xs font-semibold text-slate-700">
                 Daftar Barang Diterima ({document.lines.length} Baris)
               </h4>
             </div>
@@ -143,7 +143,7 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
           {/* Signatures Section */}
           <div className="grid grid-cols-2 gap-4 pt-2">
             <div className="border border-slate-200 rounded-lg p-3 text-center bg-slate-50/40">
-              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
+              <span className="text-xs font-medium text-slate-600 block mb-1">
                 Tanda Tangan Pengirim / Supplier
               </span>
               <div className="h-20 flex items-center justify-center">
@@ -165,7 +165,7 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
             </div>
 
             <div className="border border-slate-200 rounded-lg p-3 text-center bg-slate-50/40">
-              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
+              <span className="text-xs font-medium text-slate-600 block mb-1">
                 Tanda Tangan Penerima / SPPG
               </span>
               <div className="h-20 flex items-center justify-center">

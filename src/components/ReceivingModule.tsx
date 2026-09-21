@@ -357,7 +357,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
             <div>
               <div className="flex items-center justify-between mb-2">
                 <div>
-                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                  <h4 className="text-xs font-semibold text-slate-800">
                     Daftar Barang Diterima ({lines.length} Baris)
                   </h4>
                   <p className="text-[11px] text-slate-500">
@@ -450,7 +450,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
 
             {/* Signature Section */}
             <div>
-              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide mb-2">
+              <h4 className="text-xs font-semibold text-slate-800 mb-2">
                 Verifikasi & Tanda Tangan Digital
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -114,7 +114,7 @@ export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData 
       {/* Formula Explainer Card */}
       <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 p-4 rounded-xl bg-slate-900 text-white shadow-xs">
         <div className="p-3 bg-slate-800/80 rounded-lg border border-slate-700">
-          <span className="text-[10px] uppercase font-semibold text-slate-400">1. Saldo Awal (Pagi)</span>
+          <span className="text-xs font-medium text-slate-400">1. Saldo Awal (Pagi)</span>
           <div className="text-sm font-bold mt-1 text-slate-200">Sisa Kemarin</div>
           <p className="text-[10px] text-slate-400 mt-0.5">Stok bawaan dari penutupan shift sebelumnya.</p>
         </div>
@@ -124,7 +124,7 @@ export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData 
         </div>
 
         <div className="p-3 bg-slate-800/80 rounded-lg border border-slate-700">
-          <span className="text-[10px] uppercase font-semibold text-emerald-400">2. Penerimaan (+ Masuk)</span>
+          <span className="text-xs font-medium text-emerald-400">2. Penerimaan (+ Masuk)</span>
           <div className="text-sm font-bold mt-1 text-emerald-300">Penerimaan Pagi</div>
           <p className="text-[10px] text-slate-400 mt-0.5">Barang segar datang dari supplier hari ini.</p>
         </div>
@@ -134,7 +134,7 @@ export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData 
         </div>
 
         <div className="p-3 bg-slate-800/80 rounded-lg border border-slate-700">
-          <span className="text-[10px] uppercase font-semibold text-amber-400">3. Konsumsi Dapur (- Keluar)</span>
+          <span className="text-xs font-medium text-amber-400">3. Konsumsi Dapur (- Keluar)</span>
           <div className="text-sm font-bold mt-1 text-amber-300">Dipakai Masak</div>
           <p className="text-[10px] text-slate-400 mt-0.5">Bahan diolah tim dapur untuk porsi gizi anak.</p>
         </div>
@@ -144,7 +144,7 @@ export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData 
         </div>
 
         <div className="p-3 bg-slate-800/80 rounded-lg border border-slate-700 sm:col-span-2">
-          <span className="text-[10px] uppercase font-semibold text-sky-400">4. Saldo Akhir (Sisa Chiller)</span>
+          <span className="text-xs font-medium text-sky-400">4. Saldo Akhir (Sisa Chiller)</span>
           <div className="text-sm font-bold mt-1 text-sky-300">Menjadi Saldo Awal Esok</div>
           <p className="text-[10px] text-slate-400 mt-0.5">Sisa bahan tersimpan di chiller/freezer.</p>
         </div>

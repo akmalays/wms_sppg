@@ -189,7 +189,7 @@ export const SuppliersModule: React.FC<SuppliersModuleProps> = ({ onRefreshData 
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-slate-100">
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                  <span className="text-xs font-medium text-slate-500 block mb-1">
                     Kategori Pasokan
                   </span>
                   <span className="inline-block px-2.5 py-1 rounded text-xs font-semibold bg-slate-100 text-slate-800">

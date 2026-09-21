@@ -420,7 +420,7 @@ export const EquipmentModule: React.FC<EquipmentModuleProps> = ({ onRefreshData 
             <div className="my-5 p-4 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 space-y-3">
               <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                 <div className="text-left">
-                  <div className="text-[10px] font-black uppercase text-emerald-800">SPPG GUDANG & DAPUR</div>
+                  <div className="text-[11px] font-bold text-emerald-800">SPPG Gudang & Dapur</div>
                   <div className="text-xs font-black text-slate-800">{labelItem.id}</div>
                 </div>
                 <div className="w-8 h-8 rounded bg-slate-900 text-white flex items-center justify-center">
