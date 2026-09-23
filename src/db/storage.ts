@@ -18,8 +18,15 @@ import {
   MenuOrder,
   WasteLog,
   DailyTodoItem,
+  SchoolBeneficiaryAllocation,
 } from '../types/warehouse';
-import { REAL_NONFOOD_EXPENSES, REAL_WASTE_LOGS, REAL_EQUIPMENT_ITEMS } from './realSeedData';
+import {
+  REAL_NONFOOD_EXPENSES,
+  REAL_WASTE_LOGS,
+  REAL_EQUIPMENT_ITEMS,
+  REAL_MENU_ORDERS,
+  DEFAULT_SCHOOL_BENEFICIARIES,
+} from './realSeedData';
 
 const STORAGE_KEYS = {
   ITEMS: 'sppg_items_v1',
@@ -736,6 +743,186 @@ export const INITIAL_TRANSACTIONS: InventoryTransaction[] = [
     notes: 'Pengeluaran untuk persiapan menu makan siang SPPG Batch 1',
     balanceAfter: 45,
   },
+  {
+    id: 'TX-2026-0005',
+    timestamp: '2026-09-20 08:45',
+    itemId: 'ITM-SMB-001',
+    itemName: 'Beras Pandan Wangi Premium',
+    itemType: 'FOOD_CARRYING_STOCK',
+    category: 'Sembako',
+    location: 'Gudang Kering - Rak A1',
+    quantity: -25,
+    unit: 'Kg',
+    transactionType: 'ISSUE_CONSUMPTION',
+    referenceDocument: 'ISS-2026-0920-B',
+    userId: 'USR-002',
+    userName: 'Budi Santoso',
+    userRole: 'ADMIN',
+    notes: 'Pemasakan nasi porsi makan siang 3.044 penerima manfaat',
+    balanceAfter: 425,
+  },
+  {
+    id: 'TX-2026-0006',
+    timestamp: '2026-09-20 09:00',
+    itemId: 'ITM-SMB-002',
+    itemName: 'Minyak Goreng Sawit Higienis',
+    itemType: 'FOOD_CARRYING_STOCK',
+    category: 'Sembako',
+    location: 'Gudang Kering - Rak A2',
+    quantity: -10,
+    unit: 'Liter',
+    transactionType: 'ISSUE_CONSUMPTION',
+    referenceDocument: 'ISS-2026-0920-C',
+    userId: 'USR-002',
+    userName: 'Budi Santoso',
+    userRole: 'ADMIN',
+    notes: 'Penggorengan lauk ayam krispi dan tahu cabe garam',
+    balanceAfter: 130,
+  },
+  {
+    id: 'TX-2026-0007',
+    timestamp: '2026-09-21 07:30',
+    itemId: 'ITM-SMB-001',
+    itemName: 'Beras Pandan Wangi Premium',
+    itemType: 'FOOD_CARRYING_STOCK',
+    category: 'Sembako',
+    location: 'Gudang Kering - Rak A1',
+    quantity: -20,
+    unit: 'Kg',
+    transactionType: 'ISSUE_CONSUMPTION',
+    referenceDocument: 'ISS-2026-0921-A',
+    userId: 'USR-004',
+    userName: 'Ahmad Fauzi',
+    userRole: 'ASLAP',
+    notes: 'Menu bubur sarapan gizi anak sekolah',
+    balanceAfter: 405,
+  },
+  {
+    id: 'TX-2026-0008',
+    timestamp: '2026-09-21 07:45',
+    itemId: 'ITM-PRO-002',
+    itemName: 'Telur Ayam Ras Segar',
+    itemType: 'FOOD_DAILY_FLOW',
+    category: 'Protein',
+    location: 'Area Persiapan - Rak Telur',
+    quantity: -16,
+    unit: 'Kg',
+    transactionType: 'ISSUE_CONSUMPTION',
+    referenceDocument: 'ISS-2026-0921-B',
+    userId: 'USR-004',
+    userName: 'Ahmad Fauzi',
+    userRole: 'ASLAP',
+    notes: 'Perebusan telur topping bubur sarapan gizi',
+    balanceAfter: 34,
+  },
+  {
+    id: 'TX-2026-0009',
+    timestamp: '2026-09-21 08:00',
+    itemId: 'ITM-VEG-001',
+    itemName: 'Sayur Bayam Hijau Segar',
+    itemType: 'FOOD_DAILY_FLOW',
+    category: 'Sayuran',
+    location: 'Area Sortir Sayur',
+    quantity: -12,
+    unit: 'Kg',
+    transactionType: 'ISSUE_CONSUMPTION',
+    referenceDocument: 'ISS-2026-0921-C',
+    userId: 'USR-004',
+    userName: 'Ahmad Fauzi',
+    userRole: 'ASLAP',
+    notes: 'Pengolahan sayur bening bayam jagung',
+    balanceAfter: 8,
+  },
+  {
+    id: 'TX-2026-0010',
+    timestamp: '2026-09-22 08:00',
+    itemId: 'ITM-SMB-001',
+    itemName: 'Beras Pandan Wangi Premium',
+    itemType: 'FOOD_CARRYING_STOCK',
+    category: 'Sembako',
+    location: 'Gudang Kering - Rak A1',
+    quantity: -28,
+    unit: 'Kg',
+    transactionType: 'ISSUE_CONSUMPTION',
+    referenceDocument: 'ISS-2026-0922-A',
+    userId: 'USR-002',
+    userName: 'Budi Santoso',
+    userRole: 'ADMIN',
+    notes: 'Pemasakan nasi makan siang semur daging',
+    balanceAfter: 377,
+  },
+  {
+    id: 'TX-2026-0011',
+    timestamp: '2026-09-22 08:15',
+    itemId: 'ITM-PRO-001',
+    itemName: 'Daging Ayam Broiler Karkas Bersih',
+    itemType: 'FOOD_DAILY_FLOW',
+    category: 'Protein',
+    location: 'Chiller Dapur - Bin C1',
+    quantity: -25,
+    unit: 'Kg',
+    transactionType: 'ISSUE_CONSUMPTION',
+    referenceDocument: 'ISS-2026-0922-B',
+    userId: 'USR-002',
+    userName: 'Budi Santoso',
+    userRole: 'ADMIN',
+    notes: 'Pembuatan semur ayam bumbu nusantara',
+    balanceAfter: 20,
+  },
+  {
+    id: 'TX-2026-0012',
+    timestamp: '2026-09-22 08:30',
+    itemId: 'ITM-VEG-002',
+    itemName: 'Wortel Segar Super',
+    itemType: 'FOOD_DAILY_FLOW',
+    category: 'Sayuran',
+    location: 'Area Sortir Sayur',
+    quantity: -12,
+    unit: 'Kg',
+    transactionType: 'ISSUE_CONSUMPTION',
+    referenceDocument: 'ISS-2026-0922-C',
+    userId: 'USR-002',
+    userName: 'Budi Santoso',
+    userRole: 'ADMIN',
+    notes: 'Tumisan wortel dan buncis pelengkap gizi',
+    balanceAfter: 6,
+  },
+  {
+    id: 'TX-2026-0013',
+    timestamp: '2026-09-23 07:15',
+    itemId: 'ITM-FRT-001',
+    itemName: 'Pisang Cavendish / Ambon Matang',
+    itemType: 'FOOD_DAILY_FLOW',
+    category: 'Buah',
+    location: 'Area Buah & Distribusi',
+    quantity: -25,
+    unit: 'Kg',
+    transactionType: 'ISSUE_CONSUMPTION',
+    referenceDocument: 'ISS-2026-0923-A',
+    userId: 'USR-004',
+    userName: 'Ahmad Fauzi',
+    userRole: 'ASLAP',
+    notes: 'Penyaluran buah segar pencuci mulut anak',
+    balanceAfter: 15,
+  },
+  {
+    id: 'TX-2026-0014',
+    timestamp: '2026-09-23 07:45',
+    itemId: 'ITM-SMB-003',
+    itemName: 'Gula Pasir Kristal Putih',
+    itemType: 'FOOD_CARRYING_STOCK',
+    category: 'Sembako',
+    location: 'Gudang Kering - Rak A3',
+    quantity: -8,
+    unit: 'Kg',
+    transactionType: 'ISSUE_CONSUMPTION',
+    referenceDocument: 'ISS-2026-0923-B',
+    userId: 'USR-004',
+    userName: 'Ahmad Fauzi',
+    userRole: 'ASLAP',
+    notes: 'Bumbu olahan masakan dan minuman teh manis hangat',
+    balanceAfter: 77,
+  },
 ];
 
 export const INITIAL_AUDIT_LOGS: AuditLog[] = [
@@ -816,74 +1003,8 @@ export const INITIAL_OPNAMES: StockOpnameSession[] = [
 
 export const INITIAL_NONFOOD_EXPENSES: NonFoodExpense[] = REAL_NONFOOD_EXPENSES;
 
-export const INITIAL_MENU_ORDERS: MenuOrder[] = [
-  {
-    id: 'ORD-2026-001',
-    date: '2026-09-20',
-    poDate: 'Minggu, 19 Sept 2026',
-    mealSession: 'Siang',
-    menuTitle: 'Nasi Putih, Ayam Krispi Sambal & Selada, Tahu Cabe Garam, Steam Buncis Wortel',
-    menuDescription: 'Menu pemenuhan gizi terpadu SPPG untuk 3.044 anak penerima manfaat. Kedatangan ayam potong segar 264kg dari Ayam Segar Fajar dan tahu putih 520pcs dari Tahu Rio.',
-    targetPortions: 3044,
-    totalBeneficiaries: 3044,
-    status: 'DISTRIBUTED',
-    keyIngredients: [
-      { itemName: 'Ayam Potong Segar', quantity: '264', unit: 'Kg' },
-      { itemName: 'Tahu Putih', quantity: '520', unit: 'Pcs' },
-      { itemName: 'Buncis Segar', quantity: '65', unit: 'Kg' },
-      { itemName: 'Wortel Segar', quantity: '65', unit: 'Kg' },
-      { itemName: 'Tomat Buah', quantity: '25', unit: 'Kg' },
-      { itemName: 'Beras Mentari 25kg', quantity: '7', unit: 'Sak' },
-      { itemName: 'Minyak Goreng Tropical 2L', quantity: '9', unit: 'Dus' },
-    ],
-    poArrivalItems: [
-      { category: 'Protein', itemName: 'Ayam Potong', qtyOrder: '264 kg', qtyArrived: '264 kg', supplier: 'Ayam Segar Fajar', arrivalTime: '09.00', pic: 'Akmal' },
-      { category: 'Protein', itemName: 'Tahu Putih', qtyOrder: '520 pcs', qtyArrived: '520 pcs', supplier: 'Tahu Rio', arrivalTime: '09.30', pic: 'Akmal' },
-      { category: 'Sembako', itemName: 'Gula 1 kg', qtyOrder: '10 pcs', qtyArrived: '10 kg', supplier: 'Tumpang Grosir', arrivalTime: '14.53', pic: 'Akmal' },
-      { category: 'Sayur & Buah', itemName: 'Buncis', qtyOrder: '65 kg', qtyArrived: '66 kg', supplier: 'Pak Beni', arrivalTime: '16.19', pic: 'Akmal' },
-      { category: 'Sayur & Buah', itemName: 'Wortel', qtyOrder: '65 kg', qtyArrived: '66 kg', supplier: 'Pak Beni', arrivalTime: '16.19', pic: 'Akmal' },
-      { category: 'Sayur & Buah', itemName: 'Tomat Buah', qtyOrder: '25 kg', qtyArrived: '25 kg', supplier: 'Pak Beni', arrivalTime: '16.19', pic: 'Akmal' },
-      { category: 'Sayur & Buah', itemName: 'Cabe Rawit', qtyOrder: '8 kg', qtyArrived: '8 kg', supplier: 'Pak Beni', arrivalTime: '16.19', pic: 'Akmal' },
-    ],
-    chefInCharge: 'Chef Joko Santoso & Tim Dapur',
-    notes: 'Seluruh 3.044 porsi selesai dimasak dan disalurkan tepat waktu. Diterima oleh PIC Akmal.',
-    createdAt: '2026-09-19T14:00:00Z',
-  },
-  {
-    id: 'ORD-2026-002',
-    date: '2026-09-21',
-    mealSession: 'Pagi',
-    menuTitle: 'Bubur Ayam Sehat Gizi Seimbang & Telur Rebus',
-    menuDescription: 'Sarapan bernutrisi hangat: Bubur beras halus kaldu ayam kampung, telur rebus, irisan seledri, dan kecap manis rendah natrium.',
-    targetPortions: 250,
-    status: 'COMPLETED',
-    keyIngredients: [
-      { itemId: 'ITM-SMB-001', itemName: 'Beras Pandan Wangi Premium', quantity: 20, unit: 'Kg' },
-      { itemId: 'ITM-PRO-002', itemName: 'Telur Ayam Ras Segar', quantity: 16, unit: 'Kg' },
-      { itemId: 'ITM-PRO-001', itemName: 'Daging Ayam Broiler Karkas Bersih', quantity: 15, unit: 'Kg' },
-    ],
-    chefInCharge: 'Chef Joko Santoso',
-    notes: 'Porsi sarapan tepat sasaran, evaluasi anak menyukai rasa gurih alami kaldu.',
-    createdAt: '2026-09-20T13:00:00Z',
-  },
-  {
-    id: 'ORD-2026-003',
-    date: '2026-09-22',
-    mealSession: 'Siang',
-    menuTitle: 'Nasi Putih Pulen, Semur Daging & Tumis Buncis Jagung Manis',
-    menuDescription: 'Makan siang padat zat besi: Daging sapi empuk bumbu rempah nusantara dengan serat buncis renyah dan jagung manis segar.',
-    targetPortions: 280,
-    status: 'COOKING',
-    keyIngredients: [
-      { itemId: 'ITM-SMB-001', itemName: 'Beras Pandan Wangi Premium', quantity: 28, unit: 'Kg' },
-      { itemId: 'ITM-PRO-001', itemName: 'Daging Ayam Broiler Karkas Bersih', quantity: 25, unit: 'Kg' },
-      { itemId: 'ITM-VEG-002', itemName: 'Wortel Segar Super', quantity: 12, unit: 'Kg' },
-    ],
-    chefInCharge: 'Chef Joko Santoso',
-    notes: 'Proses perebusan bumbu semur memasuki tahap akhir.',
-    createdAt: '2026-09-21T15:30:00Z',
-  },
-];
+export const INITIAL_MENU_ORDERS: MenuOrder[] = REAL_MENU_ORDERS;
+export const INITIAL_SCHOOL_BENEFICIARIES: SchoolBeneficiaryAllocation[] = DEFAULT_SCHOOL_BENEFICIARIES;
 
 export const INITIAL_WASTE_LOGS: WasteLog[] = REAL_WASTE_LOGS;
 
@@ -924,13 +1045,30 @@ class WarehouseDatabase {
     this.suppliers = getStored<Supplier[]>(STORAGE_KEYS.SUPPLIERS, INITIAL_SUPPLIERS);
     this.receivings = getStored<ReceivingDocument[]>(STORAGE_KEYS.RECEIVINGS, INITIAL_RECEIVINGS);
     this.transactions = getStored<InventoryTransaction[]>(STORAGE_KEYS.TRANSACTIONS, INITIAL_TRANSACTIONS);
+    // Ensure rich default consumption transactions are present even if storage was cached
+    const hasSembakoConsumption = this.transactions.some(
+      t => t.transactionType === 'ISSUE_CONSUMPTION' && (t.category === 'Sembako' || t.itemName.toLowerCase().includes('beras'))
+    );
+    if (!hasSembakoConsumption) {
+      const extraTxs = INITIAL_TRANSACTIONS.filter(t => t.id > 'TX-2026-0004');
+      this.transactions = [...this.transactions, ...extraTxs];
+      setStored(STORAGE_KEYS.TRANSACTIONS, this.transactions);
+    }
     this.opnames = getStored<StockOpnameSession[]>(STORAGE_KEYS.OPNAMES, INITIAL_OPNAMES);
     this.equipment = getStored<EquipmentItem[]>(STORAGE_KEYS.EQUIPMENT, INITIAL_EQUIPMENT);
     this.auditLogs = getStored<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
     this.nonFoodExpenses = getStored<NonFoodExpense[]>(STORAGE_KEYS.NONFOOD_EXPENSES, INITIAL_NONFOOD_EXPENSES);
     this.menuOrders = getStored<MenuOrder[]>(STORAGE_KEYS.MENU_ORDERS, INITIAL_MENU_ORDERS);
+    if (!this.menuOrders.some(m => m.id === 'ORD-2026-004')) {
+      this.menuOrders = INITIAL_MENU_ORDERS;
+      setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+    }
     this.wasteLogs = getStored<WasteLog[]>(STORAGE_KEYS.WASTE_LOGS, INITIAL_WASTE_LOGS);
     this.todos = getStored<DailyTodoItem[]>(STORAGE_KEYS.TODOS, INITIAL_TODOS);
+  }
+
+  public getSchoolBeneficiaries(): SchoolBeneficiaryAllocation[] {
+    return DEFAULT_SCHOOL_BENEFICIARIES;
   }
 
   // --- READERS ---

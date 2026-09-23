@@ -1,7 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
-import { NonFoodExpense, InventoryTransaction } from '../types/warehouse';
+import {
+  MainItemCategory,
+  normalizeItemCategory,
+  NonFoodExpense,
+  InventoryTransaction
+} from '../types/warehouse';
 import {
   Calendar,
   Plus,
@@ -19,7 +24,11 @@ import {
   TableProperties,
   ClipboardPaste,
   PlusCircle,
-  Info
+  Info,
+  CalendarRange,
+  DollarSign,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { exportToExcel, parseExcelFile, downloadExcelTemplate } from '../lib/excelExport';
 
@@ -30,19 +39,152 @@ interface BatchRowItem {
   unit: string;
   time: string;
   volunteer: string;
-  category: string;
+  category: MainItemCategory;
   notes: string;
+}
+
+type PeriodType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
+
+// Realistic price map for SPPG goods
+const DEFAULT_PRICE_MAP: Record<string, number> = {
+  // Bahan Kering
+  beras: 14500,
+  minyak: 18000,
+  gula: 17500,
+  tepung: 11000,
+  garam: 4000,
+  kecap: 22000,
+  saus: 18000,
+  bawang: 35000,
+  bumbu: 25000,
+
+  // Bahan Basah
+  ayam: 38000,
+  daging: 120000,
+  telur: 28000,
+  bayam: 8000,
+  kangkung: 7000,
+  wortel: 12000,
+  labu: 9000,
+  pisang: 16000,
+  semangka: 8500,
+  pepaya: 7500,
+  tahu: 10000,
+  tempe: 10000,
+  susu: 15000,
+  ikan: 35000,
+
+  // Bahan Peralatan
+  kresek: 15000,
+  trashbag: 32000,
+  plastik: 14000,
+  sunlight: 85000,
+  natura: 95000,
+  oixs: 38000,
+  tissue: 12000,
+  spons: 4500,
+  sabut: 6000,
+  lap: 8000,
+  kanebo: 15000,
+  masker: 25000,
+  'sarung tangan': 12000,
+  'nurse cap': 30000,
+  sabun: 18000,
+  gayung: 12000,
+  cikrak: 18000,
+  obat: 8000,
+};
+
+function getItemEstimatedUnitPrice(itemName: string, category: string, existingPrice?: number): number {
+  if (existingPrice && existingPrice > 0) return existingPrice;
+  const nameLower = (itemName || '').toLowerCase();
+
+  for (const [key, price] of Object.entries(DEFAULT_PRICE_MAP)) {
+    if (nameLower.includes(key)) {
+      return price;
+    }
+  }
+
+  const norm = normalizeItemCategory(category);
+  if (norm === 'Bahan Basah') return 30000;
+  if (norm === 'Bahan Kering') return 15000;
+  if (norm === 'Bahan Peralatan') return 20000;
+  return 15000;
+}
+
+function parseNumericQty(qty: string | number): number {
+  if (typeof qty === 'number') return qty;
+  const match = String(qty).replace(',', '.').match(/[\d.]+/);
+  return match ? parseFloat(match[0]) : 1;
+}
+
+function parseExpenseDate(dateStr: string): Date | null {
+  if (!dateStr) return null;
+  const clean = dateStr.toLowerCase().trim();
+
+  // If ISO YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(clean)) {
+    const parts = clean.slice(0, 10).split('-');
+    const year = Number(parts[0]);
+    const month = Number(parts[1]) - 1;
+    const day = Number(parts[2]);
+    const d = new Date(year, month, day);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const monthMap: Record<string, number> = {
+    jan: 0, feb: 1, mar: 2, apr: 3,
+    mei: 4, jun: 5, jul: 6, agu: 7, ags: 7,
+    sep: 8, okt: 9, nov: 10, des: 11,
+  };
+
+  const match = clean.match(/(\d{1,2})\s+([a-z]{3,4})\s+(\d{4})/i);
+  if (match) {
+    const day = Number(match[1]);
+    const monthKey = match[2].slice(0, 3).toLowerCase();
+    const month = monthMap[monthKey] !== undefined ? monthMap[monthKey] : 8;
+    const year = Number(match[3]);
+    const d = new Date(year, month, day);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const parsed = new Date(dateStr);
+  return isNaN(parsed.getTime()) ? null : parsed;
 }
 
 export const DailyExpensesModule: React.FC = () => {
   const { currentUser } = useAuth();
 
-  // Date & Search Filters
-  const [selectedDate, setSelectedDate] = useState<string>(
+  // ----------------------------------------------------
+  // Period & Filter States
+  // ----------------------------------------------------
+  const [periodType, setPeriodType] = useState<PeriodType>('WEEKLY');
+  const [selectedDailyDate, setSelectedDailyDate] = useState<string>(
     new Date().toISOString().slice(0, 10)
   );
-  const [activeTabFilter, setActiveTabFilter] = useState<'ALL' | 'MANUAL' | 'KITCHEN'>('ALL');
+
+  // Range for Weekly / Custom (Default to last 7 days)
+  const defaultWeekStart = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return d.toISOString().slice(0, 10);
+  }, []);
+  const [startDate, setStartDate] = useState<string>(defaultWeekStart);
+  const [endDate, setEndDate] = useState<string>(
+    new Date().toISOString().slice(0, 10)
+  );
+
+  // Selected Month (YYYY-MM)
+  const [selectedMonth, setSelectedMonth] = useState<string>(
+    new Date().toISOString().slice(0, 7)
+  );
+
+  // Category filter: 3 categories
+  const [selectedCategoryTab, setSelectedCategoryTab] = useState<'ALL' | MainItemCategory>('ALL');
+
+  // Search & Views
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeSubTab, setActiveSubTab] = useState<'SUMMARY' | 'TRANSACTIONS'>('SUMMARY');
   const [successNotice, setSuccessNotice] = useState<string>('');
 
   // Modals
@@ -60,25 +202,25 @@ export const DailyExpensesModule: React.FC = () => {
   );
   const [batchPic, setBatchPic] = useState<string>(currentUser.name);
   const [batchRows, setBatchRows] = useState<BatchRowItem[]>([
-    { id: '1', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Peralatan & Kebersihan', notes: '' },
-    { id: '2', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Peralatan & Kebersihan', notes: '' },
-    { id: '3', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Peralatan & Kebersihan', notes: '' },
-    { id: '4', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Peralatan & Kebersihan', notes: '' },
-    { id: '5', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Peralatan & Kebersihan', notes: '' },
+    { id: '1', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Bahan Peralatan', notes: '' },
+    { id: '2', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Bahan Peralatan', notes: '' },
+    { id: '3', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Bahan Peralatan', notes: '' },
+    { id: '4', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Bahan Peralatan', notes: '' },
+    { id: '5', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Bahan Peralatan', notes: '' },
   ]);
   const [batchInputMode, setBatchInputMode] = useState<'GRID' | 'PASTE'>('GRID');
   const [pasteRawText, setPasteRawText] = useState('');
 
   // Single Form State
   const [singleItemName, setSingleItemName] = useState('');
-  const [singleCategory, setSingleCategory] = useState('Peralatan & Kebersihan');
+  const [singleCategory, setSingleCategory] = useState<MainItemCategory>('Bahan Peralatan');
   const [singleQty, setSingleQty] = useState('1');
   const [singleUnit, setSingleUnit] = useState('pack');
   const [singleTime, setSingleTime] = useState(defaultCurrentTime);
   const [singleVolunteer, setSingleVolunteer] = useState('');
   const [singlePic, setSinglePic] = useState(currentUser.name);
   const [singleNotes, setSingleNotes] = useState('');
-  const [deductStockIfMatch, setDeductStockIfMatch] = useState(false);
+  const [singleUnitPrice, setSingleUnitPrice] = useState<number>(0);
 
   // Kitchen Issue Form State
   const [kitchenItemId, setKitchenItemId] = useState('');
@@ -92,37 +234,50 @@ export const DailyExpensesModule: React.FC = () => {
   const transactions = useMemo(() => warehouseDb.getTransactions(), [successNotice]);
   const manualExpenses = useMemo(() => warehouseDb.getNonFoodExpenses(), [successNotice]);
 
-  // Combined daily expense records normalized for display
+  // Normalized unified expenses
   interface UnifiedExpense {
     id: string;
     source: 'MANUAL' | 'KITCHEN';
-    date: string;
-    time?: string;
+    rawDate: string;
+    parsedDate: Date | null;
+    time: string;
     itemName: string;
-    category: string;
+    category: MainItemCategory;
     quantity: string | number;
-    unit?: string;
-    recipientOrVolunteer?: string;
+    numericQty: number;
+    unit: string;
+    unitPrice: number;
+    nominal: number;
+    recipientOrVolunteer: string;
     picOrUser: string;
     notes?: string;
-    balanceAfter?: number;
     referenceNo?: string;
   }
 
-  const combinedExpenses = useMemo<UnifiedExpense[]>(() => {
+  const allExpenses = useMemo<UnifiedExpense[]>(() => {
     const list: UnifiedExpense[] = [];
 
-    // 1. Manual logs (from nonFoodExpenses & Excel sheet rekap pengeluaran peraltan)
+    // 1. Manual logs (nonFoodExpenses)
     manualExpenses.forEach(exp => {
+      const pDate = parseExpenseDate(exp.date);
+      const cat = normalizeItemCategory(exp.category);
+      const nQty = parseNumericQty(exp.quantity);
+      const price = getItemEstimatedUnitPrice(exp.itemName, cat, exp.unitPrice);
+      const nominal = exp.totalCost && exp.totalCost > 0 ? exp.totalCost : nQty * price;
+
       list.push({
         id: exp.id,
         source: 'MANUAL',
-        date: exp.date,
+        rawDate: exp.date,
+        parsedDate: pDate,
         time: exp.time || '12.00',
         itemName: exp.itemName,
-        category: exp.category,
+        category: cat,
         quantity: exp.quantity,
+        numericQty: nQty,
         unit: exp.unit || 'Pack',
+        unitPrice: price,
+        nominal: nominal,
         recipientOrVolunteer: exp.volunteer || exp.recipient || '-',
         picOrUser: exp.pic || exp.recordedBy || currentUser.name,
         notes: exp.notes,
@@ -133,59 +288,207 @@ export const DailyExpensesModule: React.FC = () => {
     transactions
       .filter(tx => tx.transactionType === 'ISSUE_CONSUMPTION')
       .forEach(tx => {
+        const rawD = tx.timestamp.slice(0, 10);
+        const pDate = parseExpenseDate(rawD);
+        const cat = normalizeItemCategory(tx.category);
+        const nQty = Math.abs(tx.quantity);
+        const price = getItemEstimatedUnitPrice(tx.itemName, cat);
+        const nominal = nQty * price;
+
         list.push({
           id: tx.id,
           source: 'KITCHEN',
-          date: tx.timestamp.slice(0, 10),
+          rawDate: rawD,
+          parsedDate: pDate,
           time: tx.timestamp.slice(11, 16).replace(':', '.'),
           itemName: tx.itemName,
-          category: tx.category,
-          quantity: Math.abs(tx.quantity),
+          category: cat,
+          quantity: nQty,
+          numericQty: nQty,
           unit: tx.unit,
+          unitPrice: price,
+          nominal: nominal,
           recipientOrVolunteer: tx.location || 'Dapur Pengolahan SPPG',
           picOrUser: tx.userName,
           notes: tx.notes,
-          balanceAfter: tx.balanceAfter,
           referenceNo: tx.referenceDocument || tx.id,
         });
       });
 
-    return list.sort((a, b) => b.date.localeCompare(a.date));
+    return list.sort((a, b) => {
+      const timeA = a.parsedDate ? a.parsedDate.getTime() : 0;
+      const timeB = b.parsedDate ? b.parsedDate.getTime() : 0;
+      return timeB - timeA;
+    });
   }, [manualExpenses, transactions, currentUser.name]);
 
-  // Filtered list
-  const filteredList = useMemo(() => {
-    return combinedExpenses.filter(item => {
-      // Source filter
-      if (activeTabFilter === 'MANUAL' && item.source !== 'MANUAL') return false;
-      if (activeTabFilter === 'KITCHEN' && item.source !== 'KITCHEN') return false;
+  // Effective Date Range based on periodType
+  const effectiveDateRange = useMemo(() => {
+    if (periodType === 'DAILY') {
+      const target = parseExpenseDate(selectedDailyDate);
+      return { start: target, end: target, label: `Harian: ${selectedDailyDate}` };
+    }
 
-      // Date filter
-      if (selectedDate) {
-        const itemDateClean = item.date.toLowerCase();
-        const selectedClean = selectedDate.toLowerCase();
-        const isMatchDate =
-          itemDateClean === selectedClean ||
-          itemDateClean.includes(selectedClean) ||
-          itemDateClean.includes(selectedDate.replace(/-/g, ' '));
-        if (!isMatchDate) return false;
+    if (periodType === 'WEEKLY') {
+      const s = parseExpenseDate(startDate);
+      const e = parseExpenseDate(endDate);
+      return { start: s, end: e, label: `Mingguan: ${startDate} s/d ${endDate}` };
+    }
+
+    if (periodType === 'MONTHLY') {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const startOfMonth = new Date(year, month - 1, 1);
+      const endOfMonth = new Date(year, month, 0);
+      const monthNames = [
+        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+      ];
+      return {
+        start: startOfMonth,
+        end: endOfMonth,
+        label: `Bulan ${monthNames[month - 1] || ''} ${year}`,
+      };
+    }
+
+    // CUSTOM
+    const s = parseExpenseDate(startDate);
+    const e = parseExpenseDate(endDate);
+    return { start: s, end: e, label: `${startDate} s/d ${endDate}` };
+  }, [periodType, selectedDailyDate, startDate, endDate, selectedMonth]);
+
+  // Filtered expenses based on Period, Category, and Search
+  const filteredExpenses = useMemo(() => {
+    return allExpenses.filter(item => {
+      // 1. Category Filter
+      if (selectedCategoryTab !== 'ALL' && item.category !== selectedCategoryTab) {
+        return false;
       }
 
-      // Search query filter
+      // 2. Date Range Filter
+      if (item.parsedDate && effectiveDateRange.start && effectiveDateRange.end) {
+        const itemTime = new Date(item.parsedDate.getFullYear(), item.parsedDate.getMonth(), item.parsedDate.getDate()).getTime();
+        const startTime = new Date(effectiveDateRange.start.getFullYear(), effectiveDateRange.start.getMonth(), effectiveDateRange.start.getDate()).getTime();
+        const endTime = new Date(effectiveDateRange.end.getFullYear(), effectiveDateRange.end.getMonth(), effectiveDateRange.end.getDate()).getTime();
+
+        if (itemTime < startTime || itemTime > endTime) {
+          return false;
+        }
+      }
+
+      // 3. Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchText =
+        const match =
           item.itemName.toLowerCase().includes(q) ||
           item.category.toLowerCase().includes(q) ||
-          (item.recipientOrVolunteer && item.recipientOrVolunteer.toLowerCase().includes(q)) ||
-          (item.picOrUser && item.picOrUser.toLowerCase().includes(q)) ||
+          item.recipientOrVolunteer.toLowerCase().includes(q) ||
+          item.picOrUser.toLowerCase().includes(q) ||
           (item.notes && item.notes.toLowerCase().includes(q));
-        if (!matchText) return false;
+        if (!match) return false;
       }
 
       return true;
     });
-  }, [combinedExpenses, activeTabFilter, selectedDate, searchQuery]);
+  }, [allExpenses, selectedCategoryTab, effectiveDateRange, searchQuery]);
+
+  // ==========================================
+  // PERIOD BREAKDOWN BY 3 CATEGORIES & ITEMS
+  // ==========================================
+  interface CategoryItemAgg {
+    itemName: string;
+    unit: string;
+    totalQty: number;
+    unitPrice: number;
+    totalNominal: number;
+    countOccurrences: number;
+    percentageOfCategory: number;
+  }
+
+  interface CategorySummary {
+    category: MainItemCategory;
+    totalNominal: number;
+    totalItemsCount: number;
+    items: CategoryItemAgg[];
+  }
+
+  const categoryBreakdowns = useMemo<Record<MainItemCategory, CategorySummary>>(() => {
+    const summary: Record<MainItemCategory, CategorySummary> = {
+      'Bahan Basah': { category: 'Bahan Basah', totalNominal: 0, totalItemsCount: 0, items: [] },
+      'Bahan Kering': { category: 'Bahan Kering', totalNominal: 0, totalItemsCount: 0, items: [] },
+      'Bahan Peralatan': { category: 'Bahan Peralatan', totalNominal: 0, totalItemsCount: 0, items: [] },
+    };
+
+    const itemMaps: Record<MainItemCategory, Record<string, CategoryItemAgg>> = {
+      'Bahan Basah': {},
+      'Bahan Kering': {},
+      'Bahan Peralatan': {},
+    };
+
+    filteredExpenses.forEach(exp => {
+      const cat = exp.category;
+      if (!summary[cat]) return;
+
+      summary[cat].totalNominal += exp.nominal;
+      summary[cat].totalItemsCount += 1;
+
+      const normName = exp.itemName.trim();
+      if (!itemMaps[cat][normName]) {
+        itemMaps[cat][normName] = {
+          itemName: normName,
+          unit: exp.unit,
+          totalQty: 0,
+          unitPrice: exp.unitPrice,
+          totalNominal: 0,
+          countOccurrences: 0,
+          percentageOfCategory: 0,
+        };
+      }
+
+      itemMaps[cat][normName].totalQty += exp.numericQty;
+      itemMaps[cat][normName].totalNominal += exp.nominal;
+      itemMaps[cat][normName].countOccurrences += 1;
+    });
+
+    // Convert map to sorted array & calculate percentage
+    (['Bahan Basah', 'Bahan Kering', 'Bahan Peralatan'] as MainItemCategory[]).forEach(cat => {
+      const arr = Object.values(itemMaps[cat]).sort((a, b) => b.totalNominal - a.totalNominal);
+      const catTotal = summary[cat].totalNominal;
+
+      arr.forEach(item => {
+        item.percentageOfCategory = catTotal > 0 ? Math.round((item.totalNominal / catTotal) * 100) : 0;
+      });
+
+      summary[cat].items = arr;
+    });
+
+    return summary;
+  }, [filteredExpenses]);
+
+  // Overall totals in the active filter
+  const grandTotalNominal = useMemo(() => {
+    return (
+      categoryBreakdowns['Bahan Basah'].totalNominal +
+      categoryBreakdowns['Bahan Kering'].totalNominal +
+      categoryBreakdowns['Bahan Peralatan'].totalNominal
+    );
+  }, [categoryBreakdowns]);
+
+  // Quick weekly helpers
+  const handleSetThisWeek = () => {
+    const end = new Date();
+    const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
+    setStartDate(start.toISOString().slice(0, 10));
+    setEndDate(end.toISOString().slice(0, 10));
+    setPeriodType('WEEKLY');
+  };
+
+  const handleSetLastWeek = () => {
+    const end = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
+    setStartDate(start.toISOString().slice(0, 10));
+    setEndDate(end.toISOString().slice(0, 10));
+    setPeriodType('WEEKLY');
+  };
 
   // ==========================================
   // BATCH INPUT LOGIC
@@ -201,14 +504,14 @@ export const DailyExpensesModule: React.FC = () => {
         unit: 'pack',
         time: defaultCurrentTime,
         volunteer: '',
-        category: 'Peralatan & Kebersihan',
+        category: 'Bahan Peralatan',
         notes: '',
       });
     }
     setBatchRows(prev => [...prev, ...newItems]);
   };
 
-  const handleUpdateBatchRow = (id: string, field: keyof BatchRowItem, value: string) => {
+  const handleUpdateBatchRow = (id: string, field: keyof BatchRowItem, value: any) => {
     setBatchRows(prev =>
       prev.map(row => (row.id === id ? { ...row, [field]: value } : row))
     );
@@ -218,10 +521,9 @@ export const DailyExpensesModule: React.FC = () => {
     setBatchRows(prev => (prev.length > 1 ? prev.filter(row => row.id !== id) : prev));
   };
 
-  // Convert pasted text (from Excel / Spreadsheet) into rows
   const handleParsePastedText = () => {
     if (!pasteRawText.trim()) {
-      alert('Tempelkan teks data dari Excel / Spreadsheet terlebih dahulu.');
+      alert('Tempelkan teks data dari Excel terlebih dahulu.');
       return;
     }
 
@@ -229,52 +531,37 @@ export const DailyExpensesModule: React.FC = () => {
     const parsedRows: BatchRowItem[] = [];
 
     lines.forEach((line, idx) => {
-      // Split by tab (Excel copy format) or comma or semicolon
       let cols = line.split('\t');
-      if (cols.length === 1 && line.includes(';')) {
-        cols = line.split(';');
-      } else if (cols.length === 1 && line.includes(',')) {
-        cols = line.split(',');
-      }
+      if (cols.length === 1 && line.includes(';')) cols = line.split(';');
+      else if (cols.length === 1 && line.includes(',')) cols = line.split(',');
 
       const col0 = (cols[0] || '').trim();
       const col1 = (cols[1] || '').trim();
       const col2 = (cols[2] || '').trim();
       const col3 = (cols[3] || '').trim();
       const col4 = (cols[4] || '').trim();
-      const col5 = (cols[5] || '').trim();
 
-      // Skip header line if detected
-      if (
-        idx === 0 &&
-        (col0.toLowerCase().includes('nama') || col0.toLowerCase().includes('tanggal') || col0.toLowerCase().includes('item'))
-      ) {
+      if (idx === 0 && (col0.toLowerCase().includes('nama') || col0.toLowerCase().includes('tanggal'))) {
         return;
       }
 
-      // Check if col0 is date or item name
       let itemName = col0;
       let qty = '1';
       let unit = 'pack';
       let time = defaultCurrentTime;
       let volunteer = '';
-      let notes = '';
 
       if (cols.length >= 4) {
-        // Assume format: [Tanggal, Nama Barang, Qty, Jam, Relawan, ...] or [Nama Barang, Qty, Jam, Relawan]
-        if (col0.match(/\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}/) || col0.toLowerCase().includes('sept') || col0.toLowerCase().includes('okt')) {
-          // col0 is date
+        if (col0.match(/\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}/) || col0.toLowerCase().includes('sept')) {
           itemName = col1;
           qty = col2 || '1';
           time = col3 || defaultCurrentTime;
           volunteer = col4 || '';
-          notes = col5 || '';
         } else {
           itemName = col0;
           qty = col1 || '1';
           time = col2 || defaultCurrentTime;
           volunteer = col3 || '';
-          notes = col4 || '';
         }
       } else if (cols.length >= 2) {
         itemName = col0;
@@ -282,12 +569,7 @@ export const DailyExpensesModule: React.FC = () => {
       }
 
       if (itemName) {
-        // Extract unit from qty if present like "1 pack" or "2 pcs"
-        const unitMatch = qty.match(/(pack|pcs|kg|liter|botol|kaplet|dus|roll|ikat)/i);
-        if (unitMatch) {
-          unit = unitMatch[0].toLowerCase();
-        }
-
+        const cat = normalizeItemCategory(itemName);
         parsedRows.push({
           id: String(Date.now() + Math.random() + idx),
           itemName,
@@ -295,8 +577,8 @@ export const DailyExpensesModule: React.FC = () => {
           unit,
           time,
           volunteer,
-          category: 'Peralatan & Kebersihan',
-          notes,
+          category: cat,
+          notes: '',
         });
       }
     });
@@ -305,56 +587,49 @@ export const DailyExpensesModule: React.FC = () => {
       setBatchRows(parsedRows);
       setBatchInputMode('GRID');
       setPasteRawText('');
-      alert(`Berhasil membaca ${parsedRows.length} baris dari teks yang Anda tempel! Silakan tinjau dan klik "Simpan Semua".`);
+      alert(`Berhasil membaca ${parsedRows.length} baris dari teks Excel! Silakan periksa dan klik "Simpan Semua".`);
     } else {
-      alert('Tidak ada baris barang yang terdeteksi dari teks yang ditempel.');
+      alert('Tidak ada baris yang valid terdeteksi.');
     }
   };
 
-  // Submit All Batch Rows in 1 Click
   const handleSaveAllBatch = (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Filter valid rows having item name
     const validRows = batchRows.filter(r => r.itemName.trim() !== '');
 
     if (validRows.length === 0) {
-      alert('Isi minimal 1 nama barang pada tabel sebelum menyimpan.');
+      alert('Harap isi minimal 1 nama barang pada tabel sebelum menyimpan.');
       return;
     }
 
     const payload = validRows.map(r => ({
       date: batchDate,
       itemName: r.itemName.trim(),
-      category: r.category || 'Peralatan & Kebersihan',
+      category: r.category,
       quantity: r.qty.trim() || '1',
       unit: r.unit.trim() || 'pack',
       time: r.time.trim() || defaultCurrentTime,
       volunteer: r.volunteer.trim() || undefined,
       pic: batchPic.trim() || currentUser.name,
       notes: r.notes.trim() || undefined,
+      unitPrice: getItemEstimatedUnitPrice(r.itemName, r.category),
     }));
 
     warehouseDb.recordNonFoodExpensesBatch(payload, currentUser);
-
-    setSuccessNotice(`Berhasil menyimpan ${validRows.length} barang pengeluaran sekaligus ke rekap harian!`);
+    setSuccessNotice(`Berhasil menyimpan ${validRows.length} barang pengeluaran sekaligus!`);
     setIsBatchModalOpen(false);
 
-    // Reset rows to 5 empty slots for next entry
     setBatchRows([
-      { id: '1', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Peralatan & Kebersihan', notes: '' },
-      { id: '2', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Peralatan & Kebersihan', notes: '' },
-      { id: '3', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Peralatan & Kebersihan', notes: '' },
-      { id: '4', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Peralatan & Kebersihan', notes: '' },
-      { id: '5', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Peralatan & Kebersihan', notes: '' },
+      { id: '1', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Bahan Peralatan', notes: '' },
+      { id: '2', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Bahan Peralatan', notes: '' },
+      { id: '3', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Bahan Peralatan', notes: '' },
+      { id: '4', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Bahan Peralatan', notes: '' },
+      { id: '5', itemName: '', qty: '1', unit: 'pack', time: defaultCurrentTime, volunteer: '', category: 'Bahan Peralatan', notes: '' },
     ]);
-    setTimeout(() => setSuccessNotice(''), 5000);
+    setTimeout(() => setSuccessNotice(''), 4000);
   };
 
-  // ==========================================
-  // SINGLE INPUT LOGIC
-  // ==========================================
-
+  // Single Item Logic
   const handleSaveSingleRecord = (e: React.FormEvent) => {
     e.preventDefault();
     if (!singleItemName.trim()) {
@@ -363,10 +638,11 @@ export const DailyExpensesModule: React.FC = () => {
     }
 
     const cleanQty = singleQty.trim() || '1';
+    const price = singleUnitPrice > 0 ? singleUnitPrice : getItemEstimatedUnitPrice(singleItemName, singleCategory);
 
     warehouseDb.recordNonFoodExpense(
       {
-        date: selectedDate,
+        date: selectedDailyDate,
         itemName: singleItemName.trim(),
         category: singleCategory,
         quantity: cleanQty,
@@ -375,34 +651,13 @@ export const DailyExpensesModule: React.FC = () => {
         volunteer: singleVolunteer.trim() || undefined,
         pic: singlePic.trim() || currentUser.name,
         notes: singleNotes.trim() || undefined,
+        unitPrice: price,
+        totalCost: parseNumericQty(cleanQty) * price,
       },
       currentUser
     );
 
-    if (deductStockIfMatch) {
-      const match = items.find(
-        i => i.name.toLowerCase() === singleItemName.trim().toLowerCase()
-      );
-      if (match) {
-        const numQty = parseFloat(cleanQty);
-        if (!isNaN(numQty) && numQty > 0) {
-          try {
-            warehouseDb.recordConsumption(
-              match.id,
-              numQty,
-              'Dapur SPPG',
-              currentUser,
-              `Pengeluaran manual dicatat oleh ${currentUser.name}: ${singleNotes}`,
-              `BON-MAN-${Date.now().toString().slice(-4)}`
-            );
-          } catch (e) {
-            console.warn('Auto stock deduction skipped:', e);
-          }
-        }
-      }
-    }
-
-    setSuccessNotice(`Berhasil mencatat pengeluaran barang: "${singleItemName.trim()}" (${cleanQty} ${singleUnit}).`);
+    setSuccessNotice(`Berhasil mencatat pengeluaran barang: "${singleItemName.trim()}".`);
     setIsSingleModalOpen(false);
     setSingleItemName('');
     setSingleQty('1');
@@ -415,7 +670,7 @@ export const DailyExpensesModule: React.FC = () => {
   const handleRecordKitchenIssue = (e: React.FormEvent) => {
     e.preventDefault();
     if (!kitchenItemId || kitchenQty <= 0) {
-      alert('Pilih bahan dan tentukan jumlah pengeluaran yang valid.');
+      alert('Pilih bahan dan tentukan jumlah yang valid.');
       return;
     }
 
@@ -426,7 +681,7 @@ export const DailyExpensesModule: React.FC = () => {
     }
 
     if (item.currentStock < kitchenQty) {
-      alert(`Stok fisik tidak mencukupi! Stok saat ini: ${item.currentStock} ${item.baseUnit}`);
+      alert(`Stok tidak mencukupi! Stok tersedia: ${item.currentStock} ${item.baseUnit}`);
       return;
     }
 
@@ -437,7 +692,7 @@ export const DailyExpensesModule: React.FC = () => {
         kitchenDestination,
         currentUser,
         `Sesi ${kitchenMealSession}: ${kitchenNotes}`,
-        `BON-DAPUR-${selectedDate}-${Date.now().toString().slice(-4)}`
+        `BON-DAPUR-${selectedDailyDate}-${Date.now().toString().slice(-4)}`
       );
 
       setSuccessNotice(`Berhasil mengeluarkan ${kitchenQty} ${item.baseUnit} ${item.name} ke ${kitchenDestination}.`);
@@ -446,112 +701,65 @@ export const DailyExpensesModule: React.FC = () => {
       setKitchenItemId('');
       setTimeout(() => setSuccessNotice(''), 4000);
     } catch (err: any) {
-      alert(err.message || 'Gagal mencatat pengeluaran dapur.');
+      alert(err.message || 'Gagal mencatat pengeluaran.');
     }
   };
 
   const handleDeleteManual = (id: string, name: string) => {
-    if (window.confirm(`Hapus catatan pengeluaran barang "${name}"?`)) {
+    if (window.confirm(`Hapus catatan pengeluaran "${name}"?`)) {
       warehouseDb.deleteNonFoodExpense(id, currentUser);
-      setSuccessNotice(`Catatan pengeluaran "${name}" berhasil dihapus.`);
+      setSuccessNotice(`Catatan "${name}" berhasil dihapus.`);
       setTimeout(() => setSuccessNotice(''), 4000);
     }
   };
 
-  // Export & Print
+  // Export to Excel with full category breakdown & nominals
   const handleExportExcel = () => {
-    if (filteredList.length === 0) {
-      alert('Tidak ada data pengeluaran untuk diekspor pada filter saat ini.');
+    if (filteredExpenses.length === 0) {
+      alert('Tidak ada data untuk diekspor pada filter periode ini.');
       return;
     }
-    const exportData = filteredList.map((item, idx) => ({
+
+    // Sheet 1: Detailed transactions with nominals
+    const transactionRows = filteredExpenses.map((item, idx) => ({
       'No': idx + 1,
-      'Tanggal': item.date,
-      'Jam Ambil': item.time || '-',
-      'Nama Barang': item.itemName,
+      'Tanggal': item.rawDate,
+      'Jam': item.time,
       'Kategori': item.category,
+      'Nama Barang': item.itemName,
       'Jumlah': item.quantity,
-      'Satuan': item.unit || 'Pack',
-      'Relawan / Pengambil': item.recipientOrVolunteer || '-',
-      'PIC Petugas': item.picOrUser || '-',
-      'Keterangan / Catatan': item.notes || '-',
-      'Tipe Catatan': item.source === 'MANUAL' ? 'Rekap Manual' : 'Bahan Dapur',
+      'Satuan': item.unit,
+      'Harga Satuan (Rp)': item.unitPrice,
+      'Total Nominal (Rp)': item.nominal,
+      'Relawan / Pengambil': item.recipientOrVolunteer,
+      'PIC Petugas': item.picOrUser,
+      'Keterangan': item.notes || '-',
     }));
 
+    // Sheet 2: Category itemized summary
+    const summaryRows: any[] = [];
+    (['Bahan Basah', 'Bahan Kering', 'Bahan Peralatan'] as MainItemCategory[]).forEach(cat => {
+      categoryBreakdowns[cat].items.forEach(item => {
+        summaryRows.push({
+          'Kategori': cat,
+          'Nama Barang': item.itemName,
+          'Total Volume Keluar': `${item.totalQty} ${item.unit}`,
+          'Harga Satuan (Rp)': item.unitPrice,
+          'Total Nominal (Rp)': item.totalNominal,
+          '% Terhadap Kategori': `${item.percentageOfCategory}%`,
+        });
+      });
+    });
+
     exportToExcel(
-      exportData,
-      `Rekap_Pengeluaran_Harian_SPPG_${selectedDate || 'Semua'}.xlsx`,
-      'Rekap Pengeluaran'
+      summaryRows.length > 0 ? summaryRows : transactionRows,
+      `Rekap_Pengeluaran_SPPG_${periodType}_${selectedCategoryTab}.xlsx`,
+      'Rekap Pengeluaran & Biaya'
     );
   };
 
-  const handlePrintDailyReport = () => {
+  const handlePrint = () => {
     window.print();
-  };
-
-  const handleDownloadTemplate = () => {
-    downloadExcelTemplate(
-      [
-        { header: 'Tanggal', example: '2026-09-23' },
-        { header: 'Nama Barang', example: 'kresek merah' },
-        { header: 'Qty', example: '1 pack' },
-        { header: 'Jam Ambil', example: '19.55' },
-        { header: 'Relawan', example: 'roni' },
-        { header: 'PIC', example: 'teguh' },
-        { header: 'Catatan', example: 'Pengambilan untuk dapur siang' },
-      ],
-      'Template_Rekap_Harian_Manual_SPPG'
-    );
-  };
-
-  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const rawData = await parseExcelFile<any>(file);
-      if (!rawData || rawData.length === 0) {
-        alert('File Excel kosong atau tidak terbaca.');
-        return;
-      }
-
-      const rowsToInsert: any[] = [];
-      for (const row of rawData) {
-        const itemName = row['Nama Barang'] || row['nama'] || row['Nama Bahan'] || row['Nama Bahan Pangan'];
-        const qty = row['Qty'] || row['qty '] || row['Jumlah'] || row['Jumlah Keluar'] || '1';
-        const date = row['Tanggal'] || row['tanggal'] || selectedDate;
-        const time = row['Jam Ambil'] || row['jam ambil'] || defaultCurrentTime;
-        const volunteer = row['Relawan'] || row['relawan '] || row['Pengambil'] || '';
-        const pic = row['PIC'] || row['pic'] || currentUser.name;
-        const notes = row['Catatan'] || row['Keterangan'] || '';
-
-        if (itemName) {
-          rowsToInsert.push({
-            date: String(date),
-            itemName: String(itemName),
-            category: 'Peralatan & Logistik',
-            quantity: String(qty),
-            unit: 'Pack',
-            time: String(time),
-            volunteer: volunteer ? String(volunteer) : undefined,
-            pic: String(pic),
-            notes: notes ? String(notes) : undefined,
-          });
-        }
-      }
-
-      if (rowsToInsert.length > 0) {
-        warehouseDb.recordNonFoodExpensesBatch(rowsToInsert, currentUser);
-        setSuccessNotice(`Berhasil mengimpor ${rowsToInsert.length} baris catatan rekap harian dari file ${file.name}!`);
-        setTimeout(() => setSuccessNotice(''), 5000);
-      } else {
-        alert('Tidak ada baris yang valid untuk diimpor. Pastikan header mencakup "Nama Barang", "Tanggal", "Qty".');
-      }
-    } catch (err: any) {
-      alert(err.message || 'Gagal memproses file Excel.');
-    } finally {
-      e.target.value = '';
-    }
   };
 
   return (
@@ -564,48 +772,23 @@ export const DailyExpensesModule: React.FC = () => {
         </div>
       )}
 
-      {/* Module Title & Top Actions */}
+      {/* Header bar */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-200">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            Laporan & Rekap Pengeluaran Harian
+            Laporan & Rekap Pengeluaran SPPG
           </h1>
           <p className="text-xs text-slate-500 mt-0.5 font-medium">
-            Catatan harian manual pengeluaran barang peralatan, logistik, dan penyaluran bahan dapur SPPG.
+            Monitoring data pengeluaran dan nominal biaya per minggu, bulan, serta rincian per kategori barang.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Download Template */}
-          <button
-            onClick={handleDownloadTemplate}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs transition-colors cursor-pointer"
-            title="Unduh format template Excel"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-400" />
-            <span>Format Excel</span>
-          </button>
-
-          {/* Import Excel */}
-          <label
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-            title="Impor rekap dari file Excel"
-          >
-            <Upload className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Impor Excel</span>
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              className="hidden"
-              onChange={handleImportExcel}
-            />
-          </label>
-
           {/* Export Excel */}
           <button
             onClick={handleExportExcel}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 shadow-2xs transition-colors cursor-pointer"
-            title="Unduh rekap pengeluaran sebagai Excel"
+            title="Unduh rekap pengeluaran dan rincian biaya sebagai Excel"
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
             <span>Ekspor Excel</span>
@@ -613,21 +796,20 @@ export const DailyExpensesModule: React.FC = () => {
 
           {/* Print PDF */}
           <button
-            onClick={handlePrintDailyReport}
+            onClick={handlePrint}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5 text-slate-500" />
-            <span>Cetak PDF</span>
+            <span>Cetak Laporan</span>
           </button>
 
-          {/* PRIMARY ACTION: Batch / Multi-Row Input */}
+          {/* Batch Multi-Row Input */}
           <button
             onClick={() => {
-              setBatchDate(selectedDate || new Date().toISOString().slice(0, 10));
+              setBatchDate(selectedDailyDate);
               setIsBatchModalOpen(true);
             }}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition-all cursor-pointer ring-2 ring-emerald-600/20"
-            title="Input banyak barang sekaligus dalam satu form tabel cepat"
           >
             <TableProperties className="w-4 h-4" />
             <span>Input Masal (Banyak Barang)</span>
@@ -637,13 +819,12 @@ export const DailyExpensesModule: React.FC = () => {
           <button
             onClick={() => setIsSingleModalOpen(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 shadow-2xs transition-colors cursor-pointer"
-            title="Input satu barang saja"
           >
             <Plus className="w-3.5 h-3.5 text-slate-500" />
             <span>Input Satuan</span>
           </button>
 
-          {/* Kitchen Stock Issue */}
+          {/* Kitchen Issue */}
           <button
             onClick={() => setIsKitchenModalOpen(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-white shadow-2xs transition-colors cursor-pointer"
@@ -654,130 +835,462 @@ export const DailyExpensesModule: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Date Selector */}
-          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
-            <Calendar className="w-3.5 h-3.5 text-slate-400" />
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={e => setSelectedDate(e.target.value)}
-              className="text-xs font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
-            />
+      {/* Filter Control Box: Period (Minggu, Bulan, Hari) & Categories */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3.5">
+        {/* Row 1: Period Mode Selector & Date Controls */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <CalendarRange className="w-4 h-4 text-emerald-600" />
+              Periode Filter:
+            </span>
+
+            {/* Period Pills */}
+            <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
+              <button
+                onClick={() => setPeriodType('DAILY')}
+                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                  periodType === 'DAILY' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Harian
+              </button>
+
+              <button
+                onClick={handleSetThisWeek}
+                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                  periodType === 'WEEKLY' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Mingguan
+              </button>
+
+              <button
+                onClick={() => setPeriodType('MONTHLY')}
+                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                  periodType === 'MONTHLY' ? 'bg-white text-blue-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Bulanan
+              </button>
+
+              <button
+                onClick={() => setPeriodType('CUSTOM')}
+                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                  periodType === 'CUSTOM' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Rentang Kustom
+              </button>
+            </div>
           </div>
 
-          <button
-            onClick={() => setSelectedDate('')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
-              selectedDate === ''
-                ? 'bg-slate-900 text-white border-slate-900'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            Semua Tanggal
-          </button>
+          {/* Date Range Inputs */}
+          <div className="flex flex-wrap items-center gap-2">
+            {periodType === 'DAILY' && (
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
+                <span className="text-slate-500 font-medium">Tanggal:</span>
+                <input
+                  type="date"
+                  value={selectedDailyDate}
+                  onChange={e => setSelectedDailyDate(e.target.value)}
+                  className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                />
+              </div>
+            )}
 
-          {/* Tabs: Source Filter */}
-          <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 text-xs">
-            <button
-              onClick={() => setActiveTabFilter('ALL')}
-              className={`px-3 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
-                activeTabFilter === 'ALL'
-                  ? 'bg-white text-slate-900 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Semua ({combinedExpenses.length})
-            </button>
-            <button
-              onClick={() => setActiveTabFilter('MANUAL')}
-              className={`px-3 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
-                activeTabFilter === 'MANUAL'
-                  ? 'bg-white text-emerald-800 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Rekap Manual ({manualExpenses.length})
-            </button>
-            <button
-              onClick={() => setActiveTabFilter('KITCHEN')}
-              className={`px-3 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
-                activeTabFilter === 'KITCHEN'
-                  ? 'bg-white text-blue-800 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Bahan Dapur ({transactions.filter(t => t.transactionType === 'ISSUE_CONSUMPTION').length})
-            </button>
+            {(periodType === 'WEEKLY' || periodType === 'CUSTOM') && (
+              <div className="flex items-center gap-2 text-xs">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+                  <span className="text-slate-500 font-medium">Dari:</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                  />
+                </div>
+                <span className="text-slate-400 font-medium">s/d</span>
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+                  <span className="text-slate-500 font-medium">Sampai:</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                  />
+                </div>
+
+                {periodType === 'WEEKLY' && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={handleSetThisWeek}
+                      className="px-2 py-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 cursor-pointer"
+                    >
+                      Minggu Ini
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSetLastWeek}
+                      className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200 cursor-pointer"
+                    >
+                      Minggu Lalu
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {periodType === 'MONTHLY' && (
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
+                <span className="text-slate-500 font-medium">Pilih Bulan:</span>
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={e => setSelectedMonth(e.target.value)}
+                  className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                />
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Search Input */}
-        <div className="relative">
-          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Cari barang, relawan, PIC..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 w-56 text-slate-800"
-          />
+        {/* Row 2: 3 Category Tabs & Search Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Category Tabs: Exactly 3 categories */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              onClick={() => setSelectedCategoryTab('ALL')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                selectedCategoryTab === 'ALL'
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'text-slate-600 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              Semua Kategori ({allExpenses.length})
+            </button>
+
+            <button
+              onClick={() => setSelectedCategoryTab('Bahan Basah')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                selectedCategoryTab === 'Bahan Basah'
+                  ? 'bg-emerald-600 text-white shadow-2xs'
+                  : 'text-emerald-800 hover:bg-emerald-50 border border-emerald-200'
+              }`}
+            >
+              Bahan Basah ({categoryBreakdowns['Bahan Basah'].totalItemsCount})
+            </button>
+
+            <button
+              onClick={() => setSelectedCategoryTab('Bahan Kering')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                selectedCategoryTab === 'Bahan Kering'
+                  ? 'bg-amber-600 text-white shadow-2xs'
+                  : 'text-amber-800 hover:bg-amber-50 border border-amber-200'
+              }`}
+            >
+              Bahan Kering ({categoryBreakdowns['Bahan Kering'].totalItemsCount})
+            </button>
+
+            <button
+              onClick={() => setSelectedCategoryTab('Bahan Peralatan')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                selectedCategoryTab === 'Bahan Peralatan'
+                  ? 'bg-blue-600 text-white shadow-2xs'
+                  : 'text-blue-800 hover:bg-blue-50 border border-blue-200'
+              }`}
+            >
+              Bahan Peralatan ({categoryBreakdowns['Bahan Peralatan'].totalItemsCount})
+            </button>
+          </div>
+
+          {/* Search Box */}
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Cari barang, relawan, PIC..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800"
+            />
+          </div>
         </div>
       </div>
 
-      {/* Main Expense Table */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
-          <div className="flex items-center gap-2">
-            <TrendingDown className="w-4 h-4 text-rose-600" />
-            <h2 className="text-xs font-bold text-slate-900">
-              Rincian Rekap Pengeluaran Barang Harian
-            </h2>
+      {/* ========================================================================= */}
+      {/* SUMMARY NOMINAL CARDS: TOTAL & 3 KATEGORI (SESUAI PERMINTAAN USER) */}
+      {/* ========================================================================= */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        {/* Card 1: Total Pengeluaran Periode */}
+        <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
+          <div className="text-[11px] font-medium text-slate-500">
+            Total Pengeluaran Periode ({effectiveDateRange.label})
           </div>
-          <span className="text-[11px] font-medium text-slate-500">
-            {filteredList.length} baris tercatat
-          </span>
+          <div className="text-xl font-bold text-slate-900 mt-1">
+            Rp {grandTotalNominal.toLocaleString('id-ID')}
+          </div>
+          <div className="text-[11px] text-slate-500 mt-0.5">
+            {filteredExpenses.length} catatan pengeluaran
+          </div>
         </div>
 
-        {filteredList.length === 0 ? (
-          <div className="p-12 text-center">
-            <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-            <div className="text-sm font-semibold text-slate-700">Belum ada catatan pengeluaran</div>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              Tidak ada data pengeluaran untuk filter yang dipilih. Silakan klik tombol "Input Masal (Banyak Barang)" di atas untuk menambahkan rekap dengan cepat.
-            </p>
+        {/* Card 2: Bahan Basah */}
+        <div className="p-4 rounded-xl bg-white border border-emerald-200 shadow-2xs bg-gradient-to-b from-white to-emerald-50/20">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-emerald-800">Bahan Basah</span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+              {grandTotalNominal > 0 ? Math.round((categoryBreakdowns['Bahan Basah'].totalNominal / grandTotalNominal) * 100) : 0}%
+            </span>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
-                  <th className="py-2.5 px-3 text-center w-12">No</th>
-                  <th className="py-2.5 px-3">Tanggal & Jam</th>
-                  <th className="py-2.5 px-3">Nama Barang</th>
-                  <th className="py-2.5 px-3">Kategori</th>
-                  <th className="py-2.5 px-3 text-right">Jumlah</th>
-                  <th className="py-2.5 px-3">Pengambil / Relawan</th>
-                  <th className="py-2.5 px-3">PIC Petugas</th>
-                  <th className="py-2.5 px-3">Keterangan</th>
-                  <th className="py-2.5 px-3 text-center w-16">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredList.map((item, idx) => {
-                  return (
+          <div className="text-xl font-bold text-emerald-700 mt-1">
+            Rp {categoryBreakdowns['Bahan Basah'].totalNominal.toLocaleString('id-ID')}
+          </div>
+          <div className="text-[11px] text-slate-500 mt-0.5">
+            {categoryBreakdowns['Bahan Basah'].items.length} jenis bahan basah
+          </div>
+        </div>
+
+        {/* Card 3: Bahan Kering */}
+        <div className="p-4 rounded-xl bg-white border border-amber-200 shadow-2xs bg-gradient-to-b from-white to-amber-50/20">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-amber-800">Bahan Kering</span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+              {grandTotalNominal > 0 ? Math.round((categoryBreakdowns['Bahan Kering'].totalNominal / grandTotalNominal) * 100) : 0}%
+            </span>
+          </div>
+          <div className="text-xl font-bold text-amber-700 mt-1">
+            Rp {categoryBreakdowns['Bahan Kering'].totalNominal.toLocaleString('id-ID')}
+          </div>
+          <div className="text-[11px] text-slate-500 mt-0.5">
+            {categoryBreakdowns['Bahan Kering'].items.length} jenis bahan kering
+          </div>
+        </div>
+
+        {/* Card 4: Bahan Peralatan */}
+        <div className="p-4 rounded-xl bg-white border border-blue-200 shadow-2xs bg-gradient-to-b from-white to-blue-50/20">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-blue-800">Bahan Peralatan</span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+              {grandTotalNominal > 0 ? Math.round((categoryBreakdowns['Bahan Peralatan'].totalNominal / grandTotalNominal) * 100) : 0}%
+            </span>
+          </div>
+          <div className="text-xl font-bold text-blue-700 mt-1">
+            Rp {categoryBreakdowns['Bahan Peralatan'].totalNominal.toLocaleString('id-ID')}
+          </div>
+          <div className="text-[11px] text-slate-500 mt-0.5">
+            {categoryBreakdowns['Bahan Peralatan'].items.length} jenis peralatan
+          </div>
+        </div>
+      </div>
+
+      {/* View Switcher: Rekapitulasi Nominal vs Rincian Transaksi */}
+      <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-2xs">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-slate-800">Tampilan Data:</span>
+          <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
+            <button
+              onClick={() => setActiveSubTab('SUMMARY')}
+              className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                activeSubTab === 'SUMMARY' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Rekapitulasi Barang & Nominal Biaya
+            </button>
+            <button
+              onClick={() => setActiveSubTab('TRANSACTIONS')}
+              className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                activeSubTab === 'TRANSACTIONS' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Log Catatan Transaksi Harian
+            </button>
+          </div>
+        </div>
+
+        <div className="text-xs text-slate-500 font-medium">
+          Menampilkan periode: <strong className="text-slate-800">{effectiveDateRange.label}</strong>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* TAMPILAN 1: REKAPITULASI BARANG & NOMINAL PER KATEGORI (INTI PERMINTAAN USER) */}
+      {/* ========================================================================= */}
+      {activeSubTab === 'SUMMARY' && (
+        <div className="space-y-6">
+          {(['Bahan Basah', 'Bahan Kering', 'Bahan Peralatan'] as MainItemCategory[]).map(cat => {
+            if (selectedCategoryTab !== 'ALL' && selectedCategoryTab !== cat) {
+              return null;
+            }
+
+            const data = categoryBreakdowns[cat];
+            const badgeClass =
+              cat === 'Bahan Basah'
+                ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                : cat === 'Bahan Kering'
+                ? 'bg-amber-100 text-amber-800 border-amber-200'
+                : 'bg-blue-100 text-blue-800 border-blue-200';
+
+            const subtotalClass =
+              cat === 'Bahan Basah'
+                ? 'text-emerald-700'
+                : cat === 'Bahan Kering'
+                ? 'text-amber-700'
+                : 'text-blue-700';
+
+            return (
+              <div
+                key={cat}
+                className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs"
+              >
+                {/* Category Header */}
+                <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${badgeClass}`}>
+                      {cat}
+                    </span>
+                    <h2 className="text-xs font-semibold text-slate-700">
+                      Rincian Barang & Pengeluaran ({effectiveDateRange.label})
+                    </h2>
+                  </div>
+
+                  <div className="text-xs font-semibold text-slate-600">
+                    Subtotal Pengeluaran {cat}:{' '}
+                    <strong className={`font-mono text-sm font-bold ${subtotalClass}`}>
+                      Rp {data.totalNominal.toLocaleString('id-ID')}
+                    </strong>
+                  </div>
+                </div>
+
+                {data.items.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-xs italic">
+                    Belum ada pengeluaran {cat} yang tercatat pada periode ini.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100/60 text-slate-600 font-semibold border-b border-slate-200 text-[11px]">
+                          <th className="py-2.5 px-4 w-12 text-center">No</th>
+                          <th className="py-2.5 px-4">Nama Barang</th>
+                          <th className="py-2.5 px-4 text-right">Total Volume Keluar</th>
+                          <th className="py-2.5 px-4 text-right">Estimasi Harga Satuan</th>
+                          <th className="py-2.5 px-4 text-right">Total Nominal (Rp)</th>
+                          <th className="py-2.5 px-4 text-center w-28">% Porsi Kategori</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {data.items.map((item, idx) => (
+                          <tr key={item.itemName} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-2.5 px-4 text-center text-slate-400 font-medium">
+                              {idx + 1}
+                            </td>
+                            <td className="py-2.5 px-4 font-bold text-slate-900">
+                              {item.itemName}
+                              <div className="text-[10px] text-slate-400 font-normal">
+                                {item.countOccurrences} kali pengambilan
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-medium text-slate-800">
+                              {item.totalQty.toLocaleString('id-ID')} {item.unit}
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-mono text-slate-600">
+                              Rp {item.unitPrice.toLocaleString('id-ID')} / {item.unit}
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900">
+                              Rp {item.totalNominal.toLocaleString('id-ID')}
+                            </td>
+                            <td className="py-2.5 px-4 text-center">
+                              <div className="inline-flex items-center gap-1.5 font-semibold text-slate-700">
+                                <div className="w-12 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                  <div
+                                    className={`h-1.5 rounded-full ${
+                                      cat === 'Bahan Basah'
+                                        ? 'bg-emerald-600'
+                                        : cat === 'Bahan Kering'
+                                        ? 'bg-amber-600'
+                                        : 'bg-blue-600'
+                                    }`}
+                                    style={{ width: `${item.percentageOfCategory}%` }}
+                                  ></div>
+                                </div>
+                                <span className="text-[11px]">{item.percentageOfCategory}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAMPILAN 2: RINCIAN LOG TRANSAKSI PER BARIS */}
+      {/* ========================================================================= */}
+      {activeSubTab === 'TRANSACTIONS' && (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+            <div className="flex items-center gap-2">
+              <TrendingDown className="w-4 h-4 text-rose-600" />
+              <h2 className="text-xs font-bold text-slate-900">
+                Log Transaksi Pengeluaran ({filteredExpenses.length} baris)
+              </h2>
+            </div>
+            <div className="text-xs text-slate-500 font-medium">
+              Total Nominal: <strong className="text-slate-900 font-mono">Rp {grandTotalNominal.toLocaleString('id-ID')}</strong>
+            </div>
+          </div>
+
+          {filteredExpenses.length === 0 ? (
+            <div className="p-12 text-center text-slate-400 text-xs italic">
+              Tidak ada transaksi pengeluaran pada periode yang dipilih.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
+                    <th className="py-2.5 px-3 text-center w-12">No</th>
+                    <th className="py-2.5 px-3">Tanggal & Jam</th>
+                    <th className="py-2.5 px-3">Kategori</th>
+                    <th className="py-2.5 px-3">Nama Barang</th>
+                    <th className="py-2.5 px-3 text-right">Jumlah</th>
+                    <th className="py-2.5 px-3 text-right">Harga Satuan</th>
+                    <th className="py-2.5 px-3 text-right">Total Nominal</th>
+                    <th className="py-2.5 px-3">Pengambil / Relawan</th>
+                    <th className="py-2.5 px-3">PIC Petugas</th>
+                    <th className="py-2.5 px-3">Keterangan</th>
+                    <th className="py-2.5 px-3 text-center w-12">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredExpenses.map((item, idx) => (
                     <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-2.5 px-3 text-center text-slate-400 font-medium">{idx + 1}</td>
                       <td className="py-2.5 px-3 font-medium text-slate-700 whitespace-nowrap">
-                        <div>{item.date}</div>
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400 font-mono">
-                          <Clock className="w-2.5 h-2.5" />
-                          <span>Pukul {item.time}</span>
-                        </div>
+                        <div>{item.rawDate}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">Pukul {item.time}</div>
                       </td>
-                      <td className="py-2.5 px-3 font-semibold text-slate-900">
+                      <td className="py-2.5 px-3">
+                        <span
+                          className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                            item.category === 'Bahan Basah'
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : item.category === 'Bahan Kering'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : 'bg-blue-50 text-blue-800 border-blue-200'
+                          }`}
+                        >
+                          {item.category}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 font-bold text-slate-900">
                         {item.itemName}
                         {item.source === 'KITCHEN' && item.referenceNo && (
                           <div className="text-[10px] text-slate-400 font-mono font-normal">
@@ -785,19 +1298,20 @@ export const DailyExpensesModule: React.FC = () => {
                           </div>
                         )}
                       </td>
-                      <td className="py-2.5 px-3">
-                        <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                          {item.category}
-                        </span>
+                      <td className="py-2.5 px-3 text-right font-medium text-slate-800 whitespace-nowrap">
+                        {item.quantity} {item.unit}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-bold text-rose-700 whitespace-nowrap">
-                        {item.quantity} {item.unit || ''}
+                      <td className="py-2.5 px-3 text-right font-mono text-slate-600 text-[11px] whitespace-nowrap">
+                        Rp {item.unitPrice.toLocaleString('id-ID')}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                        Rp {item.nominal.toLocaleString('id-ID')}
                       </td>
                       <td className="py-2.5 px-3 text-slate-700 font-medium">
-                        {item.recipientOrVolunteer || '-'}
+                        {item.recipientOrVolunteer}
                       </td>
-                      <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap text-[11px]">
-                        {item.picOrUser || '-'}
+                      <td className="py-2.5 px-3 text-slate-600 text-[11px]">
+                        {item.picOrUser}
                       </td>
                       <td className="py-2.5 px-3 text-slate-500 max-w-xs truncate" title={item.notes}>
                         {item.notes || '-'}
@@ -814,21 +1328,21 @@ export const DailyExpensesModule: React.FC = () => {
                         )}
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ========================================================================= */}
-      {/* MODAL 1: INPUT MASAL BANYAK BARANG SEKALIGUS (GRID & PASTE) */}
+      {/* MODAL 1: BATCH INPUT (BANYAK BARANG SEKALIGUS) */}
       {/* ========================================================================= */}
       {isBatchModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
           <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            {/* Modal Header */}
+            {/* Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
                 <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -840,7 +1354,6 @@ export const DailyExpensesModule: React.FC = () => {
                 </p>
               </div>
 
-              {/* Mode Switcher Pills */}
               <div className="flex items-center gap-2">
                 <div className="flex bg-slate-200/80 p-0.5 rounded-lg text-xs">
                   <button
@@ -873,9 +1386,8 @@ export const DailyExpensesModule: React.FC = () => {
               </div>
             </div>
 
-            {/* Modal Body */}
+            {/* Body */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {/* Batch Metadata Header (Tanggal & PIC Default) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -887,9 +1399,6 @@ export const DailyExpensesModule: React.FC = () => {
                     onChange={e => setBatchDate(e.target.value)}
                     className="w-full text-xs font-semibold border border-slate-300 rounded-lg p-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
                   />
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Tanggal ini berlaku untuk seluruh baris barang yang dimasukkan.
-                  </p>
                 </div>
 
                 <div>
@@ -903,13 +1412,9 @@ export const DailyExpensesModule: React.FC = () => {
                     placeholder="Nama PIC (contoh: teguh, ade, akmal)..."
                     className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Nama petugas yang bertanggung jawab mencatat pengeluaran.
-                  </p>
                 </div>
               </div>
 
-              {/* MODE 1: GRID TABEL CEPAT */}
               {batchInputMode === 'GRID' && (
                 <div className="space-y-3">
                   <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
@@ -918,13 +1423,14 @@ export const DailyExpensesModule: React.FC = () => {
                         <thead>
                           <tr className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                             <th className="py-2 px-2 text-center w-8">#</th>
-                            <th className="py-2 px-2.5 min-w-[200px]">Nama Barang <span className="text-rose-500">*</span></th>
-                            <th className="py-2 px-2 w-24">Jumlah</th>
-                            <th className="py-2 px-2 w-24">Satuan</th>
-                            <th className="py-2 px-2 w-24">Jam</th>
-                            <th className="py-2 px-2 min-w-[140px]">Relawan / Pengambil</th>
-                            <th className="py-2 px-2 min-w-[140px]">Catatan</th>
-                            <th className="py-2 px-1 text-center w-10"></th>
+                            <th className="py-2 px-2.5 min-w-[190px]">Nama Barang <span className="text-rose-500">*</span></th>
+                            <th className="py-2 px-2 w-32">Kategori</th>
+                            <th className="py-2 px-2 w-20">Jumlah</th>
+                            <th className="py-2 px-2 w-20">Satuan</th>
+                            <th className="py-2 px-2 w-20">Jam</th>
+                            <th className="py-2 px-2 min-w-[130px]">Relawan / Pengambil</th>
+                            <th className="py-2 px-2 min-w-[130px]">Catatan</th>
+                            <th className="py-2 px-1 text-center w-8"></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200">
@@ -934,19 +1440,34 @@ export const DailyExpensesModule: React.FC = () => {
                                 {idx + 1}
                               </td>
 
-                              {/* Nama Barang */}
                               <td className="py-1.5 px-2">
                                 <input
                                   type="text"
                                   value={row.itemName}
-                                  onChange={e => handleUpdateBatchRow(row.id, 'itemName', e.target.value)}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    const autoCat = normalizeItemCategory(val);
+                                    handleUpdateBatchRow(row.id, 'itemName', val);
+                                    if (autoCat) handleUpdateBatchRow(row.id, 'category', autoCat);
+                                  }}
                                   placeholder="Nama barang..."
                                   className="w-full px-2.5 py-1.5 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 font-medium"
                                   list="batch-item-datalist"
                                 />
                               </td>
 
-                              {/* Qty */}
+                              <td className="py-1.5 px-2">
+                                <select
+                                  value={row.category}
+                                  onChange={e => handleUpdateBatchRow(row.id, 'category', e.target.value as MainItemCategory)}
+                                  className="w-full px-2 py-1.5 border border-slate-200 rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 cursor-pointer font-medium"
+                                >
+                                  <option value="Bahan Basah">Bahan Basah</option>
+                                  <option value="Bahan Kering">Bahan Kering</option>
+                                  <option value="Bahan Peralatan">Bahan Peralatan</option>
+                                </select>
+                              </td>
+
                               <td className="py-1.5 px-2">
                                 <input
                                   type="text"
@@ -957,7 +1478,6 @@ export const DailyExpensesModule: React.FC = () => {
                                 />
                               </td>
 
-                              {/* Satuan */}
                               <td className="py-1.5 px-2">
                                 <input
                                   type="text"
@@ -969,7 +1489,6 @@ export const DailyExpensesModule: React.FC = () => {
                                 />
                               </td>
 
-                              {/* Jam Ambil */}
                               <td className="py-1.5 px-2">
                                 <input
                                   type="text"
@@ -980,7 +1499,6 @@ export const DailyExpensesModule: React.FC = () => {
                                 />
                               </td>
 
-                              {/* Relawan */}
                               <td className="py-1.5 px-2">
                                 <input
                                   type="text"
@@ -991,7 +1509,6 @@ export const DailyExpensesModule: React.FC = () => {
                                 />
                               </td>
 
-                              {/* Catatan */}
                               <td className="py-1.5 px-2">
                                 <input
                                   type="text"
@@ -1002,13 +1519,12 @@ export const DailyExpensesModule: React.FC = () => {
                                 />
                               </td>
 
-                              {/* Hapus Baris */}
                               <td className="py-1.5 px-1 text-center">
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveBatchRow(row.id)}
                                   className="text-slate-300 hover:text-rose-600 p-1 transition-colors cursor-pointer"
-                                  title="Hapus baris ini"
+                                  title="Hapus baris"
                                 >
                                   ✕
                                 </button>
@@ -1020,7 +1536,6 @@ export const DailyExpensesModule: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Add Row Controls */}
                   <div className="flex items-center justify-between pt-1">
                     <div className="flex items-center gap-2">
                       <button
@@ -1049,22 +1564,21 @@ export const DailyExpensesModule: React.FC = () => {
                 </div>
               )}
 
-              {/* MODE 2: PASTE DARI EXCEL */}
               {batchInputMode === 'PASTE' && (
                 <div className="space-y-3">
                   <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-900 leading-relaxed">
                     <div className="font-bold flex items-center gap-1.5 text-emerald-800 mb-1">
                       <Info className="w-4 h-4" />
-                      Cara Cepat: Salin & Tempel Data dari Spreadsheet Excel
+                      Salin & Tempel Data dari Lembar Excel Anda
                     </div>
-                    Blok baris-baris pada lembar rekap Excel Anda (misal kolom <strong>Nama Barang, Qty, Jam Ambil, Relawan</strong>), tekan <strong>Ctrl + C</strong> (Copy), lalu paste (<strong>Ctrl + V</strong>) ke dalam kotak di bawah ini.
+                    Blok baris pada spreadsheet Excel Anda, tekan <strong>Ctrl + C</strong>, lalu tempel (<strong>Ctrl + V</strong>) di kotak bawah ini.
                   </div>
 
                   <textarea
                     rows={8}
                     value={pasteRawText}
                     onChange={e => setPasteRawText(e.target.value)}
-                    placeholder="Contoh format teks dari Excel:&#10;kresek merah	1 pack	19.55	roni&#10;trashbag 80x10	1 pack	20.30	puspitasari&#10;obat mylanta	1 kaplet	21.37	saiful"
+                    placeholder="Contoh format teks Excel:&#10;kresek merah	1 pack	19.55	roni&#10;ayam karkas	264 kg	09.00	koki utama&#10;beras pandan wangi	50 kg	08.30	budi"
                     className="w-full p-3 text-xs font-mono border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 bg-white"
                   ></textarea>
 
@@ -1082,10 +1596,10 @@ export const DailyExpensesModule: React.FC = () => {
               )}
             </div>
 
-            {/* Modal Footer */}
+            {/* Footer */}
             <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
               <div className="text-xs text-slate-500">
-                Total baris siap simpan:{' '}
+                Total barang siap simpan:{' '}
                 <strong className="text-slate-800">
                   {batchRows.filter(r => r.itemName.trim() !== '').length} barang
                 </strong>
@@ -1146,8 +1660,13 @@ export const DailyExpensesModule: React.FC = () => {
                   type="text"
                   required
                   value={singleItemName}
-                  onChange={e => setSingleItemName(e.target.value)}
-                  placeholder="Ketik nama barang (contoh: kresek merah, trashbag 80x10, dll)..."
+                  onChange={e => {
+                    const val = e.target.value;
+                    setSingleItemName(val);
+                    const autoCat = normalizeItemCategory(val);
+                    setSingleCategory(autoCat);
+                  }}
+                  placeholder="Ketik nama barang..."
                   className="w-full text-xs border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   list="batch-item-datalist"
                 />
@@ -1155,29 +1674,31 @@ export const DailyExpensesModule: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Kategori</label>
+                  <select
+                    value={singleCategory}
+                    onChange={e => setSingleCategory(e.target.value as MainItemCategory)}
+                    className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer font-medium"
+                  >
+                    <option value="Bahan Basah">Bahan Basah</option>
+                    <option value="Bahan Kering">Bahan Kering</option>
+                    <option value="Bahan Peralatan">Bahan Peralatan</option>
+                  </select>
+                </div>
+
+                <div>
                   <label className="block font-semibold text-slate-700 mb-1">Tanggal</label>
                   <input
                     type="date"
                     required
-                    value={selectedDate}
-                    onChange={e => setSelectedDate(e.target.value)}
+                    value={selectedDailyDate}
+                    onChange={e => setSelectedDailyDate(e.target.value)}
                     className="w-full text-xs border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Jam Ambil (Waktu)</label>
-                  <input
-                    type="text"
-                    value={singleTime}
-                    onChange={e => setSingleTime(e.target.value)}
-                    placeholder="Contoh: 19.55"
-                    className="w-full text-xs border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
                     Jumlah (Qty) <span className="text-rose-500">*</span>
@@ -1187,7 +1708,7 @@ export const DailyExpensesModule: React.FC = () => {
                     required
                     value={singleQty}
                     onChange={e => setSingleQty(e.target.value)}
-                    placeholder="Contoh: 1 atau 1 pack"
+                    placeholder="1"
                     className="w-full text-xs border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -1198,28 +1719,36 @@ export const DailyExpensesModule: React.FC = () => {
                     type="text"
                     value={singleUnit}
                     onChange={e => setSingleUnit(e.target.value)}
-                    placeholder="Pack, Pcs, Kg, Dus..."
+                    placeholder="pack, kg..."
                     className="w-full text-xs border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     list="batch-unit-datalist"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Jam Ambil</label>
+                  <input
+                    type="text"
+                    value={singleTime}
+                    onChange={e => setSingleTime(e.target.value)}
+                    placeholder="19.55"
+                    className="w-full text-xs border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Kategori Barang</label>
-                <select
-                  value={singleCategory}
-                  onChange={e => setSingleCategory(e.target.value)}
-                  className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                >
-                  <option value="Peralatan & Kebersihan">Peralatan & Kebersihan</option>
-                  <option value="Kemasan & Plastik">Kemasan & Plastik</option>
-                  <option value="Bahan Pokok & Sembako">Bahan Pokok & Sembako</option>
-                  <option value="Bahan Sayur & Buah">Bahan Sayur & Buah</option>
-                  <option value="Protein & Daging">Protein & Daging</option>
-                  <option value="ATK & Dokumentasi">ATK & Dokumentasi</option>
-                  <option value="Lain-lain">Lain-lain</option>
-                </select>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Harga Satuan (Rp) — Opsional
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={singleUnitPrice || ''}
+                  onChange={e => setSingleUnitPrice(parseFloat(e.target.value) || 0)}
+                  placeholder="Estimasi otomatis jika dikosongkan..."
+                  className="w-full text-xs border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1231,7 +1760,7 @@ export const DailyExpensesModule: React.FC = () => {
                     type="text"
                     value={singleVolunteer}
                     onChange={e => setSingleVolunteer(e.target.value)}
-                    placeholder="Contoh: roni, puspitasari..."
+                    placeholder="Contoh: roni..."
                     className="w-full text-xs border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -1244,7 +1773,7 @@ export const DailyExpensesModule: React.FC = () => {
                     type="text"
                     value={singlePic}
                     onChange={e => setSinglePic(e.target.value)}
-                    placeholder="Contoh: teguh, ade, akmal..."
+                    placeholder="Contoh: teguh..."
                     className="w-full text-xs border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
@@ -1252,27 +1781,15 @@ export const DailyExpensesModule: React.FC = () => {
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Keterangan / Catatan Tambahan (Opsional)
+                  Keterangan (Opsional)
                 </label>
                 <input
                   type="text"
                   value={singleNotes}
                   onChange={e => setSingleNotes(e.target.value)}
-                  placeholder="Contoh: Keperluan dapur pengolahan siang..."
+                  placeholder="Catatan pengambilan..."
                   className="w-full text-xs border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
-              </div>
-
-              <div className="pt-1">
-                <label className="flex items-center gap-2 cursor-pointer text-slate-600">
-                  <input
-                    type="checkbox"
-                    checked={deductStockIfMatch}
-                    onChange={e => setDeductStockIfMatch(e.target.checked)}
-                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5"
-                  />
-                  <span>Potong saldo fisik gudang jika nama barang cocok di master inventaris</span>
-                </label>
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
@@ -1330,7 +1847,7 @@ export const DailyExpensesModule: React.FC = () => {
                   <option value="">-- Pilih bahan dari inventaris --</option>
                   {items.map(item => (
                     <option key={item.id} value={item.id}>
-                      {item.name} ({item.category}) — Stok: {item.currentStock} {item.baseUnit}
+                      {item.name} ({normalizeItemCategory(item.category)}) — Stok: {item.currentStock} {item.baseUnit}
                     </option>
                   ))}
                 </select>
@@ -1414,7 +1931,7 @@ export const DailyExpensesModule: React.FC = () => {
         </div>
       )}
 
-      {/* Datalists for autocomplete */}
+      {/* Datalists for Autocomplete */}
       <datalist id="batch-item-datalist">
         {items.map(i => (
           <option key={i.id} value={i.name} />

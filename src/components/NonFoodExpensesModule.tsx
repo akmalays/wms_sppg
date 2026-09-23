@@ -84,11 +84,12 @@ export const NonFoodExpensesModule: React.FC = () => {
     let totalApd = 0;
 
     expenses.forEach(e => {
-      totalAll += e.totalCost;
-      if (e.category === 'Peralatan Dapur') totalEquipment += e.totalCost;
-      else if (e.category === 'Bahan Pembersih & Sanitasi') totalCleaning += e.totalCost;
-      else if (e.category === 'ATK & Dokumentasi') totalStationery += e.totalCost;
-      else if (e.category === 'Perlengkapan Kebersihan & APD') totalApd += e.totalCost;
+      const cost = e.totalCost || 0;
+      totalAll += cost;
+      if (e.category === 'Peralatan Dapur') totalEquipment += cost;
+      else if (e.category === 'Bahan Pembersih & Sanitasi') totalCleaning += cost;
+      else if (e.category === 'ATK & Dokumentasi') totalStationery += cost;
+      else if (e.category === 'Perlengkapan Kebersihan & APD') totalApd += cost;
     });
 
     return { totalAll, totalEquipment, totalCleaning, totalStationery, totalApd };
@@ -153,7 +154,7 @@ export const NonFoodExpensesModule: React.FC = () => {
       'Jumlah': e.quantity,
       'Satuan': e.unit,
       'Harga Satuan (Rp)': e.unitPrice,
-      'Total Biaya (Rp)': e.totalCost,
+      'Total Biaya (Rp)': e.totalCost || 0,
       'Unit / Departemen': e.department,
       'Nama Penerima': e.recipient,
       'Petugas Pencatat': e.recordedBy,
@@ -287,7 +288,7 @@ export const NonFoodExpensesModule: React.FC = () => {
           </button>
 
           {/* Import Excel */}
-          {can('ADMIN') && (
+          {(currentUser.role === 'ADMIN' || currentUser.role === 'SUPERADMIN' || currentUser.role === 'KA_SPPG') && (
             <label
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
               title="Lampirkan dan impor data dari file Excel (.xlsx / .csv)"
@@ -321,7 +322,7 @@ export const NonFoodExpensesModule: React.FC = () => {
             <span>Cetak PDF</span>
           </button>
 
-          {can('ADMIN') && (
+          {(currentUser.role === 'ADMIN' || currentUser.role === 'SUPERADMIN' || currentUser.role === 'KA_SPPG' || currentUser.role === 'ASLAP') && (
             <button
               onClick={() => setIsModalOpen(true)}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"

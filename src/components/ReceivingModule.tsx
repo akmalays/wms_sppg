@@ -5,6 +5,7 @@ import { ItemMaster, ReceivingDocument, ReceivingLine, Supplier } from '../types
 import { Plus, Trash2, CheckCircle, Search, FileText, AlertCircle, Eye, ArrowLeft } from 'lucide-react';
 import { SignaturePad } from './SignaturePad';
 import { ReceivingDetailModal } from './ReceivingDetailModal';
+import { PhotoUploadCompressor } from './PhotoUploadCompressor';
 
 interface ReceivingModuleProps {
   onRefreshData?: () => void;
@@ -34,6 +35,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   const [formNotes, setFormNotes] = useState('');
   const [formSupplierSign, setFormSupplierSign] = useState('');
   const [formReceiverSign, setFormReceiverSign] = useState('');
+  const [formPhotos, setFormPhotos] = useState<string[]>([]);
 
   // Multi-item lines
   const [lines, setLines] = useState<Omit<ReceivingLine, 'id'>[]>([
@@ -61,6 +63,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     setFormNotes('');
     setFormSupplierSign('');
     setFormReceiverSign(`VERIFIED: ${currentUser.name}`);
+    setFormPhotos([]);
     setErrorMessage('');
     setSuccessMessage('');
 
@@ -176,6 +179,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
           lines: lines as any,
           supplierSignature: formSupplierSign || `TERVERIFIKASI: Staf Pengirim ${selectedSupplier.name}`,
           receiverSignature: formReceiverSign || `TERVERIFIKASI: ${currentUser.name} (${currentUser.role})`,
+          documentationPhotos: formPhotos.length > 0 ? formPhotos : undefined,
         },
         currentUser
       );
@@ -446,6 +450,18 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            {/* Photo Documentation Section */}
+            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60">
+              <PhotoUploadCompressor
+                photos={formPhotos}
+                onChange={setFormPhotos}
+                maxPhotos={6}
+                folder="receiving"
+                label="Dokumentasi Foto Kedatangan (Auto-Kompres WebP)"
+                description="Foto surat jalan, timbangan, atau fisik kemasan barang. Otomatis dikompres ke WebP di HP karyawan sebelum diunggah."
+              />
             </div>
 
             {/* Signature Section */}

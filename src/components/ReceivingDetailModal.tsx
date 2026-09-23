@@ -1,6 +1,6 @@
 import React from 'react';
 import { ReceivingDocument } from '../types/warehouse';
-import { X, Printer, CheckCircle2, Building2, UserCheck, Calendar, Clock } from 'lucide-react';
+import { X, Printer, CheckCircle2, Building2, UserCheck, Calendar, Clock, Camera, ZoomIn } from 'lucide-react';
 
 interface ReceivingDetailModalProps {
   document: ReceivingDocument | null;
@@ -139,6 +139,39 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
               </table>
             </div>
           </div>
+
+          {/* Photo Documentation Section */}
+          {document.documentationPhotos && document.documentationPhotos.length > 0 && (
+            <div className="space-y-2 pt-1">
+              <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <Camera className="w-3.5 h-3.5 text-slate-500" />
+                Foto Dokumentasi Penerimaan ({document.documentationPhotos.length} Foto WebP)
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {document.documentationPhotos.map((url, i) => (
+                  <a
+                    key={i}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group relative rounded-lg border border-slate-200 overflow-hidden bg-slate-100 aspect-4/3 flex items-center justify-center hover:ring-2 hover:ring-emerald-500 transition-all shadow-2xs"
+                  >
+                    <img
+                      src={url}
+                      alt={`Dokumentasi ${i + 1}`}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                    />
+                    <div className="absolute inset-0 bg-slate-950/30 group-hover:bg-slate-950/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="text-[11px] font-medium text-white bg-slate-900/80 px-2 py-1 rounded backdrop-blur-xs flex items-center gap-1">
+                        <ZoomIn className="w-3 h-3" />
+                        Buka Foto
+                      </span>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Signatures Section */}
           <div className="grid grid-cols-2 gap-4 pt-2">

@@ -65,7 +65,13 @@ export type BaseUnit =
   | 'Roll'
   | 'Dus'
   | 'Botol'
-  | 'Ikat';
+  | 'Ikat'
+  | 'Jerigen'
+  | 'Unit'
+  | 'Set'
+  | 'pack'
+  | 'pcs'
+  | string;
 
 export type StockStatus = 'NORMAL' | 'LOW' | 'OUT_OF_STOCK';
 
@@ -84,6 +90,8 @@ export interface ItemMaster {
   isActive: boolean;
   notes?: string;
   lastMovementDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Supplier {
@@ -113,6 +121,7 @@ export interface ReceivingLine {
   conditionNote?: string;
   batchNumber?: string;
   expiryDate?: string;
+  photoUrl?: string; // Dokumentasi per barang (timbangan / kemasan)
 }
 
 export type ReceivingStatus = 'DRAFT' | 'VERIFIED_POSTED';
@@ -132,6 +141,7 @@ export interface ReceivingDocument {
   lines: ReceivingLine[];
   supplierSignature?: string; // Data URL or text representation
   receiverSignature?: string;
+  documentationPhotos?: string[]; // Array URL foto dokumentasi (surat jalan, timbangan, kondisi barang)
   createdAt: string;
 }
 
@@ -213,7 +223,7 @@ export interface AuditLog {
   userName: string;
   userRole: UserRole;
   action: string;
-  entity: 'RECEIVING' | 'INVENTORY' | 'STOCK_OPNAME' | 'EQUIPMENT' | 'ITEM_MASTER' | 'SUPPLIER' | 'AUTH';
+  entity: 'RECEIVING' | 'INVENTORY' | 'STOCK_OPNAME' | 'EQUIPMENT' | 'ITEM_MASTER' | 'SUPPLIER' | 'AUTH' | 'OPERATIONAL' | 'USER' | string;
   entityId: string;
   details: string;
 }
@@ -272,12 +282,34 @@ export interface NonFoodExpense {
 
 export type MenuOrderStatus = 'PLANNED' | 'PREPPING' | 'COOKING' | 'DISTRIBUTED' | 'COMPLETED' | 'CANCELLED';
 
+export type BeneficiaryCategory =
+  | 'SD / MI'
+  | 'SMP / MTs'
+  | 'PAUD / TK'
+  | 'Ibu Hamil & Balita (B3)'
+  | string;
+
+export interface SchoolBeneficiaryAllocation {
+  id: string;
+  schoolName: string;
+  category: BeneficiaryCategory;
+  portionCount: number;
+  deliveryTime?: string;
+  contactPerson?: string;
+  phone?: string;
+  status?: 'TERKIRIM' | 'DALAM_PERJALANAN' | 'SIAP_KIRIM' | 'DIJADWALKAN';
+  notes?: string;
+}
+
 export interface MenuIngredientReq {
   itemId?: string;
   name?: string;
   itemName?: string;
+  category?: string;
   quantity: number | string;
   unit: string;
+  unitPrice?: number;
+  totalCost?: number;
 }
 
 export interface MenuPoArrivalItem {
@@ -288,6 +320,8 @@ export interface MenuPoArrivalItem {
   supplier: string;
   arrivalTime: string;
   pic: string;
+  unitPrice?: number;
+  totalCost?: number;
   notes?: string;
 }
 
@@ -298,11 +332,13 @@ export interface MenuOrder {
   mealSession: 'Pagi' | 'Siang' | 'Snack';
   menuTitle: string;
   menuDescription?: string;
+  specialDietB3?: string; // Menu balita / bumil
   targetPortions: number;
   totalBeneficiaries?: number; // Total Penerima Manfaat (e.g. 3044)
   status: MenuOrderStatus;
   keyIngredients?: MenuIngredientReq[];
   poArrivalItems?: MenuPoArrivalItem[];
+  beneficiaryAllocations?: SchoolBeneficiaryAllocation[];
   chefInCharge?: string;
   notes?: string;
   createdAt: string;

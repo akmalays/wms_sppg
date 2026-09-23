@@ -58,11 +58,12 @@ export const WasteLogModule: React.FC = () => {
     return wasteLogs.filter(log => {
       const matchCat = selectedCategory === 'ALL' || log.wasteCategory === selectedCategory;
       const matchDisp = selectedDisposal === 'ALL' || log.disposalMethod === selectedDisposal;
+      const q = searchQuery.toLowerCase();
       const matchSearch =
-        log.itemName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        log.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        log.reason.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        log.sourceArea.toLowerCase().includes(searchQuery.toLowerCase());
+        (log.itemName || '').toLowerCase().includes(q) ||
+        log.id.toLowerCase().includes(q) ||
+        (log.reason || '').toLowerCase().includes(q) ||
+        (log.sourceArea || '').toLowerCase().includes(q);
       return matchCat && matchDisp && matchSearch;
     });
   }, [wasteLogs, selectedCategory, selectedDisposal, searchQuery]);
@@ -174,7 +175,7 @@ export const WasteLogModule: React.FC = () => {
             <span>Cetak Log Limbah</span>
           </button>
 
-          {can('ASLAP') && (
+          {(currentUser.role === 'ASLAP' || currentUser.role === 'ADMIN' || currentUser.role === 'SUPERADMIN' || currentUser.role === 'KA_SPPG') && (
             <button
               onClick={() => setIsModalOpen(true)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors"
