@@ -87,25 +87,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          {can('RECEIVE_GOODS') && (
-            <button
-              onClick={() => onNavigate('receiving')}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-            >
-              <Truck className="w-4 h-4" />
-              Catat Penerimaan Masuk
-            </button>
-          )}
-          {can('RECORD_CONSUMPTION') && (
-            <button
-              onClick={() => onNavigate('daily_flow')}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold border border-slate-600 shadow-xs transition-colors cursor-pointer"
-            >
-              <Utensils className="w-4 h-4" />
-              Aliran Harian Dapur
-            </button>
-          )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => onNavigate('daily_expenses')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+          >
+            <TrendingDown className="w-3.5 h-3.5" />
+            Pengeluaran Harian
+          </button>
+
+          <button
+            onClick={() => onNavigate('menu_orders')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold border border-slate-700 shadow-2xs transition-colors cursor-pointer"
+          >
+            <Utensils className="w-3.5 h-3.5" />
+            Order Menu Gizi
+          </button>
+
+          <button
+            onClick={() => onNavigate('nonfood_expenses')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold border border-slate-700 shadow-2xs transition-colors cursor-pointer"
+          >
+            <Package className="w-3.5 h-3.5" />
+            Pengeluaran Non-Food
+          </button>
         </div>
       </div>
 

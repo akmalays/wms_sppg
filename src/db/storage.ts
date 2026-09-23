@@ -13,8 +13,13 @@ import {
   EquipmentItem,
   AuditLog,
   DailyFlowRecord,
-  UserRole
+  UserRole,
+  NonFoodExpense,
+  MenuOrder,
+  WasteLog,
+  DailyTodoItem,
 } from '../types/warehouse';
+import { REAL_NONFOOD_EXPENSES, REAL_WASTE_LOGS, REAL_EQUIPMENT_ITEMS } from './realSeedData';
 
 const STORAGE_KEYS = {
   ITEMS: 'sppg_items_v1',
@@ -24,45 +29,43 @@ const STORAGE_KEYS = {
   OPNAMES: 'sppg_opnames_v1',
   EQUIPMENT: 'sppg_equipment_v1',
   AUDIT_LOGS: 'sppg_audit_logs_v1',
+  NONFOOD_EXPENSES: 'sppg_nonfood_expenses_v1',
+  MENU_ORDERS: 'sppg_menu_orders_v1',
+  WASTE_LOGS: 'sppg_waste_logs_v1',
+  TODOS: 'sppg_todos_v1',
 };
 
 // Initial realistic users for SPPG role-based testing
 export const INITIAL_USERS: User[] = [
   {
     id: 'USR-001',
-    name: 'Hendra Wijaya',
-    email: 'hendra.manager@sppg.id',
-    role: 'MANAGER',
+    name: 'Budi Santoso',
+    email: 'budi.superadmin@sppg.id',
+    role: 'SUPERADMIN',
   },
   {
     id: 'USR-002',
-    name: 'Budi Santoso',
-    email: 'budi.gudang@sppg.id',
-    role: 'WAREHOUSE_MANAGER',
+    name: 'Dr. Siti Rahma',
+    email: 'siti.kasppg@sppg.id',
+    role: 'KA_SPPG',
   },
   {
     id: 'USR-003',
-    name: 'Siti Rahma',
-    email: 'siti.staff@sppg.id',
-    role: 'WAREHOUSE_STAFF',
+    name: 'Hendra Wijaya',
+    email: 'hendra.admin@sppg.id',
+    role: 'ADMIN',
   },
   {
     id: 'USR-004',
-    name: 'Ahmad Fauzi',
-    email: 'fauzi.qc@sppg.id',
-    role: 'QC',
+    name: 'Andi Pratama',
+    email: 'andi.aslap@sppg.id',
+    role: 'ASLAP',
   },
   {
     id: 'USR-005',
     name: 'Dewi Lestari',
-    email: 'dewi.purchasing@sppg.id',
-    role: 'PURCHASING',
-  },
-  {
-    id: 'USR-000',
-    name: 'Admin SPPG Pusat',
-    email: 'admin@sppg.id',
-    role: 'SUPER_ADMIN',
+    email: 'dewi.akuntan@sppg.id',
+    role: 'AKUNTAN',
   },
 ];
 
@@ -470,6 +473,113 @@ export const INITIAL_EQUIPMENT: EquipmentItem[] = [
   },
 ];
 
+export const INITIAL_TODOS: DailyTodoItem[] = [
+  {
+    id: 'TODO-001',
+    date: new Date().toISOString().split('T')[0],
+    title: 'Cek suhu & kelembaban cold storage / chiller (standar 2°C - 4°C)',
+    category: 'Penerimaan & QC',
+    priority: 'Tinggi',
+    session: 'Pagi',
+    isCompleted: true,
+    completedAt: '06:15',
+    completedBy: 'Ahmad Fauzi (ASLAP)',
+    assignedRole: 'ASLAP',
+    notes: 'Suhu tercatat 3.2°C, chiller berfungsi optimal tanpa bunga es.',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'TODO-002',
+    date: new Date().toISOString().split('T')[0],
+    title: 'Penerimaan & uji organoleptik ayam karkas dan telur segar dari supplier',
+    category: 'Penerimaan & QC',
+    priority: 'Tinggi',
+    session: 'Pagi',
+    isCompleted: true,
+    completedAt: '06:45',
+    completedBy: 'Ahmad Fauzi (ASLAP)',
+    assignedRole: 'ASLAP',
+    notes: 'Kondisi segar, aroma normal, suhu daging 4°C saat tiba.',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'TODO-003',
+    date: new Date().toISOString().split('T')[0],
+    title: 'Penimbangan & sortasi sayuran segar (bayam, wortel, labu siam)',
+    category: 'Persiapan Dapur',
+    priority: 'Sedang',
+    session: 'Pagi',
+    isCompleted: true,
+    completedAt: '07:10',
+    completedBy: 'Hendra Wijaya (ADMIN)',
+    assignedRole: 'ADMIN',
+    notes: 'Disortir bersih, daun layu dipisahkan masuk limbah organik.',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'TODO-004',
+    date: new Date().toISOString().split('T')[0],
+    title: 'Serah terima bahan masak menu makan siang ke koki utama & tim masak',
+    category: 'Persiapan Dapur',
+    priority: 'Tinggi',
+    session: 'Pagi',
+    isCompleted: true,
+    completedAt: '07:30',
+    completedBy: 'Budi Santoso (SUPERADMIN)',
+    assignedRole: 'ADMIN',
+    notes: 'Target 3.044 porsi makan siang bergizi anak sekolah.',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'TODO-005',
+    date: new Date().toISOString().split('T')[0],
+    title: 'Pengecekan stok aman bahan kering gudang (beras premium & minyak goreng)',
+    category: 'Administrasi & Stok',
+    priority: 'Sedang',
+    session: 'Siang',
+    isCompleted: false,
+    assignedRole: 'ADMIN',
+    notes: 'Pastikan safety stock mencukupi jadwal menu hingga akhir pekan.',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'TODO-006',
+    date: new Date().toISOString().split('T')[0],
+    title: 'Pencatatan rekapitulasi limbah organik dan sisa pengolahan dapur hari ini',
+    category: 'Sanitasi & Kebersihan',
+    priority: 'Sedang',
+    session: 'Siang',
+    isCompleted: false,
+    assignedRole: 'ASLAP',
+    notes: 'Timbang limbah kupasan sayur & sisa makanan sebelum dialihkan ke pakan ternak.',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'TODO-007',
+    date: new Date().toISOString().split('T')[0],
+    title: 'Sterilisasi peralatan masak besar & sanitasi area pencucian bahan',
+    category: 'Sanitasi & Kebersihan',
+    priority: 'Tinggi',
+    session: 'Sore',
+    isCompleted: false,
+    assignedRole: 'ASLAP',
+    notes: 'Pembersihan meja stainless, wajan komersial, dan saluran drainase dapur.',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'TODO-008',
+    date: new Date().toISOString().split('T')[0],
+    title: 'Rekonsiliasi bon pengeluaran bahan & verifikasi buku mutasi stok harian',
+    category: 'Administrasi & Stok',
+    priority: 'Tinggi',
+    session: 'Sore',
+    isCompleted: false,
+    assignedRole: 'AKUNTAN',
+    notes: 'Cocokkan bukti fisik pengeluaran bahan masak dengan ledger mutasi.',
+    createdAt: new Date().toISOString(),
+  },
+];
+
 export const INITIAL_RECEIVINGS: ReceivingDocument[] = [
   {
     id: 'GR-2026-0001',
@@ -480,7 +590,7 @@ export const INITIAL_RECEIVINGS: ReceivingDocument[] = [
     deliveryNoteNo: 'SJ-ABC-8842',
     receiverId: 'USR-003',
     receiverName: 'Siti Rahma',
-    receiverRole: 'WAREHOUSE_STAFF',
+    receiverRole: 'ASLAP',
     status: 'VERIFIED_POSTED',
     notes: 'Pengiriman beras dan minyak sesuai PO rutin mingguan, kualitas prima.',
     lines: [
@@ -520,7 +630,7 @@ export const INITIAL_RECEIVINGS: ReceivingDocument[] = [
     deliveryNoteNo: 'SJ-BKS-0920',
     receiverId: 'USR-004',
     receiverName: 'Ahmad Fauzi',
-    receiverRole: 'QC',
+    receiverRole: 'ASLAP',
     status: 'VERIFIED_POSTED',
     notes: 'Penerimaan protein harian menu gizi seimbang. Suhu mobil boks 3.2°C.',
     lines: [
@@ -568,7 +678,7 @@ export const INITIAL_TRANSACTIONS: InventoryTransaction[] = [
     referenceDocument: 'GR-2026-0001',
     userId: 'USR-003',
     userName: 'Siti Rahma',
-    userRole: 'WAREHOUSE_STAFF',
+    userRole: 'ASLAP',
     notes: 'Penerimaan barang dari PT ABC Pangan Mandiri',
     balanceAfter: 450,
   },
@@ -586,7 +696,7 @@ export const INITIAL_TRANSACTIONS: InventoryTransaction[] = [
     referenceDocument: 'GR-2026-0001',
     userId: 'USR-003',
     userName: 'Siti Rahma',
-    userRole: 'WAREHOUSE_STAFF',
+    userRole: 'ASLAP',
     notes: 'Penerimaan barang dari PT ABC Pangan Mandiri',
     balanceAfter: 140,
   },
@@ -604,7 +714,7 @@ export const INITIAL_TRANSACTIONS: InventoryTransaction[] = [
     referenceDocument: 'GR-2026-0002',
     userId: 'USR-004',
     userName: 'Ahmad Fauzi',
-    userRole: 'QC',
+    userRole: 'ASLAP',
     notes: 'Penerimaan protein dari CV Berkah Unggas Segar',
     balanceAfter: 65,
   },
@@ -622,7 +732,7 @@ export const INITIAL_TRANSACTIONS: InventoryTransaction[] = [
     referenceDocument: 'ISS-2026-0920-A',
     userId: 'USR-002',
     userName: 'Budi Santoso',
-    userRole: 'WAREHOUSE_MANAGER',
+    userRole: 'ADMIN',
     notes: 'Pengeluaran untuk persiapan menu makan siang SPPG Batch 1',
     balanceAfter: 45,
   },
@@ -634,7 +744,7 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     timestamp: '2026-09-20 07:30',
     userId: 'USR-003',
     userName: 'Siti Rahma',
-    userRole: 'WAREHOUSE_STAFF',
+    userRole: 'ASLAP',
     action: 'RECEIVING_POSTED',
     entity: 'RECEIVING',
     entityId: 'GR-2026-0001',
@@ -645,7 +755,7 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     timestamp: '2026-09-20 06:55',
     userId: 'USR-004',
     userName: 'Ahmad Fauzi',
-    userRole: 'QC',
+    userRole: 'ASLAP',
     action: 'RECEIVING_POSTED',
     entity: 'RECEIVING',
     entityId: 'GR-2026-0002',
@@ -656,7 +766,7 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     timestamp: '2026-09-20 08:30',
     userId: 'USR-002',
     userName: 'Budi Santoso',
-    userRole: 'WAREHOUSE_MANAGER',
+    userRole: 'ADMIN',
     action: 'STOCK_CONSUMED',
     entity: 'INVENTORY',
     entityId: 'ITM-PRO-001',
@@ -704,6 +814,79 @@ export const INITIAL_OPNAMES: StockOpnameSession[] = [
   },
 ];
 
+export const INITIAL_NONFOOD_EXPENSES: NonFoodExpense[] = REAL_NONFOOD_EXPENSES;
+
+export const INITIAL_MENU_ORDERS: MenuOrder[] = [
+  {
+    id: 'ORD-2026-001',
+    date: '2026-09-20',
+    poDate: 'Minggu, 19 Sept 2026',
+    mealSession: 'Siang',
+    menuTitle: 'Nasi Putih, Ayam Krispi Sambal & Selada, Tahu Cabe Garam, Steam Buncis Wortel',
+    menuDescription: 'Menu pemenuhan gizi terpadu SPPG untuk 3.044 anak penerima manfaat. Kedatangan ayam potong segar 264kg dari Ayam Segar Fajar dan tahu putih 520pcs dari Tahu Rio.',
+    targetPortions: 3044,
+    totalBeneficiaries: 3044,
+    status: 'DISTRIBUTED',
+    keyIngredients: [
+      { itemName: 'Ayam Potong Segar', quantity: '264', unit: 'Kg' },
+      { itemName: 'Tahu Putih', quantity: '520', unit: 'Pcs' },
+      { itemName: 'Buncis Segar', quantity: '65', unit: 'Kg' },
+      { itemName: 'Wortel Segar', quantity: '65', unit: 'Kg' },
+      { itemName: 'Tomat Buah', quantity: '25', unit: 'Kg' },
+      { itemName: 'Beras Mentari 25kg', quantity: '7', unit: 'Sak' },
+      { itemName: 'Minyak Goreng Tropical 2L', quantity: '9', unit: 'Dus' },
+    ],
+    poArrivalItems: [
+      { category: 'Protein', itemName: 'Ayam Potong', qtyOrder: '264 kg', qtyArrived: '264 kg', supplier: 'Ayam Segar Fajar', arrivalTime: '09.00', pic: 'Akmal' },
+      { category: 'Protein', itemName: 'Tahu Putih', qtyOrder: '520 pcs', qtyArrived: '520 pcs', supplier: 'Tahu Rio', arrivalTime: '09.30', pic: 'Akmal' },
+      { category: 'Sembako', itemName: 'Gula 1 kg', qtyOrder: '10 pcs', qtyArrived: '10 kg', supplier: 'Tumpang Grosir', arrivalTime: '14.53', pic: 'Akmal' },
+      { category: 'Sayur & Buah', itemName: 'Buncis', qtyOrder: '65 kg', qtyArrived: '66 kg', supplier: 'Pak Beni', arrivalTime: '16.19', pic: 'Akmal' },
+      { category: 'Sayur & Buah', itemName: 'Wortel', qtyOrder: '65 kg', qtyArrived: '66 kg', supplier: 'Pak Beni', arrivalTime: '16.19', pic: 'Akmal' },
+      { category: 'Sayur & Buah', itemName: 'Tomat Buah', qtyOrder: '25 kg', qtyArrived: '25 kg', supplier: 'Pak Beni', arrivalTime: '16.19', pic: 'Akmal' },
+      { category: 'Sayur & Buah', itemName: 'Cabe Rawit', qtyOrder: '8 kg', qtyArrived: '8 kg', supplier: 'Pak Beni', arrivalTime: '16.19', pic: 'Akmal' },
+    ],
+    chefInCharge: 'Chef Joko Santoso & Tim Dapur',
+    notes: 'Seluruh 3.044 porsi selesai dimasak dan disalurkan tepat waktu. Diterima oleh PIC Akmal.',
+    createdAt: '2026-09-19T14:00:00Z',
+  },
+  {
+    id: 'ORD-2026-002',
+    date: '2026-09-21',
+    mealSession: 'Pagi',
+    menuTitle: 'Bubur Ayam Sehat Gizi Seimbang & Telur Rebus',
+    menuDescription: 'Sarapan bernutrisi hangat: Bubur beras halus kaldu ayam kampung, telur rebus, irisan seledri, dan kecap manis rendah natrium.',
+    targetPortions: 250,
+    status: 'COMPLETED',
+    keyIngredients: [
+      { itemId: 'ITM-SMB-001', itemName: 'Beras Pandan Wangi Premium', quantity: 20, unit: 'Kg' },
+      { itemId: 'ITM-PRO-002', itemName: 'Telur Ayam Ras Segar', quantity: 16, unit: 'Kg' },
+      { itemId: 'ITM-PRO-001', itemName: 'Daging Ayam Broiler Karkas Bersih', quantity: 15, unit: 'Kg' },
+    ],
+    chefInCharge: 'Chef Joko Santoso',
+    notes: 'Porsi sarapan tepat sasaran, evaluasi anak menyukai rasa gurih alami kaldu.',
+    createdAt: '2026-09-20T13:00:00Z',
+  },
+  {
+    id: 'ORD-2026-003',
+    date: '2026-09-22',
+    mealSession: 'Siang',
+    menuTitle: 'Nasi Putih Pulen, Semur Daging & Tumis Buncis Jagung Manis',
+    menuDescription: 'Makan siang padat zat besi: Daging sapi empuk bumbu rempah nusantara dengan serat buncis renyah dan jagung manis segar.',
+    targetPortions: 280,
+    status: 'COOKING',
+    keyIngredients: [
+      { itemId: 'ITM-SMB-001', itemName: 'Beras Pandan Wangi Premium', quantity: 28, unit: 'Kg' },
+      { itemId: 'ITM-PRO-001', itemName: 'Daging Ayam Broiler Karkas Bersih', quantity: 25, unit: 'Kg' },
+      { itemId: 'ITM-VEG-002', itemName: 'Wortel Segar Super', quantity: 12, unit: 'Kg' },
+    ],
+    chefInCharge: 'Chef Joko Santoso',
+    notes: 'Proses perebusan bumbu semur memasuki tahap akhir.',
+    createdAt: '2026-09-21T15:30:00Z',
+  },
+];
+
+export const INITIAL_WASTE_LOGS: WasteLog[] = REAL_WASTE_LOGS;
+
 // Helper to safe parse JSON
 function getStored<T>(key: string, fallback: T): T {
   try {
@@ -731,6 +914,10 @@ class WarehouseDatabase {
   private opnames: StockOpnameSession[];
   private equipment: EquipmentItem[];
   private auditLogs: AuditLog[];
+  private nonFoodExpenses: NonFoodExpense[];
+  private menuOrders: MenuOrder[];
+  private wasteLogs: WasteLog[];
+  private todos: DailyTodoItem[];
 
   constructor() {
     this.items = getStored<ItemMaster[]>(STORAGE_KEYS.ITEMS, INITIAL_ITEMS);
@@ -740,6 +927,10 @@ class WarehouseDatabase {
     this.opnames = getStored<StockOpnameSession[]>(STORAGE_KEYS.OPNAMES, INITIAL_OPNAMES);
     this.equipment = getStored<EquipmentItem[]>(STORAGE_KEYS.EQUIPMENT, INITIAL_EQUIPMENT);
     this.auditLogs = getStored<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
+    this.nonFoodExpenses = getStored<NonFoodExpense[]>(STORAGE_KEYS.NONFOOD_EXPENSES, INITIAL_NONFOOD_EXPENSES);
+    this.menuOrders = getStored<MenuOrder[]>(STORAGE_KEYS.MENU_ORDERS, INITIAL_MENU_ORDERS);
+    this.wasteLogs = getStored<WasteLog[]>(STORAGE_KEYS.WASTE_LOGS, INITIAL_WASTE_LOGS);
+    this.todos = getStored<DailyTodoItem[]>(STORAGE_KEYS.TODOS, INITIAL_TODOS);
   }
 
   // --- READERS ---
@@ -761,6 +952,10 @@ class WarehouseDatabase {
 
   public getReceivings(): ReceivingDocument[] {
     return [...this.receivings].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  public getReceivingDocs(): ReceivingDocument[] {
+    return this.getReceivings();
   }
 
   public getReceivingById(id: string): ReceivingDocument | undefined {
@@ -1082,7 +1277,7 @@ class WarehouseDatabase {
   }
 
   public approveStockOpname(opnameId: string, approver: User): StockOpnameSession {
-    const allowedRoles: UserRole[] = ['SUPER_ADMIN', 'MANAGER', 'WAREHOUSE_MANAGER'];
+    const allowedRoles: UserRole[] = ['SUPERADMIN', 'KA_SPPG', 'ADMIN', 'AKUNTAN'];
     if (!allowedRoles.includes(approver.role)) {
       throw new Error('Anda tidak memiliki otorisasi untuk menyetujui Stock Opname. Hubungi Manajer Gudang atau Manajer SPPG.');
     }
@@ -1188,6 +1383,52 @@ class WarehouseDatabase {
     return item;
   }
 
+  public saveItemsBatch(newItems: ItemMaster[], user: User): ItemMaster[] {
+    const saved: ItemMaster[] = [];
+    const now = new Date().toISOString();
+
+    for (let i = 0; i < newItems.length; i++) {
+      const item = newItems[i];
+      if (!item.name || !item.baseUnit) continue;
+
+      const cleanId = item.id && item.id.trim()
+        ? item.id.trim()
+        : `ITM-${Date.now().toString().slice(-4)}-${i + 1}`;
+
+      const existingIdx = this.items.findIndex(
+        it => it.id.toLowerCase() === cleanId.toLowerCase()
+      );
+
+      const itemToSave: ItemMaster = {
+        ...item,
+        id: cleanId,
+        name: item.name.trim(),
+        minimumStock: Math.max(0, item.minimumStock || 0),
+        reorderPoint: Math.max(item.minimumStock || 0, item.reorderPoint || (item.minimumStock || 0) * 1.5),
+        currentStock: Math.max(0, item.currentStock || 0),
+        createdAt: item.createdAt || now,
+        updatedAt: now,
+      };
+
+      if (existingIdx >= 0) {
+        this.items[existingIdx] = itemToSave;
+      } else {
+        this.items.push(itemToSave);
+      }
+      saved.push(itemToSave);
+    }
+
+    setStored(STORAGE_KEYS.ITEMS, this.items);
+    this.logAudit(
+      user,
+      'ITEMS_BATCH_SAVED',
+      'ITEM_MASTER',
+      `BATCH-${Date.now()}`,
+      `Menambahkan / memperbarui masal ${saved.length} master barang sekaligus.`
+    );
+    return saved;
+  }
+
   // --- SUPPLIER MANAGEMENT ---
   public saveSupplier(supplier: Supplier, user: User, isNew: boolean): Supplier {
     if (!supplier.name || !supplier.id) {
@@ -1268,6 +1509,262 @@ class WarehouseDatabase {
     return equipment;
   }
 
+  // --- NON-FOOD EXPENSES ---
+  public getNonFoodExpenses(): NonFoodExpense[] {
+    return [...this.nonFoodExpenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }
+
+  public recordNonFoodExpense(
+    expense: Omit<NonFoodExpense, 'id' | 'createdAt'>,
+    user: User
+  ): NonFoodExpense {
+    const newId = `NFE-${Date.now().toString().slice(-6)}`;
+    const newExpense: NonFoodExpense = {
+      ...expense,
+      id: newId,
+      createdAt: new Date().toISOString(),
+    };
+    this.nonFoodExpenses.unshift(newExpense);
+    setStored(STORAGE_KEYS.NONFOOD_EXPENSES, this.nonFoodExpenses);
+
+    this.logAudit(
+      user,
+      'NONFOOD_EXPENSE_RECORDED',
+      'INVENTORY',
+      newId,
+      `Pengeluaran Non-Food [${newExpense.category}]: ${newExpense.itemName} (${newExpense.quantity} ${newExpense.unit}) total Rp ${(newExpense.totalCost || 0).toLocaleString('id-ID')} untuk ${newExpense.department}`
+    );
+    return newExpense;
+  }
+
+  public deleteNonFoodExpense(id: string, user: User): boolean {
+    const idx = this.nonFoodExpenses.findIndex(e => e.id === id);
+    if (idx < 0) return false;
+    const deleted = this.nonFoodExpenses.splice(idx, 1)[0];
+    setStored(STORAGE_KEYS.NONFOOD_EXPENSES, this.nonFoodExpenses);
+    this.logAudit(
+      user,
+      'NONFOOD_EXPENSE_DELETED',
+      'INVENTORY',
+      id,
+      `Menghapus catatan pengeluaran barang: ${deleted.itemName} (${deleted.quantity} ${deleted.unit || ''})`
+    );
+    return true;
+  }
+
+  public recordNonFoodExpensesBatch(
+    expenses: Omit<NonFoodExpense, 'id' | 'createdAt'>[],
+    user: User
+  ): NonFoodExpense[] {
+    const created: NonFoodExpense[] = [];
+    const now = new Date().toISOString();
+
+    for (let i = 0; i < expenses.length; i++) {
+      const exp = expenses[i];
+      const newId = `NFE-${(Date.now() + i).toString().slice(-6)}`;
+      const newExpense: NonFoodExpense = {
+        ...exp,
+        id: newId,
+        createdAt: now,
+      };
+      created.push(newExpense);
+      this.nonFoodExpenses.unshift(newExpense);
+    }
+
+    setStored(STORAGE_KEYS.NONFOOD_EXPENSES, this.nonFoodExpenses);
+    this.logAudit(
+      user,
+      'NONFOOD_EXPENSES_BATCH_RECORDED',
+      'INVENTORY',
+      `BATCH-${Date.now()}`,
+      `Mencatat masal ${created.length} barang pengeluaran harian sekaligus`
+    );
+    return created;
+  }
+
+  // --- MENU ORDERS ---
+  public getMenuOrders(): MenuOrder[] {
+    return [...this.menuOrders].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }
+
+  public saveMenuOrder(order: MenuOrder, user: User, isNew: boolean = false): MenuOrder {
+    if (isNew) {
+      this.menuOrders.unshift(order);
+      this.logAudit(
+        user,
+        'MENU_ORDER_CREATED',
+        'OPERATIONAL',
+        order.id,
+        `Membuat Order Menu: ${order.menuTitle} (${order.targetPortions} porsi) - Sesi ${order.mealSession}`
+      );
+    } else {
+      const idx = this.menuOrders.findIndex(o => o.id === order.id);
+      if (idx >= 0) {
+        this.menuOrders[idx] = order;
+        this.logAudit(
+          user,
+          'MENU_ORDER_UPDATED',
+          'OPERATIONAL',
+          order.id,
+          `Memperbarui Order Menu: ${order.menuTitle} (${order.status})`
+        );
+      } else {
+        this.menuOrders.unshift(order);
+      }
+    }
+    setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+    return order;
+  }
+
+  public updateMenuOrderStatus(orderId: string, status: MenuOrder['status'], user: User): MenuOrder {
+    const idx = this.menuOrders.findIndex(o => o.id === orderId);
+    if (idx < 0) throw new Error('Order menu tidak ditemukan');
+    const old = this.menuOrders[idx];
+    const updated: MenuOrder = { ...old, status };
+    this.menuOrders[idx] = updated;
+    setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+
+    this.logAudit(
+      user,
+      'MENU_ORDER_STATUS_CHANGED',
+      'OPERATIONAL',
+      orderId,
+      `Status order ${old.menuTitle} diubah dari ${old.status} ke ${status}`
+    );
+    return updated;
+  }
+
+  // --- WASTE LOGS ---
+  public getWasteLogs(): WasteLog[] {
+    return [...this.wasteLogs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }
+
+  public recordWasteLog(
+    log: Omit<WasteLog, 'id' | 'createdAt'>,
+    user: User
+  ): WasteLog {
+    const newId = `WST-${Date.now().toString().slice(-6)}`;
+    const newLog: WasteLog = {
+      ...log,
+      id: newId,
+      createdAt: new Date().toISOString(),
+    };
+    this.wasteLogs.unshift(newLog);
+    setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
+
+    this.logAudit(
+      user,
+      'WASTE_RECORDED',
+      'OPERATIONAL',
+      newId,
+      `Pencatatan Limbah [${newLog.wasteCategory}]: ${newLog.itemName} (${newLog.quantity} ${newLog.unit}) ditangani via ${newLog.disposalMethod}`
+    );
+    return newLog;
+  }
+
+  // --- DAILY TODOS ---
+  public getDailyTodos(date?: string): DailyTodoItem[] {
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    const filtered = this.todos.filter(t => t.date === targetDate);
+    // If no todos exist for requested date, and it's today, seed today's items
+    if (filtered.length === 0 && targetDate === new Date().toISOString().split('T')[0]) {
+      const seeded = INITIAL_TODOS.map(t => ({ ...t, date: targetDate }));
+      this.todos.push(...seeded);
+      setStored(STORAGE_KEYS.TODOS, this.todos);
+      return [...seeded];
+    }
+    return filtered.length > 0 ? filtered : this.todos;
+  }
+
+  public getAllTodos(): DailyTodoItem[] {
+    return [...this.todos];
+  }
+
+  public addTodo(
+    todo: Omit<DailyTodoItem, 'id' | 'createdAt'>,
+    user?: User
+  ): DailyTodoItem {
+    const newId = `TODO-${Date.now().toString().slice(-6)}`;
+    const newTodo: DailyTodoItem = {
+      ...todo,
+      id: newId,
+      createdAt: new Date().toISOString(),
+    };
+    this.todos.unshift(newTodo);
+    setStored(STORAGE_KEYS.TODOS, this.todos);
+
+    if (user) {
+      this.logAudit(
+        user,
+        'TODO_CREATED',
+        'OPERATIONAL',
+        newId,
+        `Menambahkan Tugas Harian: ${newTodo.title} [${newTodo.category}]`
+      );
+    }
+    return newTodo;
+  }
+
+  public toggleTodo(id: string, user?: User): DailyTodoItem {
+    const idx = this.todos.findIndex(t => t.id === id);
+    if (idx < 0) throw new Error('Tugas harian tidak ditemukan');
+    const old = this.todos[idx];
+    const newCompleted = !old.isCompleted;
+    const nowTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+    const updated: DailyTodoItem = {
+      ...old,
+      isCompleted: newCompleted,
+      completedAt: newCompleted ? nowTime : undefined,
+      completedBy: newCompleted ? (user ? `${user.name} (${user.role})` : 'Petugas') : undefined,
+    };
+    this.todos[idx] = updated;
+    setStored(STORAGE_KEYS.TODOS, this.todos);
+
+    if (user) {
+      this.logAudit(
+        user,
+        newCompleted ? 'TODO_COMPLETED' : 'TODO_REOPENED',
+        'OPERATIONAL',
+        id,
+        `${newCompleted ? 'Menyelesaikan' : 'Membuka kembali'} Tugas Harian: ${old.title}`
+      );
+    }
+    return updated;
+  }
+
+  public deleteTodo(id: string, user?: User): boolean {
+    const idx = this.todos.findIndex(t => t.id === id);
+    if (idx < 0) return false;
+    const old = this.todos[idx];
+    this.todos.splice(idx, 1);
+    setStored(STORAGE_KEYS.TODOS, this.todos);
+
+    if (user) {
+      this.logAudit(
+        user,
+        'TODO_DELETED',
+        'OPERATIONAL',
+        id,
+        `Menghapus Tugas Harian: ${old.title}`
+      );
+    }
+    return true;
+  }
+
+  public resetDailyTodos(date?: string): DailyTodoItem[] {
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    this.todos = this.todos.filter(t => t.date !== targetDate);
+    const seeded = INITIAL_TODOS.map(t => ({
+      ...t,
+      date: targetDate,
+      id: `TODO-${Date.now().toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`,
+    }));
+    this.todos.push(...seeded);
+    setStored(STORAGE_KEYS.TODOS, this.todos);
+    return seeded;
+  }
+
   // --- RE-SEED / RESET DATA ---
   public resetToSeedData(): void {
     this.resetToDefault();
@@ -1281,6 +1778,10 @@ class WarehouseDatabase {
     localStorage.removeItem(STORAGE_KEYS.OPNAMES);
     localStorage.removeItem(STORAGE_KEYS.EQUIPMENT);
     localStorage.removeItem(STORAGE_KEYS.AUDIT_LOGS);
+    localStorage.removeItem(STORAGE_KEYS.NONFOOD_EXPENSES);
+    localStorage.removeItem(STORAGE_KEYS.MENU_ORDERS);
+    localStorage.removeItem(STORAGE_KEYS.WASTE_LOGS);
+    localStorage.removeItem(STORAGE_KEYS.TODOS);
 
     this.items = [...INITIAL_ITEMS];
     this.suppliers = [...INITIAL_SUPPLIERS];
@@ -1289,6 +1790,10 @@ class WarehouseDatabase {
     this.opnames = [...INITIAL_OPNAMES];
     this.equipment = [...INITIAL_EQUIPMENT];
     this.auditLogs = [...INITIAL_AUDIT_LOGS];
+    this.nonFoodExpenses = [...INITIAL_NONFOOD_EXPENSES];
+    this.menuOrders = [...INITIAL_MENU_ORDERS];
+    this.wasteLogs = [...INITIAL_WASTE_LOGS];
+    this.todos = [...INITIAL_TODOS];
 
     setStored(STORAGE_KEYS.ITEMS, this.items);
     setStored(STORAGE_KEYS.SUPPLIERS, this.suppliers);
@@ -1297,6 +1802,10 @@ class WarehouseDatabase {
     setStored(STORAGE_KEYS.OPNAMES, this.opnames);
     setStored(STORAGE_KEYS.EQUIPMENT, this.equipment);
     setStored(STORAGE_KEYS.AUDIT_LOGS, this.auditLogs);
+    setStored(STORAGE_KEYS.NONFOOD_EXPENSES, this.nonFoodExpenses);
+    setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+    setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
+    setStored(STORAGE_KEYS.TODOS, this.todos);
   }
 }
 

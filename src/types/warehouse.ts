@@ -4,12 +4,11 @@
  */
 
 export type UserRole =
-  | 'SUPER_ADMIN'
-  | 'MANAGER'
-  | 'WAREHOUSE_MANAGER'
-  | 'WAREHOUSE_STAFF'
-  | 'PURCHASING'
-  | 'QC';
+  | 'SUPERADMIN'
+  | 'ADMIN'
+  | 'KA_SPPG'
+  | 'ASLAP'
+  | 'AKUNTAN';
 
 export interface User {
   id: string;
@@ -25,6 +24,8 @@ export type ItemType =
   | 'OPERATIONAL_CONSUMABLE'
   | 'EQUIPMENT';
 
+export type MainItemCategory = 'Bahan Kering' | 'Bahan Basah' | 'Bahan Peralatan';
+
 export type FoodCategory = 'Sembako' | 'Protein' | 'Sayuran' | 'Buah';
 
 export type OperationalCategory =
@@ -39,7 +40,21 @@ export type EquipmentCategory =
   | 'Warehouse Equipment'
   | 'Electronic Equipment';
 
-export type ItemCategory = FoodCategory | OperationalCategory | EquipmentCategory;
+export type ItemCategory = MainItemCategory | FoodCategory | OperationalCategory | EquipmentCategory | string;
+
+export function normalizeItemCategory(category?: string): MainItemCategory {
+  const c = (category || '').toLowerCase();
+  if (c.includes('kering') || c.includes('sembako') || c.includes('beras') || c.includes('minyak') || c.includes('gula') || c.includes('tepung')) {
+    return 'Bahan Kering';
+  }
+  if (c.includes('basah') || c.includes('protein') || c.includes('sayur') || c.includes('buah') || c.includes('ayam') || c.includes('daging') || c.includes('telur')) {
+    return 'Bahan Basah';
+  }
+  if (c.includes('alat') || c.includes('clean') || c.includes('pack') || c.includes('hygiene') || c.includes('kemasan') || c.includes('operasional')) {
+    return 'Bahan Peralatan';
+  }
+  return 'Bahan Kering';
+}
 
 export type BaseUnit =
   | 'Kg'
@@ -215,3 +230,143 @@ export interface DailyFlowRecord {
   consumedToday: number;
   closingBalance: number;
 }
+
+export type NonFoodCategory =
+  | 'Peralatan Dapur'
+  | 'ATK & Dokumentasi'
+  | 'Bahan Pembersih & Sanitasi'
+  | 'Perlengkapan Kebersihan & APD'
+  | 'Pemeliharaan & Utilitas'
+  | string;
+
+export type NonFoodDepartment =
+  | 'Dapur Pengolahan Utama'
+  | 'Area Cuci & Sanitasi'
+  | 'Administrasi & Kantor'
+  | 'Gudang Kering & Basah'
+  | 'Distribusi & Kemasan'
+  | string;
+
+export interface NonFoodExpense {
+  id: string; // e.g. NFE-2026-001
+  date: string; // YYYY-MM-DD or '20 sept 2026'
+  itemId?: string;
+  itemName: string;
+  category: NonFoodCategory;
+  quantity: number | string; // e.g. 1 or '1 pack'
+  unit?: string;
+  time?: string; // Jam Ambil (e.g. '19.55')
+  volunteer?: string; // Relawan (e.g. 'Roni', 'Puspitasari')
+  pic?: string; // PIC (e.g. 'Teguh', 'Ade', 'Akmal')
+  unitPrice?: number;
+  totalCost?: number;
+  department?: NonFoodDepartment;
+  recipient?: string;
+  recipientName?: string;
+  issuedBy?: string;
+  recordedBy?: string;
+  receiptRef?: string;
+  notes?: string;
+  createdAt?: string;
+}
+
+export type MenuOrderStatus = 'PLANNED' | 'PREPPING' | 'COOKING' | 'DISTRIBUTED' | 'COMPLETED' | 'CANCELLED';
+
+export interface MenuIngredientReq {
+  itemId?: string;
+  name?: string;
+  itemName?: string;
+  quantity: number | string;
+  unit: string;
+}
+
+export interface MenuPoArrivalItem {
+  category: string;
+  itemName: string;
+  qtyOrder: string;
+  qtyArrived: string;
+  supplier: string;
+  arrivalTime: string;
+  pic: string;
+  notes?: string;
+}
+
+export interface MenuOrder {
+  id: string; // e.g. ORD-2026-001
+  date: string; // YYYY-MM-DD
+  poDate?: string; // e.g. 'Minggu, 19 Sept 2026'
+  mealSession: 'Pagi' | 'Siang' | 'Snack';
+  menuTitle: string;
+  menuDescription?: string;
+  targetPortions: number;
+  totalBeneficiaries?: number; // Total Penerima Manfaat (e.g. 3044)
+  status: MenuOrderStatus;
+  keyIngredients?: MenuIngredientReq[];
+  poArrivalItems?: MenuPoArrivalItem[];
+  chefInCharge?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export type WasteCategory =
+  | 'Limbah Olahan Dapur'
+  | 'Bahan Rusak / Kadaluarsa'
+  | 'Sisa Makanan Distribusi'
+  | 'Kemasan & Non-Organik'
+  | 'karbohidrat'
+  | 'sayur'
+  | 'protein hewani'
+  | 'protein nabati'
+  | 'buah'
+  | string;
+
+export type DisposalMethod =
+  | 'Kompos Organik'
+  | 'Pakan Maggot / Ternak'
+  | 'Bank Sampah / Daur Ulang'
+  | 'TPS Terpadu'
+  | string;
+
+export interface WasteLog {
+  id: string; // e.g. WST-2026-001
+  day?: string; // Hari (e.g. 'Jumat', 'Senin')
+  date: string; // YYYY-MM-DD
+  wasteCategory: WasteCategory;
+  itemName?: string;
+  quantity: number;
+  unit: 'Kg' | 'Liter' | 'Gram' | 'Pcs' | string;
+  sourceArea: string; // e.g. 'Dapur SPPG Jeru Tumpang'
+  reason?: string;
+  disposalMethod: DisposalMethod;
+  recordedBy: string;
+  notes?: string;
+  createdAt?: string;
+}
+
+export type TodoCategory =
+  | 'Penerimaan & QC'
+  | 'Persiapan Dapur'
+  | 'Sanitasi & Kebersihan'
+  | 'Administrasi & Stok'
+  | 'Stock Opname'
+  | 'Distribusi';
+
+export type TodoPriority = 'Tinggi' | 'Sedang' | 'Rendah';
+
+export interface DailyTodoItem {
+  id: string; // e.g. TODO-001
+  date: string; // YYYY-MM-DD
+  title: string;
+  category: TodoCategory;
+  priority: TodoPriority;
+  session?: 'Pagi' | 'Siang' | 'Sore' | 'Harian';
+  isCompleted: boolean;
+  completedAt?: string;
+  completedBy?: string;
+  assignedRole?: UserRole | 'ALL';
+  notes?: string;
+  createdAt: string;
+}
+
+
+

@@ -16,6 +16,7 @@ import {
 import { warehouseDb } from '../db/storage';
 import { useAuth } from '../context/AuthContext';
 import { ReceivingDocument, ItemMaster, EquipmentItem } from '../types/warehouse';
+import { SppgLogo } from './SppgLogo';
 
 type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'EQUIPMENT_LABEL';
 
@@ -27,7 +28,7 @@ export const ToolsPrintModule: React.FC = () => {
   const [printDate, setPrintDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   // Data sources
-  const receivingDocs = useMemo(() => warehouseDb.getReceivingDocs(), []);
+  const receivingDocs = useMemo(() => warehouseDb.getReceivings(), []);
   const items = useMemo(() => warehouseDb.getItems(), []);
   const equipment = useMemo(() => warehouseDb.getEquipment(), []);
 
@@ -304,12 +305,10 @@ export const ToolsPrintModule: React.FC = () => {
         ========================================================================= */}
         <div className="border-b-2 border-slate-900 pb-4 mb-6 flex items-start justify-between">
           <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-xl border border-slate-900">
-              SPPG
-            </div>
+            <SppgLogo size="lg" variant="color" showText={false} />
             <div>
               <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
-                SATUAN PELAYANAN PEMENUHAN GIZI (SPPG)
+                Satuan Pelayanan Pemenuhan Gizi (SPPG)
               </h1>
               <p className="text-xs text-slate-600 font-medium">{unitName}</p>
               <p className="text-[11px] text-slate-500">
@@ -337,7 +336,7 @@ export const ToolsPrintModule: React.FC = () => {
         {activeForm === 'RECEIVING_FORM' && (
           <div className="space-y-6">
             <div className="text-center my-4">
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight underline uppercase">
+              <h2 className="text-lg font-bold text-slate-900 tracking-tight border-b border-slate-300 pb-1 inline-block">
                 Berita Acara Penerimaan Bahan Pangan & Logistik
               </h2>
               <p className="text-xs text-slate-600 mt-0.5">
@@ -498,7 +497,7 @@ export const ToolsPrintModule: React.FC = () => {
         {activeForm === 'OPNAME_SHEET' && (
           <div className="space-y-6">
             <div className="text-center my-4">
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight underline uppercase">
+              <h2 className="text-lg font-bold text-slate-900 tracking-tight border-b border-slate-300 pb-1 inline-block">
                 Lembar Kerja Hitung Fisik (Stock Opname Tally Sheet)
               </h2>
               <p className="text-xs text-slate-600 mt-0.5">
@@ -583,7 +582,7 @@ export const ToolsPrintModule: React.FC = () => {
         {activeForm === 'BIN_CARD' && selectedItem && (
           <div className="space-y-6">
             <div className="text-center my-4">
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight underline uppercase">
+              <h2 className="text-lg font-bold text-slate-900 tracking-tight border-b border-slate-300 pb-1 inline-block">
                 Kartu Stok Fisik Gudang & Chiller (Bin Card)
               </h2>
               <p className="text-xs text-slate-600 mt-0.5">
@@ -669,7 +668,7 @@ export const ToolsPrintModule: React.FC = () => {
         {activeForm === 'KITCHEN_REQUISITION' && (
           <div className="space-y-6">
             <div className="text-center my-4">
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight underline uppercase">
+              <h2 className="text-lg font-bold text-slate-900 tracking-tight border-b border-slate-300 pb-1 inline-block">
                 Bon Pengeluaran & Permintaan Bahan Pangan Dapur
               </h2>
               <p className="text-xs text-slate-600 mt-0.5">
@@ -762,7 +761,7 @@ export const ToolsPrintModule: React.FC = () => {
         {activeForm === 'EQUIPMENT_LABEL' && (
           <div className="space-y-6">
             <div className="text-center my-4">
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight underline uppercase">
+              <h2 className="text-lg font-bold text-slate-900 tracking-tight border-b border-slate-300 pb-1 inline-block">
                 Stiker & Label Identifikasi Aset Peralatan Dapur SPPG
               </h2>
               <p className="text-xs text-slate-600 mt-0.5">

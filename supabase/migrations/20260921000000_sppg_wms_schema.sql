@@ -1,20 +1,20 @@
 -- ==============================================================================
 -- SATUAN PELAYANAN PEMENUHAN GIZI (SPPG) - WMS DATABASE SCHEMA & RBAC
 -- Target: Supabase (PostgreSQL 15+)
+-- 5 Roles: SUPERADMIN, ADMIN, KA_SPPG, ASLAP, AKUNTAN
 -- ==============================================================================
 
 -- 1. EXTENSIONS & ENUMS
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Role-Based Access Control (RBAC) User Roles
+-- Role-Based Access Control (RBAC) User Roles (5 Peran Resmi SPPG)
 DO $$ BEGIN
     CREATE TYPE user_role AS ENUM (
-        'SUPER_ADMIN',
-        'MANAGER',
-        'WAREHOUSE_MANAGER',
-        'WAREHOUSE_STAFF',
-        'PURCHASING',
-        'QC'
+        'SUPERADMIN',
+        'ADMIN',
+        'KA_SPPG',
+        'ASLAP',
+        'AKUNTAN'
     );
 EXCEPTION
     WHEN duplicate_object THEN null;
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email TEXT NOT NULL,
     name TEXT NOT NULL,
-    role user_role NOT NULL DEFAULT 'WAREHOUSE_STAFF',
+    role user_role NOT NULL DEFAULT 'ASLAP',
     avatar_url TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -112,7 +112,7 @@ BEGIN
         new.id,
         new.email,
         COALESCE(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
-        COALESCE((new.raw_user_meta_data->>'role')::user_role, 'WAREHOUSE_STAFF')
+        COALESCE((new.raw_user_meta_data->>'role')::user_role, 'ASLAP')
     );
     RETURN new;
 END;
@@ -299,7 +299,7 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
 );
 
 -- ==============================================================================
--- 5. ROW LEVEL SECURITY (RLS) POLICIES PER ROLE
+-- 5. ROW LEVEL SECURITY (RLS) POLICIES PER ROLE (5 PERAN SPPG)
 -- ==============================================================================
 
 -- Enable RLS on all tables
@@ -321,57 +321,57 @@ CREATE POLICY "Profiles viewable by authenticated users"
     ON public.profiles FOR SELECT TO authenticated
     USING (true);
 
-CREATE POLICY "Profiles editable by self or super admin"
+CREATE POLICY "Profiles editable by self or superadmin"
     ON public.profiles FOR UPDATE TO authenticated
-    USING (auth.uid() = id OR public.get_user_role() = 'SUPER_ADMIN');
+    USING (auth.uid() = id OR public.get_user_role() = 'SUPERADMIN');
 
 -- 5.2 Warehouse Locations Policies
 CREATE POLICY "Locations viewable by all authenticated users"
     ON public.warehouse_locations FOR SELECT TO authenticated
     USING (true);
 
-CREATE POLICY "Locations manageable by warehouse manager or super admin"
+CREATE POLICY "Locations manageable by superadmin, ka sppg, or admin"
     ON public.warehouse_locations FOR ALL TO authenticated
-    USING (public.get_user_role() IN ('SUPER_ADMIN', 'WAREHOUSE_MANAGER'));
+    USING (public.get_user_role() IN ('SUPERADMIN', 'KA_SPPG', 'ADMIN'));
 
 -- 5.3 Suppliers Policies
 CREATE POLICY "Suppliers viewable by all authenticated users"
     ON public.suppliers FOR SELECT TO authenticated
     USING (true);
 
-CREATE POLICY "Suppliers manageable by purchasing, manager, or super admin"
+CREATE POLICY "Suppliers manageable by superadmin, ka sppg, admin, or akuntan"
     ON public.suppliers FOR INSERT TO authenticated
-    WITH CHECK (public.get_user_role() IN ('SUPER_ADMIN', 'MANAGER', 'WAREHOUSE_MANAGER', 'PURCHASING'));
+    WITH CHECK (public.get_user_role() IN ('SUPERADMIN', 'KA_SPPG', 'ADMIN', 'AKUNTAN'));
 
-CREATE POLICY "Suppliers editable by purchasing, manager, or super admin"
+CREATE POLICY "Suppliers editable by superadmin, ka sppg, admin, or akuntan"
     ON public.suppliers FOR UPDATE TO authenticated
-    USING (public.get_user_role() IN ('SUPER_ADMIN', 'MANAGER', 'WAREHOUSE_MANAGER', 'PURCHASING'));
+    USING (public.get_user_role() IN ('SUPERADMIN', 'KA_SPPG', 'ADMIN', 'AKUNTAN'));
 
 -- 5.4 Item Master Policies
 CREATE POLICY "Item master viewable by all authenticated users"
     ON public.item_master FOR SELECT TO authenticated
     USING (true);
 
-CREATE POLICY "Item master manageable by manager or super admin"
+CREATE POLICY "Item master manageable by superadmin, ka sppg, or admin"
     ON public.item_master FOR INSERT TO authenticated
-    WITH CHECK (public.get_user_role() IN ('SUPER_ADMIN', 'MANAGER', 'WAREHOUSE_MANAGER'));
+    WITH CHECK (public.get_user_role() IN ('SUPERADMIN', 'KA_SPPG', 'ADMIN'));
 
-CREATE POLICY "Item master editable by manager or super admin"
+CREATE POLICY "Item master editable by superadmin, ka sppg, or admin"
     ON public.item_master FOR UPDATE TO authenticated
-    USING (public.get_user_role() IN ('SUPER_ADMIN', 'MANAGER', 'WAREHOUSE_MANAGER'));
+    USING (public.get_user_role() IN ('SUPERADMIN', 'KA_SPPG', 'ADMIN'));
 
 -- 5.5 Receiving Documents & Lines Policies
 CREATE POLICY "Receiving docs viewable by all authenticated users"
     ON public.receiving_documents FOR SELECT TO authenticated
     USING (true);
 
-CREATE POLICY "Receiving docs creatable by warehouse crew and QC"
+CREATE POLICY "Receiving docs creatable by aslap, admin, akuntan, and superadmin"
     ON public.receiving_documents FOR INSERT TO authenticated
-    WITH CHECK (public.get_user_role() IN ('SUPER_ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'QC'));
+    WITH CHECK (public.get_user_role() IN ('SUPERADMIN', 'ADMIN', 'ASLAP', 'AKUNTAN'));
 
-CREATE POLICY "Receiving docs updatable by warehouse manager or QC"
+CREATE POLICY "Receiving docs updatable by superadmin, ka sppg, admin, or akuntan"
     ON public.receiving_documents FOR UPDATE TO authenticated
-    USING (public.get_user_role() IN ('SUPER_ADMIN', 'WAREHOUSE_MANAGER', 'QC'));
+    USING (public.get_user_role() IN ('SUPERADMIN', 'KA_SPPG', 'ADMIN', 'AKUNTAN'));
 
 CREATE POLICY "Receiving lines viewable by all authenticated users"
     ON public.receiving_lines FOR SELECT TO authenticated
@@ -379,29 +379,29 @@ CREATE POLICY "Receiving lines viewable by all authenticated users"
 
 CREATE POLICY "Receiving lines manageable with document"
     ON public.receiving_lines FOR ALL TO authenticated
-    USING (public.get_user_role() IN ('SUPER_ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF', 'QC'));
+    USING (public.get_user_role() IN ('SUPERADMIN', 'ADMIN', 'ASLAP', 'AKUNTAN'));
 
 -- 5.6 Inventory Transactions (Ledger) Policies
 CREATE POLICY "Ledger viewable by all authenticated users"
     ON public.inventory_transactions FOR SELECT TO authenticated
     USING (true);
 
-CREATE POLICY "Ledger insertable by warehouse operations"
+CREATE POLICY "Ledger insertable by operations (aslap, admin, superadmin)"
     ON public.inventory_transactions FOR INSERT TO authenticated
-    WITH CHECK (public.get_user_role() IN ('SUPER_ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'));
+    WITH CHECK (public.get_user_role() IN ('SUPERADMIN', 'ADMIN', 'ASLAP'));
 
 -- 5.7 Stock Opname Sessions & Items Policies
 CREATE POLICY "Opname sessions viewable by all authenticated users"
     ON public.stock_opname_sessions FOR SELECT TO authenticated
     USING (true);
 
-CREATE POLICY "Opname sessions creatable by warehouse staff or manager"
+CREATE POLICY "Opname sessions creatable by all operational roles"
     ON public.stock_opname_sessions FOR INSERT TO authenticated
-    WITH CHECK (public.get_user_role() IN ('SUPER_ADMIN', 'MANAGER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'));
+    WITH CHECK (public.get_user_role() IN ('SUPERADMIN', 'KA_SPPG', 'ADMIN', 'ASLAP', 'AKUNTAN'));
 
-CREATE POLICY "Opname sessions approval by manager or super admin"
+CREATE POLICY "Opname sessions approval by ka sppg, akuntan, or superadmin"
     ON public.stock_opname_sessions FOR UPDATE TO authenticated
-    USING (public.get_user_role() IN ('SUPER_ADMIN', 'MANAGER', 'WAREHOUSE_MANAGER'));
+    USING (public.get_user_role() IN ('SUPERADMIN', 'KA_SPPG', 'AKUNTAN'));
 
 CREATE POLICY "Opname items viewable by all authenticated users"
     ON public.stock_opname_items FOR SELECT TO authenticated
@@ -409,30 +409,30 @@ CREATE POLICY "Opname items viewable by all authenticated users"
 
 CREATE POLICY "Opname items manageable by opname crew"
     ON public.stock_opname_items FOR ALL TO authenticated
-    USING (public.get_user_role() IN ('SUPER_ADMIN', 'MANAGER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'));
+    USING (public.get_user_role() IN ('SUPERADMIN', 'KA_SPPG', 'ADMIN', 'ASLAP', 'AKUNTAN'));
 
 -- 5.8 Equipment Items Policies
 CREATE POLICY "Equipment viewable by all authenticated users"
     ON public.equipment_items FOR SELECT TO authenticated
     USING (true);
 
-CREATE POLICY "Equipment manageable by warehouse crew and manager"
+CREATE POLICY "Equipment manageable by aslap, admin, and superadmin"
     ON public.equipment_items FOR ALL TO authenticated
-    USING (public.get_user_role() IN ('SUPER_ADMIN', 'MANAGER', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'));
+    USING (public.get_user_role() IN ('SUPERADMIN', 'ADMIN', 'ASLAP'));
 
 -- 5.9 Daily Flow Logs Policies
 CREATE POLICY "Daily flow viewable by all authenticated users"
     ON public.daily_flow_logs FOR SELECT TO authenticated
     USING (true);
 
-CREATE POLICY "Daily flow manageable by warehouse crew and manager"
+CREATE POLICY "Daily flow manageable by aslap, admin, and superadmin"
     ON public.daily_flow_logs FOR ALL TO authenticated
-    USING (public.get_user_role() IN ('SUPER_ADMIN', 'WAREHOUSE_MANAGER', 'WAREHOUSE_STAFF'));
+    USING (public.get_user_role() IN ('SUPERADMIN', 'ADMIN', 'ASLAP'));
 
 -- 5.10 Audit Logs (Immutable) Policies
-CREATE POLICY "Audit logs viewable by managers and super admin"
+CREATE POLICY "Audit logs viewable by leadership & audit (superadmin, ka sppg, admin, akuntan)"
     ON public.audit_logs FOR SELECT TO authenticated
-    USING (public.get_user_role() IN ('SUPER_ADMIN', 'MANAGER', 'WAREHOUSE_MANAGER'));
+    USING (public.get_user_role() IN ('SUPERADMIN', 'KA_SPPG', 'ADMIN', 'AKUNTAN'));
 
 CREATE POLICY "Audit logs insertable by system/authenticated users"
     ON public.audit_logs FOR INSERT TO authenticated
@@ -450,3 +450,86 @@ INSERT INTO public.warehouse_locations (id, name, description) VALUES
     ('LOC-KIT-01', 'Dapur Pengolahan SPPG', 'Area persiapan dan memasak porsi gizi harian'),
     ('LOC-OPS-01', 'Gudang Non-Food & Logistik', 'Penyimpanan kemasan food grade, sabun, APD & peralatan')
 ON CONFLICT (id) DO NOTHING;
+
+-- ==============================================================================
+-- 7. PENGELUARAN NON-FOOD, ORDER MENU GIZI, & REKAP LIMBAH (SPPG CORE WORKFLOWS)
+-- ==============================================================================
+
+-- 7.1 Pengeluaran Non-Food (Peralatan, ATK, Pembersih, APD)
+CREATE TABLE IF NOT EXISTS public.nonfood_expenses (
+    id TEXT PRIMARY KEY, -- e.g. NFE-2026-001
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    category TEXT NOT NULL, -- Peralatan Dapur, ATK & Dokumentasi, Bahan Pembersih & Sanitasi, etc.
+    item_name TEXT NOT NULL,
+    quantity NUMERIC(10, 2) NOT NULL DEFAULT 1,
+    unit TEXT NOT NULL DEFAULT 'Pcs',
+    unit_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    total_cost NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    department TEXT NOT NULL DEFAULT 'Dapur Pengolahan Utama',
+    recipient TEXT NOT NULL,
+    recorded_by TEXT NOT NULL,
+    receipt_ref TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 7.2 Rekap Order Menu Gizi (Perencanaan Menu & Target Porsi SPPG)
+CREATE TABLE IF NOT EXISTS public.menu_orders (
+    id TEXT PRIMARY KEY, -- e.g. ORD-2026-001
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    meal_session TEXT NOT NULL, -- Pagi, Siang, Snack
+    menu_title TEXT NOT NULL,
+    menu_description TEXT,
+    target_portions INTEGER NOT NULL DEFAULT 250,
+    status TEXT NOT NULL DEFAULT 'PLANNED', -- PLANNED, PREPPING, COOKING, DISTRIBUTED, COMPLETED, CANCELLED
+    key_ingredients JSONB NOT NULL DEFAULT '[]'::jsonb,
+    chef_in_charge TEXT NOT NULL,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 7.3 Rekap Limbah Tercatat (Log Limbah Dapur, Bahan Rusak, Sisa Pangan, Non-Organik)
+CREATE TABLE IF NOT EXISTS public.waste_logs (
+    id TEXT PRIMARY KEY, -- e.g. WST-2026-001
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    waste_category TEXT NOT NULL, -- Limbah Olahan Dapur, Bahan Rusak / Kadaluarsa, etc.
+    item_name TEXT NOT NULL,
+    quantity NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    unit TEXT NOT NULL DEFAULT 'Kg',
+    source_area TEXT NOT NULL DEFAULT 'Ruang Preparasi Sayuran',
+    reason TEXT NOT NULL,
+    disposal_method TEXT NOT NULL DEFAULT 'Kompos Organik', -- Kompos Organik, Pakan Maggot / Ternak, Bank Sampah, TPS
+    recorded_by TEXT NOT NULL,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE public.nonfood_expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.menu_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.waste_logs ENABLE ROW LEVEL SECURITY;
+
+-- Non-food expenses RLS policies
+CREATE POLICY "Nonfood expenses viewable by all authenticated users"
+    ON public.nonfood_expenses FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "Nonfood expenses manageable by superadmin, ka sppg, admin, and akuntan"
+    ON public.nonfood_expenses FOR ALL TO authenticated
+    USING (public.get_user_role() IN ('SUPERADMIN', 'KA_SPPG', 'ADMIN', 'AKUNTAN'));
+
+-- Menu orders RLS policies
+CREATE POLICY "Menu orders viewable by all authenticated users"
+    ON public.menu_orders FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "Menu orders manageable by operational roles"
+    ON public.menu_orders FOR ALL TO authenticated
+    USING (public.get_user_role() IN ('SUPERADMIN', 'KA_SPPG', 'ADMIN', 'ASLAP'));
+
+-- Waste logs RLS policies
+CREATE POLICY "Waste logs viewable by all authenticated users"
+    ON public.waste_logs FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "Waste logs manageable by operational crew"
+    ON public.waste_logs FOR ALL TO authenticated
+    USING (public.get_user_role() IN ('SUPERADMIN', 'KA_SPPG', 'ADMIN', 'ASLAP'));
+
