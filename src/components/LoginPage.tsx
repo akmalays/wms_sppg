@@ -113,7 +113,7 @@ export const LoginPage: React.FC = () => {
           Sistem Manajemen Gudang & Logistik Pangan
         </h1>
         <p className="mt-1 text-xs text-slate-600 font-medium">
-          Satuan Pelayanan Pemenuhan Gizi (SPPG) • Operasional Lapangan Terpadu
+          Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang) • Operasional Lapangan Terpadu
         </p>
       </div>
 
@@ -282,8 +282,8 @@ export const LoginPage: React.FC = () => {
             </div>
 
             <div className="mt-4 pt-3 border-t border-slate-200/80 text-[11px] text-slate-500 flex items-center justify-between">
-              <span>Satuan Pelayanan Pemenuhan Gizi</span>
-              <span className="text-slate-600 font-medium">Unit Jeru Tumpang 01</span>
+              <span>SPPG Jeru Tumpang</span>
+              <span className="text-slate-600 font-medium">Satuan Pelayanan Pemenuhan Gizi</span>
             </div>
           </div>
         </div>

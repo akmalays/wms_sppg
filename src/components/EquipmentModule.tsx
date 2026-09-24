@@ -159,7 +159,7 @@ export const EquipmentModule: React.FC<EquipmentModuleProps> = ({ onRefreshData 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
           <span className="text-[11px] font-semibold text-slate-500">Total Alat Tercatat</span>
           <div className="text-2xl font-black text-slate-900 mt-1">{totalItems}</div>
-          <span className="text-[10px] text-slate-400">Unit terdaftar di SPPG</span>
+          <span className="text-[10px] text-slate-400">Unit terdaftar di SPPG Jeru Tumpang</span>
         </div>
 
         <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-200 shadow-2xs">
@@ -411,7 +411,7 @@ export const EquipmentModule: React.FC<EquipmentModuleProps> = ({ onRefreshData 
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 border border-slate-200 animate-in fade-in zoom-in-95 duration-150 text-center">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <span className="text-xs font-bold text-slate-800">Pratinjau Label Aset SPPG</span>
+              <span className="text-xs font-bold text-slate-800">Pratinjau Label Aset SPPG Jeru Tumpang</span>
               <button onClick={() => setLabelItem(null)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-4 h-4" />
               </button>
@@ -420,7 +420,7 @@ export const EquipmentModule: React.FC<EquipmentModuleProps> = ({ onRefreshData 
             <div className="my-5 p-4 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 space-y-3">
               <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                 <div className="text-left">
-                  <div className="text-[11px] font-bold text-emerald-800">SPPG Gudang & Dapur</div>
+                  <div className="text-[11px] font-bold text-emerald-800">SPPG Jeru Tumpang Gudang & Dapur</div>
                   <div className="text-xs font-black text-slate-800">{labelItem.id}</div>
                 </div>
                 <div className="w-8 h-8 rounded bg-slate-900 text-white flex items-center justify-center">

@@ -396,13 +396,72 @@ export interface DailyTodoItem {
   category: TodoCategory;
   priority: TodoPriority;
   session?: 'Pagi' | 'Siang' | 'Sore' | 'Harian';
+  targetTime?: string; // Jam target pelaksanaan, e.g. '06:00', '07:30', '13:00'
   isCompleted: boolean;
   completedAt?: string;
   completedBy?: string;
   assignedRole?: UserRole | 'ALL';
+  assignedUserId?: string; // ID staff spesifik yang ditugaskan
+  assignedUserName?: string; // Nama staff spesifik yang ditugaskan
   notes?: string;
   createdAt: string;
 }
+
+export type EmployeeDepartment =
+  | 'Dapur & Masak'
+  | 'Gudang & Logistik'
+  | 'Distribusi & Transport'
+  | 'Sanitasi & Kebersihan'
+  | 'Manajemen & Administrasi'
+  | 'Gizi & Mutu';
+
+export type EmploymentType = 'Tetap' | 'Kontrak' | 'Relawan / Mitra Harian';
+
+export type EmployeeShift =
+  | 'Pagi (05:00 - 13:00)'
+  | 'Siang (10:00 - 18:00)'
+  | 'Full Day (05:00 - 17:00)';
+
+export type AttendanceStatus = 'HADIR' | 'TERLAMBAT' | 'IZIN' | 'SAKIT' | 'ALPA';
+
+export interface Employee {
+  id: string; // e.g. EMP-001
+  nik: string;
+  nip: string; // e.g. SPPG-JT-001
+  name: string;
+  gender: 'L' | 'P';
+  phone: string;
+  department: EmployeeDepartment;
+  position: string;
+  employmentType: EmploymentType;
+  shift: EmployeeShift;
+  joinDate: string; // YYYY-MM-DD
+  status: 'AKTIF' | 'CUTI' | 'NONAKTIF';
+  address: string;
+  emergencyContact: string;
+  avatarUrl?: string;
+  notes?: string;
+}
+
+export interface EmployeeAttendance {
+  id: string; // e.g. ATT-20260923-001
+  date: string; // YYYY-MM-DD
+  employeeId: string;
+  employeeName: string;
+  department: EmployeeDepartment;
+  position: string;
+  shift: EmployeeShift;
+  checkInTime: string; // e.g. '05:02' or ''
+  checkOutTime?: string; // e.g. '13:05' or ''
+  status: AttendanceStatus;
+  lateMinutes?: number;
+  photoUrl?: string;
+  notes?: string;
+  recordedBy: string;
+  verified: boolean;
+  createdAt: string;
+}
+
 
 
 

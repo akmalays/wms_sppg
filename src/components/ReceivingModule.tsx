@@ -6,6 +6,7 @@ import { Plus, Trash2, CheckCircle, Search, FileText, AlertCircle, Eye, ArrowLef
 import { SignaturePad } from './SignaturePad';
 import { ReceivingDetailModal } from './ReceivingDetailModal';
 import { PhotoUploadCompressor } from './PhotoUploadCompressor';
+import { SppgLogo } from './SppgLogo';
 
 interface ReceivingModuleProps {
   onRefreshData?: () => void;
@@ -222,21 +223,26 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       )}
 
       {/* Header bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight">Penerimaan Barang (Goods Receipt)</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Digitalisasi form penerimaan gudang SPPG. Mendukung multi-item per dokumen dan langsung memperbarui stok & buku besar.
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <SppgLogo size="md" variant="color" />
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+              Input Barang Datang (Penerimaan dari Supplier)
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Pencatatan barang yang dikirim oleh supplier ke gudang SPPG Jeru Tumpang. Mendukung multi-item, timbangan, surat jalan, dan dokumentasi foto otomatis WebP.
+            </p>
+          </div>
         </div>
 
         {!isCreating && can('RECEIVE_GOODS') && (
           <button
             onClick={handleOpenCreate}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            Catat Penerimaan Baru
+            Input Barang Datang Baru
           </button>
         )}
       </div>
@@ -254,8 +260,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                 <ArrowLeft className="w-4 h-4" />
               </button>
               <div>
-                <h3 className="text-sm font-bold text-slate-800">Formulir Penerimaan Barang Masuk</h3>
-                <p className="text-[11px] text-slate-500">Isi header, masukkan baris item (multi-item), lalu lakukan konfirmasi.</p>
+                <h3 className="text-sm font-bold text-slate-800">Formulir Input Barang Datang dari Supplier</h3>
+                <p className="text-[11px] text-slate-500">Pilih supplier yang datang, isi nomor surat jalan, lampirkan item barang & foto bukti fisik.</p>
               </div>
             </div>
             <span className="text-[11px] font-mono bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-semibold">

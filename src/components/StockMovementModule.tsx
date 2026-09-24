@@ -19,7 +19,7 @@ export const StockMovementModule: React.FC = () => {
         alert(`Dokumen referensi ${refDoc} tidak ditemukan.`);
       }
     } else {
-      alert(`Dokumen referensi: ${refDoc}\n(Transaksi tercatat di buku besar SPPG).`);
+      alert(`Dokumen referensi: ${refDoc}\n(Transaksi tercatat di buku besar SPPG Jeru Tumpang).`);
     }
   };
 

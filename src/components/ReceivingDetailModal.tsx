@@ -31,7 +31,7 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
                   {document.status}
                 </span>
               </div>
-              <p className="text-xs text-slate-500">Bukti Fisik Penerimaan Barang SPPG</p>
+              <p className="text-xs text-slate-500">Bukti Fisik Penerimaan Barang SPPG Jeru Tumpang</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -199,7 +199,7 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
 
             <div className="border border-slate-200 rounded-lg p-3 text-center bg-slate-50/40">
               <span className="text-xs font-medium text-slate-600 block mb-1">
-                Tanda Tangan Penerima / SPPG
+                Tanda Tangan Penerima / SPPG Jeru Tumpang
               </span>
               <div className="h-20 flex items-center justify-center">
                 {document.receiverSignature?.startsWith('data:image') ? (

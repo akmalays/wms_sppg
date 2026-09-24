@@ -103,7 +103,7 @@ export const SuppliersModule: React.FC<SuppliersModuleProps> = ({ onRefreshData 
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-bold text-slate-900 tracking-tight">Master Data Supplier / Pemasok</h2>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-              Mitra Pangan SPPG
+              Mitra Pangan SPPG Jeru Tumpang
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">

@@ -14,9 +14,11 @@ import {
   TrendingDown,
   TrendingUp,
   Clock,
-  Plus
+  Plus,
+  Users
 } from 'lucide-react';
 import { ReceivingDetailModal } from './ReceivingDetailModal';
+import { DailyChecklistWidget } from './DailyChecklistWidget';
 
 interface DashboardViewProps {
   onNavigate: (tab: string) => void;
@@ -79,7 +81,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
             </span>
           </div>
           <h2 className="text-xl font-bold mt-1.5 text-white">
-            Pusat Logistik Gudang SPPG (Satuan Pelayanan Pemenuhan Gizi)
+            Pusat Logistik Gudang SPPG Jeru Tumpang (Satuan Pelayanan Pemenuhan Gizi)
           </h2>
           <p className="text-xs text-slate-300 mt-1 max-w-xl">
             Selamat bertugas, <span className="font-semibold text-white">{currentUser.name}</span> ({currentUser.role}).
@@ -105,11 +107,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
           </button>
 
           <button
-            onClick={() => onNavigate('nonfood_expenses')}
+            onClick={() => onNavigate('receiving')}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold border border-slate-700 shadow-2xs transition-colors cursor-pointer"
           >
-            <Package className="w-3.5 h-3.5" />
-            Pengeluaran Non-Food
+            <Truck className="w-3.5 h-3.5 text-emerald-400" />
+            Input Barang Datang
+          </button>
+
+          <button
+            onClick={() => onNavigate('employees')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold border border-slate-700 shadow-2xs transition-colors cursor-pointer"
+          >
+            <Users className="w-3.5 h-3.5 text-sky-400" />
+            Presensi Karyawan
           </button>
         </div>
       </div>
@@ -207,6 +217,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
           </div>
         </div>
       )}
+
+      {/* CHECKLIST TUGAS & JOBDESK HARIAN SPPG (HOURLY REMINDER & CUSTOM STAFF) */}
+      <DailyChecklistWidget
+        onNavigateToProfileTodos={() => onNavigate('profile')}
+        onRefreshData={onRefreshData}
+      />
 
       {/* TODAY'S FLOW BALANCE & OPERATIONAL METRICS */}
       <div>

@@ -460,7 +460,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData 
             Master Barang & Posisi Stok
           </h1>
           <p className="text-xs text-slate-500 mt-0.5 font-medium">
-            Katalog master persediaan SPPG terbagi dalam 3 kelompok: Bahan Kering, Bahan Basah, dan Bahan Peralatan.
+            Katalog master persediaan SPPG Jeru Tumpang terbagi dalam 3 kelompok: Bahan Kering, Bahan Basah, dan Bahan Peralatan.
           </p>
         </div>
 

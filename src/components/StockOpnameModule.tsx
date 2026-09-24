@@ -21,7 +21,7 @@ export const StockOpnameModule: React.FC<StockOpnameModuleProps> = ({ onRefreshD
   // New Opname Form
   const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10));
   const [formLocation, setFormLocation] = useState('Gudang Kering - Area Sembako');
-  const [formNotes, setFormNotes] = useState('Stock opname berkala SPPG');
+  const [formNotes, setFormNotes] = useState('Stock opname berkala SPPG Jeru Tumpang');
   const [formSelectedCategory, setFormSelectedCategory] = useState<string>('ALL');
 
   // Working count items
@@ -37,7 +37,7 @@ export const StockOpnameModule: React.FC<StockOpnameModuleProps> = ({ onRefreshD
   const handleOpenCreate = () => {
     setFormDate(new Date().toISOString().slice(0, 10));
     setFormLocation('Gudang Kering - Area Sembako');
-    setFormNotes('Stock opname berkala SPPG');
+    setFormNotes('Stock opname berkala SPPG Jeru Tumpang');
     setFormSelectedCategory('ALL');
     setErrorMessage('');
     setSuccessMessage('');

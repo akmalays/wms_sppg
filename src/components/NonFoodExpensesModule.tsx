@@ -272,7 +272,7 @@ export const NonFoodExpensesModule: React.FC = () => {
             Rekap Pengeluaran Non-Food
           </h2>
           <p className="text-xs text-slate-500 mt-0.5 font-medium">
-            Pencatatan biaya peralatan dapur, ATK, pembersih sanitasi, APD, dan operasional SPPG.
+            Pencatatan biaya peralatan dapur, ATK, pembersih sanitasi, APD, dan operasional SPPG Jeru Tumpang.
           </p>
         </div>
 

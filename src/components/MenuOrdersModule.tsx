@@ -40,6 +40,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { exportToExcel } from '../lib/excelExport';
+import { SppgLogo } from './SppgLogo';
 
 type PeriodType = 'WEEKLY' | 'MONTHLY' | 'DAILY' | 'ALL';
 type SubTabType = 'MENU_ORDERS' | 'BENEFICIARIES' | 'MONTHLY_USAGE';
@@ -174,7 +175,7 @@ export const MenuOrdersModule: React.FC = () => {
   const [formDescription, setFormDescription] = useState('');
   const [formDietB3, setFormDietB3] = useState('');
   const [formPortions, setFormPortions] = useState<number>(3044);
-  const [formChef, setFormChef] = useState('Chef Joko Santoso & Tim Dapur SPPG');
+  const [formChef, setFormChef] = useState('Chef Joko Santoso & Tim Dapur SPPG Jeru Tumpang');
   const [formNotes, setFormNotes] = useState('');
 
   const refreshOrders = () => {
@@ -597,14 +598,17 @@ export const MenuOrdersModule: React.FC = () => {
       )}
 
       {/* Header bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-200">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            Rekap Order Menu & Penerima Manfaat Gizi
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5 font-medium">
-            Monitoring jadwal menu, bahan yang diorder via PO, alokasi sekolah penerima manfaat, dan estimasi biaya bulanan.
-          </p>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <SppgLogo size="md" variant="color" />
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+              Rekap Order Menu & Penerima Manfaat Gizi
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5 font-medium">
+              Monitoring jadwal menu, bahan yang diorder via PO, alokasi sekolah penerima manfaat, dan estimasi biaya bulanan.
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -1133,7 +1137,7 @@ export const MenuOrdersModule: React.FC = () => {
                 {beneficiaryCategoryStats.totalAllPortions.toLocaleString('id-ID')}{' '}
                 <span className="text-xs font-normal text-slate-500">anak/hari</span>
               </div>
-              <div className="text-[10px] text-slate-400 mt-0.5">Program Makan Bergizi Gratis SPPG</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">Program Makan Bergizi Gratis SPPG Jeru Tumpang</div>
             </div>
 
             <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
@@ -1585,7 +1589,7 @@ export const MenuOrdersModule: React.FC = () => {
               <div>
                 <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <UtensilsCrossed className="w-5 h-5 text-emerald-600" />
-                  Jadwalkan Menu Baru SPPG
+                  Jadwalkan Menu Baru SPPG Jeru Tumpang
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Tambahkan jadwal olahan menu dan alokasi porsi sasaran penerima manfaat.

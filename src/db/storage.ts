@@ -19,6 +19,8 @@ import {
   WasteLog,
   DailyTodoItem,
   SchoolBeneficiaryAllocation,
+  Employee,
+  EmployeeAttendance,
 } from '../types/warehouse';
 import {
   REAL_NONFOOD_EXPENSES,
@@ -26,6 +28,8 @@ import {
   REAL_EQUIPMENT_ITEMS,
   REAL_MENU_ORDERS,
   DEFAULT_SCHOOL_BENEFICIARIES,
+  REAL_EMPLOYEES,
+  REAL_ATTENDANCE_LOGS,
 } from './realSeedData';
 
 const STORAGE_KEYS = {
@@ -40,6 +44,8 @@ const STORAGE_KEYS = {
   MENU_ORDERS: 'sppg_menu_orders_v1',
   WASTE_LOGS: 'sppg_waste_logs_v1',
   TODOS: 'sppg_todos_v1',
+  EMPLOYEES: 'sppg_employees_v1',
+  ATTENDANCE: 'sppg_attendance_v1',
 };
 
 // Initial realistic users for SPPG role-based testing
@@ -488,10 +494,13 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
     category: 'Penerimaan & QC',
     priority: 'Tinggi',
     session: 'Pagi',
+    targetTime: '06:00',
     isCompleted: true,
     completedAt: '06:15',
-    completedBy: 'Ahmad Fauzi (ASLAP)',
+    completedBy: 'Andi Pratama (ASLAP)',
     assignedRole: 'ASLAP',
+    assignedUserId: 'USR-004',
+    assignedUserName: 'Andi Pratama',
     notes: 'Suhu tercatat 3.2°C, chiller berfungsi optimal tanpa bunga es.',
     createdAt: new Date().toISOString(),
   },
@@ -502,10 +511,13 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
     category: 'Penerimaan & QC',
     priority: 'Tinggi',
     session: 'Pagi',
+    targetTime: '06:30',
     isCompleted: true,
     completedAt: '06:45',
-    completedBy: 'Ahmad Fauzi (ASLAP)',
+    completedBy: 'Andi Pratama (ASLAP)',
     assignedRole: 'ASLAP',
+    assignedUserId: 'USR-004',
+    assignedUserName: 'Andi Pratama',
     notes: 'Kondisi segar, aroma normal, suhu daging 4°C saat tiba.',
     createdAt: new Date().toISOString(),
   },
@@ -516,10 +528,13 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
     category: 'Persiapan Dapur',
     priority: 'Sedang',
     session: 'Pagi',
+    targetTime: '07:00',
     isCompleted: true,
     completedAt: '07:10',
     completedBy: 'Hendra Wijaya (ADMIN)',
     assignedRole: 'ADMIN',
+    assignedUserId: 'USR-003',
+    assignedUserName: 'Hendra Wijaya',
     notes: 'Disortir bersih, daun layu dipisahkan masuk limbah organik.',
     createdAt: new Date().toISOString(),
   },
@@ -530,10 +545,13 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
     category: 'Persiapan Dapur',
     priority: 'Tinggi',
     session: 'Pagi',
+    targetTime: '07:30',
     isCompleted: true,
     completedAt: '07:30',
     completedBy: 'Budi Santoso (SUPERADMIN)',
     assignedRole: 'ADMIN',
+    assignedUserId: 'USR-001',
+    assignedUserName: 'Budi Santoso',
     notes: 'Target 3.044 porsi makan siang bergizi anak sekolah.',
     createdAt: new Date().toISOString(),
   },
@@ -544,8 +562,11 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
     category: 'Administrasi & Stok',
     priority: 'Sedang',
     session: 'Siang',
+    targetTime: '10:30',
     isCompleted: false,
     assignedRole: 'ADMIN',
+    assignedUserId: 'USR-003',
+    assignedUserName: 'Hendra Wijaya',
     notes: 'Pastikan safety stock mencukupi jadwal menu hingga akhir pekan.',
     createdAt: new Date().toISOString(),
   },
@@ -556,8 +577,11 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
     category: 'Sanitasi & Kebersihan',
     priority: 'Sedang',
     session: 'Siang',
+    targetTime: '13:00',
     isCompleted: false,
     assignedRole: 'ASLAP',
+    assignedUserId: 'USR-004',
+    assignedUserName: 'Andi Pratama',
     notes: 'Timbang limbah kupasan sayur & sisa makanan sebelum dialihkan ke pakan ternak.',
     createdAt: new Date().toISOString(),
   },
@@ -568,8 +592,11 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
     category: 'Sanitasi & Kebersihan',
     priority: 'Tinggi',
     session: 'Sore',
+    targetTime: '15:30',
     isCompleted: false,
     assignedRole: 'ASLAP',
+    assignedUserId: 'USR-004',
+    assignedUserName: 'Andi Pratama',
     notes: 'Pembersihan meja stainless, wajan komersial, dan saluran drainase dapur.',
     createdAt: new Date().toISOString(),
   },
@@ -580,8 +607,11 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
     category: 'Administrasi & Stok',
     priority: 'Tinggi',
     session: 'Sore',
+    targetTime: '16:30',
     isCompleted: false,
     assignedRole: 'AKUNTAN',
+    assignedUserId: 'USR-005',
+    assignedUserName: 'Dewi Lestari',
     notes: 'Cocokkan bukti fisik pengeluaran bahan masak dengan ledger mutasi.',
     createdAt: new Date().toISOString(),
   },
@@ -1039,6 +1069,8 @@ class WarehouseDatabase {
   private menuOrders: MenuOrder[];
   private wasteLogs: WasteLog[];
   private todos: DailyTodoItem[];
+  private employees: Employee[];
+  private attendanceLogs: EmployeeAttendance[];
 
   constructor() {
     this.items = getStored<ItemMaster[]>(STORAGE_KEYS.ITEMS, INITIAL_ITEMS);
@@ -1065,6 +1097,20 @@ class WarehouseDatabase {
     }
     this.wasteLogs = getStored<WasteLog[]>(STORAGE_KEYS.WASTE_LOGS, INITIAL_WASTE_LOGS);
     this.todos = getStored<DailyTodoItem[]>(STORAGE_KEYS.TODOS, INITIAL_TODOS);
+    if (this.todos.some(t => !t.targetTime)) {
+      this.todos = this.todos.map(t => {
+        const initMatch = INITIAL_TODOS.find(it => it.id === t.id);
+        return {
+          ...t,
+          targetTime: t.targetTime || initMatch?.targetTime || (t.session === 'Pagi' ? '07:00' : t.session === 'Siang' ? '11:00' : t.session === 'Sore' ? '15:00' : '08:00'),
+          assignedUserId: t.assignedUserId || initMatch?.assignedUserId,
+          assignedUserName: t.assignedUserName || initMatch?.assignedUserName,
+        };
+      });
+      setStored(STORAGE_KEYS.TODOS, this.todos);
+    }
+    this.employees = getStored<Employee[]>(STORAGE_KEYS.EMPLOYEES, REAL_EMPLOYEES);
+    this.attendanceLogs = getStored<EmployeeAttendance[]>(STORAGE_KEYS.ATTENDANCE, REAL_ATTENDANCE_LOGS);
   }
 
   public getSchoolBeneficiaries(): SchoolBeneficiaryAllocation[] {
@@ -1800,6 +1846,54 @@ class WarehouseDatabase {
     return newLog;
   }
 
+  public recordWasteBatch(
+    logs: Omit<WasteLog, 'id' | 'createdAt'>[],
+    user: User
+  ): WasteLog[] {
+    const timestamp = Date.now();
+    const createdLogs: WasteLog[] = [];
+
+    logs.forEach((log, index) => {
+      const newId = `WST-${timestamp.toString().slice(-6)}-${index + 1}`;
+      const newLog: WasteLog = {
+        ...log,
+        id: newId,
+        createdAt: new Date().toISOString(),
+      };
+      createdLogs.push(newLog);
+      this.wasteLogs.unshift(newLog);
+    });
+
+    setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
+
+    this.logAudit(
+      user,
+      'WASTE_BATCH_RECORDED',
+      'OPERATIONAL',
+      `BATCH-${timestamp}`,
+      `Pencatatan Batch Limbah: ${createdLogs.length} butir limbah dicatat sekaligus.`
+    );
+
+    return createdLogs;
+  }
+
+  public deleteWasteLog(id: string, user: User): boolean {
+    const idx = this.wasteLogs.findIndex(w => w.id === id);
+    if (idx < 0) return false;
+    const removed = this.wasteLogs[idx];
+    this.wasteLogs.splice(idx, 1);
+    setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
+
+    this.logAudit(
+      user,
+      'WASTE_DELETED',
+      'OPERATIONAL',
+      id,
+      `Menghapus catatan limbah: ${removed.itemName || removed.wasteCategory} (${removed.quantity} ${removed.unit})`
+    );
+    return true;
+  }
+
   // --- DAILY TODOS ---
   public getDailyTodos(date?: string): DailyTodoItem[] {
     const targetDate = date || new Date().toISOString().split('T')[0];
@@ -1903,6 +1997,115 @@ class WarehouseDatabase {
     return seeded;
   }
 
+  // --- EMPLOYEES & ATTENDANCE OPERATIONS ---
+  public getEmployees(): Employee[] {
+    return [...this.employees];
+  }
+
+  public getEmployeeById(id: string): Employee | undefined {
+    return this.employees.find(e => e.id === id);
+  }
+
+  public saveEmployee(empData: Omit<Employee, 'id'> | Employee, user: User): Employee {
+    const existingIndex = 'id' in empData && empData.id ? this.employees.findIndex(e => e.id === empData.id) : -1;
+    let savedEmployee: Employee;
+
+    if (existingIndex >= 0 && 'id' in empData) {
+      savedEmployee = { ...this.employees[existingIndex], ...empData };
+      this.employees[existingIndex] = savedEmployee;
+      this.logAudit(user, 'UPDATE', 'STAFF', savedEmployee.id, `Memperbarui data karyawan: ${savedEmployee.name} (${savedEmployee.nip})`);
+    } else {
+      const nextId = `EMP-${String(this.employees.length + 1).padStart(3, '0')}`;
+      savedEmployee = {
+        ...empData,
+        id: ('id' in empData && empData.id) ? empData.id : nextId,
+      };
+      this.employees.push(savedEmployee);
+      this.logAudit(user, 'CREATE', 'STAFF', savedEmployee.id, `Mendaftarkan karyawan baru: ${savedEmployee.name} (${savedEmployee.nip})`);
+    }
+
+    setStored(STORAGE_KEYS.EMPLOYEES, this.employees);
+    return savedEmployee;
+  }
+
+  public updateEmployee(id: string, updates: Partial<Employee>, user: User): Employee {
+    const index = this.employees.findIndex(e => e.id === id);
+    if (index === -1) throw new Error(`Karyawan dengan ID ${id} tidak ditemukan.`);
+
+    this.employees[index] = { ...this.employees[index], ...updates };
+    setStored(STORAGE_KEYS.EMPLOYEES, this.employees);
+    this.logAudit(user, 'UPDATE', 'STAFF', id, `Memperbarui profil staf: ${this.employees[index].name}`);
+    return this.employees[index];
+  }
+
+  public deleteEmployee(id: string, user: User): void {
+    const emp = this.employees.find(e => e.id === id);
+    this.employees = this.employees.filter(e => e.id !== id);
+    setStored(STORAGE_KEYS.EMPLOYEES, this.employees);
+    if (emp) {
+      this.logAudit(user, 'DELETE', 'STAFF', id, `Menghapus data staf: ${emp.name} (${emp.nip})`);
+    }
+  }
+
+  public getAttendanceLogs(dateFilter?: string): EmployeeAttendance[] {
+    if (dateFilter) {
+      return this.attendanceLogs.filter(a => a.date === dateFilter);
+    }
+    return [...this.attendanceLogs];
+  }
+
+  public recordAttendance(
+    attData: Omit<EmployeeAttendance, 'id' | 'createdAt'>,
+    user: User
+  ): EmployeeAttendance {
+    const existingIndex = this.attendanceLogs.findIndex(
+      a => a.employeeId === attData.employeeId && a.date === attData.date
+    );
+
+    let savedRecord: EmployeeAttendance;
+    if (existingIndex >= 0) {
+      savedRecord = {
+        ...this.attendanceLogs[existingIndex],
+        ...attData,
+      };
+      this.attendanceLogs[existingIndex] = savedRecord;
+      this.logAudit(user, 'UPDATE', 'ATTENDANCE', savedRecord.id, `Update absensi: ${savedRecord.employeeName} (${savedRecord.status}) tgl ${savedRecord.date}`);
+    } else {
+      const newId = `ATT-${attData.date.replace(/-/g, '')}-${String(this.attendanceLogs.length + 1).padStart(3, '0')}`;
+      savedRecord = {
+        ...attData,
+        id: newId,
+        createdAt: new Date().toISOString(),
+      };
+      this.attendanceLogs.push(savedRecord);
+      this.logAudit(user, 'CREATE', 'ATTENDANCE', savedRecord.id, `Pencatatan absensi: ${savedRecord.employeeName} (${savedRecord.status}) tgl ${savedRecord.date}`);
+    }
+
+    setStored(STORAGE_KEYS.ATTENDANCE, this.attendanceLogs);
+    return savedRecord;
+  }
+
+  public recordBatchAttendance(
+    entries: Omit<EmployeeAttendance, 'id' | 'createdAt'>[],
+    user: User
+  ): EmployeeAttendance[] {
+    const results: EmployeeAttendance[] = [];
+    for (const entry of entries) {
+      const res = this.recordAttendance(entry, user);
+      results.push(res);
+    }
+    return results;
+  }
+
+  public deleteAttendance(id: string, user: User): void {
+    const att = this.attendanceLogs.find(a => a.id === id);
+    this.attendanceLogs = this.attendanceLogs.filter(a => a.id !== id);
+    setStored(STORAGE_KEYS.ATTENDANCE, this.attendanceLogs);
+    if (att) {
+      this.logAudit(user, 'DELETE', 'ATTENDANCE', id, `Menghapus data presensi: ${att.employeeName} tgl ${att.date}`);
+    }
+  }
+
   // --- RE-SEED / RESET DATA ---
   public resetToSeedData(): void {
     this.resetToDefault();
@@ -1920,6 +2123,8 @@ class WarehouseDatabase {
     localStorage.removeItem(STORAGE_KEYS.MENU_ORDERS);
     localStorage.removeItem(STORAGE_KEYS.WASTE_LOGS);
     localStorage.removeItem(STORAGE_KEYS.TODOS);
+    localStorage.removeItem(STORAGE_KEYS.EMPLOYEES);
+    localStorage.removeItem(STORAGE_KEYS.ATTENDANCE);
 
     this.items = [...INITIAL_ITEMS];
     this.suppliers = [...INITIAL_SUPPLIERS];
@@ -1932,6 +2137,8 @@ class WarehouseDatabase {
     this.menuOrders = [...INITIAL_MENU_ORDERS];
     this.wasteLogs = [...INITIAL_WASTE_LOGS];
     this.todos = [...INITIAL_TODOS];
+    this.employees = [...REAL_EMPLOYEES];
+    this.attendanceLogs = [...REAL_ATTENDANCE_LOGS];
 
     setStored(STORAGE_KEYS.ITEMS, this.items);
     setStored(STORAGE_KEYS.SUPPLIERS, this.suppliers);
@@ -1944,6 +2151,8 @@ class WarehouseDatabase {
     setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
     setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
     setStored(STORAGE_KEYS.TODOS, this.todos);
+    setStored(STORAGE_KEYS.EMPLOYEES, this.employees);
+    setStored(STORAGE_KEYS.ATTENDANCE, this.attendanceLogs);
   }
 }
 

@@ -31,6 +31,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { exportToExcel, parseExcelFile, downloadExcelTemplate } from '../lib/excelExport';
+import { SppgLogo } from './SppgLogo';
 
 interface BatchRowItem {
   id: string;
@@ -225,7 +226,7 @@ export const DailyExpensesModule: React.FC = () => {
   // Kitchen Issue Form State
   const [kitchenItemId, setKitchenItemId] = useState('');
   const [kitchenQty, setKitchenQty] = useState<number>(0);
-  const [kitchenDestination, setKitchenDestination] = useState('Dapur Pengolahan Utama SPPG');
+  const [kitchenDestination, setKitchenDestination] = useState('Dapur Pengolahan Utama SPPG Jeru Tumpang');
   const [kitchenMealSession, setKitchenMealSession] = useState<'Pagi' | 'Siang' | 'Snack'>('Siang');
   const [kitchenNotes, setKitchenNotes] = useState('Pengeluaran rutin persiapan masak');
 
@@ -308,7 +309,7 @@ export const DailyExpensesModule: React.FC = () => {
           unit: tx.unit,
           unitPrice: price,
           nominal: nominal,
-          recipientOrVolunteer: tx.location || 'Dapur Pengolahan SPPG',
+          recipientOrVolunteer: tx.location || 'Dapur Pengolahan SPPG Jeru Tumpang',
           picOrUser: tx.userName,
           notes: tx.notes,
           referenceNo: tx.referenceDocument || tx.id,
@@ -753,7 +754,7 @@ export const DailyExpensesModule: React.FC = () => {
 
     exportToExcel(
       summaryRows.length > 0 ? summaryRows : transactionRows,
-      `Rekap_Pengeluaran_SPPG_${periodType}_${selectedCategoryTab}.xlsx`,
+      `Rekap_Pengeluaran_SPPG_Jeru_Tumpang_${periodType}_${selectedCategoryTab}.xlsx`,
       'Rekap Pengeluaran & Biaya'
     );
   };
@@ -773,14 +774,17 @@ export const DailyExpensesModule: React.FC = () => {
       )}
 
       {/* Header bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-200">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            Laporan & Rekap Pengeluaran SPPG
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5 font-medium">
-            Monitoring data pengeluaran dan nominal biaya per minggu, bulan, serta rincian per kategori barang.
-          </p>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <SppgLogo size="md" variant="color" />
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+              Laporan & Rekap Pengeluaran SPPG Jeru Tumpang
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5 font-medium">
+              Monitoring data pengeluaran dan nominal biaya per minggu, bulan, serta rincian per kategori barang.
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

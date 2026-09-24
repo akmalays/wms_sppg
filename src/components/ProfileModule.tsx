@@ -25,11 +25,12 @@ import {
   RefreshCw,
   Award,
   Eye,
-  EyeOff
+  EyeOff,
+  Users
 } from 'lucide-react';
 
 export const ProfileModule: React.FC = () => {
-  const { currentUser, updateProfile } = useAuth();
+  const { currentUser, updateProfile, availableUsers } = useAuth();
 
   // Internal module tab state: 'profile' | 'todos' | 'report'
   const [activeSubTab, setActiveSubTab] = useState<'profile' | 'todos' | 'report'>('profile');
@@ -56,6 +57,8 @@ export const ProfileModule: React.FC = () => {
   const [newCategory, setNewCategory] = useState<TodoCategory>('Penerimaan & QC');
   const [newPriority, setNewPriority] = useState<TodoPriority>('Tinggi');
   const [newSession, setNewSession] = useState<'Pagi' | 'Siang' | 'Sore' | 'Harian'>('Pagi');
+  const [newTargetTime, setNewTargetTime] = useState<string>('08:00');
+  const [newAssignedUserId, setNewAssignedUserId] = useState<string>('');
   const [newAssignedRole, setNewAssignedRole] = useState<UserRole | 'ALL'>('ALL');
   const [newNotes, setNewNotes] = useState<string>('');
 
@@ -142,6 +145,7 @@ export const ProfileModule: React.FC = () => {
       return;
     }
 
+    const assignedUser = availableUsers?.find(u => u.id === newAssignedUserId);
     warehouseDb.addTodo(
       {
         date: selectedDate,
@@ -149,7 +153,10 @@ export const ProfileModule: React.FC = () => {
         category: newCategory,
         priority: newPriority,
         session: newSession,
-        assignedRole: newAssignedRole,
+        targetTime: newTargetTime || undefined,
+        assignedUserId: assignedUser ? assignedUser.id : undefined,
+        assignedUserName: assignedUser ? assignedUser.name : undefined,
+        assignedRole: assignedUser ? assignedUser.role : newAssignedRole,
         notes: newNotes.trim() || undefined,
         isCompleted: false,
       },
@@ -210,14 +217,15 @@ export const ProfileModule: React.FC = () => {
     const exportData = todos.map((t, index) => ({
       'No': index + 1,
       'Tanggal': t.date,
+      'Target Jam': t.targetTime ? `Jam ${t.targetTime}` : '-',
       'Shift / Sesi': t.session || 'Harian',
       'Kategori Tugas': t.category,
       'Uraian Tugas SOP': t.title,
+      'Staf Ditugaskan': t.assignedUserName || (t.assignedRole ? `Role ${t.assignedRole}` : 'Semua Staf'),
       'Prioritas': t.priority,
       'Status': t.isCompleted ? 'SELESAI' : 'BELUM SELESAI',
       'Waktu Selesai': t.completedAt || '-',
       'Pelaksana (PIC)': t.completedBy || '-',
-      'Peran': t.assignedRole || 'ALL',
       'Catatan': t.notes || '-',
     }));
 
@@ -271,7 +279,7 @@ export const ProfileModule: React.FC = () => {
               <User className="w-5 h-5" />
             </span>
             <h1 className="text-xl font-bold text-slate-800">
-              Profil Pengguna & Tugas Harian SPPG
+              Profil Pengguna & Tugas Harian SPPG Jeru Tumpang
             </h1>
           </div>
           <p className="text-xs text-slate-500 mt-1">
@@ -717,6 +725,12 @@ export const ProfileModule: React.FC = () => {
                     {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-1">
+                        {todo.targetTime && (
+                          <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                            <Clock className="w-2.5 h-2.5 text-emerald-600" />
+                            Jam {todo.targetTime}
+                          </span>
+                        )}
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
                           {todo.category}
                         </span>
@@ -728,11 +742,16 @@ export const ProfileModule: React.FC = () => {
                             Shift {todo.session}
                           </span>
                         )}
-                        {todo.assignedRole && todo.assignedRole !== 'ALL' && (
+                        {todo.assignedUserName ? (
+                          <span className="text-[10px] font-semibold text-purple-800 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 flex items-center gap-1">
+                            <Users className="w-2.5 h-2.5 text-purple-600" />
+                            {todo.assignedUserName}
+                          </span>
+                        ) : todo.assignedRole && todo.assignedRole !== 'ALL' ? (
                           <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
                             PIC: {todo.assignedRole}
                           </span>
-                        )}
+                        ) : null}
                       </div>
 
                       <h3
@@ -862,7 +881,7 @@ export const ProfileModule: React.FC = () => {
                 <SppgLogo size="lg" variant="color" />
                 <div>
                   <h2 className="text-base font-bold text-slate-900 leading-tight">
-                    SATUAN PELAYANAN PEMENUHAN GIZI (SPPG)
+                    Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
                   </h2>
                   <p className="text-xs font-semibold text-slate-700">
                     Unit Pelayanan Dapur Gizi Jeru Tumpang 01
@@ -937,7 +956,15 @@ export const ProfileModule: React.FC = () => {
                       <td className="py-2 px-3 text-center font-medium text-slate-500">{idx + 1}</td>
                       <td className="py-2 px-3">
                         <div className="font-semibold text-slate-800">{todo.category}</div>
-                        <div className="text-[10px] text-slate-500">Shift {todo.session || 'Harian'}</div>
+                        <div className="text-[10px] text-slate-500">
+                          {todo.targetTime ? (
+                            <span className="font-mono font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                              Jam {todo.targetTime}
+                            </span>
+                          ) : (
+                            `Shift ${todo.session || 'Harian'}`
+                          )}
+                        </div>
                       </td>
                       <td className="py-2 px-3">
                         <div className="font-medium text-slate-800">{todo.title}</div>
@@ -971,7 +998,10 @@ export const ProfileModule: React.FC = () => {
                         {todo.completedAt ? `${todo.completedAt} WIB` : '-'}
                       </td>
                       <td className="py-2 px-3 text-slate-700">
-                        {todo.completedBy || (todo.assignedRole ? `Penugasan: ${todo.assignedRole}` : '-')}
+                        <div className="font-semibold">{todo.completedBy || '-'}</div>
+                        {todo.assignedUserName && (
+                          <div className="text-[10px] text-purple-700 font-medium">Tugas: {todo.assignedUserName}</div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1077,6 +1107,40 @@ export const ProfileModule: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                    Target Jam <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={newTargetTime}
+                    onChange={e => setNewTargetTime(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-mono font-semibold text-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Tugaskan ke Staf
+                  </label>
+                  <select
+                    value={newAssignedUserId}
+                    onChange={e => setNewAssignedUserId(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
+                  >
+                    <option value="">Semua Staf (Umum)</option>
+                    {availableUsers?.map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} ({u.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="block font-semibold text-slate-700 mb-1">Shift / Sesi</label>
                   <select
                     value={newSession}
@@ -1091,7 +1155,7 @@ export const ProfileModule: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Penugasan Peran</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Penugasan Peran Standar</label>
                   <select
                     value={newAssignedRole}
                     onChange={e => setNewAssignedRole(e.target.value as any)}

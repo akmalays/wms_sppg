@@ -24,7 +24,7 @@ export const ToolsPrintModule: React.FC = () => {
   const { currentUser } = useAuth();
 
   const [activeForm, setActiveForm] = useState<FormType>('RECEIVING_FORM');
-  const [unitName, setUnitName] = useState<string>('SPPG Unit Pelayanan 01 - Cakung Jakarta Timur');
+  const [unitName, setUnitName] = useState<string>('SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi');
   const [printDate, setPrintDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   // Data sources
@@ -308,7 +308,7 @@ export const ToolsPrintModule: React.FC = () => {
             <SppgLogo size="lg" variant="color" showText={false} />
             <div>
               <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
-                Satuan Pelayanan Pemenuhan Gizi (SPPG)
+                Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
               </h1>
               <p className="text-xs text-slate-600 font-medium">{unitName}</p>
               <p className="text-[11px] text-slate-500">
@@ -777,7 +777,7 @@ export const ToolsPrintModule: React.FC = () => {
                 >
                   <div className="space-y-1.5 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] font-bold text-emerald-800">SPPG Gudang & Dapur</span>
+                      <span className="text-[11px] font-bold text-emerald-800">SPPG Jeru Tumpang Gudang & Dapur</span>
                       <span className="text-[10px] text-slate-400">• Aset Inventaris</span>
                     </div>
                     <div className="font-mono font-bold text-xs text-slate-900">{eq.id}</div>
