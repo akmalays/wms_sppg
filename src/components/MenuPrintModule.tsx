@@ -3,7 +3,24 @@ import {useAuth} from "../context/AuthContext";
 import {warehouseDb} from "../db/storage";
 import {MenuOrder} from "../types/warehouse";
 import {compressImageToWebP} from "../utils/imageCompressor";
-import {Printer, Upload, Calendar, Utensils, UtensilsCrossed, RefreshCw, Check, Image as ImageIcon, Eye, Download, CheckCircle2, Sparkles} from "lucide-react";
+import {
+  Printer,
+  Upload,
+  Calendar,
+  Utensils,
+  UtensilsCrossed,
+  RefreshCw,
+  Check,
+  Image as ImageIcon,
+  Eye,
+  Download,
+  CheckCircle2,
+  Sparkles,
+  Maximize2,
+  Rows,
+  Columns,
+  X,
+} from "lucide-react";
 
 // Authentic Official Canva Posters (Cleaned for Seamless Dynamic Rendering)
 import templateMenuSingleClean from "../assets/poster-single.jpg";
@@ -274,6 +291,9 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
   const [isUploading1, setIsUploading1] = useState(false);
   const [isUploading2, setIsUploading2] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [previewLayout, setPreviewLayout] = useState<"WIDE" | "SPLIT">("WIDE");
+  const [previewZoom, setPreviewZoom] = useState<100 | 125 | 150>(100);
+  const [isModalPreviewOpen, setIsModalPreviewOpen] = useState(false);
 
   // Quick WhatsApp text broadcast parser
   const [showWhatsAppPaste, setShowWhatsAppPaste] = useState(false);
@@ -451,8 +471,8 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
     window.print();
   };
 
-  // Export ke High-Resolution PNG langsung dari Canvas
-  const handleDownloadPng = async () => {
+  // Export ke High-Resolution JPG / PNG langsung dari Canvas
+  const handleDownloadImage = async (format: "jpg" | "png") => {
     setIsDownloading(true);
     try {
       const isSingle = printMode === "SINGLE";
@@ -461,6 +481,10 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
       canvas.height = isSingle ? 2245 : 1587;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
+
+      // Fill white background (penting untuk format JPG agar tidak hitam)
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // 1. Draw Base Template Image
       const templateImg = new Image();
@@ -527,16 +551,16 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
 
         // Draw Torn Note text (slanted -16.0 degrees matching 'Menu Makanan')
         ctx.save();
-        ctx.translate(235, 820);
+        ctx.translate(225, 830);
         ctx.rotate((-16.0 * Math.PI) / 180);
 
-        // Bullet items
+        // Bullet items (ukuran diperbesar dan jelas)
         ctx.fillStyle = "#2a2830";
-        ctx.font = "600 31px Nunito, system-ui, sans-serif";
+        ctx.font = "600 34px Nunito, system-ui, sans-serif";
         let startY = 60;
         menu1.items.forEach((it) => {
           ctx.fillText("•", 10, startY);
-          ctx.fillText(it, 38, startY);
+          ctx.fillText(it, 40, startY);
           startY += 48;
         });
         ctx.restore();
@@ -561,82 +585,933 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
         ctx.fillText(`Serat : ${menu1.smallPortion.fiber} gr`, 830, 2017);
         ctx.restore();
       } else {
-        // DOUBLE MODE
+        // DOUBLE MODE (Ukuran teks diperbesar agar tidak kekecilan saat diekspor)
         // Menu 1 Note (Sekolah - slanted -10.7 degrees)
         ctx.save();
-        ctx.translate(145, 642);
+        ctx.translate(140, 615);
         ctx.rotate((-10.7 * Math.PI) / 180);
         ctx.fillStyle = "#2a2830";
-        ctx.font = "600 23px Nunito, system-ui, sans-serif";
+        ctx.font = "600 34px Nunito, system-ui, sans-serif";
         let y1 = 40;
         menu1.items.forEach((it) => {
           ctx.fillText("•", 0, y1);
-          ctx.fillText(it, 22, y1);
-          y1 += 38;
+          ctx.fillText(it, 26, y1);
+          y1 += 44;
         });
         ctx.restore();
 
         // Menu 1 Nutrition (values only, titles on template)
         ctx.save();
-        ctx.font = "600 22px Nunito, system-ui, sans-serif";
+        ctx.font = "600 30px Nunito, system-ui, sans-serif";
         ctx.fillStyle = "#38353d";
-        ctx.fillText(`Energi : ${menu1.largePortion.energy} kkal`, 376, 1280);
-        ctx.fillText(`Protein : ${menu1.largePortion.protein} g`, 376, 1320);
-        ctx.fillText(`Lemak : ${menu1.largePortion.fat} g`, 376, 1360);
-        ctx.fillText(`Karbohidrat : ${menu1.largePortion.carb} g`, 376, 1400);
-        ctx.fillText(`Serat : ${menu1.largePortion.fiber} g`, 376, 1440);
+        ctx.fillText(`Energi : ${menu1.largePortion.energy} kkal`, 372, 1276);
+        ctx.fillText(`Protein : ${menu1.largePortion.protein} g`, 372, 1320);
+        ctx.fillText(`Lemak : ${menu1.largePortion.fat} g`, 372, 1364);
+        ctx.fillText(`Karbohidrat : ${menu1.largePortion.carb} g`, 372, 1408);
+        ctx.fillText(`Serat : ${menu1.largePortion.fiber} g`, 372, 1452);
 
-        ctx.fillText(`Energi : ${menu1.smallPortion.energy} kkal`, 804, 1280);
+        ctx.fillText(`Energi : ${menu1.smallPortion.energy} kkal`, 804, 1276);
         ctx.fillText(`Protein : ${menu1.smallPortion.protein} g`, 804, 1320);
-        ctx.fillText(`Lemak : ${menu1.smallPortion.fat} g`, 804, 1360);
-        ctx.fillText(`Karbohidrat : ${menu1.smallPortion.carb} g`, 804, 1400);
-        ctx.fillText(`Serat : ${menu1.smallPortion.fiber} g`, 804, 1440);
+        ctx.fillText(`Lemak : ${menu1.smallPortion.fat} g`, 804, 1364);
+        ctx.fillText(`Karbohidrat : ${menu1.smallPortion.carb} g`, 804, 1408);
+        ctx.fillText(`Serat : ${menu1.smallPortion.fiber} g`, 804, 1452);
         ctx.restore();
 
         // Menu 2 Note (3B - slanted -13.8 degrees)
         ctx.save();
-        ctx.translate(1275, 626);
+        ctx.translate(1245, 600);
         ctx.rotate((-13.8 * Math.PI) / 180);
         ctx.fillStyle = "#2a2830";
-        ctx.font = "600 23px Nunito, system-ui, sans-serif";
+        ctx.font = "600 34px Nunito, system-ui, sans-serif";
         let y2 = 40;
         menu2.items.forEach((it) => {
           ctx.fillText("•", 0, y2);
-          ctx.fillText(it, 22, y2);
-          y2 += 38;
+          ctx.fillText(it, 26, y2);
+          y2 += 44;
         });
         ctx.restore();
 
         // Menu 2 Nutrition
         ctx.save();
-        ctx.font = "600 22px Nunito, system-ui, sans-serif";
+        ctx.font = "600 30px Nunito, system-ui, sans-serif";
         ctx.fillStyle = "#38353d";
-        ctx.fillText(`Energi : ${menu2.largePortion.energy} kkal`, 1202, 1280);
-        ctx.fillText(`Protein : ${menu2.largePortion.protein} g`, 1202, 1320);
-        ctx.fillText(`Lemak : ${menu2.largePortion.fat} g`, 1202, 1360);
-        ctx.fillText(`Karbohidrat : ${menu2.largePortion.carb} g`, 1202, 1400);
-        ctx.fillText(`Serat : ${menu2.largePortion.fiber} g`, 1202, 1440);
+        ctx.fillText(`Energi : ${menu2.largePortion.energy} kkal`, 1198, 1276);
+        ctx.fillText(`Protein : ${menu2.largePortion.protein} g`, 1198, 1320);
+        ctx.fillText(`Lemak : ${menu2.largePortion.fat} g`, 1198, 1364);
+        ctx.fillText(`Karbohidrat : ${menu2.largePortion.carb} g`, 1198, 1408);
+        ctx.fillText(`Serat : ${menu2.largePortion.fiber} g`, 1198, 1452);
 
-        ctx.fillText(`Energi : ${menu2.smallPortion.energy} kkal`, 1630, 1280);
+        ctx.fillText(`Energi : ${menu2.smallPortion.energy} kkal`, 1630, 1276);
         ctx.fillText(`Protein : ${menu2.smallPortion.protein} g`, 1630, 1320);
-        ctx.fillText(`Lemak : ${menu2.smallPortion.fat} g`, 1630, 1360);
-        ctx.fillText(`Karbohidrat : ${menu2.smallPortion.carb} g`, 1630, 1400);
-        ctx.fillText(`Serat : ${menu2.smallPortion.fiber} g`, 1630, 1440);
+        ctx.fillText(`Lemak : ${menu2.smallPortion.fat} g`, 1630, 1364);
+        ctx.fillText(`Karbohidrat : ${menu2.smallPortion.carb} g`, 1630, 1408);
+        ctx.fillText(`Serat : ${menu2.smallPortion.fiber} g`, 1630, 1452);
         ctx.restore();
       }
 
       // Download
-      const dataUrl = canvas.toDataURL("image/png", 0.95);
+      const mimeType = format === "jpg" ? "image/jpeg" : "image/png";
+      const ext = format === "jpg" ? "jpg" : "png";
+      const dataUrl = canvas.toDataURL(mimeType, 0.95);
       const link = document.createElement("a");
-      link.download = `Poster-Menu-MBG-${selectedDate}-${isSingle ? "1-Menu" : "2-Menu"}.png`;
+      link.download = `Poster-Menu-MBG-${selectedDate}-${isSingle ? "1-Menu" : "2-Menu"}.${ext}`;
       link.href = dataUrl;
       link.click();
     } catch (err) {
-      console.error("Download PNG failed", err);
-      alert("Gagal mendownload gambar, silakan gunakan tombol Cetak / Simpan PDF.");
+      console.error(`Download ${format.toUpperCase()} failed`, err);
+      alert(`Gagal mendownload gambar ${format.toUpperCase()}, silakan gunakan tombol Cetak / Simpan PDF.`);
     } finally {
       setIsDownloading(false);
     }
+  };
+
+  const handleDownloadPng = () => handleDownloadImage("png");
+  const handleDownloadJpg = () => handleDownloadImage("jpg");
+
+  // Render poster element with container query scaling matching Canvas export 1:1
+  const renderPosterElement = (isModal = false) => {
+    const isSingle = printMode === "SINGLE";
+
+    let maxWidthStyle = "960px";
+    if (isSingle) {
+      if (isModal) {
+        maxWidthStyle = previewZoom === 150 ? "920px" : previewZoom === 125 ? "800px" : "700px";
+      } else if (previewLayout === "WIDE") {
+        maxWidthStyle = previewZoom === 150 ? "880px" : previewZoom === 125 ? "760px" : "660px";
+      } else {
+        maxWidthStyle = previewZoom === 150 ? "760px" : previewZoom === 125 ? "680px" : "600px";
+      }
+    } else {
+      if (isModal) {
+        maxWidthStyle = previewZoom === 150 ? "1480px" : previewZoom === 125 ? "1280px" : "1100px";
+      } else if (previewLayout === "WIDE") {
+        maxWidthStyle = previewZoom === 150 ? "1380px" : previewZoom === 125 ? "1200px" : "1040px";
+      } else {
+        maxWidthStyle = previewZoom === 150 ? "1100px" : previewZoom === 125 ? "960px" : "860px";
+      }
+    }
+
+    if (isSingle) {
+      return (
+        <div
+          id="printable-poster-single"
+          className="poster-printable relative bg-white text-slate-800 mx-auto shadow-2xl rounded-2xl border border-slate-300 select-none transition-all duration-200"
+          style={{
+            width: "100%",
+            maxWidth: maxWidthStyle,
+            aspectRatio: "1587 / 2245",
+            fontFamily: "'Nunito', 'Segoe UI', sans-serif",
+            containerType: "inline-size",
+          }}>
+          {/* The Authentic Cleaned Template Background */}
+          <img src={templateMenuSingleClean} alt="Template Cetak Menu MBG SPPG" className="absolute inset-0 w-full h-full object-fill pointer-events-none" />
+
+          {/* 1. Dynamic Date Pill Overlay */}
+          <div
+            className="absolute flex items-center justify-center text-center select-none"
+            style={{
+              left: "25.7%",
+              top: "24.6%",
+              width: "48.5%",
+              height: "5.5%",
+            }}>
+            <span className="text-white leading-none font-extrabold" style={{fontFamily: "'Nunito', sans-serif", fontSize: "clamp(11px, 3.5cqi, 26px)"}}>
+              {formatPosterDate(selectedDate)}
+            </span>
+          </div>
+
+          {/* 2. Dynamic Torn Paper Note Overlay */}
+          <div
+            className="absolute flex flex-col justify-start select-none"
+            style={{
+              left: "10.5%",
+              top: "40.5%",
+              width: "32%",
+              height: "21%",
+              transform: "rotate(-16deg)",
+              transformOrigin: "top left",
+              fontFamily: "'Nunito', sans-serif",
+              padding: "2px 0px",
+            }}>
+            {menu1.noteTitle && menu1.noteTitle !== "Menu Makanan" && (
+              <div className="text-[#2a2830] pb-1 mb-1 font-extrabold" style={{fontSize: "clamp(9px, 1.9cqi, 15px)", lineHeight: 1.15, borderBottom: "1.5px dashed #c8b89a"}}>
+                {menu1.noteTitle}
+              </div>
+            )}
+            <ul className="text-[#2a2830]" style={{margin: 0, padding: 0, listStyle: "none"}}>
+              {menu1.items.map((it, idx) => (
+                <li
+                  key={idx}
+                  className="flex items-start"
+                  style={{
+                    fontSize: "clamp(10.5px, 3cqi, 18px)",
+                    fontWeight: 600,
+                    lineHeight: 1.48,
+                    marginBottom: "0.08em",
+                    gap: "0.3em",
+                    whiteSpace: "nowrap",
+                  }}>
+                  <span style={{fontWeight: 900, flexShrink: 0}}>•</span>
+                  <span>{it}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* 3. Dynamic Food Tray Overlay */}
+          {menu1.image && menu1.image !== traySample1 && (
+            <div
+              className="absolute flex items-center justify-center select-none pointer-events-none"
+              style={{
+                left: "47.5%",
+                top: "33%",
+                width: "36.5%",
+                height: "34%",
+                transform: "rotate(28.5deg)",
+              }}>
+              <div className="w-full h-full rounded-2xl bg-slate-300 p-1 shadow-2xl ring-2 ring-slate-400/50 overflow-hidden">
+                <img src={menu1.image} alt="Foto Nampan Menu" className="w-full h-full object-cover rounded-xl" />
+              </div>
+            </div>
+          )}
+
+          {/* 4. Dynamic Nutrition Table Overlay */}
+          <div
+            className="absolute flex items-start select-none"
+            style={{
+              left: "22.6%",
+              top: "77.2%",
+              width: "55%",
+              height: "15%",
+              fontFamily: "'Nunito', sans-serif",
+            }}>
+            <div className="w-full grid grid-cols-2" style={{columnGap: "10%"}}>
+              {/* Porsi Besar Values */}
+              <div style={{fontSize: "clamp(10.5px, 2.33cqi, 20px)", fontWeight: 600, lineHeight: 1.6, color: "#3a3840", whiteSpace: "nowrap"}}>
+                <div>
+                  Energi : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.energy} kkal</strong>
+                </div>
+                <div>
+                  Protein : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.protein} gr</strong>
+                </div>
+                <div>
+                  Lemak : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.fat} gr</strong>
+                </div>
+                <div>
+                  Karbohidrat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.carb} gr</strong>
+                </div>
+                <div>
+                  Serat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.fiber} gr</strong>
+                </div>
+              </div>
+
+              {/* Porsi Kecil Values */}
+              <div style={{fontSize: "clamp(10.5px, 2.33cqi, 20px)", fontWeight: 600, lineHeight: 1.6, color: "#3a3840", whiteSpace: "nowrap"}}>
+                <div>
+                  Energi : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.energy} kkal</strong>
+                </div>
+                <div>
+                  Protein : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.protein} gr</strong>
+                </div>
+                <div>
+                  Lemak : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.fat} gr</strong>
+                </div>
+                <div>
+                  Karbohidrat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.carb} gr</strong>
+                </div>
+                <div>
+                  Serat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.fiber} gr</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // DOUBLE MENU POSTER
+    return (
+      <div
+        id="printable-poster-double"
+        className="poster-printable relative bg-white text-slate-800 mx-auto shadow-2xl rounded-2xl border border-slate-300 select-none transition-all duration-200"
+        style={{
+          width: "100%",
+          maxWidth: maxWidthStyle,
+          aspectRatio: "2245 / 1587",
+          fontFamily: "'Nunito', 'Segoe UI', sans-serif",
+          containerType: "inline-size",
+        }}>
+        {/* The Authentic Cleaned Double Template Background */}
+        <img src={templateMenuDoubleClean} alt="Template Cetak Menu MBG SPPG (2 Menu)" className="absolute inset-0 w-full h-full object-fill pointer-events-none" />
+
+        {/* 1. Dynamic Date Pill Overlay */}
+        <div
+          className="absolute flex items-center justify-center text-center select-none"
+          style={{
+            left: "35.9%",
+            top: "20.9%",
+            width: "24.6%",
+            height: "5.4%",
+          }}>
+          <span className="text-white leading-none font-extrabold" style={{fontFamily: "'Nunito', sans-serif", fontSize: "clamp(9.5px, 2cqi, 24px)"}}>
+            {formatPosterDate(selectedDate)}
+          </span>
+        </div>
+
+        {/* 2. Menu 1 (Sekolah) Note Overlay */}
+        <div
+          className="absolute flex flex-col justify-start select-none"
+          style={{
+            left: "5.5%",
+            top: "43.5%",
+            width: "18.5%",
+            height: "22%",
+            transform: "rotate(-14.7deg)",
+            transformOrigin: "top left",
+            fontFamily: "'Nunito', sans-serif",
+            padding: "2px 0px",
+          }}>
+          {menu1.noteTitle && menu1.noteTitle !== "Menu Sekolah" && (
+            <div className="text-[#2a2830] pb-0.5 mb-1 font-extrabold" style={{fontSize: "clamp(8px, 1.45cqi, 11px)", lineHeight: 1.2, borderBottom: "1px dashed #c8b89a"}}>
+              {menu1.noteTitle}
+            </div>
+          )}
+          <ul style={{margin: 0, padding: 0, listStyle: "none"}}>
+            {menu1.items.map((it, idx) => (
+              <li
+                key={idx}
+                className="flex items-start"
+                style={{
+                  color: "#2a2830",
+                  fontSize: "clamp(9.5px, 1.51cqi, 16px)",
+                  fontWeight: 600,
+                  lineHeight: 1.4,
+                  gap: "0.25em",
+                  marginBottom: "0.04em",
+                  whiteSpace: "nowrap",
+                }}>
+                <span style={{fontWeight: 900, flexShrink: 0}}>•</span>
+                <span>{it}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* 3. Menu 1 Food Tray Overlay (Only if custom uploaded) */}
+        {menu1.image && menu1.image !== trayDouble1 && (
+          <div
+            className="absolute flex items-center justify-center select-none pointer-events-none"
+            style={{
+              left: "19.5%",
+              top: "44%",
+              width: "24.5%",
+              height: "52%",
+              transform: "rotate(26deg)",
+            }}>
+            <div className="w-full h-full rounded-2xl bg-slate-300 p-1 shadow-2xl ring-1 ring-slate-400/50 overflow-hidden">
+              <img src={menu1.image} alt="Foto Nampan Menu 1" className="w-full h-full object-cover rounded-xl" />
+            </div>
+          </div>
+        )}
+
+        {/* 4a. Menu 1 Nutrition Table: Porsi Besar (Aligned with template header at 16.5%) */}
+        <div
+          className="absolute flex flex-col items-start select-none"
+          style={{
+            left: "16.5%",
+            top: "78.2%",
+            width: "16.5%",
+            height: "15%",
+            fontFamily: "'Nunito', sans-serif",
+            fontSize: "clamp(9px, 1.34cqi, 16px)",
+            fontWeight: 600,
+            lineHeight: 1.55,
+            color: "#3a3840",
+            whiteSpace: "nowrap",
+          }}>
+          <div>
+            Energi : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.energy} kkal</strong>
+          </div>
+          <div>
+            Protein : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.protein} g</strong>
+          </div>
+          <div>
+            Lemak : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.fat} g</strong>
+          </div>
+          <div>
+            Karbohidrat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.carb} g</strong>
+          </div>
+          <div>
+            Serat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.fiber} g</strong>
+          </div>
+        </div>
+
+        {/* 4b. Menu 1 Nutrition Table: Porsi Kecil (Aligned with template header at 35.8%) */}
+        <div
+          className="absolute flex flex-col items-start select-none"
+          style={{
+            left: "35.8%",
+            top: "78.2%",
+            width: "14%",
+            height: "15%",
+            fontFamily: "'Nunito', sans-serif",
+            fontSize: "clamp(9px, 1.34cqi, 16px)",
+            fontWeight: 600,
+            lineHeight: 1.55,
+            color: "#3a3840",
+            whiteSpace: "nowrap",
+          }}>
+          <div>
+            Energi : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.energy} kkal</strong>
+          </div>
+          <div>
+            Protein : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.protein} g</strong>
+          </div>
+          <div>
+            Lemak : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.fat} g</strong>
+          </div>
+          <div>
+            Karbohidrat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.carb} g</strong>
+          </div>
+          <div>
+            Serat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.fiber} g</strong>
+          </div>
+        </div>
+
+        {/* 5. Menu 2 (3B) Note Overlay */}
+        <div
+          className="absolute flex flex-col justify-start select-none"
+          style={{
+            left: "54.8%",
+            top: "41.5%",
+            width: "18.5%",
+            height: "22%",
+            transform: "rotate(-13.8deg)",
+            transformOrigin: "top left",
+            fontFamily: "'Nunito', sans-serif",
+            padding: "2px 0px",
+          }}>
+          {menu2.noteTitle && menu2.noteTitle !== "Menu 3B" && (
+            <div className="text-[#2a2830] pb-0.5 mb-1 font-extrabold" style={{fontSize: "clamp(8px, 1.45cqi, 13px)", lineHeight: 1.2, borderBottom: "1px dashed #c8b89a"}}>
+              {menu2.noteTitle}
+            </div>
+          )}
+          <ul style={{margin: 0, padding: 0, listStyle: "none"}}>
+            {menu2.items.map((it, idx) => (
+              <li
+                key={idx}
+                className="flex items-start"
+                style={{
+                  color: "#2a2830",
+                  fontSize: "clamp(9.5px, 1.51cqi, 16px)",
+                  fontWeight: 600,
+                  lineHeight: 1.4,
+                  gap: "0.25em",
+                  marginBottom: "0.04em",
+                  whiteSpace: "nowrap",
+                }}>
+                <span style={{fontWeight: 900, flexShrink: 0}}>•</span>
+                <span>{it}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* 6. Menu 2 Food Tray Overlay (Only if custom uploaded) */}
+        {menu2.image && menu2.image !== trayDouble2 && (
+          <div
+            className="absolute flex items-center justify-center select-none pointer-events-none"
+            style={{
+              left: "67.5%",
+              top: "44%",
+              width: "24.5%",
+              height: "52%",
+              transform: "rotate(26deg)",
+            }}>
+            <div className="w-full h-full rounded-2xl bg-slate-300 p-1 shadow-2xl ring-1 ring-slate-400/50 overflow-hidden">
+              <img src={menu2.image} alt="Foto Nampan Menu 2" className="w-full h-full object-cover rounded-xl" />
+            </div>
+          </div>
+        )}
+
+        {/* 7a. Menu 2 Nutrition Table: Porsi Besar (Aligned with template header at 53.4%) */}
+        <div
+          className="absolute flex flex-col items-start select-none"
+          style={{
+            left: "53.4%",
+            top: "78.2%",
+            width: "16.5%",
+            height: "15%",
+            fontFamily: "'Nunito', sans-serif",
+            fontSize: "clamp(9px, 1.34cqi, 16px)",
+            fontWeight: 600,
+            lineHeight: 1.55,
+            color: "#3a3840",
+            whiteSpace: "nowrap",
+          }}>
+          <div>
+            Energi : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.largePortion.energy} kkal</strong>
+          </div>
+          <div>
+            Protein : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.largePortion.protein} g</strong>
+          </div>
+          <div>
+            Lemak : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.largePortion.fat} g</strong>
+          </div>
+          <div>
+            Karbohidrat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.largePortion.carb} g</strong>
+          </div>
+          <div>
+            Serat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.largePortion.fiber} g</strong>
+          </div>
+        </div>
+
+        {/* 7b. Menu 2 Nutrition Table: Porsi Kecil (Aligned with template header at 72.6%) */}
+        <div
+          className="absolute flex flex-col items-start select-none"
+          style={{
+            left: "72.6%",
+            top: "78.2%",
+            width: "14%",
+            height: "15%",
+            fontFamily: "'Nunito', sans-serif",
+            fontSize: "clamp(9px, 1.34cqi, 16px)",
+            fontWeight: 600,
+            lineHeight: 1.55,
+            color: "#3a3840",
+            whiteSpace: "nowrap",
+          }}>
+          <div>
+            Energi : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.smallPortion.energy} kkal</strong>
+          </div>
+          <div>
+            Protein : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.smallPortion.protein} g</strong>
+          </div>
+          <div>
+            Lemak : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.smallPortion.fat} g</strong>
+          </div>
+          <div>
+            Karbohidrat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.smallPortion.carb} g</strong>
+          </div>
+          <div>
+            Serat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.smallPortion.fiber} g</strong>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Preview Card Header Toolbar
+  const renderPreviewToolbar = () => (
+    <div className="flex flex-wrap items-center justify-between gap-2.5 no-print px-1 pb-1">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+          <Eye className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Pratinjau Hasil Cetak Poster Resmi</span>
+        </span>
+        <span className="hidden sm:inline-block px-2 py-0.5 text-[10px] font-mono font-bold rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+          {printMode === "SINGLE" ? "1587 × 2245 px" : "2245 × 1587 px"}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Toggle Layout Switcher */}
+        <div className="inline-flex p-0.5 rounded-lg bg-slate-200/80 border border-slate-300">
+          <button
+            type="button"
+            onClick={() => setPreviewLayout("WIDE")}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-all cursor-pointer ${
+              previewLayout === "WIDE" ? "bg-white text-emerald-800 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900 font-semibold"
+            }`}
+            title="Tampilan Penuh (Ukuran Besar)">
+            <Rows className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Pratinjau Besar</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setPreviewLayout("SPLIT")}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md transition-all cursor-pointer ${
+              previewLayout === "SPLIT" ? "bg-white text-emerald-800 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900 font-semibold"
+            }`}
+            title="Tampilan Berdampingan (Form Kiri, Pratinjau Kanan)">
+            <Columns className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Berdampingan</span>
+          </button>
+        </div>
+
+        {/* Zoom Scale Controls */}
+        <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200">
+          <button
+            type="button"
+            onClick={() => setPreviewZoom(100)}
+            className={`px-2 py-0.5 text-[11px] rounded transition-all cursor-pointer ${
+              previewZoom === 100 ? "bg-white text-emerald-800 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900 font-medium"
+            }`}
+            title="Ukuran Standar (100%)">
+            100%
+          </button>
+          <button
+            type="button"
+            onClick={() => setPreviewZoom(125)}
+            className={`px-2 py-0.5 text-[11px] rounded transition-all cursor-pointer ${
+              previewZoom === 125 ? "bg-white text-emerald-800 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900 font-medium"
+            }`}
+            title="Ukuran Besar (125%)">
+            125%
+          </button>
+          <button
+            type="button"
+            onClick={() => setPreviewZoom(150)}
+            className={`px-2 py-0.5 text-[11px] rounded transition-all cursor-pointer ${
+              previewZoom === 150 ? "bg-white text-emerald-800 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900 font-medium"
+            }`}
+            title="Ukuran Sangat Besar (150%)">
+            150%
+          </button>
+        </div>
+
+        {/* Modal Layar Penuh */}
+        <button
+          type="button"
+          onClick={() => setIsModalPreviewOpen(true)}
+          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-2xs transition-colors cursor-pointer"
+          title="Buka Pratinjau Layar Penuh Resolusi Tinggi">
+          <Maximize2 className="w-3 h-3 text-slate-600" />
+          <span className="hidden md:inline">Layar Penuh</span>
+        </button>
+
+        {/* Export Buttons */}
+        <div className="flex items-center gap-1.5 pl-1 border-l border-slate-200">
+          <button
+            type="button"
+            onClick={handleDownloadJpg}
+            disabled={isDownloading}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-emerald-900 bg-emerald-100 hover:bg-emerald-200 rounded-lg border border-emerald-300 transition-colors cursor-pointer disabled:opacity-50"
+            title="Download gambar resolusi tinggi format JPG">
+            <Download className="w-3 h-3 text-emerald-800" />
+            <span>JPG</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadPng}
+            disabled={isDownloading}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-300 transition-colors cursor-pointer disabled:opacity-50"
+            title="Download gambar resolusi tinggi format PNG">
+            <Download className="w-3 h-3 text-slate-700" />
+            <span>PNG</span>
+          </button>
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="inline-flex items-center gap-1 px-3 py-1 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg transition-colors cursor-pointer shadow-2xs"
+            title="Cetak langsung ke printer atau simpan sebagai PDF A4">
+            <Printer className="w-3 h-3" />
+            <span>Cetak A4</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Form Editor Panel
+  const renderFormEditor = () => {
+    const isMenu1 = activeMenuEditor === "MENU1" || printMode === "SINGLE";
+    const curMenu = isMenu1 ? menu1 : menu2;
+    const setCurMenu = isMenu1 ? setMenu1 : setMenu2;
+    const isUploading = isMenu1 ? isUploading1 : isUploading2;
+    const targetTag = isMenu1 ? "MENU1" : "MENU2";
+
+    const box1Content = (
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+          <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+            <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Tanggal Menu MBG</span>
+          </span>
+          <span className="text-[11px] font-mono font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded">{formatPosterDate(selectedDate)}</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Pilih Tanggal:</label>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 font-semibold text-slate-800 bg-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Pilih dari Order Tersimpan:</label>
+            <select
+              value={existingOrderForDate?.id || ""}
+              onChange={(e) => {
+                const found = menuOrders.find((o) => o.id === e.target.value);
+                if (found) {
+                  setSelectedDate(found.date);
+                  handleAutoFillFromOrder(found);
+                }
+              }}
+              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800">
+              <option value="">-- Muat Dari Order Menu --</option>
+              {menuOrders.map((ord) => (
+                <option key={ord.id} value={ord.id}>
+                  {ord.date} - {ord.menuTitle.slice(0, 28)}...
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {existingOrderForDate && (
+          <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80 flex items-center justify-between gap-2">
+            <div className="text-[11px] text-emerald-950">
+              <div className="font-bold flex items-center gap-1">
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Tersedia order menu tanggal ini:</span>
+              </div>
+              <div className="truncate font-medium text-emerald-900 mt-0.5 max-w-[240px]">{existingOrderForDate.menuTitle}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleAutoFillFromOrder(existingOrderForDate)}
+              className="px-2.5 py-1 text-[11px] font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shrink-0 cursor-pointer shadow-2xs">
+              Gunakan
+            </button>
+          </div>
+        )}
+
+        {/* Tombol Tempel Teks WhatsApp Lengkap */}
+        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Tempel Format WhatsApp (Ahli Gizi):</span>
+            </div>
+            <button type="button" onClick={() => setShowWhatsAppPaste((prev) => !prev)} className="text-[11px] text-emerald-700 font-semibold hover:underline cursor-pointer">
+              {showWhatsAppPaste ? "Tutup" : "Tempel Pesan WA"}
+            </button>
+          </div>
+
+          {showWhatsAppPaste && (
+            <div className="space-y-2 pt-1">
+              <textarea
+                rows={6}
+                value={whatsAppText}
+                onChange={(e) => setWhatsAppText(e.target.value)}
+                placeholder={`Tempel broadcast WhatsApp di sini, contoh:\nNILAI GIZI 28/09/26 Senin\nnasi putih\nAyam kungpao\nTahu walik\ntumis labu siam+jagung\n\n*Porsi Kecil*\nEnergi : 554,2 kkal\n...\n*Porsi Besar*\nEnergi : 763,1 kkal\n...`}
+                className="w-full p-2 text-xs rounded-lg border border-slate-300 font-mono bg-white text-slate-800 leading-relaxed"
+              />
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] text-slate-500">Otomatis mengisi tanggal, menu, dan nilai gizi Porsi Besar/Kecil</span>
+                <button
+                  type="button"
+                  onClick={handleApplyWhatsAppText}
+                  disabled={!whatsAppText.trim()}
+                  className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 rounded-lg shadow-xs cursor-pointer flex items-center gap-1 shrink-0">
+                  {pasteSuccess ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
+                      <span>Berhasil Diterapkan!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Terapkan Otomatis</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+
+    const box2Content = (
+      <div className="space-y-4">
+        {/* Tab Switcher jika Mode 2 Menu */}
+        {printMode === "DOUBLE" && (
+          <div className="flex items-center gap-2 p-1 bg-slate-200/70 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setActiveMenuEditor("MENU1")}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                activeMenuEditor === "MENU1" ? "bg-white text-emerald-800 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900"
+              }`}>
+              Editor Menu 1 (Sekolah)
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveMenuEditor("MENU2")}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                activeMenuEditor === "MENU2" ? "bg-white text-emerald-800 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900"
+              }`}>
+              Editor Menu 2 (Alternatif/3B)
+            </button>
+          </div>
+        )}
+
+        {/* Box 2: Detail Menu yang Sedang Diedit */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <Utensils className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{printMode === "SINGLE" ? "Detail Menu Makanan" : isMenu1 ? "Detail Menu 1 (Sekolah)" : "Detail Menu 2 (Alternatif / 3B)"}</span>
+            </span>
+          </div>
+
+          {/* Judul Kertas Catatan */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Judul Kertas Catatan:</label>
+            <input
+              type="text"
+              value={curMenu.noteTitle}
+              onChange={(e) => setCurMenu((prev) => ({...prev, noteTitle: e.target.value}))}
+              placeholder="Contoh: Menu Makanan / Menu Sekolah / Menu 3B"
+              className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 font-semibold text-slate-800 bg-white"
+            />
+          </div>
+
+          {/* Upload Foto Nampan Makanan */}
+          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Foto Nampan Makanan:</span>
+              </label>
+              {isUploading && <span className="text-[10px] text-emerald-700 animate-pulse font-semibold">Mengompresi...</span>}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="w-16 h-16 rounded-xl border border-slate-300 overflow-hidden bg-white shrink-0 relative shadow-2xs">
+                <img src={curMenu.image} alt="Preview Nampan" className="w-full h-full object-cover" />
+              </div>
+
+              <div className="flex-1 space-y-1.5">
+                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition-colors cursor-pointer shadow-2xs">
+                  <Upload className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Upload Foto Nampan Baru</span>
+                  <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, targetTag)} className="hidden" />
+                </label>
+                <div className="text-[10px] text-slate-400">Foto baru otomatis diletakkan pada posisi nampan stainless dengan sudut kemiringan presisi.</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Butir Menu Makanan */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-slate-600">Daftar Butir Menu (Satu per baris):</label>
+              <span className="text-[10px] text-slate-400">{curMenu.items.length} Bahan / Lauk</span>
+            </div>
+            <textarea
+              rows={5}
+              value={curMenu.items.join("\n")}
+              onChange={(e) => {
+                const lines = e.target.value
+                  .split("\n")
+                  .map((l) => l.replace(/^[•\-\*\s]+/, "").trim())
+                  .filter(Boolean);
+                setCurMenu((prev) => ({...prev, items: lines}));
+              }}
+              placeholder="Contoh:&#10;nasi putih&#10;ayam katsu&#10;saus curry&#10;tahu goreng&#10;buah kelengkeng"
+              className="w-full p-2.5 text-xs rounded-lg border border-slate-300 font-medium text-slate-800 bg-white font-mono leading-relaxed"
+            />
+          </div>
+
+          {/* Editor Kandungan Gizi: Porsi Besar vs Porsi Kecil */}
+          <div className="space-y-2 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                <span>Kandungan Zat Gizi (Satu per baris):</span>
+              </span>
+              <span className="text-[10px] text-slate-400">Porsi Besar & Kecil</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              {/* Textarea Porsi Besar */}
+              <div className="p-2.5 rounded-xl bg-amber-50/50 border border-amber-200/80 space-y-1.5">
+                <div className="flex items-center justify-between pb-1 border-b border-amber-200/60">
+                  <span className="font-bold text-amber-900 text-xs">Porsi Besar</span>
+                  <span className="text-[10px] text-amber-700 font-mono">5 Nilai Gizi</span>
+                </div>
+                <textarea
+                  rows={6}
+                  value={curMenu.largePortionText ?? formatNutritionLines(curMenu.largePortion)}
+                  onChange={(e) => {
+                    const text = e.target.value;
+                    const parsed = parseNutritionText(text);
+                    setCurMenu((prev) => ({
+                      ...prev,
+                      largePortionText: text,
+                      largePortion: {
+                        energy: parsed.energy !== "" ? parsed.energy : prev.largePortion.energy,
+                        protein: parsed.protein !== "" ? parsed.protein : prev.largePortion.protein,
+                        fat: parsed.fat !== "" ? parsed.fat : prev.largePortion.fat,
+                        carb: parsed.carb !== "" ? parsed.carb : prev.largePortion.carb,
+                        fiber: parsed.fiber !== "" ? parsed.fiber : prev.largePortion.fiber,
+                      },
+                    }));
+                  }}
+                  placeholder={`Energi : 763,1 kkal\nProtein : 20,9 gr\nLemak : 21,3 gr\nKarbohidrat : 101,5 gr\nSerat : 4,8 gr`}
+                  className="w-full p-2 text-xs rounded-lg border border-amber-300 font-medium text-slate-800 bg-white font-mono leading-relaxed focus:ring-1 focus:ring-amber-500"
+                />
+                <div className="text-[10px] text-amber-800/80 leading-tight">Format: Energi, Protein, Lemak, Karbohidrat, Serat</div>
+              </div>
+
+              {/* Textarea Porsi Kecil */}
+              <div className="p-2.5 rounded-xl bg-emerald-50/50 border border-emerald-200/80 space-y-1.5">
+                <div className="flex items-center justify-between pb-1 border-b border-emerald-200/60">
+                  <span className="font-bold text-emerald-900 text-xs">Porsi Kecil</span>
+                  <span className="text-[10px] text-emerald-700 font-mono">5 Nilai Gizi</span>
+                </div>
+                <textarea
+                  rows={6}
+                  value={curMenu.smallPortionText ?? formatNutritionLines(curMenu.smallPortion)}
+                  onChange={(e) => {
+                    const text = e.target.value;
+                    const parsed = parseNutritionText(text);
+                    setCurMenu((prev) => ({
+                      ...prev,
+                      smallPortionText: text,
+                      smallPortion: {
+                        energy: parsed.energy !== "" ? parsed.energy : prev.smallPortion.energy,
+                        protein: parsed.protein !== "" ? parsed.protein : prev.smallPortion.protein,
+                        fat: parsed.fat !== "" ? parsed.fat : prev.smallPortion.fat,
+                        carb: parsed.carb !== "" ? parsed.carb : prev.smallPortion.carb,
+                        fiber: parsed.fiber !== "" ? parsed.fiber : prev.smallPortion.fiber,
+                      },
+                    }));
+                  }}
+                  placeholder={`Energi : 554,2 kkal\nProtein : 17,3 gr\nLemak : 18,2 gr\nKarbohidrat : 79 gr\nSerat : 4 gr`}
+                  className="w-full p-2 text-xs rounded-lg border border-emerald-300 font-medium text-slate-800 bg-white font-mono leading-relaxed focus:ring-1 focus:ring-emerald-500"
+                />
+                <div className="text-[10px] text-emerald-800/80 leading-tight">Format: Energi, Protein, Lemak, Karbohidrat, Serat</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+
+    if (previewLayout === "WIDE") {
+      return (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 no-print">
+          <div className="lg:col-span-5 space-y-4">{box1Content}</div>
+          <div className="lg:col-span-7 space-y-4">{box2Content}</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4 no-print">
+        {box1Content}
+        {box2Content}
+      </div>
+    );
   };
 
   return (
@@ -693,18 +1568,27 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
                   {printMode === "SINGLE" ? "1 Menu (Potrait)" : "2 Menu (Landscape)"}
                 </span>
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">Desain resmi 1:1 identik dengan template Canva SPPG Jeru Tumpang. Siap cetak A4 & download PNG.</p>
+              <p className="text-xs text-slate-500 mt-0.5">Desain resmi 1:1 identik dengan template Canva SPPG Jeru Tumpang. Siap cetak A4 & download JPG / PNG.</p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={handleDownloadJpg}
+              disabled={isDownloading}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50">
+              <Download className="w-3.5 h-3.5" />
+              <span>{isDownloading ? "Memproses..." : "Download JPG"}</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleDownloadPng}
               disabled={isDownloading}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-slate-800 hover:bg-slate-900 text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50">
               <Download className="w-3.5 h-3.5" />
-              <span>{isDownloading ? "Memproses..." : "Download Gambar (PNG)"}</span>
+              <span>{isDownloading ? "Memproses..." : "Download PNG"}</span>
             </button>
 
             <button
@@ -764,683 +1648,107 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
         </div>
       </div>
 
-      {/* Main Grid: Form Controls (Left) + Live Poster Preview (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* ========================================================================= */}
-        {/* PANEL EDITOR FORM (Kiri - 5 Kolom)                                        */}
-        {/* ========================================================================= */}
-        <div className="lg:col-span-5 space-y-4 no-print">
-          {/* Box 1: Tanggal & Sinkronisasi Menu */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Tanggal Menu MBG</span>
-              </span>
-              <span className="text-[11px] font-mono font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded">{formatPosterDate(selectedDate)}</span>
-            </div>
+      {/* Main Content Layout based on previewLayout */}
+      {previewLayout === "WIDE" ? (
+        <div className="space-y-6">
+          {/* 1. Preview Card Lebar Penuh (Ukuran Besar & Jelas) */}
+          <div className="bg-slate-100/80 p-4 md:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            {renderPreviewToolbar()}
+            <div className="overflow-x-auto pb-4 pt-1 flex justify-center">{renderPosterElement()}</div>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Pilih Tanggal:</label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 font-semibold text-slate-800 bg-white"
-                />
-              </div>
+          {/* 2. Panel Editor Form di Bawah */}
+          <div className="w-full">{renderFormEditor()}</div>
+        </div>
+      ) : (
+        /* Split Berdampingan: Form di Kiri (5 Kolom), Preview di Kanan (7 Kolom) */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-5 space-y-4 no-print">{renderFormEditor()}</div>
+          <div className="lg:col-span-7 space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+            {renderPreviewToolbar()}
+            <div className="overflow-x-auto pb-4">{renderPosterElement()}</div>
+          </div>
+        </div>
+      )}
 
+      {/* Modal Fullscreen Preview */}
+      {isModalPreviewOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex flex-col p-3 md:p-6 overflow-hidden">
+          {/* Modal Header */}
+          <div className="flex items-center justify-between pb-3 border-b border-slate-700/60 shrink-0">
+            <div className="flex items-center gap-2">
+              <Eye className="w-5 h-5 text-emerald-400" />
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Pilih dari Order Tersimpan:</label>
-                <select
-                  value={existingOrderForDate?.id || ""}
-                  onChange={(e) => {
-                    const found = menuOrders.find((o) => o.id === e.target.value);
-                    if (found) {
-                      setSelectedDate(found.date);
-                      handleAutoFillFromOrder(found);
-                    }
-                  }}
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800">
-                  <option value="">-- Muat Dari Order Menu --</option>
-                  {menuOrders.map((ord) => (
-                    <option key={ord.id} value={ord.id}>
-                      {ord.date} - {ord.menuTitle.slice(0, 28)}...
-                    </option>
-                  ))}
-                </select>
+                <h3 className="text-sm font-bold text-white">Pratinjau Resolusi Penuh Poster MBG</h3>
+                <p className="text-[11px] text-slate-400">{printMode === "SINGLE" ? "1 Menu Portrait (1587 × 2245 px)" : "2 Menu Landscape (2245 × 1587 px)"}</p>
               </div>
             </div>
 
-            {existingOrderForDate && (
-              <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80 flex items-center justify-between gap-2">
-                <div className="text-[11px] text-emerald-950">
-                  <div className="font-bold flex items-center gap-1">
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Tersedia order menu tanggal ini:</span>
-                  </div>
-                  <div className="truncate font-medium text-emerald-900 mt-0.5 max-w-[240px]">{existingOrderForDate.menuTitle}</div>
-                </div>
+            {/* Center Zoom Controls */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-300 hidden sm:inline">Skala:</span>
+              <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-800 border border-slate-700">
                 <button
                   type="button"
-                  onClick={() => handleAutoFillFromOrder(existingOrderForDate)}
-                  className="px-2.5 py-1 text-[11px] font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shrink-0 cursor-pointer shadow-2xs">
-                  Gunakan
+                  onClick={() => setPreviewZoom(100)}
+                  className={`px-2.5 py-1 text-xs rounded transition-all cursor-pointer ${
+                    previewZoom === 100 ? "bg-emerald-600 text-white font-bold" : "text-slate-300 hover:text-white"
+                  }`}>
+                  100%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewZoom(125)}
+                  className={`px-2.5 py-1 text-xs rounded transition-all cursor-pointer ${
+                    previewZoom === 125 ? "bg-emerald-600 text-white font-bold" : "text-slate-300 hover:text-white"
+                  }`}>
+                  125%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewZoom(150)}
+                  className={`px-2.5 py-1 text-xs rounded transition-all cursor-pointer ${
+                    previewZoom === 150 ? "bg-emerald-600 text-white font-bold" : "text-slate-300 hover:text-white"
+                  }`}>
+                  150%
                 </button>
               </div>
-            )}
-
-            {/* Tombol Tempel Teks WhatsApp Lengkap */}
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Tempel Format WhatsApp (Ahli Gizi):</span>
-                </div>
-                <button type="button" onClick={() => setShowWhatsAppPaste((prev) => !prev)} className="text-[11px] text-emerald-700 font-semibold hover:underline cursor-pointer">
-                  {showWhatsAppPaste ? "Tutup" : "Tempel Pesan WA"}
-                </button>
-              </div>
-
-              {showWhatsAppPaste && (
-                <div className="space-y-2 pt-1">
-                  <textarea
-                    rows={6}
-                    value={whatsAppText}
-                    onChange={(e) => setWhatsAppText(e.target.value)}
-                    placeholder={`Tempel broadcast WhatsApp di sini, contoh:\nNILAI GIZI 28/09/26 Senin\nnasi putih\nAyam kungpao\nTahu walik\ntumis labu siam+jagung\n\n*Porsi Kecil*\nEnergi : 554,2 kkal\n...\n*Porsi Besar*\nEnergi : 763,1 kkal\n...`}
-                    className="w-full p-2 text-xs rounded-lg border border-slate-300 font-mono bg-white text-slate-800 leading-relaxed"
-                  />
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-slate-500">Otomatis mengisi tanggal, menu, dan nilai gizi Porsi Besar/Kecil</span>
-                    <button
-                      type="button"
-                      onClick={handleApplyWhatsAppText}
-                      disabled={!whatsAppText.trim()}
-                      className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 rounded-lg shadow-xs cursor-pointer flex items-center gap-1 shrink-0">
-                      {pasteSuccess ? (
-                        <>
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
-                          <span>Berhasil Diterapkan!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>Terapkan Otomatis</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
-          </div>
 
-          {/* Tab Switcher jika Mode 2 Menu */}
-          {printMode === "DOUBLE" && (
-            <div className="flex items-center gap-2 p-1 bg-slate-200/70 rounded-xl">
-              <button
-                type="button"
-                onClick={() => setActiveMenuEditor("MENU1")}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                  activeMenuEditor === "MENU1" ? "bg-white text-emerald-800 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900"
-                }`}>
-                Editor Menu 1 (Sekolah)
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveMenuEditor("MENU2")}
-                className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
-                  activeMenuEditor === "MENU2" ? "bg-white text-emerald-800 font-bold shadow-2xs" : "text-slate-600 hover:text-slate-900"
-                }`}>
-                Editor Menu 2 (Alternatif/3B)
-              </button>
-            </div>
-          )}
-
-          {/* Box 2: Detail Menu yang Sedang Diedit */}
-          {(() => {
-            const isMenu1 = activeMenuEditor === "MENU1" || printMode === "SINGLE";
-            const curMenu = isMenu1 ? menu1 : menu2;
-            const setCurMenu = isMenu1 ? setMenu1 : setMenu2;
-            const isUploading = isMenu1 ? isUploading1 : isUploading2;
-            const targetTag = isMenu1 ? "MENU1" : "MENU2";
-
-            return (
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-4">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Utensils className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{printMode === "SINGLE" ? "Detail Menu Makanan" : isMenu1 ? "Detail Menu 1 (Sekolah)" : "Detail Menu 2 (Alternatif / 3B)"}</span>
-                  </span>
-                </div>
-
-                {/* Judul Kertas Catatan */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Judul Kertas Catatan:</label>
-                  <input
-                    type="text"
-                    value={curMenu.noteTitle}
-                    onChange={(e) => setCurMenu((prev) => ({...prev, noteTitle: e.target.value}))}
-                    placeholder="Contoh: Menu Makanan / Menu Sekolah / Menu 3B"
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 font-semibold text-slate-800 bg-white"
-                  />
-                </div>
-
-                {/* Upload Foto Nampan Makanan */}
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                      <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Foto Nampan Makanan:</span>
-                    </label>
-                    {isUploading && <span className="text-[10px] text-emerald-700 animate-pulse font-semibold">Mengompresi...</span>}
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="w-16 h-16 rounded-xl border border-slate-300 overflow-hidden bg-white shrink-0 relative shadow-2xs">
-                      <img src={curMenu.image} alt="Preview Nampan" className="w-full h-full object-cover" />
-                    </div>
-
-                    <div className="flex-1 space-y-1.5">
-                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition-colors cursor-pointer shadow-2xs">
-                        <Upload className="w-3.5 h-3.5 text-emerald-700" />
-                        <span>Upload Foto Nampan Baru</span>
-                        <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, targetTag)} className="hidden" />
-                      </label>
-                      <div className="text-[10px] text-slate-400">Foto baru otomatis diletakkan pada posisi nampan stainless dengan sudut kemiringan presisi.</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Butir Menu Makanan */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-semibold text-slate-600">Daftar Butir Menu (Satu per baris):</label>
-                    <span className="text-[10px] text-slate-400">{curMenu.items.length} Bahan / Lauk</span>
-                  </div>
-                  <textarea
-                    rows={5}
-                    value={curMenu.items.join("\n")}
-                    onChange={(e) => {
-                      const lines = e.target.value
-                        .split("\n")
-                        .map((l) => l.replace(/^[•\-\*\s]+/, "").trim())
-                        .filter(Boolean);
-                      setCurMenu((prev) => ({...prev, items: lines}));
-                    }}
-                    placeholder="Contoh:&#10;nasi putih&#10;ayam katsu&#10;saus curry&#10;tahu goreng&#10;buah kelengkeng"
-                    className="w-full p-2.5 text-xs rounded-lg border border-slate-300 font-medium text-slate-800 bg-white font-mono leading-relaxed"
-                  />
-                </div>
-
-                {/* Editor Kandungan Gizi: Porsi Besar vs Porsi Kecil (Textarea per baris persis Daftar Menu) */}
-                <div className="space-y-2 pt-2 border-t border-slate-100">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Kandungan Zat Gizi (Satu per baris):</span>
-                    </span>
-                    <span className="text-[10px] text-slate-400">Porsi Besar & Kecil</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    {/* Textarea Porsi Besar */}
-                    <div className="p-2.5 rounded-xl bg-amber-50/50 border border-amber-200/80 space-y-1.5">
-                      <div className="flex items-center justify-between pb-1 border-b border-amber-200/60">
-                        <span className="font-bold text-amber-900 text-xs">Porsi Besar</span>
-                        <span className="text-[10px] text-amber-700 font-mono">5 Nilai Gizi</span>
-                      </div>
-                      <textarea
-                        rows={6}
-                        value={curMenu.largePortionText ?? formatNutritionLines(curMenu.largePortion)}
-                        onChange={(e) => {
-                          const text = e.target.value;
-                          const parsed = parseNutritionText(text);
-                          setCurMenu((prev) => ({
-                            ...prev,
-                            largePortionText: text,
-                            largePortion: {
-                              energy: parsed.energy !== "" ? parsed.energy : prev.largePortion.energy,
-                              protein: parsed.protein !== "" ? parsed.protein : prev.largePortion.protein,
-                              fat: parsed.fat !== "" ? parsed.fat : prev.largePortion.fat,
-                              carb: parsed.carb !== "" ? parsed.carb : prev.largePortion.carb,
-                              fiber: parsed.fiber !== "" ? parsed.fiber : prev.largePortion.fiber,
-                            },
-                          }));
-                        }}
-                        placeholder={`Energi : 763,1 kkal\nProtein : 20,9 gr\nLemak : 21,3 gr\nKarbohidrat : 101,5 gr\nSerat : 4,8 gr`}
-                        className="w-full p-2 text-xs rounded-lg border border-amber-300 font-medium text-slate-800 bg-white font-mono leading-relaxed focus:ring-1 focus:ring-amber-500"
-                      />
-                      <div className="text-[10px] text-amber-800/80 leading-tight">Format: Energi, Protein, Lemak, Karbohidrat, Serat</div>
-                    </div>
-
-                    {/* Textarea Porsi Kecil */}
-                    <div className="p-2.5 rounded-xl bg-emerald-50/50 border border-emerald-200/80 space-y-1.5">
-                      <div className="flex items-center justify-between pb-1 border-b border-emerald-200/60">
-                        <span className="font-bold text-emerald-900 text-xs">Porsi Kecil</span>
-                        <span className="text-[10px] text-emerald-700 font-mono">5 Nilai Gizi</span>
-                      </div>
-                      <textarea
-                        rows={6}
-                        value={curMenu.smallPortionText ?? formatNutritionLines(curMenu.smallPortion)}
-                        onChange={(e) => {
-                          const text = e.target.value;
-                          const parsed = parseNutritionText(text);
-                          setCurMenu((prev) => ({
-                            ...prev,
-                            smallPortionText: text,
-                            smallPortion: {
-                              energy: parsed.energy !== "" ? parsed.energy : prev.smallPortion.energy,
-                              protein: parsed.protein !== "" ? parsed.protein : prev.smallPortion.protein,
-                              fat: parsed.fat !== "" ? parsed.fat : prev.smallPortion.fat,
-                              carb: parsed.carb !== "" ? parsed.carb : prev.smallPortion.carb,
-                              fiber: parsed.fiber !== "" ? parsed.fiber : prev.smallPortion.fiber,
-                            },
-                          }));
-                        }}
-                        placeholder={`Energi : 554,2 kkal\nProtein : 17,3 gr\nLemak : 18,2 gr\nKarbohidrat : 79 gr\nSerat : 4 gr`}
-                        className="w-full p-2 text-xs rounded-lg border border-emerald-300 font-medium text-slate-800 bg-white font-mono leading-relaxed focus:ring-1 focus:ring-emerald-500"
-                      />
-                      <div className="text-[10px] text-emerald-800/80 leading-tight">Format: Energi, Protein, Lemak, Karbohidrat, Serat</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-
-        {/* ========================================================================= */}
-        {/* LIVE POSTER PREVIEW (Kanan - 7 Kolom)                                     */}
-        {/* ========================================================================= */}
-        <div className="lg:col-span-7 space-y-3">
-          <div className="flex items-center justify-between no-print px-1">
-            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-              <Eye className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Pratinjau Hasil Cetak Poster Resmi</span>
-            </span>
+            {/* Right Action buttons */}
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-slate-400">1:1 Presisi Template Canva</span>
               <button
                 type="button"
-                onClick={handlePrint}
-                className="inline-flex items-center gap-1 px-3 py-1 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors cursor-pointer">
-                <Printer className="w-3 h-3 text-emerald-700" />
-                <span>Cetak A4</span>
+                onClick={handleDownloadJpg}
+                disabled={isDownloading}
+                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-emerald-950 bg-emerald-400 hover:bg-emerald-300 rounded-lg transition-colors cursor-pointer">
+                <Download className="w-3.5 h-3.5" />
+                <span>Unduh JPG</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadPng}
+                disabled={isDownloading}
+                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-900 bg-slate-200 hover:bg-white rounded-lg transition-colors cursor-pointer">
+                <Download className="w-3.5 h-3.5" />
+                <span>Unduh PNG</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsModalPreviewOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                title="Tutup Pratinjau">
+                <X className="w-5 h-5" />
               </button>
             </div>
           </div>
 
-          {/* Container Scroll Preview */}
-          <div className="overflow-x-auto pb-4">
-            {printMode === "SINGLE" ? (
-              /* =================================================================== */
-              /* POSTER MODE 1: SINGLE MENU (PORTRAIT) PERSIS DESAIN CANVA RESMI     */
-              /* =================================================================== */
-              <div
-                id="printable-poster-single"
-                className="poster-printable relative bg-white text-slate-800 mx-auto shadow-2xl rounded-2xl border border-slate-300 select-none"
-                style={{
-                  width: "100%",
-                  maxWidth: "680px",
-                  aspectRatio: "1587 / 2245",
-                  fontFamily: "'Nunito', 'Segoe UI', sans-serif",
-                }}>
-                {/* The Authentic Cleaned Template Background */}
-                <img src={templateMenuSingleClean} alt="Template Cetak Menu MBG SPPG" className="absolute inset-0 w-full h-full object-fill pointer-events-none" />
-
-                {/* 1. Dynamic Date Pill Overlay */}
-                <div
-                  className="absolute flex items-center justify-center text-center select-none"
-                  style={{
-                    left: "25.7%",
-                    top: "24.6%",
-                    width: "48.5%",
-                    height: "5.5%",
-                  }}>
-                  <span className="text-white leading-none font-extrabold" style={{fontFamily: "'Nunito', sans-serif", fontSize: "clamp(11px, 2.7vw, 25px)"}}>
-                    {formatPosterDate(selectedDate)}
-                  </span>
-                </div>
-
-                {/* 2. Dynamic Torn Paper Note Overlay */}
-                <div
-                  className="absolute flex flex-col justify-start select-none"
-                  style={{
-                    left: "10.8%",
-                    top: "40.5%",
-                    width: "28%",
-                    height: "19.5%",
-                    transform: "rotate(-16deg)",
-                    transformOrigin: "top left",
-                    fontFamily: "'Nunito', sans-serif",
-                    fontSize: "24",
-                    padding: "2px 0px",
-                  }}>
-                  {menu1.noteTitle && menu1.noteTitle !== "Menu Makanan" && (
-                    <div className="text-[#2a2830] pb-1 mb-1 font-extrabold" style={{fontSize: "clamp(9px, 2vw, 15px)", lineHeight: 1.15, borderBottom: "1.5px dashed #c8b89a"}}>
-                      {menu1.noteTitle}
-                    </div>
-                  )}
-                  <ul className="text-[#2a2830]" style={{margin: 0, padding: 0, listStyle: "none"}}>
-                    {menu1.items.map((it, idx) => (
-                      <li
-                        key={idx}
-                        className="flex items-start"
-                        style={{fontSize: "clamp(8px, 1.8vw, 15px)", fontWeight: 600, lineHeight: 1.48, marginBottom: "0.06em", gap: "0.3em"}}>
-                        <span style={{fontWeight: 900, flexShrink: 0}}>•</span>
-                        <span style={{textTransform: "none"}}>{it}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {/* 3. Dynamic Food Tray Overlay (Only if user uploaded a custom photo) */}
-                {menu1.image && menu1.image !== traySample1 && (
-                  <div
-                    className="absolute flex items-center justify-center select-none pointer-events-none"
-                    style={{
-                      left: "47.5%",
-                      top: "33%",
-                      width: "36.5%",
-                      height: "34%",
-                      transform: "rotate(28.5deg)",
-                    }}>
-                    <div className="w-full h-full rounded-2xl bg-slate-300 p-1 shadow-2xl ring-2 ring-slate-400/50 overflow-hidden">
-                      <img src={menu1.image} alt="Foto Nampan Menu" className="w-full h-full object-cover rounded-xl" />
-                    </div>
-                  </div>
-                )}
-
-                {/* 4. Dynamic Nutrition Table Overlay (values only, titles on template) */}
-                <div
-                  className="absolute flex items-start select-none"
-                  style={{
-                    left: "22.4%",
-                    top: "77.2%",
-                    width: "55%",
-                    height: "15%",
-                    fontFamily: "'Nunito', sans-serif",
-                  }}>
-                  <div className="w-full grid grid-cols-2" style={{columnGap: "10%"}}>
-                    {/* Porsi Besar Values */}
-                    <div style={{fontSize: "clamp(10px, 2.3vw, 17px)", fontWeight: 600, lineHeight: 1.6, color: "#3a3840", whiteSpace: "nowrap"}}>
-                      <div>
-                        Energi : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.energy} kkal</strong>
-                      </div>
-                      <div>
-                        Protein : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.protein} gr</strong>
-                      </div>
-                      <div>
-                        Lemak : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.fat} gr</strong>
-                      </div>
-                      <div>
-                        Karbohidrat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.carb} gr</strong>
-                      </div>
-                      <div>
-                        Serat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.fiber} gr</strong>
-                      </div>
-                    </div>
-
-                    {/* Porsi Kecil Values */}
-                    <div style={{fontSize: "clamp(10px, 2.3vw, 17px)", fontWeight: 600, lineHeight: 1.6, color: "#3a3840", whiteSpace: "nowrap"}}>
-                      <div>
-                        Energi : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.energy} kkal</strong>
-                      </div>
-                      <div>
-                        Protein : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.protein} gr</strong>
-                      </div>
-                      <div>
-                        Lemak : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.fat} gr</strong>
-                      </div>
-                      <div>
-                        Karbohidrat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.carb} gr</strong>
-                      </div>
-                      <div>
-                        Serat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.fiber} gr</strong>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              /* =================================================================== */
-              /* POSTER MODE 2: DOUBLE MENU (LANDSCAPE) PERSIS DESAIN CANVA RESMI    */
-              /* =================================================================== */
-              <div
-                id="printable-poster-double"
-                className="poster-printable relative bg-white text-slate-800 mx-auto shadow-2xl rounded-2xl border border-slate-300 select-none"
-                style={{
-                  width: "100%",
-                  maxWidth: "960px",
-                  aspectRatio: "2245 / 1587",
-                  fontFamily: "'Nunito', 'Segoe UI', sans-serif",
-                }}>
-                {/* The Authentic Cleaned Double Template Background */}
-                <img src={templateMenuDoubleClean} alt="Template Cetak Menu MBG SPPG (2 Menu)" className="absolute inset-0 w-full h-full object-fill pointer-events-none" />
-
-                {/* 1. Dynamic Date Pill Overlay */}
-                <div
-                  className="absolute flex items-center justify-center text-center select-none"
-                  style={{
-                    left: "35.9%",
-                    top: "20.9%",
-                    width: "24.6%",
-                    height: "5.4%",
-                  }}>
-                  <span className="text-white leading-none font-extrabold" style={{fontFamily: "'Nunito', sans-serif", fontSize: "clamp(9px, 1.6vw, 15px)"}}>
-                    {formatPosterDate(selectedDate)}
-                  </span>
-                </div>
-
-                {/* 2. Menu 1 (Sekolah) Note Overlay */}
-                <div
-                  className="absolute flex flex-col justify-start select-none"
-                  style={{
-                    left: "5.5%",
-                    top: "43.5%",
-                    width: "16%",
-                    height: "21%",
-                    transform: "rotate(-10.7deg)",
-                    transformOrigin: "top left",
-                    fontFamily: "'Nunito', sans-serif",
-                    padding: "2px 0px",
-                  }}>
-                  {menu1.noteTitle && menu1.noteTitle !== "Menu Sekolah" && (
-                    <div
-                      className="text-[#2a2830] pb-0.5 mb-1 font-extrabold"
-                      style={{fontSize: "clamp(7.5px, 1.45vw, 12px)", lineHeight: 1.2, borderBottom: "1px dashed #c8b89a"}}>
-                      {menu1.noteTitle}
-                    </div>
-                  )}
-                  <ul style={{margin: 0, padding: 0, listStyle: "none"}}>
-                    {menu1.items.map((it, idx) => (
-                      <li
-                        key={idx}
-                        className="flex items-start"
-                        style={{color: "#2a2830", fontSize: "clamp(6px, 1.12vw, 12px)", fontWeight: 600, lineHeight: 1.45, gap: "0.25em", marginBottom: "0.04em"}}>
-                        <span style={{fontWeight: 900, flexShrink: 0}}>•</span>
-                        <span>{it}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {/* 3. Menu 1 Food Tray Overlay (Only if custom uploaded) */}
-                {menu1.image && menu1.image !== trayDouble1 && (
-                  <div
-                    className="absolute flex items-center justify-center select-none pointer-events-none"
-                    style={{
-                      left: "19.5%",
-                      top: "44%",
-                      width: "24.5%",
-                      height: "52%",
-                      transform: "rotate(26deg)",
-                    }}>
-                    <div className="w-full h-full rounded-2xl bg-slate-300 p-1 shadow-2xl ring-1 ring-slate-400/50 overflow-hidden">
-                      <img src={menu1.image} alt="Foto Nampan Menu 1" className="w-full h-full object-cover rounded-xl" />
-                    </div>
-                  </div>
-                )}
-
-                {/* 4. Menu 1 Nutrition Table Overlay */}
-                <div
-                  className="absolute flex items-start select-none"
-                  style={{
-                    left: "16.5%",
-                    top: "78.2%",
-                    width: "31%",
-                    height: "14%",
-                    fontFamily: "'Nunito', sans-serif",
-                  }}>
-                  <div className="w-full grid grid-cols-2" style={{columnGap: "8%"}}>
-                    {/* Porsi Besar */}
-                    <div style={{fontSize: "clamp(6px, 1.05vw, 9.5px)", fontWeight: 600, lineHeight: 1.65, color: "#3a3840"}}>
-                      <div>
-                        Energi : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.energy} kkal</strong>
-                      </div>
-                      <div>
-                        Protein : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.protein} g</strong>
-                      </div>
-                      <div>
-                        Lemak : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.fat} g</strong>
-                      </div>
-                      <div>
-                        Karbohidrat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.carb} g</strong>
-                      </div>
-                      <div>
-                        Serat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.largePortion.fiber} g</strong>
-                      </div>
-                    </div>
-
-                    {/* Porsi Kecil */}
-                    <div style={{fontSize: "clamp(6px, 1.05vw, 9.5px)", fontWeight: 600, lineHeight: 1.65, color: "#3a3840"}}>
-                      <div>
-                        Energi : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.energy} kkal</strong>
-                      </div>
-                      <div>
-                        Protein : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.protein} g</strong>
-                      </div>
-                      <div>
-                        Lemak : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.fat} g</strong>
-                      </div>
-                      <div>
-                        Karbohidrat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.carb} g</strong>
-                      </div>
-                      <div>
-                        Serat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu1.smallPortion.fiber} g</strong>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 5. Menu 2 (3B) Note Overlay */}
-                <div
-                  className="absolute flex flex-col justify-start select-none"
-                  style={{
-                    left: "54.8%",
-                    top: "43.5%",
-                    width: "16%",
-                    height: "21%",
-                    transform: "rotate(-13.8deg)",
-                    transformOrigin: "top left",
-                    fontFamily: "'Nunito', sans-serif",
-                    padding: "2px 0px",
-                  }}>
-                  {menu2.noteTitle && menu2.noteTitle !== "Menu 3B" && (
-                    <div
-                      className="text-[#2a2830] pb-0.5 mb-1 font-extrabold"
-                      style={{fontSize: "clamp(7.5px, 1.45vw, 12px)", lineHeight: 1.2, borderBottom: "1px dashed #c8b89a"}}>
-                      {menu2.noteTitle}
-                    </div>
-                  )}
-                  <ul style={{margin: 0, padding: 0, listStyle: "none"}}>
-                    {menu2.items.map((it, idx) => (
-                      <li
-                        key={idx}
-                        className="flex items-start"
-                        style={{color: "#2a2830", fontSize: "clamp(6px, 1.12vw, 9px)", fontWeight: 600, lineHeight: 1.45, gap: "0.25em", marginBottom: "0.04em"}}>
-                        <span style={{fontWeight: 900, flexShrink: 0}}>•</span>
-                        <span>{it}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                {/* 6. Menu 2 Food Tray Overlay (Only if custom uploaded) */}
-                {menu2.image && menu2.image !== trayDouble2 && (
-                  <div
-                    className="absolute flex items-center justify-center select-none pointer-events-none"
-                    style={{
-                      left: "67.5%",
-                      top: "44%",
-                      width: "24.5%",
-                      height: "52%",
-                      transform: "rotate(26deg)",
-                    }}>
-                    <div className="w-full h-full rounded-2xl bg-slate-300 p-1 shadow-2xl ring-1 ring-slate-400/50 overflow-hidden">
-                      <img src={menu2.image} alt="Foto Nampan Menu 2" className="w-full h-full object-cover rounded-xl" />
-                    </div>
-                  </div>
-                )}
-
-                {/* 7. Menu 2 Nutrition Table Overlay */}
-                <div
-                  className="absolute flex items-start select-none"
-                  style={{
-                    left: "53.5%",
-                    top: "78.2%",
-                    width: "31%",
-                    height: "14%",
-                    fontFamily: "'Nunito', sans-serif",
-                  }}>
-                  <div className="w-full grid grid-cols-2" style={{columnGap: "8%"}}>
-                    {/* Porsi Besar */}
-                    <div style={{fontSize: "clamp(6px, 1.05vw, 9.5px)", fontWeight: 600, lineHeight: 1.65, color: "#3a3840"}}>
-                      <div>
-                        Energi : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.largePortion.energy} kkal</strong>
-                      </div>
-                      <div>
-                        Protein : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.largePortion.protein} g</strong>
-                      </div>
-                      <div>
-                        Lemak : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.largePortion.fat} g</strong>
-                      </div>
-                      <div>
-                        Karbohidrat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.largePortion.carb} g</strong>
-                      </div>
-                      <div>
-                        Serat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.largePortion.fiber} g</strong>
-                      </div>
-                    </div>
-
-                    {/* Porsi Kecil */}
-                    <div style={{fontSize: "clamp(6px, 1.05vw, 9.5px)", fontWeight: 600, lineHeight: 1.65, color: "#3a3840"}}>
-                      <div>
-                        Energi : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.smallPortion.energy} kkal</strong>
-                      </div>
-                      <div>
-                        Protein : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.smallPortion.protein} g</strong>
-                      </div>
-                      <div>
-                        Lemak : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.smallPortion.fat} g</strong>
-                      </div>
-                      <div>
-                        Karbohidrat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.smallPortion.carb} g</strong>
-                      </div>
-                      <div>
-                        Serat : <strong style={{fontWeight: 700, color: "#1a1820"}}>{menu2.smallPortion.fiber} g</strong>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+          {/* Modal Body */}
+          <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
+            <div className="w-full flex justify-center py-4">{renderPosterElement(true)}</div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
