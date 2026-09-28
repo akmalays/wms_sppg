@@ -549,19 +549,19 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
           }
         }
 
-        // Draw Torn Note text (slanted -16.0 degrees matching 'Menu Makanan')
+        // Draw Torn Note text (slanted -10.5 degrees matching 'Menu Makanan')
         ctx.save();
-        ctx.translate(225, 830);
-        ctx.rotate((-16.0 * Math.PI) / 180);
+        ctx.translate(150, 880);
+        ctx.rotate((-10.5 * Math.PI) / 180);
 
-        // Bullet items (ukuran diperbesar dan jelas)
+        // Bullet items (ukuran pas agar rapi dan tidak tembus kertas)
         ctx.fillStyle = "#2a2830";
-        ctx.font = "600 34px Nunito, system-ui, sans-serif";
-        let startY = 60;
+        ctx.font = "600 30px Nunito, system-ui, sans-serif";
+        let startY = 30;
         menu1.items.forEach((it) => {
           ctx.fillText("•", 10, startY);
-          ctx.fillText(it, 40, startY);
-          startY += 48;
+          ctx.fillText(it, 38, startY);
+          startY += 45;
         });
         ctx.restore();
 
@@ -732,27 +732,28 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
               transformOrigin: "top left",
               fontFamily: "'Nunito', sans-serif",
               padding: "2px 0px",
+              overflow: "hidden",
             }}>
             {menu1.noteTitle && menu1.noteTitle !== "Menu Makanan" && (
               <div className="text-[#2a2830] pb-1 mb-1 font-extrabold" style={{fontSize: "clamp(9px, 1.9cqi, 15px)", lineHeight: 1.15, borderBottom: "1.5px dashed #c8b89a"}}>
                 {menu1.noteTitle}
               </div>
             )}
-            <ul className="text-[#2a2830]" style={{margin: 0, padding: 0, listStyle: "none"}}>
+            <ul className="text-[#2a2830]" style={{margin: 0, padding: 0, listStyle: "none", width: "100%"}}>
               {menu1.items.map((it, idx) => (
                 <li
                   key={idx}
                   className="flex items-start"
                   style={{
-                    fontSize: "clamp(10.5px, 3cqi, 18px)",
+                    fontSize: "clamp(10px, 3cqi, 15px)",
                     fontWeight: 600,
-                    lineHeight: 1.48,
-                    marginBottom: "0.08em",
-                    gap: "0.3em",
-                    whiteSpace: "nowrap",
+                    lineHeight: 1.35,
+                    marginBottom: "0.18em",
+                    gap: "0.25em",
+                    width: "100%",
                   }}>
-                  <span style={{fontWeight: 900, flexShrink: 0}}>•</span>
-                  <span>{it}</span>
+                  <span style={{fontWeight: 900, flexShrink: 0, lineHeight: 1.35}}>•</span>
+                  <span style={{wordBreak: "break-word", flex: 1}}>{it}</span>
                 </li>
               ))}
             </ul>
@@ -865,33 +866,35 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
             left: "5.5%",
             top: "43.5%",
             width: "18.5%",
+            maxWidth: "18.5%",
             height: "22%",
             transform: "rotate(-14.7deg)",
             transformOrigin: "top left",
             fontFamily: "'Nunito', sans-serif",
             padding: "2px 0px",
+            overflow: "hidden",
           }}>
           {menu1.noteTitle && menu1.noteTitle !== "Menu Sekolah" && (
             <div className="text-[#2a2830] pb-0.5 mb-1 font-extrabold" style={{fontSize: "clamp(8px, 1.45cqi, 11px)", lineHeight: 1.2, borderBottom: "1px dashed #c8b89a"}}>
               {menu1.noteTitle}
             </div>
           )}
-          <ul style={{margin: 0, padding: 0, listStyle: "none"}}>
+          <ul style={{margin: 0, padding: 0, listStyle: "none", width: "100%"}}>
             {menu1.items.map((it, idx) => (
               <li
                 key={idx}
                 className="flex items-start"
                 style={{
                   color: "#2a2830",
-                  fontSize: "clamp(9.5px, 1.51cqi, 16px)",
+                  fontSize: "clamp(9.5px, 1.31cqi, 13px)",
                   fontWeight: 600,
-                  lineHeight: 1.4,
+                  lineHeight: 1.35,
                   gap: "0.25em",
-                  marginBottom: "0.04em",
-                  whiteSpace: "nowrap",
+                  marginBottom: "0.08em",
+                  width: "100%",
                 }}>
-                <span style={{fontWeight: 900, flexShrink: 0}}>•</span>
-                <span>{it}</span>
+                <span style={{fontWeight: 900, flexShrink: 0, lineHeight: 1.35}}>•</span>
+                <span style={{wordBreak: "break-word", flex: 1}}>{it}</span>
               </li>
             ))}
           </ul>
@@ -983,35 +986,37 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
           className="absolute flex flex-col justify-start select-none"
           style={{
             left: "54.8%",
-            top: "41.5%",
-            width: "18.5%",
+            top: "43.5%",
+            width: "16.8%",
+            maxWidth: "16.8%",
             height: "22%",
             transform: "rotate(-13.8deg)",
             transformOrigin: "top left",
             fontFamily: "'Nunito', sans-serif",
             padding: "2px 0px",
+            overflow: "hidden",
           }}>
           {menu2.noteTitle && menu2.noteTitle !== "Menu 3B" && (
             <div className="text-[#2a2830] pb-0.5 mb-1 font-extrabold" style={{fontSize: "clamp(8px, 1.45cqi, 13px)", lineHeight: 1.2, borderBottom: "1px dashed #c8b89a"}}>
               {menu2.noteTitle}
             </div>
           )}
-          <ul style={{margin: 0, padding: 0, listStyle: "none"}}>
+          <ul style={{margin: 0, padding: 0, listStyle: "none", width: "100%"}}>
             {menu2.items.map((it, idx) => (
               <li
                 key={idx}
                 className="flex items-start"
                 style={{
                   color: "#2a2830",
-                  fontSize: "clamp(9.5px, 1.51cqi, 16px)",
+                  fontSize: "clamp(9.5px, 1.31cqi, 13px)",
                   fontWeight: 600,
-                  lineHeight: 1.4,
+                  lineHeight: 1.35,
                   gap: "0.25em",
-                  marginBottom: "0.04em",
-                  whiteSpace: "nowrap",
+                  marginBottom: "0.08em",
+                  width: "100%",
                 }}>
-                <span style={{fontWeight: 900, flexShrink: 0}}>•</span>
-                <span>{it}</span>
+                <span style={{fontWeight: 900, flexShrink: 0, lineHeight: 1.35}}>•</span>
+                <span style={{wordBreak: "break-word", flex: 1}}>{it}</span>
               </li>
             ))}
           </ul>
