@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   TrendingDown,
   Package,
+  Boxes,
   Receipt,
   UtensilsCrossed,
   Trash2,
@@ -22,7 +23,8 @@ import {
   User,
   UserCheck,
   Utensils,
-  Users
+  Users,
+  PackagePlus
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -49,9 +51,9 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
 
   const primaryNavItems = [
     { id: 'dashboard', label: 'Ringkasan', icon: LayoutDashboard },
-    { id: 'receiving', label: 'Input Barang', icon: Truck },
-    { id: 'daily_expenses', label: 'Pengeluaran Harian', icon: TrendingDown },
-    { id: 'inventory', label: 'Master Barang', icon: Package },
+    { id: 'receiving', label: 'Input Barang & Belanja', icon: PackagePlus },
+    { id: 'daily_expenses', label: 'Laporan Pengeluaran', icon: TrendingDown },
+    { id: 'inventory', label: 'Stok Barang', icon: Boxes },
     { id: 'menu_orders', label: 'Order Menu Gizi', icon: UtensilsCrossed },
     { id: 'waste_logs', label: 'Rekap Limbah', icon: Trash2 },
     { id: 'employees', label: 'Karyawan & Absensi', icon: Users },
@@ -60,6 +62,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
   ];
 
   const secondaryNavItems = [
+    { id: 'menu_print', label: 'Cetak Menu MBG', icon: Printer },
     { id: 'nonfood_expenses', label: 'Pengeluaran Non-Food', icon: Receipt },
     { id: 'daily_flow', label: 'Aliran Stok Harian (Daily-Flow)', icon: Utensils },
     { id: 'ledger', label: 'Buku Mutasi (Ledger)', icon: History },

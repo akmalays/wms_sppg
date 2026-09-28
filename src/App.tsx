@@ -17,6 +17,7 @@ import { StockOpnameModule } from './components/StockOpnameModule';
 import { EquipmentModule } from './components/EquipmentModule';
 import { SuppliersModule } from './components/SuppliersModule';
 import { AuditLogModule } from './components/AuditLogModule';
+import { MenuPrintModule } from './components/MenuPrintModule';
 import { LoginPage } from './components/LoginPage';
 import { warehouseDb } from './db/storage';
 
@@ -69,7 +70,7 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'inventory' && (
-            <InventoryModule onRefreshData={handleRefresh} />
+            <InventoryModule onRefreshData={handleRefresh} initialTab="stock" />
           )}
 
           {activeTab === 'nonfood_expenses' && (
@@ -77,7 +78,7 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'menu_orders' && (
-            <MenuOrdersModule />
+            <MenuOrdersModule onNavigate={setActiveTab} />
           )}
 
           {activeTab === 'waste_logs' && (
@@ -106,7 +107,7 @@ const MainLayout: React.FC = () => {
           {activeTab === 'ledger' && <StockMovementModule />}
 
           {activeTab === 'stock_opname' && (
-            <StockOpnameModule onRefreshData={handleRefresh} />
+            <InventoryModule onRefreshData={handleRefresh} initialTab="opname" />
           )}
 
           {activeTab === 'equipment' && (
@@ -115,6 +116,10 @@ const MainLayout: React.FC = () => {
 
           {activeTab === 'suppliers' && (
             <SuppliersModule onRefreshData={handleRefresh} />
+          )}
+
+          {activeTab === 'menu_print' && (
+            <MenuPrintModule onNavigate={setActiveTab} />
           )}
 
           {activeTab === 'audit' && <AuditLogModule />}

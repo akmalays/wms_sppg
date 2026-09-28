@@ -23,6 +23,30 @@ export function exportToExcel<T extends Record<string, any>>(
 }
 
 /**
+ * Export multiple sheets to a single Excel workbook
+ */
+export function exportMultiSheetExcel(
+  sheets: { sheetName: string; data: Record<string, any>[] }[],
+  fileName: string
+): void {
+  if (!sheets || sheets.length === 0) {
+    alert('Tidak ada data untuk diekspor ke Excel.');
+    return;
+  }
+
+  const workbook = XLSX.utils.book_new();
+  sheets.forEach(({ sheetName, data }) => {
+    if (data && data.length > 0) {
+      const ws = XLSX.utils.json_to_sheet(data);
+      XLSX.utils.book_append_sheet(workbook, ws, sheetName);
+    }
+  });
+
+  const safeFileName = fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`;
+  XLSX.writeFile(workbook, safeFileName);
+}
+
+/**
  * Parse uploaded Excel or CSV file from browser input and return array of objects
  */
 export function parseExcelFile<T = any>(file: File): Promise<T[]> {

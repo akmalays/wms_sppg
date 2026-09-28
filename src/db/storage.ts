@@ -17,6 +17,7 @@ import {
   NonFoodExpense,
   MenuOrder,
   WasteLog,
+  DisposalMethod,
   DailyTodoItem,
   SchoolBeneficiaryAllocation,
   Employee,
@@ -1091,11 +1092,19 @@ class WarehouseDatabase {
     this.auditLogs = getStored<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
     this.nonFoodExpenses = getStored<NonFoodExpense[]>(STORAGE_KEYS.NONFOOD_EXPENSES, INITIAL_NONFOOD_EXPENSES);
     this.menuOrders = getStored<MenuOrder[]>(STORAGE_KEYS.MENU_ORDERS, INITIAL_MENU_ORDERS);
-    if (!this.menuOrders.some(m => m.id === 'ORD-2026-004')) {
+    if (!this.menuOrders.some(m => m.id === 'ORD-2026-006') || (this.menuOrders.find(m => m.id === 'ORD-2026-005')?.poArrivalItems?.length || 0) < 20) {
       this.menuOrders = INITIAL_MENU_ORDERS;
       setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
     }
     this.wasteLogs = getStored<WasteLog[]>(STORAGE_KEYS.WASTE_LOGS, INITIAL_WASTE_LOGS);
+    if (!this.wasteLogs.some(w => w.id === 'WST-025')) {
+      const existingIds = new Set(this.wasteLogs.map(w => w.id));
+      const missing = INITIAL_WASTE_LOGS.filter(w => !existingIds.has(w.id));
+      if (missing.length > 0) {
+        this.wasteLogs = [...this.wasteLogs, ...missing];
+        setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
+      }
+    }
     this.todos = getStored<DailyTodoItem[]>(STORAGE_KEYS.TODOS, INITIAL_TODOS);
     if (this.todos.some(t => !t.targetTime)) {
       this.todos = this.todos.map(t => {
@@ -1818,6 +1827,22 @@ class WarehouseDatabase {
     return updated;
   }
 
+  public deleteMenuOrder(orderId: string, user: User): boolean {
+    const idx = this.menuOrders.findIndex(o => o.id === orderId);
+    if (idx < 0) return false;
+    const removed = this.menuOrders[idx];
+    this.menuOrders.splice(idx, 1);
+    setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+    this.logAudit(
+      user,
+      'MENU_ORDER_DELETED',
+      'OPERATIONAL',
+      orderId,
+      `Menghapus Order Menu: ${removed.menuTitle} (${removed.date})`
+    );
+    return true;
+  }
+
   // --- WASTE LOGS ---
   public getWasteLogs(): WasteLog[] {
     return [...this.wasteLogs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -1892,6 +1917,72 @@ class WarehouseDatabase {
       `Menghapus catatan limbah: ${removed.itemName || removed.wasteCategory} (${removed.quantity} ${removed.unit})`
     );
     return true;
+  }
+
+  public saveDailyNutritionLog(
+    date: string,
+    day: string,
+    items: {
+      category: 'karbohidrat' | 'sayur' | 'protein hewani' | 'protein nabati' | 'buah';
+      quantity: number;
+      unit?: string;
+      disposalMethod?: DisposalMethod;
+      notes?: string;
+    }[],
+    user: User
+  ): WasteLog[] {
+    const nutritionCats = new Set(['karbohidrat', 'sayur', 'protein hewani', 'protein nabati', 'buah']);
+    // Remove existing nutrition records for this specific date to avoid duplicate entries
+    this.wasteLogs = this.wasteLogs.filter(
+      w => !(w.date === date && nutritionCats.has(w.wasteCategory.toLowerCase() as any))
+    );
+
+    const timestamp = Date.now();
+    const createdLogs: WasteLog[] = items.map((item, idx) => ({
+      id: `WST-${timestamp.toString().slice(-6)}-${idx + 1}`,
+      day: day.toLowerCase(),
+      date,
+      wasteCategory: item.category,
+      itemName: `Limbah ${item.category}`,
+      quantity: Number(item.quantity) || 0,
+      unit: item.unit || 'Kg',
+      sourceArea: 'SPPG Jeru Tumpang',
+      reason: 'Sisa preparasi & porsi olahan dapur',
+      disposalMethod: item.disposalMethod || 'Pakan Ternak & Kompos Organik',
+      recordedBy: user.name,
+      notes: item.notes,
+      createdAt: new Date().toISOString(),
+    }));
+
+    this.wasteLogs = [...createdLogs, ...this.wasteLogs];
+    setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
+
+    this.logAudit(
+      user,
+      'WASTE_DAILY_RECORDED',
+      'OPERATIONAL',
+      `DAY-${date}`,
+      `Input Rekap Limbah Harian [${date} (${day})]: ${items.map(i => `${i.category}: ${i.quantity} kg`).join(', ')}`
+    );
+
+    return createdLogs;
+  }
+
+  public deleteDailyWasteLogs(date: string, user: User): boolean {
+    const beforeCount = this.wasteLogs.length;
+    this.wasteLogs = this.wasteLogs.filter(w => w.date !== date);
+    if (this.wasteLogs.length !== beforeCount) {
+      setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
+      this.logAudit(
+        user,
+        'WASTE_DAILY_DELETED',
+        'OPERATIONAL',
+        `DAY-${date}`,
+        `Menghapus seluruh catatan limbah tanggal ${date}`
+      );
+      return true;
+    }
+    return false;
   }
 
   // --- DAILY TODOS ---
