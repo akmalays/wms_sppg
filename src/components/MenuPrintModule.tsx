@@ -1562,19 +1562,14 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
       {/* Header Studio Section (No Print) */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 no-print">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-              <Printer className="w-6 h-6 text-emerald-700" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <span>Cetak Menu MBG SPPG</span>
-                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                  {printMode === "SINGLE" ? "1 Menu (Potrait)" : "2 Menu (Landscape)"}
-                </span>
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">Desain resmi 1:1 identik dengan template Canva SPPG Jeru Tumpang. Siap cetak A4 & download JPG / PNG.</p>
-            </div>
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <span>Cetak Menu MBG</span>
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                {printMode === "SINGLE" ? "1 Menu (Potrait)" : "2 Menu (Landscape)"}
+              </span>
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">Siap cetak A4 & download format JPG / PNG.</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

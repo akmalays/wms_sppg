@@ -1,9 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { WasteLog, WasteCategory, DisposalMethod } from '../types/warehouse';
 import { exportMultiSheetExcel, exportToExcel } from '../lib/excelExport';
-import { SppgLogo } from './SppgLogo';
 import {
   Trash2,
   Plus,
@@ -16,12 +15,14 @@ import {
   Calculator,
   Layers,
   Calendar,
+  CalendarRange,
   Scale,
   X,
   PieChart,
   Sliders,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Edit2,
   Table as TableIcon,
   ListFilter,
@@ -206,7 +207,21 @@ export const WasteLogModule: React.FC = () => {
   const [activeViewTab, setActiveViewTab] = useState<'BOTH' | 'DAILY_SHEET' | 'MATRIX' | 'DETAILED_LOGS'>('BOTH');
 
   // Periode Filter Types
-  const [filterMode, setFilterMode] = useState<'ALL' | 'WEEK' | 'MONTH' | 'CUSTOM' | 'PRESET_SAMPLE'>('PRESET_SAMPLE');
+  const [filterMode, setFilterMode] = useState<'ALL' | 'WEEK' | 'MONTH' | 'CUSTOM' | 'PRESET_SAMPLE'>('WEEK');
+  
+  // Action Dropdown state
+  const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
+  const actionDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (actionDropdownRef.current && !actionDropdownRef.current.contains(event.target as Node)) {
+        setIsInputDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   
   // States untuk filter waktu
   const [selectedWeekDate, setSelectedWeekDate] = useState<string>('2026-09-21'); // Tanggal acuan minggu
@@ -777,238 +792,296 @@ export const WasteLogModule: React.FC = () => {
         </div>
       )}
 
-      {/* Header Utama dengan Logo SPPG */}
+      {/* Header Utama */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <SppgLogo size="md" variant="color" />
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">
-              Rekapitulasi & Buku Catatan Limbah SPPG Jeru Tumpang
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Input rekap harian sisa makanan dan penarikan total limbah per minggu atau per bulan.
-            </p>
-          </div>
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">
+            Rekapitulasi & Buku Catatan Limbah
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Input rekap harian sisa makanan dan penarikan total limbah per minggu atau per bulan.
+          </p>
         </div>
 
         {/* Action Controls */}
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-          {/* Tombol Utama: Input Rekap Harian (5 Kategori) */}
-          <button
-            type="button"
-            onClick={() => handleOpenDailyModal()}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Input Rekap Harian</span>
-          </button>
+        <div className="flex items-center gap-2 shrink-0" ref={actionDropdownRef}>
+          {/* Split Button: Primary Input Rekap + Dropdown for Tools */}
+          <div className="relative inline-flex rounded-xl shadow-2xs">
+            <button
+              type="button"
+              onClick={() => handleOpenDailyModal()}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-l-xl bg-emerald-700 hover:bg-emerald-800 text-white transition-colors cursor-pointer"
+              title="Input rekap harian sisa makanan (5 Kategori)"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Input Rekap Harian</span>
+            </button>
 
-          {/* Tombol Kalkulator Komposisi */}
-          <button
-            type="button"
-            onClick={() => setIsCalcModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition-colors shadow-2xs cursor-pointer"
-          >
-            <Calculator className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Kalkulator Piring</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setIsInputDropdownOpen(!isInputDropdownOpen)}
+              className="inline-flex items-center px-2 py-2 text-xs font-bold rounded-r-xl bg-emerald-800 hover:bg-emerald-900 text-white border-l border-emerald-600/40 transition-colors cursor-pointer"
+              title="Pilihan input & alat bantu lainnya"
+            >
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isInputDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
 
-          {/* Tombol Input Batch / Tambahan */}
+            {/* Dropdown Menu Input & Tools */}
+            {isInputDropdownOpen && (
+              <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
+                <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100">
+                  Pilihan Input & Alat
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsInputDropdownOpen(false);
+                    handleOpenDailyModal();
+                  }}
+                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                    <Plus className="w-4 h-4 text-emerald-700" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-900">Input Rekap Harian</div>
+                    <div className="text-[10px] text-slate-500">5 kategori sisa makanan per hari</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsInputDropdownOpen(false);
+                    setIsCalcModalOpen(true);
+                  }}
+                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                    <Calculator className="w-4 h-4 text-emerald-700" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-900">Kalkulator Piring</div>
+                    <div className="text-[10px] text-slate-500">Hitung proporsi sisa per piring</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsInputDropdownOpen(false);
+                    setIsBatchModalOpen(true);
+                  }}
+                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-teal-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center shrink-0">
+                    <Layers className="w-4 h-4 text-teal-700" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-900">Batch Non-Gizi</div>
+                    <div className="text-[10px] text-slate-500">Pencatatan limbah khusus non-porsi</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Cetak PDF */}
           <button
             type="button"
-            onClick={() => setIsBatchModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-300 transition-colors shadow-2xs cursor-pointer"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
           >
-            <Layers className="w-3.5 h-3.5 text-teal-700" />
-            <span>Batch Non-Gizi</span>
+            <Printer className="w-3.5 h-3.5 text-slate-500" />
+            <span>Cetak PDF</span>
           </button>
 
           {/* Ekspor Excel */}
           <button
             type="button"
             onClick={handleExportExcelAll}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
             <span>Ekspor Excel</span>
-          </button>
-
-          {/* Cetak PDF */}
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-          >
-            <Printer className="w-3.5 h-3.5 text-slate-500" />
-            <span>Cetak PDF</span>
           </button>
         </div>
       </div>
 
       {/* FILTER PERIODE (PER MINGGU / PER BULAN / KUSTOM) */}
-      <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {/* Tombol Mode Periode */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs font-semibold text-slate-600 flex items-center gap-1 mr-1">
-              <Calendar className="w-3.5 h-3.5 text-slate-500" />
-              Periode Penarikan Data:
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <CalendarRange className="w-4 h-4 text-emerald-600" />
+              Periode Filter:
             </span>
 
-            {/* Shortcut Periode Sampel 18-25 Sep 2026 */}
-            <button
-              type="button"
-              onClick={() => setFilterMode('PRESET_SAMPLE')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
-                filterMode === 'PRESET_SAMPLE'
-                  ? 'bg-emerald-800 text-white border-emerald-800 shadow-2xs'
-                  : 'bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100'
-              }`}
-            >
-              Periode Sampel 18 - 25 Sep 2026
-            </button>
+            {/* Period Pills */}
+            <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterMode('WEEK');
+                  if (!selectedWeekDate) setSelectedWeekDate('2026-09-21');
+                }}
+                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                  filterMode === 'WEEK' || filterMode === 'PRESET_SAMPLE'
+                    ? 'bg-white text-emerald-800 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Mingguan
+              </button>
 
-            {/* Filter Perminggu */}
-            <button
-              type="button"
-              onClick={() => {
-                setFilterMode('WEEK');
-                setSelectedWeekDate('2026-09-21');
-              }}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
-                filterMode === 'WEEK'
-                  ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
-                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              Perminggu
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterMode('MONTH');
+                  if (!selectedMonth) setSelectedMonth('2026-09');
+                }}
+                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                  filterMode === 'MONTH'
+                    ? 'bg-white text-blue-800 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Bulanan
+              </button>
 
-            {/* Filter Perbulan */}
-            <button
-              type="button"
-              onClick={() => {
-                setFilterMode('MONTH');
-                setSelectedMonth('2026-09');
-              }}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
-                filterMode === 'MONTH'
-                  ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
-                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              Perbulan
-            </button>
+              <button
+                type="button"
+                onClick={() => setFilterMode('CUSTOM')}
+                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                  filterMode === 'CUSTOM'
+                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Rentang Kustom
+              </button>
 
-            {/* Rentang Kustom */}
-            <button
-              type="button"
-              onClick={() => setFilterMode('CUSTOM')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
-                filterMode === 'CUSTOM'
-                  ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
-                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              Rentang Tanggal
-            </button>
-
-            {/* Semua Periode */}
-            <button
-              type="button"
-              onClick={() => setFilterMode('ALL')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
-                filterMode === 'ALL'
-                  ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
-                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              Semua Data
-            </button>
+              <button
+                type="button"
+                onClick={() => setFilterMode('ALL')}
+                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                  filterMode === 'ALL'
+                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Semua Data
+              </button>
+            </div>
           </div>
 
-          {/* Sub-Controls: Navigasi Minggu atau Bulan */}
-          {filterMode === 'WEEK' && (
-            <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200">
-              <button
-                type="button"
-                onClick={() => handleShiftWeek(-7)}
-                className="p-1 text-slate-600 hover:text-slate-900 rounded hover:bg-slate-200 cursor-pointer"
-                title="Minggu Sebelumnya"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <input
-                type="date"
-                value={selectedWeekDate}
-                onChange={e => setSelectedWeekDate(e.target.value)}
-                className="text-xs font-semibold border border-slate-300 rounded px-2 py-1 bg-white text-slate-800"
-              />
-              <button
-                type="button"
-                onClick={() => handleShiftWeek(7)}
-                className="p-1 text-slate-600 hover:text-slate-900 rounded hover:bg-slate-200 cursor-pointer"
-                title="Minggu Berikutnya"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          )}
+          {/* Sub-Controls: Navigasi Minggu, Bulan, atau Rentang Tanggal */}
+          <div className="flex flex-wrap items-center gap-2">
+            {(filterMode === 'WEEK' || filterMode === 'PRESET_SAMPLE') && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (filterMode === 'PRESET_SAMPLE') setFilterMode('WEEK');
+                    handleShiftWeek(-7);
+                  }}
+                  className="p-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer transition-colors"
+                  title="Minggu Sebelumnya"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
+                  <span className="text-slate-500 font-medium">Minggu:</span>
+                  <input
+                    type="date"
+                    value={selectedWeekDate}
+                    onChange={e => {
+                      setSelectedWeekDate(e.target.value);
+                      if (filterMode === 'PRESET_SAMPLE') setFilterMode('WEEK');
+                    }}
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (filterMode === 'PRESET_SAMPLE') setFilterMode('WEEK');
+                    handleShiftWeek(7);
+                  }}
+                  className="p-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer transition-colors"
+                  title="Minggu Berikutnya"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
-          {filterMode === 'MONTH' && (
-            <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200">
-              <button
-                type="button"
-                onClick={() => handleShiftMonth(-1)}
-                className="p-1 text-slate-600 hover:text-slate-900 rounded hover:bg-slate-200 cursor-pointer"
-                title="Bulan Sebelumnya"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={e => setSelectedMonth(e.target.value)}
-                className="text-xs font-semibold border border-slate-300 rounded px-2 py-1 bg-white text-slate-800"
-              />
-              <button
-                type="button"
-                onClick={() => handleShiftMonth(1)}
-                className="p-1 text-slate-600 hover:text-slate-900 rounded hover:bg-slate-200 cursor-pointer"
-                title="Bulan Berikutnya"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          )}
+            {filterMode === 'MONTH' && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleShiftMonth(-1)}
+                  className="p-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer transition-colors"
+                  title="Bulan Sebelumnya"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
+                  <span className="text-slate-500 font-medium">Pilih Bulan:</span>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={e => setSelectedMonth(e.target.value)}
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleShiftMonth(1)}
+                  className="p-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer transition-colors"
+                  title="Bulan Berikutnya"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
-          {filterMode === 'CUSTOM' && (
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={e => setCustomStartDate(e.target.value)}
-                className="text-xs font-semibold border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white text-slate-800"
-              />
-              <span className="text-xs text-slate-400">s/d</span>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={e => setCustomEndDate(e.target.value)}
-                className="text-xs font-semibold border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white text-slate-800"
-              />
-            </div>
-          )}
+            {filterMode === 'CUSTOM' && (
+              <div className="flex items-center gap-2 text-xs">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+                  <span className="text-slate-500 font-medium">Dari:</span>
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={e => setCustomStartDate(e.target.value)}
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                  />
+                </div>
+                <span className="text-slate-400 font-medium">s/d</span>
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+                  <span className="text-slate-500 font-medium">Sampai:</span>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={e => setCustomEndDate(e.target.value)}
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Row Status Periode Terpilih & Pencarian */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-slate-100">
           <div className="flex items-center gap-2 text-xs">
-            <span className="font-semibold text-slate-500">Periode Aktif:</span>
-            <span className="px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
+            <span className="text-slate-500 font-medium">Periode Aktif:</span>
+            <span className="px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 font-bold border border-emerald-200">
               {activeDateRange.label}
             </span>
-            <span className="text-slate-400">({matrixData.dates.length} hari penimbangan tercatat)</span>
+            <span className="text-slate-400 text-[11px]">({matrixData.dates.length} hari penimbangan tercatat)</span>
           </div>
 
           <div className="relative">

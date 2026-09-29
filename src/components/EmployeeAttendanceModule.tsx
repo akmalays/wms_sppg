@@ -38,7 +38,6 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { exportToExcel } from '../lib/excelExport';
-import { SppgLogo } from './SppgLogo';
 import { PhotoUploadCompressor } from './PhotoUploadCompressor';
 
 const DEPARTMENTS: EmployeeDepartment[] = [
@@ -566,16 +565,13 @@ export const EmployeeAttendanceModule: React.FC = () => {
 
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <SppgLogo size="md" variant="color" />
-          <div>
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-              Manajemen Karyawan & Presensi Kerja
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Pusat data staf operasional dapur gizi, monitoring jam kerja, presensi harian, dan dokumentasi kehadiran SPPG Jeru Tumpang.
-            </p>
-          </div>
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+            Manajemen Karyawan & Presensi Kerja
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Pusat data staf operasional dapur gizi, monitoring jam kerja, presensi harian, dan dokumentasi kehadiran.
+          </p>
         </div>
 
         {/* Tab Switcher & Print Action */}

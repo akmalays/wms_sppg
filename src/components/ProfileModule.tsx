@@ -272,17 +272,12 @@ export const ProfileModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Module Title Bar */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg">
-              <User className="w-5 h-5" />
-            </span>
-            <h1 className="text-xl font-bold text-slate-800">
-              Profil Pengguna & Tugas Harian SPPG Jeru Tumpang
-            </h1>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+            Profil Pengguna & Tugas Harian
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
             Kelola profil, ganti kata sandi, simulasikan peran pengguna, dan pantau checklist operasional harian.
           </p>
         </div>

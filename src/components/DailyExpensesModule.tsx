@@ -9,7 +9,6 @@ import {
 } from '../types/warehouse';
 import { Calendar, Printer, Search, TrendingDown, Clock, CheckCircle2, FileSpreadsheet, Trash2, CalendarRange, DollarSign, ChevronDown, ChevronRight } from 'lucide-react';
 import { exportToExcel } from '../lib/excelExport';
-import { SppgLogo } from './SppgLogo';
 
 type PeriodType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
 
@@ -485,16 +484,13 @@ export const DailyExpensesModule: React.FC = () => {
 
       {/* Header bar */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <SppgLogo size="md" variant="color" />
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              Laporan & Rekap Pengeluaran SPPG Jeru Tumpang
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5 font-medium">
-              Monitoring data pengeluaran dan nominal biaya per minggu, bulan, serta rincian per kategori barang.
-            </p>
-          </div>
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+            Laporan & Rekap Pengeluaran
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5 font-medium">
+            Monitoring data pengeluaran dan nominal biaya per minggu, bulan, serta rincian per kategori barang.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

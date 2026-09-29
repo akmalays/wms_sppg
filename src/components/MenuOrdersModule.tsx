@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import {
@@ -51,7 +51,6 @@ import {
   CheckSquare
 } from 'lucide-react';
 import { exportMultiSheetExcel, exportToExcel } from '../lib/excelExport';
-import { SppgLogo } from './SppgLogo';
 
 type PeriodType = 'WEEKLY' | 'MONTHLY' | 'DAILY' | 'ALL' | 'PRESET_SAMPLE';
 type SubTabType = 'MENU_ORDERS' | 'WEEKLY_MATERIAL_MATRIX' | 'BENEFICIARIES' | 'MONTHLY_USAGE';
@@ -272,6 +271,22 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
   // Notification notice
   const [successNotice, setSuccessNotice] = useState('');
 
+  // Action Dropdowns
+  const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
+  const [isPrintDropdownOpen, setIsPrintDropdownOpen] = useState(false);
+  const actionDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (actionDropdownRef.current && !actionDropdownRef.current.contains(event.target as Node)) {
+        setIsInputDropdownOpen(false);
+        setIsPrintDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Navigasi Tanggal (Kemarin, Hari Ini, Besok)
   const handlePrevDay = () => {
     const cur = parseMenuDate(selectedDailyDate) || new Date();
@@ -298,19 +313,23 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     setPeriodType('DAILY');
   };
 
-  // Daftar tanggal yang sudah memiliki rekapan di sistem
-  const availableRecordedDates = useMemo(() => {
-    const setDates = new Set<string>();
-    orders.forEach(o => {
-      if (o.date) setDates.add(o.date);
-    });
-    setDates.add(todayStr);
-    return Array.from(setDates).sort((a, b) => {
-      const da = parseMenuDate(a)?.getTime() || 0;
-      const db = parseMenuDate(b)?.getTime() || 0;
-      return da - db;
-    });
-  }, [orders, todayStr]);
+  const handleSetThisWeek = () => {
+    const end = new Date();
+    const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
+    setStartDate(start.toISOString().slice(0, 10));
+    setEndDate(end.toISOString().slice(0, 10));
+    setPeriodType('WEEKLY');
+  };
+
+  const handleSetLastWeek = () => {
+    const end = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
+    setStartDate(start.toISOString().slice(0, 10));
+    setEndDate(end.toISOString().slice(0, 10));
+    setPeriodType('WEEKLY');
+  };
+
+
 
   // =========================================================================
   // MODAL 1: FORM INPUT / EDIT MENU HARI INI
@@ -955,53 +974,147 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
         </div>
       )}
 
-      {/* Header Utama dengan Logo SPPG & 2 Tombol Aksi Mandiri */}
+      {/* Header Utama dengan 2 Tombol Aksi Mandiri */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <SppgLogo size="md" variant="color" />
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">
-              Rekap Order Menu, PO Bahan & Penerima Manfaat Gizi
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5 font-medium">
-              SPPG Jeru Tumpang • Manajemen menu harian, pesanan PO H-1, timbangan riil, dan alokasi penerima manfaat.
-            </p>
-          </div>
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">
+            Rekap Order Menu, PO Bahan & Penerima Manfaat Gizi
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5 font-medium">
+            Manajemen menu harian, pesanan PO H-1, timbangan riil, dan alokasi penerima manfaat.
+          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Tombol 1: Input Menu Hari Ini */}
-          <button
-            type="button"
-            onClick={handleOpenCreateMenuModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
-          >
-            <UtensilsCrossed className="w-4 h-4" />
-            <span>+ Input Menu Hari Ini</span>
-          </button>
-
-          {/* Tombol 2: Input PO Hari Ini */}
-          <button
-            type="button"
-            onClick={() => handleOpenPoModal()}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-blue-700 hover:bg-blue-800 text-white shadow-2xs transition-colors cursor-pointer"
-          >
-            <PackagePlus className="w-4 h-4" />
-            <span>+ Input PO Hari Ini</span>
-          </button>
-
-          {/* Tombol 3: Cetak Poster Menu MBG */}
-          {onNavigate && (
+        <div className="flex items-center gap-2 shrink-0" ref={actionDropdownRef}>
+          {/* Split Button: Primary Input Menu + Dropdown for Input PO */}
+          <div className="relative inline-flex rounded-xl shadow-2xs">
             <button
               type="button"
-              onClick={() => onNavigate('menu_print')}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-purple-700 hover:bg-purple-800 text-white shadow-2xs transition-colors cursor-pointer"
-              title="Buka studio cetak poster menu makanan bergizi harian"
+              onClick={handleOpenCreateMenuModal}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-l-xl bg-emerald-700 hover:bg-emerald-800 text-white transition-colors cursor-pointer"
+              title="Input menu makanan bergizi hari ini"
             >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Cetak Menu MBG</span>
+              <UtensilsCrossed className="w-4 h-4" />
+              <span>+ Input Menu</span>
             </button>
-          )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsInputDropdownOpen(!isInputDropdownOpen);
+                setIsPrintDropdownOpen(false);
+              }}
+              className="inline-flex items-center px-2 py-2 text-xs font-bold rounded-r-xl bg-emerald-800 hover:bg-emerald-900 text-white border-l border-emerald-600/40 transition-colors cursor-pointer"
+              title="Pilihan input lainnya (PO Bahan)"
+            >
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isInputDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu Input */}
+            {isInputDropdownOpen && (
+              <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
+                <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100">
+                  Pilihan Input
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsInputDropdownOpen(false);
+                    handleOpenCreateMenuModal();
+                  }}
+                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                    <UtensilsCrossed className="w-4 h-4 text-emerald-700" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-900">Input Menu Hari Ini</div>
+                    <div className="text-[10px] text-slate-500">Jadwal menu & porsi makan bergizi</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsInputDropdownOpen(false);
+                    handleOpenPoModal();
+                  }}
+                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-blue-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center shrink-0">
+                    <PackagePlus className="w-4 h-4 text-blue-700" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-900">Input PO Bahan Hari Ini</div>
+                    <div className="text-[10px] text-slate-500">Pemesanan bahan baku H-1 dapur</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Cetak Dropdown Button */}
+          <div className="relative inline-flex">
+            <button
+              type="button"
+              onClick={() => {
+                setIsPrintDropdownOpen(!isPrintDropdownOpen);
+                setIsInputDropdownOpen(false);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
+              title="Pilihan cetak menu atau laporan"
+            >
+              <Printer className="w-3.5 h-3.5 text-slate-600" />
+              <span>Cetak</span>
+              <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-150 ${isPrintDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu Cetak */}
+            {isPrintDropdownOpen && (
+              <div className="absolute right-0 top-full mt-2 w-60 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
+                <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100">
+                  Opsi Cetak
+                </div>
+
+                {onNavigate && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsPrintDropdownOpen(false);
+                      onNavigate('menu_print');
+                    }}
+                    className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-purple-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center shrink-0">
+                      <Printer className="w-4 h-4 text-purple-700" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900">Cetak Menu MBG</div>
+                      <div className="text-[10px] text-slate-500">Studio cetak poster menu harian</div>
+                    </div>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPrintDropdownOpen(false);
+                    window.print();
+                  }}
+                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer border-t border-slate-100"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+                    <Printer className="w-4 h-4 text-slate-600" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-900">Cetak Laporan PDF</div>
+                    <div className="text-[10px] text-slate-500">Cetak atau simpan halaman ini</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Export Excel Multi-Sheet */}
           <button
@@ -1012,16 +1125,6 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
             <span>Ekspor Excel</span>
-          </button>
-
-          {/* Cetak PDF */}
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-          >
-            <Printer className="w-3.5 h-3.5 text-slate-500" />
-            <span>Cetak PDF</span>
           </button>
         </div>
       </div>
@@ -1087,82 +1190,23 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
         </div>
       </div>
 
-      {/* Date Navigator & Filter Control Bar */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
-        {/* Row 1: Navigasi Tanggal Harian & Pemilih Tanggal */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          {/* Bagian Kiri: Tombol Kemarin, Hari Ini, Besok & Input Date */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 mr-1">
-              <Calendar className="w-4 h-4 text-emerald-700" />
-              Pilih Tanggal:
+      {/* Filter Control Box: Standardized Period Filter */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+        {/* Row 1: Period Mode Selector & Date Controls */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <CalendarRange className="w-4 h-4 text-emerald-600" />
+              Periode Filter:
             </span>
 
-            {/* Tombol Hari Sebelumnya */}
-            <button
-              type="button"
-              onClick={handlePrevDay}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
-              title="Hari Sebelumnya"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-              <span>Kemarin</span>
-            </button>
-
-            {/* Tombol Hari Ini (Fokus Utama) */}
-            <button
-              type="button"
-              onClick={handleJumpToToday}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer shadow-2xs ${
-                selectedDailyDate === todayStr && periodType === 'DAILY'
-                  ? 'bg-emerald-700 text-white ring-2 ring-emerald-600/30'
-                  : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300'
-              }`}
-            >
-              <CalendarRange className="w-3.5 h-3.5" />
-              <span>Hari Ini ({formatShortDate(todayStr)})</span>
-              {selectedDailyDate === todayStr && periodType === 'DAILY' && (
-                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse ml-0.5" />
-              )}
-            </button>
-
-            {/* Tombol Hari Berikutnya */}
-            <button
-              type="button"
-              onClick={handleNextDay}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
-              title="Hari Berikutnya"
-            >
-              <span>Besok</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Datepicker Native */}
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs">
-              <span className="text-slate-400 text-[11px]">Kalender:</span>
-              <input
-                type="date"
-                value={selectedDailyDate}
-                onChange={e => {
-                  setSelectedDailyDate(e.target.value);
-                  setPeriodType('DAILY');
-                }}
-                className="font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
-              />
-            </div>
-          </div>
-
-          {/* Bagian Kanan: Filter Periode Opsional */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-slate-500 mr-1">Filter Waktu:</span>
-            <div className="flex flex-wrap bg-slate-100 p-0.5 rounded-lg text-xs font-semibold gap-0.5">
+            {/* Period Pills */}
+            <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
               <button
                 type="button"
                 onClick={() => setPeriodType('DAILY')}
                 className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                  periodType === 'DAILY'
-                    ? 'bg-white text-emerald-900 shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
+                  periodType === 'DAILY' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 Harian
@@ -1170,23 +1214,9 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
               <button
                 type="button"
-                onClick={() => setPeriodType('ALL')}
+                onClick={handleSetThisWeek}
                 className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                  periodType === 'ALL'
-                    ? 'bg-white text-emerald-900 shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Semua Tanggal
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setPeriodType('WEEKLY')}
-                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                  periodType === 'WEEKLY'
-                    ? 'bg-white text-emerald-900 shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
+                  periodType === 'WEEKLY' ? 'bg-white text-emerald-800 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 Mingguan
@@ -1196,9 +1226,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 type="button"
                 onClick={() => setPeriodType('MONTHLY')}
                 className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                  periodType === 'MONTHLY'
-                    ? 'bg-white text-blue-900 shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
+                  periodType === 'MONTHLY' ? 'bg-white text-blue-800 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 Bulanan
@@ -1206,88 +1234,116 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
               <button
                 type="button"
-                onClick={() => {
-                  setPeriodType('PRESET_SAMPLE');
-                  setStartDate('2026-09-20');
-                  setEndDate('2026-09-24');
-                }}
-                className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-                  periodType === 'PRESET_SAMPLE'
-                    ? 'bg-emerald-800 text-white shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
+                onClick={() => setPeriodType('ALL')}
+                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                  periodType === 'ALL' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Sampel 20-24 Sep
+                Semua Tanggal
               </button>
             </div>
           </div>
-        </div>
 
-        {/* Row 2: Chip Tanggal Cepat yang Tercatat */}
-        <div className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center gap-1.5 text-xs">
-          <span className="text-[11px] font-medium text-slate-400 mr-1">Pilih Cepat Tanggal:</span>
-          {availableRecordedDates.map(dateKey => {
-            const isSelected = selectedDailyDate === dateKey && periodType === 'DAILY';
-            const isToday = dateKey === todayStr;
+          {/* Date Range Inputs */}
+          <div className="flex flex-wrap items-center gap-2">
+            {periodType === 'DAILY' && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handlePrevDay}
+                  className="p-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer transition-colors"
+                  title="Hari Sebelumnya"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
 
-            return (
-              <button
-                key={dateKey}
-                type="button"
-                onClick={() => {
-                  setSelectedDailyDate(dateKey);
-                  setPeriodType('DAILY');
-                }}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  isSelected
-                    ? 'bg-emerald-700 text-white shadow-2xs font-bold'
-                    : isToday
-                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                {formatShortDate(dateKey)}
-                {isToday && <span className="ml-1 text-[10px] font-bold">★ Hari Ini</span>}
-              </button>
-            );
-          })}
-        </div>
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
+                  <span className="text-slate-500 font-medium">Tanggal:</span>
+                  <input
+                    type="date"
+                    value={selectedDailyDate}
+                    onChange={e => {
+                      setSelectedDailyDate(e.target.value);
+                      setPeriodType('DAILY');
+                    }}
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                  />
+                </div>
 
-        {/* Range Pickers for Weekly or Monthly */}
-        {(periodType === 'WEEKLY' || periodType === 'MONTHLY') && (
-          <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={handleNextDay}
+                  className="p-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer transition-colors"
+                  title="Hari Berikutnya"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+
+                {selectedDailyDate !== todayStr && (
+                  <button
+                    type="button"
+                    onClick={handleJumpToToday}
+                    className="px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 cursor-pointer transition-colors"
+                  >
+                    Hari Ini
+                  </button>
+                )}
+              </div>
+            )}
+
             {periodType === 'WEEKLY' && (
-              <div className="flex items-center gap-2">
-                <span className="text-slate-500 font-medium">Rentang Minggu:</span>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={e => setStartDate(e.target.value)}
-                  className="px-2 py-1 text-xs border border-slate-300 rounded font-semibold text-slate-800 bg-white"
-                />
-                <span className="text-slate-400">s/d</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={e => setEndDate(e.target.value)}
-                  className="px-2 py-1 text-xs border border-slate-300 rounded font-semibold text-slate-800 bg-white"
-                />
+              <div className="flex items-center gap-2 text-xs">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+                  <span className="text-slate-500 font-medium">Dari:</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                  />
+                </div>
+                <span className="text-slate-400 font-medium">s/d</span>
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+                  <span className="text-slate-500 font-medium">Sampai:</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                  />
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={handleSetThisWeek}
+                    className="px-2 py-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 cursor-pointer"
+                  >
+                    Minggu Ini
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSetLastWeek}
+                    className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200 cursor-pointer"
+                  >
+                    Minggu Lalu
+                  </button>
+                </div>
               </div>
             )}
 
             {periodType === 'MONTHLY' && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
                 <span className="text-slate-500 font-medium">Pilih Bulan:</span>
                 <input
                   type="month"
                   value={selectedMonth}
                   onChange={e => setSelectedMonth(e.target.value)}
-                  className="font-semibold text-slate-800 bg-white border border-slate-300 rounded px-2 py-1 cursor-pointer"
+                  className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
                 />
               </div>
             )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* ========================================================================= */}
@@ -1295,57 +1351,6 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       {/* ========================================================================= */}
       {activeSubTab === 'MENU_ORDERS' && (
         <div className="space-y-4">
-          {/* Banner Status Tanggal Aktif */}
-          <div className="bg-emerald-50/80 border border-emerald-200/90 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-700 text-white flex items-center justify-center font-bold shadow-2xs shrink-0">
-                <Calendar className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm font-bold text-slate-900">
-                    Jadwal Operasional: {periodType === 'DAILY' ? formatIndonesianDate(selectedDailyDate) : effectiveDateRange.label}
-                  </h2>
-                  {periodType === 'DAILY' && selectedDailyDate === todayStr && (
-                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-700 text-white shadow-2xs">
-                      ● Hari Ini (Aktif)
-                    </span>
-                  )}
-                  {periodType === 'DAILY' && selectedDailyDate !== todayStr && (
-                    <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700">
-                      Tanggal Pilihan
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-slate-600 mt-0.5 font-medium">
-                  {filteredOrders.length > 0
-                    ? `${filteredOrders.length} sesi menu & rincian bahan PO ditemukan untuk periode ini.`
-                    : 'Belum ada menu yang dicatat untuk tanggal ini. Klik tombol di kanan untuk mulai input.'}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {periodType === 'DAILY' && selectedDailyDate !== todayStr && (
-                <button
-                  type="button"
-                  onClick={handleJumpToToday}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-800 bg-white hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-colors cursor-pointer shadow-2xs"
-                >
-                  <Calendar className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Kembali ke Hari Ini</span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => handleOpenCreateMenuModal(selectedDailyDate)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors cursor-pointer shadow-2xs"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Input Menu {periodType === 'DAILY' ? formatShortDate(selectedDailyDate) : 'Hari Ini'}</span>
-              </button>
-            </div>
-          </div>
 
           {/* Summary KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

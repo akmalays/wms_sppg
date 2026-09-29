@@ -91,18 +91,13 @@ export const ToolsPrintModule: React.FC = () => {
       `}</style>
 
       {/* Screen Control Header */}
-      <div className="no-print bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs">
+      <div className="no-print bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
-                <Printer className="w-4 h-4" />
-              </div>
-              <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-                Pusat Formulir & Alat Cetak Fisik SPPG
-              </h2>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+              Pusat Formulir & Alat Cetak Fisik
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
               Cetak dokumen operasional lapangan standar untuk pencatatan fisik di rak gudang, ruang chiller, dan dapur pengolahan.
             </p>
           </div>

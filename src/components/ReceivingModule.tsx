@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import {
@@ -32,13 +32,14 @@ import {
   Filter,
   CheckCircle2,
   ChevronRight,
+  ChevronDown,
   X,
-  FileSpreadsheet
+  FileSpreadsheet,
+  CalendarRange
 } from 'lucide-react';
 import { SignaturePad } from './SignaturePad';
 import { ReceivingDetailModal } from './ReceivingDetailModal';
 import { PhotoUploadCompressor } from './PhotoUploadCompressor';
-import { SppgLogo } from './SppgLogo';
 import { exportToExcel } from '../lib/excelExport';
 
 interface ReceivingModuleProps {
@@ -265,6 +266,52 @@ interface BatchInputRow {
   notes: string;
 }
 
+type PeriodType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
+
+function parseExpenseDate(dateStr: string): Date | null {
+  if (!dateStr) return null;
+  const clean = dateStr.toLowerCase().trim();
+
+  // If ISO YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(clean)) {
+    const parts = clean.slice(0, 10).split('-');
+    const year = Number(parts[0]);
+    const month = Number(parts[1]) - 1;
+    const day = Number(parts[2]);
+    const d = new Date(year, month, day);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // If DD/MM/YYYY or DD-MM-YYYY
+  if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(clean)) {
+    const parts = clean.split(/[\/\-]/);
+    const day = Number(parts[0]);
+    const month = Number(parts[1]) - 1;
+    const year = Number(parts[2]);
+    const d = new Date(year, month, day);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const monthMap: Record<string, number> = {
+    jan: 0, feb: 1, mar: 2, apr: 3,
+    mei: 4, jun: 5, jul: 6, agu: 7, ags: 7,
+    sep: 8, okt: 9, nov: 10, des: 11,
+  };
+
+  const match = clean.match(/(\d{1,2})\s+([a-z]{3,4})\s+(\d{4})/i);
+  if (match) {
+    const day = Number(match[1]);
+    const monthKey = match[2].slice(0, 3).toLowerCase();
+    const month = monthMap[monthKey] !== undefined ? monthMap[monthKey] : 8;
+    const year = Number(match[3]);
+    const d = new Date(year, month, day);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const parsed = new Date(dateStr);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData }) => {
   const { currentUser, can } = useAuth();
 
@@ -287,11 +334,98 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   const [isBatchInputModalOpen, setIsBatchInputModalOpen] = useState(false);
   const [selectedDocForDetail, setSelectedDocForDetail] = useState<ReceivingDocument | null>(null);
 
-  // Filters & Tabs
-  const [activeCategoryTab, setActiveCategoryTab] = useState<'ALL' | InputCategoryType | 'SURAT_JALAN'>('ALL');
+  // Period & Filter States (Standardized Filter System)
+  const [periodType, setPeriodType] = useState<PeriodType>('WEEKLY');
+  const [selectedDailyDate, setSelectedDailyDate] = useState<string>(
+    new Date().toISOString().slice(0, 10)
+  );
+
+  // Range for Weekly / Custom (Default to last 7 days)
+  const defaultWeekStart = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return d.toISOString().slice(0, 10);
+  }, []);
+  const [startDate, setStartDate] = useState<string>(defaultWeekStart);
+  const [endDate, setEndDate] = useState<string>(
+    new Date().toISOString().slice(0, 10)
+  );
+
+  // Selected Month (YYYY-MM)
+  const [selectedMonth, setSelectedMonth] = useState<string>(
+    new Date().toISOString().slice(0, 7)
+  );
+
+  // Category filter: 'ALL' | 'Bahan Basah' | 'Bahan Kering' | 'Bahan Peralatan' | 'SURAT_JALAN'
+  const [selectedCategoryTab, setSelectedCategoryTab] = useState<'ALL' | MainItemCategory | 'SURAT_JALAN'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Dropdown state for compact input action menu
+  const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
+  const inputDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (inputDropdownRef.current && !inputDropdownRef.current.contains(event.target as Node)) {
+        setIsInputDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Quick weekly helpers
+  const handleSetThisWeek = () => {
+    const end = new Date();
+    const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
+    setStartDate(start.toISOString().slice(0, 10));
+    setEndDate(end.toISOString().slice(0, 10));
+    setPeriodType('WEEKLY');
+  };
+
+  const handleSetLastWeek = () => {
+    const end = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
+    setStartDate(start.toISOString().slice(0, 10));
+    setEndDate(end.toISOString().slice(0, 10));
+    setPeriodType('WEEKLY');
+  };
+
+  // Effective Date Range based on periodType
+  const effectiveDateRange = useMemo(() => {
+    if (periodType === 'DAILY') {
+      const target = parseExpenseDate(selectedDailyDate);
+      return { start: target, end: target, label: `Harian: ${selectedDailyDate}` };
+    }
+
+    if (periodType === 'WEEKLY') {
+      const s = parseExpenseDate(startDate);
+      const e = parseExpenseDate(endDate);
+      return { start: s, end: e, label: `Mingguan: ${startDate} s/d ${endDate}` };
+    }
+
+    if (periodType === 'MONTHLY') {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const startOfMonth = new Date(year, month - 1, 1);
+      const endOfMonth = new Date(year, month, 0);
+      const monthNames = [
+        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+      ];
+      return {
+        start: startOfMonth,
+        end: endOfMonth,
+        label: `Bulan ${monthNames[month - 1] || ''} ${year}`,
+      };
+    }
+
+    // CUSTOM
+    const s = parseExpenseDate(startDate);
+    const e = parseExpenseDate(endDate);
+    return { start: s, end: e, label: `${startDate} s/d ${endDate}` };
+  }, [periodType, selectedDailyDate, startDate, endDate, selectedMonth]);
 
   const today = new Date().toISOString().slice(0, 10);
   const defaultCurrentTime = new Date()
@@ -754,6 +888,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       id: string;
       source: 'EXPENSE_INPUT' | 'DELIVERY_ORDER';
       date: string;
+      parsedDate: Date | null;
       time: string;
       category: string;
       displayCategory: InputCategoryType | string;
@@ -780,6 +915,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
         id: exp.id,
         source: 'EXPENSE_INPUT',
         date: exp.date,
+        parsedDate: parseExpenseDate(exp.date),
         time: exp.time || '12.00',
         category: cat,
         displayCategory: cat,
@@ -806,6 +942,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
           id: `${rec.id}-${idx}`,
           source: 'DELIVERY_ORDER',
           date: rec.date,
+          parsedDate: parseExpenseDate(rec.date),
           time: rec.arrivalTime,
           category: 'Surat Jalan Supplier',
           displayCategory: cat,
@@ -823,10 +960,52 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       });
     });
 
-    return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return list.sort((a, b) => {
+      const timeA = a.parsedDate ? a.parsedDate.getTime() : 0;
+      const timeB = b.parsedDate ? b.parsedDate.getTime() : 0;
+      return timeB - timeA;
+    });
   }, [expenses, receivings, currentUser.name]);
 
-  // Metrics
+  // Filtered by Period Date Range
+  const periodRecords = useMemo(() => {
+    return unifiedRecords.filter(r => {
+      if (r.parsedDate && effectiveDateRange.start && effectiveDateRange.end) {
+        const itemTime = new Date(r.parsedDate.getFullYear(), r.parsedDate.getMonth(), r.parsedDate.getDate()).getTime();
+        const startTime = new Date(effectiveDateRange.start.getFullYear(), effectiveDateRange.start.getMonth(), effectiveDateRange.start.getDate()).getTime();
+        const endTime = new Date(effectiveDateRange.end.getFullYear(), effectiveDateRange.end.getMonth(), effectiveDateRange.end.getDate()).getTime();
+        if (itemTime < startTime || itemTime > endTime) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [unifiedRecords, effectiveDateRange]);
+
+  // Dynamic Category Counts in Period
+  const categoryCounts = useMemo(() => {
+    let basah = 0;
+    let kering = 0;
+    let peralatan = 0;
+    let suratJalan = 0;
+
+    periodRecords.forEach(r => {
+      if (r.source === 'DELIVERY_ORDER') suratJalan += 1;
+      const norm = normalizeItemCategory(r.displayCategory || r.category);
+      if (norm === 'Bahan Basah') basah += 1;
+      else if (norm === 'Bahan Kering') kering += 1;
+      else if (norm === 'Bahan Peralatan') peralatan += 1;
+    });
+
+    return {
+      'Bahan Basah': basah,
+      'Bahan Kering': kering,
+      'Bahan Peralatan': peralatan,
+      'SURAT_JALAN': suratJalan,
+    };
+  }, [periodRecords]);
+
+  // Metrics for Current Period
   const metrics = useMemo(() => {
     let totalItems = 0;
     let totalCost = 0;
@@ -834,7 +1013,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     let dryCost = 0;
     let opCost = 0;
 
-    unifiedRecords.forEach(r => {
+    periodRecords.forEach(r => {
       totalItems += 1;
       totalCost += r.nominal;
       const normalized = normalizeItemCategory(r.displayCategory || r.category);
@@ -844,18 +1023,17 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     });
 
     return { totalItems, totalCost, wetCost, dryCost, opCost };
-  }, [unifiedRecords]);
+  }, [periodRecords]);
 
-  // Filtered List
+  // Filtered List based on Category & Search
   const filteredRecords = useMemo(() => {
-    return unifiedRecords.filter(r => {
+    return periodRecords.filter(r => {
       // Category filter
-      if (activeCategoryTab === 'SURAT_JALAN') {
+      if (selectedCategoryTab === 'SURAT_JALAN') {
         if (r.source !== 'DELIVERY_ORDER') return false;
-      } else if (activeCategoryTab !== 'ALL') {
-        const catStr = (r.displayCategory || r.category || '').toLowerCase();
-        const target = activeCategoryTab.toLowerCase();
-        if (!catStr.includes(target) && !target.includes(catStr)) {
+      } else if (selectedCategoryTab !== 'ALL') {
+        const norm = normalizeItemCategory(r.displayCategory || r.category);
+        if (norm !== selectedCategoryTab) {
           return false;
         }
       }
@@ -875,7 +1053,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
 
       return true;
     });
-  }, [unifiedRecords, activeCategoryTab, searchQuery]);
+  }, [periodRecords, selectedCategoryTab, searchQuery]);
 
   const selectedSupplierObj = suppliers.find(s => s.id === formSupplierId);
 
@@ -929,57 +1107,107 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       {/* HEADER BAR */}
       {/* ========================================================================= */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <SppgLogo size="md" variant="color" />
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              Input Barang & Belanja Operasional
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Pusat pencatatan barang datang, belanja bahan basah, bahan kering, serta pengeluaran operasional (ATK, alat kebersihan, APD, & keperluan lain).
-            </p>
-          </div>
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+            Input Barang & Belanja Operasional
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Pusat pencatatan barang datang, belanja bahan basah, bahan kering, serta pengeluaran operasional (ATK, alat kebersihan, APD, & keperluan lain).
+          </p>
         </div>
 
         {/* Action Buttons */}
         {!isCreatingDeliveryOrder && (
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Input Satuan */}
-            <button
-              onClick={handleOpenSingleModal}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition-colors cursor-pointer"
-              title="Catat belanja atau penerimaan 1 jenis barang"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Input Satuan</span>
-            </button>
-
-            {/* Input Masal */}
-            <button
-              onClick={handleOpenBatchModal}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white shadow-2xs transition-colors cursor-pointer"
-              title="Input banyak barang sekaligus lewat tabel atau tempel dari Excel"
-            >
-              <TableProperties className="w-4 h-4" />
-              <span>Input Masal (Banyak Barang)</span>
-            </button>
-
-            {/* Delivery Order Supplier */}
-            {can('RECEIVE_GOODS') && (
+          <div className="flex items-center gap-2.5 shrink-0" ref={inputDropdownRef}>
+            {/* Split Button: Primary Input Satuan + Dropdown for Other Input Modes */}
+            <div className="relative inline-flex rounded-xl shadow-2xs">
               <button
-                onClick={handleOpenDeliveryOrder}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors cursor-pointer"
-                title="Penerimaan resmi dari supplier dengan surat jalan dan tanda tangan digital"
+                type="button"
+                onClick={handleOpenSingleModal}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-l-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer"
+                title="Catat belanja atau penerimaan 1 jenis barang"
               >
-                <FileText className="w-3.5 h-3.5 text-slate-600" />
-                <span>Penerimaan Supplier (Surat Jalan)</span>
+                <Plus className="w-4 h-4" />
+                <span>Input Satuan</span>
               </button>
-            )}
+
+              <button
+                type="button"
+                onClick={() => setIsInputDropdownOpen(!isInputDropdownOpen)}
+                className="inline-flex items-center px-2.5 py-2 text-xs font-bold rounded-r-xl bg-emerald-700 hover:bg-emerald-800 text-white border-l border-emerald-500/40 transition-colors cursor-pointer"
+                title="Pilihan input lainnya (Masal, Surat Jalan)"
+              >
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isInputDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Dropdown Menu */}
+              {isInputDropdownOpen && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                    Opsi Input Barang
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsInputDropdownOpen(false);
+                      handleOpenSingleModal();
+                    }}
+                    className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                      <Plus className="w-4 h-4 text-emerald-700" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900">Input Satuan</div>
+                      <div className="text-[10px] text-slate-500">Catat 1 barang atau belanja cepat</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsInputDropdownOpen(false);
+                      handleOpenBatchModal();
+                    }}
+                    className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                      <TableProperties className="w-4 h-4 text-emerald-700" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900">Input Masal (Batch)</div>
+                      <div className="text-[10px] text-slate-500">Banyak barang lewat tabel / Excel</div>
+                    </div>
+                  </button>
+
+                  {can('RECEIVE_GOODS') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsInputDropdownOpen(false);
+                        handleOpenDeliveryOrder();
+                      }}
+                      className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer border-t border-slate-100"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+                        <FileText className="w-4 h-4 text-slate-600" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900">Surat Jalan Supplier</div>
+                        <div className="text-[10px] text-slate-500">Penerimaan resmi & tanda tangan</div>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Ekspor Excel */}
             <button
+              type="button"
               onClick={handleExportExcel}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
               title="Unduh rekap barang & belanja ke Excel"
             >
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
@@ -1320,67 +1548,215 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
         </form>
       ) : (
         /* ========================================================================= */
-        /* MAIN LIST VIEW */
+        /* MAIN LIST VIEW WITH STANDARD FILTER BAR */
         /* ========================================================================= */
-        <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-          {/* Category Tabs & Filter */}
-          <div className="px-5 pt-4 pb-3 border-b border-slate-200 bg-slate-50/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setActiveCategoryTab('ALL')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                  activeCategoryTab === 'ALL'
-                    ? 'bg-slate-900 text-white shadow-2xs'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                Semua Kategori ({unifiedRecords.length})
-              </button>
+        <div className="space-y-4">
+          {/* Filter Control Box: Period (Minggu, Bulan, Hari) & Categories */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3.5">
+            {/* Row 1: Period Mode Selector & Date Controls */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <CalendarRange className="w-4 h-4 text-emerald-600" />
+                  Periode Filter:
+                </span>
 
-              {INPUT_CATEGORIES.map(cat => {
-                const count = unifiedRecords.filter(r => (r.displayCategory || r.category) === cat).length;
-                return (
+                {/* Period Pills */}
+                <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
                   <button
-                    key={cat}
                     type="button"
-                    onClick={() => setActiveCategoryTab(cat)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                      activeCategoryTab === cat
-                        ? 'bg-emerald-700 text-white shadow-2xs'
-                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                    onClick={() => setPeriodType('DAILY')}
+                    className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                      periodType === 'DAILY' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    {cat} ({count})
+                    Harian
                   </button>
-                );
-              })}
 
-              <button
-                type="button"
-                onClick={() => setActiveCategoryTab('SURAT_JALAN')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                  activeCategoryTab === 'SURAT_JALAN'
-                    ? 'bg-emerald-900 text-white shadow-2xs'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                Surat Jalan Supplier ({receivings.length})
-              </button>
+                  <button
+                    type="button"
+                    onClick={handleSetThisWeek}
+                    className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                      periodType === 'WEEKLY' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Mingguan
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPeriodType('MONTHLY')}
+                    className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                      periodType === 'MONTHLY' ? 'bg-white text-blue-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Bulanan
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPeriodType('CUSTOM')}
+                    className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                      periodType === 'CUSTOM' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Rentang Kustom
+                  </button>
+                </div>
+              </div>
+
+              {/* Date Range Inputs */}
+              <div className="flex flex-wrap items-center gap-2">
+                {periodType === 'DAILY' && (
+                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
+                    <span className="text-slate-500 font-medium">Tanggal:</span>
+                    <input
+                      type="date"
+                      value={selectedDailyDate}
+                      onChange={e => setSelectedDailyDate(e.target.value)}
+                      className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                    />
+                  </div>
+                )}
+
+                {(periodType === 'WEEKLY' || periodType === 'CUSTOM') && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+                      <span className="text-slate-500 font-medium">Dari:</span>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={e => setStartDate(e.target.value)}
+                        className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                      />
+                    </div>
+                    <span className="text-slate-400 font-medium">s/d</span>
+                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
+                      <span className="text-slate-500 font-medium">Sampai:</span>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={e => setEndDate(e.target.value)}
+                        className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                      />
+                    </div>
+
+                    {periodType === 'WEEKLY' && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={handleSetThisWeek}
+                          className="px-2 py-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 cursor-pointer"
+                        >
+                          Minggu Ini
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSetLastWeek}
+                          className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200 cursor-pointer"
+                        >
+                          Minggu Lalu
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {periodType === 'MONTHLY' && (
+                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
+                    <span className="text-slate-500 font-medium">Pilih Bulan:</span>
+                    <input
+                      type="month"
+                      value={selectedMonth}
+                      onChange={e => setSelectedMonth(e.target.value)}
+                      className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Quick Search */}
-            <div className="relative w-full md:w-72">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder="Cari barang, toko, PIC..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
+            {/* Row 2: Category Tabs & Search Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {/* Category Tabs: Exactly matches user's request & screenshot */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoryTab('ALL')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    selectedCategoryTab === 'ALL'
+                      ? 'bg-slate-900 text-white shadow-2xs'
+                      : 'text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  Semua Kategori ({periodRecords.length})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoryTab('Bahan Basah')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    selectedCategoryTab === 'Bahan Basah'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'text-emerald-800 hover:bg-emerald-50 border border-emerald-200'
+                  }`}
+                >
+                  Bahan Basah ({categoryCounts['Bahan Basah']})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoryTab('Bahan Kering')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    selectedCategoryTab === 'Bahan Kering'
+                      ? 'bg-amber-600 text-white shadow-2xs'
+                      : 'text-amber-800 hover:bg-amber-50 border border-amber-200'
+                  }`}
+                >
+                  Bahan Kering ({categoryCounts['Bahan Kering']})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoryTab('Bahan Peralatan')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    selectedCategoryTab === 'Bahan Peralatan'
+                      ? 'bg-blue-600 text-white shadow-2xs'
+                      : 'text-blue-800 hover:bg-blue-50 border border-blue-200'
+                  }`}
+                >
+                  Bahan Peralatan ({categoryCounts['Bahan Peralatan']})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoryTab('SURAT_JALAN')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    selectedCategoryTab === 'SURAT_JALAN'
+                      ? 'bg-teal-700 text-white shadow-2xs'
+                      : 'text-teal-800 hover:bg-teal-50 border border-teal-200'
+                  }`}
+                >
+                  Surat Jalan ({categoryCounts['SURAT_JALAN']})
+                </button>
+              </div>
+
+              {/* Search Box */}
+              <div className="relative w-full sm:w-64">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Cari barang, relawan, PIC..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
             </div>
           </div>
+
+          {/* Table of Records Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
 
           {/* Table of Records */}
           <div className="overflow-x-auto">
@@ -1498,7 +1874,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
             </table>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* ========================================================================= */}
       {/* MODAL: INPUT SATUAN (SINGLE ITEM) */}

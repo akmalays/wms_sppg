@@ -39,7 +39,6 @@ import {
   Layers,
   Minus
 } from 'lucide-react';
-import { SppgLogo } from './SppgLogo';
 import { exportToExcel, downloadExcelTemplate } from '../lib/excelExport';
 
 interface InventoryModuleProps {
@@ -824,16 +823,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {/* MODULE HEADER BAR */}
       {/* ========================================================================= */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <SppgLogo size="md" variant="color" />
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              Stok Barang & Stock Opname SPPG Jeru Tumpang
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Monitoring saldo stok fisik real-time per kategori, status restock, penyesuaian cepat, serta pelaksanaan audit fisik (stock opname) berkala.
-            </p>
-          </div>
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            Stok Barang & Stock Opname
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Monitoring saldo stok fisik real-time per kategori, status restock, penyesuaian cepat, serta pelaksanaan audit fisik (stock opname) berkala.
+          </p>
         </div>
 
         {/* Sub-Tab Navigation Switcher */}

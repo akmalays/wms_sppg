@@ -24,7 +24,9 @@ import {
   UserCheck,
   Utensils,
   Users,
-  PackagePlus
+  PackagePlus,
+  Calendar,
+  Clock
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -48,6 +50,40 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Realtime Live Clock & Date
+  const [currentDateTime, setCurrentDateTime] = useState<Date>(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentDateTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const monthNamesLong = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+  ];
+  const monthNamesShort = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+    'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'
+  ];
+
+  const dayName = dayNames[currentDateTime.getDay()];
+  const dateNum = currentDateTime.getDate();
+  const monthLong = monthNamesLong[currentDateTime.getMonth()];
+  const monthShort = monthNamesShort[currentDateTime.getMonth()];
+  const year = currentDateTime.getFullYear();
+
+  const fullDateString = `${dayName}, ${dateNum} ${monthLong} ${year}`;
+  const shortDateString = `${dayName}, ${dateNum} ${monthShort} ${year}`;
+
+  const hours = String(currentDateTime.getHours()).padStart(2, '0');
+  const minutes = String(currentDateTime.getMinutes()).padStart(2, '0');
+  const seconds = String(currentDateTime.getSeconds()).padStart(2, '0');
+  const formattedTime = `${hours}:${minutes}:${seconds} WIB`;
 
   const primaryNavItems = [
     { id: 'dashboard', label: 'Ringkasan', icon: LayoutDashboard },
@@ -79,9 +115,30 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
       {/* Top Header Bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-4">
-          {/* Authentic SPPG Vector Logo & Title */}
-          <div className="flex items-center gap-3">
+          {/* Authentic SPPG Vector Logo & Title + Realtime Date & Clock */}
+          <div className="flex items-center gap-3 sm:gap-4">
             <SppgLogo size="md" variant="color" />
+
+            {/* Subtle Divider */}
+            <div className="hidden sm:block h-7 w-px bg-slate-200" />
+
+            {/* Tanggal & Jam Realtime */}
+            <div className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-50/90 border border-slate-200/90 shadow-2xs">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="hidden xl:inline">{fullDateString}</span>
+                <span className="xl:hidden">{shortDateString}</span>
+              </div>
+              <div className="h-3 w-px bg-slate-200" />
+              <div className="flex items-center gap-1.5 text-xs text-slate-800 font-mono font-bold">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <span>{formattedTime}</span>
+              </div>
+            </div>
           </div>
 
           {/* Right Controls: Role Switcher, Reset, Logout */}
