@@ -27,8 +27,10 @@ import {
   Table as TableIcon,
   ListFilter,
   Sparkles,
-  Info
+  Info,
+  FileText
 } from 'lucide-react';
+import { SppgLogo } from './SppgLogo';
 
 interface CompositionPreset {
   name: string;
@@ -205,6 +207,16 @@ export const WasteLogModule: React.FC = () => {
 
   // Active View Tab: 'BOTH' | 'DAILY_SHEET' | 'MATRIX' | 'DETAILED_LOGS'
   const [activeViewTab, setActiveViewTab] = useState<'BOTH' | 'DAILY_SHEET' | 'MATRIX' | 'DETAILED_LOGS'>('BOTH');
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+
+  // Indonesian print date formatted
+  const printDate = useMemo(() => {
+    return new Date().toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  }, []);
 
   // Periode Filter Types
   const [filterMode, setFilterMode] = useState<'ALL' | 'WEEK' | 'MONTH' | 'CUSTOM' | 'PRESET_SAMPLE'>('WEEK');
@@ -432,16 +444,53 @@ export const WasteLogModule: React.FC = () => {
       dateTotals[date] = 0;
     });
 
-    // 5 baris standar
-    const rows = NUTRITION_CATEGORIES.map((cat, idx) => {
+    // Check if there are other categories in filteredLogs outside NUTRITION_CATEGORIES
+    const extraCategories = Array.from(
+      new Set(
+        filteredLogs
+          .map(l => l.wasteCategory)
+          .filter(c => !NUTRITION_CATEGORIES.some(nc => c.toLowerCase().includes(nc.toLowerCase())))
+      )
+    );
+
+    const allCategoriesList: { key: string; label: string; isNutrition: boolean }[] = [
+      ...NUTRITION_CATEGORIES.map(nc => ({
+        key: nc,
+        label:
+          nc === 'karbohidrat'
+            ? 'Karbohidrat'
+            : nc === 'sayur'
+            ? 'Sayur'
+            : nc === 'protein hewani'
+            ? 'Protein Hewani'
+            : nc === 'protein nabati'
+            ? 'Protein Nabati'
+            : nc === 'buah'
+            ? 'Buah'
+            : nc,
+        isNutrition: true,
+      })),
+      ...extraCategories.map(ec => ({
+        key: ec,
+        label: ec,
+        isNutrition: false,
+      })),
+    ];
+
+    // Build rows
+    const rows = allCategoriesList.map((item, idx) => {
       const dateValues: { [date: string]: number } = {};
       let rowTotal = 0;
 
       periodDatesAscending.forEach(date => {
-        // Cari log untuk tanggal & kategori ini
-        const matchingLogs = filteredLogs.filter(
-          l => l.date === date && l.wasteCategory.toLowerCase().includes(cat)
-        );
+        const matchingLogs = filteredLogs.filter(l => {
+          if (l.date !== date) return false;
+          if (item.isNutrition) {
+            return l.wasteCategory.toLowerCase().includes(item.key);
+          }
+          return l.wasteCategory.toLowerCase() === item.key.toLowerCase();
+        });
+
         const sumKg = matchingLogs.reduce((acc, curr) => {
           const kg = curr.unit === 'Gram' ? curr.quantity / 1000 : curr.quantity;
           return acc + kg;
@@ -455,7 +504,8 @@ export const WasteLogModule: React.FC = () => {
 
       return {
         no: idx + 1,
-        category: cat,
+        category: item.key,
+        displayLabel: item.label,
         dateValues,
         rowTotal: Number(rowTotal.toFixed(2)),
         unit: 'kg',
@@ -532,6 +582,7 @@ export const WasteLogModule: React.FC = () => {
     });
 
     const circularRate = totalKg > 0 ? Math.round((divertedKg / totalKg) * 100) : 0;
+    const tpsKg = Math.max(0, totalKg - divertedKg);
 
     return {
       totalKg: Number(totalKg.toFixed(2)),
@@ -540,9 +591,457 @@ export const WasteLogModule: React.FC = () => {
       nabatiKg: Number(nabatiKg.toFixed(2)),
       hewaniKg: Number(hewaniKg.toFixed(2)),
       buahKg: Number(buahKg.toFixed(2)),
+      divertedKg: Number(divertedKg.toFixed(2)),
+      tpsKg: Number(tpsKg.toFixed(2)),
       circularRate,
     };
   }, [filteredLogs]);
+
+  // Printable Waste Sheet matching official SPPG Header standards and dynamic active filters
+  const renderPrintableWasteSheet = () => {
+    const maxColsPerTable = 10;
+    const dateChunks: string[][] = [];
+    if (matrixData.dates.length <= maxColsPerTable) {
+      dateChunks.push(matrixData.dates);
+    } else {
+      for (let i = 0; i < matrixData.dates.length; i += maxColsPerTable) {
+        dateChunks.push(matrixData.dates.slice(i, i + maxColsPerTable));
+      }
+    }
+
+    const avgDailyKg =
+      matrixData.dates.length > 0 ? Number((stats.totalKg / matrixData.dates.length).toFixed(2)) : 0;
+
+    return (
+      <div id="print-waste-rekap" className="bg-white font-sans text-slate-900 w-full text-xs">
+        {/* Kop Surat Resmi Standar SPPG */}
+        <div className="border-b-2 border-slate-900 pb-4 mb-5 flex items-start justify-between">
+          <div className="flex items-center gap-3.5">
+            <SppgLogo size="lg" variant="color" showText={false} />
+            <div>
+              <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
+                Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+              </h1>
+              <p className="text-xs text-slate-600 font-medium">
+                SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi
+              </p>
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
+              </p>
+            </div>
+          </div>
+
+          <div className="text-right text-[11px] text-slate-500 space-y-0.5">
+            <div>
+              Tanggal Cetak: <span className="font-semibold text-slate-700">{printDate}</span>
+            </div>
+            <div>
+              Operator: <span className="font-semibold text-slate-700">{currentUser.name}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Judul Dokumen & Identitas Filter Aktif */}
+        <div className="text-center my-4">
+          <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+            LAPORAN REKAPITULASI PENCATATAN & PENGELOLAAN LIMBAH
+          </h2>
+          <div className="inline-flex flex-wrap items-center justify-center gap-2 mt-2 px-3 py-1 bg-slate-100 rounded-lg text-xs font-semibold text-slate-700 border border-slate-200">
+            <span>Filter Periode: {activeDateRange.label}</span>
+            {selectedCategory !== 'ALL' && <span>• Kategori: {selectedCategory}</span>}
+            {selectedDisposal !== 'ALL' && <span>• Metode: {selectedDisposal}</span>}
+            {searchQuery.trim() && <span>• Pencarian: &ldquo;{searchQuery}&rdquo;</span>}
+          </div>
+        </div>
+
+        {/* Ringkasan Indikator Kunci (KPI Akumulasi) */}
+        <div className="grid grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 mb-5">
+          <div>
+            <span className="text-slate-500 block text-[10px]">Total Akumulasi Limbah</span>
+            <span className="font-bold font-mono text-sm text-slate-900">
+              {formatNumberId(stats.totalKg)} kg
+            </span>
+            <span className="block text-[10px] text-slate-400">
+              {matrixData.dates.length} hari operasional
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-500 block text-[10px]">Teralihkan / Sirkular</span>
+            <span className="font-bold font-mono text-sm text-emerald-700">
+              {formatNumberId(stats.divertedKg)} kg
+            </span>
+            <span className="block text-[10px] text-emerald-600 font-semibold">
+              {stats.circularRate}% (Pakan / Kompos)
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-500 block text-[10px]">Residu ke TPS Terpadu</span>
+            <span className="font-bold font-mono text-sm text-rose-700">
+              {formatNumberId(stats.tpsKg)} kg
+            </span>
+            <span className="block text-[10px] text-slate-400">
+              {100 - stats.circularRate}% dari total timbulan
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-500 block text-[10px]">Rata-rata Timbulan Harian</span>
+            <span className="font-bold font-mono text-sm text-slate-900">
+              {formatNumberId(avgDailyKg)} kg
+            </span>
+            <span className="block text-[10px] text-slate-400">
+              Per hari penimbangan aktif
+            </span>
+          </div>
+        </div>
+
+        {/* Bagian A: Matriks Rekapitulasi Akumulasi per Kategori Limbah */}
+        <div className="mb-6">
+          <div className="font-bold text-xs text-slate-800 mb-2 flex items-center justify-between border-b border-slate-200 pb-1">
+            <span>A. Matriks Akumulasi Total per Kategori Limbah</span>
+            <span className="text-[11px] font-normal text-slate-500">
+              Akumulasi berat & porsi timbulan pada periode aktif
+            </span>
+          </div>
+
+          <table className="w-full text-left text-xs border border-slate-300 border-collapse">
+            <thead>
+              <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-semibold">
+                <th className="py-2 px-2.5 border-r border-slate-300 text-center w-10">No</th>
+                <th className="py-2 px-3 border-r border-slate-300">Kategori Limbah</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-right w-36">Total Akumulasi (kg)</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-right w-32">Rata-rata / Hari</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-right w-24">Porsi (%)</th>
+                <th className="py-2 px-3">Metode Penanganan Utama</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-[11px]">
+              {matrixData.rows.map((row, idx) => {
+                const meta = getCategoryMeta(row.category);
+                const pct =
+                  matrixData.grandTotal > 0 ? Math.round((row.rowTotal / matrixData.grandTotal) * 100) : 0;
+                const rowAvg =
+                  matrixData.dates.length > 0 ? Number((row.rowTotal / matrixData.dates.length).toFixed(2)) : 0;
+
+                const catLogs = filteredLogs.filter(
+                  l =>
+                    row.category.toLowerCase().includes(l.wasteCategory.toLowerCase()) ||
+                    l.wasteCategory.toLowerCase().includes(row.category.toLowerCase())
+                );
+                const disposalCounts: { [method: string]: number } = {};
+                catLogs.forEach(l => {
+                  disposalCounts[l.disposalMethod] = (disposalCounts[l.disposalMethod] || 0) + 1;
+                });
+                const dominantDisposal =
+                  Object.entries(disposalCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+                  'Pakan Ternak & Kompos Organik';
+
+                return (
+                  <tr key={row.category} className="hover:bg-slate-50">
+                    <td className="py-2 px-2.5 border-r border-slate-300 text-center text-slate-500 font-mono">
+                      {idx + 1}
+                    </td>
+                    <td className="py-2 px-3 border-r border-slate-300 font-semibold text-slate-800">
+                      {row.displayLabel || meta.label}
+                    </td>
+                    <td className="py-2 px-3 border-r border-slate-300 text-right font-mono font-bold text-slate-900">
+                      {formatNumberId(row.rowTotal)} kg
+                    </td>
+                    <td className="py-2 px-3 border-r border-slate-300 text-right font-mono text-slate-600">
+                      {formatNumberId(rowAvg)} kg
+                    </td>
+                    <td className="py-2 px-3 border-r border-slate-300 text-right font-mono text-slate-700">
+                      {pct}%
+                    </td>
+                    <td className="py-2 px-3 text-slate-600">{dominantDisposal}</td>
+                  </tr>
+                );
+              })}
+              <tr className="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900">
+                <td colSpan={2} className="py-2 px-3 border-r border-slate-300 text-right">
+                  Total Akumulasi Seluruh Kategori:
+                </td>
+                <td className="py-2 px-3 border-r border-slate-300 text-right font-mono font-bold text-emerald-800">
+                  {formatNumberId(matrixData.grandTotal)} kg
+                </td>
+                <td className="py-2 px-3 border-r border-slate-300 text-right font-mono text-slate-800">
+                  {formatNumberId(avgDailyKg)} kg
+                </td>
+                <td className="py-2 px-3 border-r border-slate-300 text-right font-mono">100%</td>
+                <td className="py-2 px-3 text-slate-600">
+                  Tingkat Sirkularitas: {stats.circularRate}%
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Bagian B: Tabel Matriks Penimbangan Harian (Cross-Tabulation Horizontal) */}
+        <div className="mb-6">
+          <div className="font-bold text-xs text-slate-800 mb-2 flex items-center justify-between border-b border-slate-200 pb-1">
+            <span>B. Tabel Matriks Penimbangan Harian Sisa Makanan</span>
+            <span className="text-[11px] font-normal text-slate-500">
+              Rincian horizontal harian (kg) sesuai filter aktif
+            </span>
+          </div>
+
+          {matrixData.dates.length === 0 ? (
+            <div className="p-4 text-center text-xs text-slate-500 border border-slate-200 rounded-lg">
+              Tidak ada data penimbangan untuk periode dan filter yang dipilih.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {dateChunks.map((chunkDates, chunkIdx) => {
+                const chunkSubtotals: { [cat: string]: number } = {};
+                let chunkGrandTotal = 0;
+
+                matrixData.rows.forEach(r => {
+                  const sum = chunkDates.reduce((acc, d) => acc + (r.dateValues[d] ?? 0), 0);
+                  chunkSubtotals[r.category] = Number(sum.toFixed(2));
+                });
+                chunkGrandTotal = Number(
+                  chunkDates
+                    .reduce((acc, d) => acc + (matrixData.dateTotals[d] ?? 0), 0)
+                    .toFixed(2)
+                );
+
+                return (
+                  <div key={chunkIdx} className="overflow-x-auto">
+                    {dateChunks.length > 1 && (
+                      <div className="text-[11px] font-semibold text-slate-600 mb-1">
+                        Bagian {chunkIdx + 1} ({formatSheetDate(chunkDates[0])} s/d{' '}
+                        {formatSheetDate(chunkDates[chunkDates.length - 1])})
+                      </div>
+                    )}
+                    <table className="w-full text-left text-[11px] border border-slate-300 border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-semibold">
+                          <th className="py-2 px-2 border-r border-slate-300 text-center w-8">No</th>
+                          <th className="py-2 px-3 border-r border-slate-300 min-w-[130px]">
+                            Kategori Limbah
+                          </th>
+                          {chunkDates.map(dateStr => (
+                            <th
+                              key={dateStr}
+                              className="py-1.5 px-2 border-r border-slate-300 text-center whitespace-nowrap"
+                            >
+                              <div className="text-[9px] text-slate-500 font-normal">
+                                {getIndonesianDay(dateStr)}
+                              </div>
+                              <div className="text-[10px] font-bold text-slate-800">
+                                {formatSheetDate(dateStr)}
+                              </div>
+                            </th>
+                          ))}
+                          <th className="py-2 px-3 text-right border-l border-slate-300 bg-slate-200/60 font-bold min-w-[80px]">
+                            {dateChunks.length > 1 ? 'Subtotal (kg)' : 'Total (kg)'}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {matrixData.rows.map((row, idx) => {
+                          const meta = getCategoryMeta(row.category);
+                          const totalForChunk = chunkSubtotals[row.category] ?? 0;
+
+                          return (
+                            <tr key={row.category} className="hover:bg-slate-50">
+                              <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-500 font-mono">
+                                {idx + 1}
+                              </td>
+                              <td className="py-1.5 px-3 border-r border-slate-300 font-semibold text-slate-800">
+                                {row.displayLabel || meta.label}
+                              </td>
+                              {chunkDates.map(dateStr => {
+                                const val = row.dateValues[dateStr] ?? 0;
+                                return (
+                                  <td
+                                    key={dateStr}
+                                    className="py-1.5 px-2 border-r border-slate-300 text-right font-mono text-slate-800"
+                                  >
+                                    {val > 0 ? (
+                                      formatNumberId(val)
+                                    ) : (
+                                      <span className="text-slate-300">-</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                              <td className="py-1.5 px-3 text-right font-mono font-bold text-slate-900 border-l border-slate-300 bg-slate-50">
+                                {formatNumberId(totalForChunk)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900">
+                          <td colSpan={2} className="py-2 px-3 border-r border-slate-300 text-right">
+                            Total Harian (kg):
+                          </td>
+                          {chunkDates.map(dateStr => (
+                            <td
+                              key={dateStr}
+                              className="py-2 px-2 border-r border-slate-300 text-right font-mono font-bold text-slate-900"
+                            >
+                              {formatNumberId(matrixData.dateTotals[dateStr] ?? 0)}
+                            </td>
+                          ))}
+                          <td className="py-2 px-3 text-right font-mono font-bold text-emerald-800 border-l border-slate-300 bg-emerald-50">
+                            {formatNumberId(chunkGrandTotal)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Bagian C: Rincian Penimbangan & Catatan Penanganan per Hari */}
+        <div className="mb-6">
+          <div className="font-bold text-xs text-slate-800 mb-2 flex items-center justify-between border-b border-slate-200 pb-1">
+            <span>C. Rincian Penimbangan & Catatan Pengelolaan per Hari</span>
+            <span className="text-[11px] font-normal text-slate-500">
+              Rincian zat gizi & catatan lapangan
+            </span>
+          </div>
+
+          {dailySheetData.length === 0 ? (
+            <div className="p-4 text-center text-xs text-slate-500 border border-slate-200 rounded-lg">
+              Tidak ada riwayat harian untuk ditampilkan.
+            </div>
+          ) : (
+            <table className="w-full text-left text-[10px] border border-slate-300 border-collapse">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-semibold">
+                  <th className="py-1.5 px-2 border-r border-slate-300 text-center w-8">No</th>
+                  <th className="py-1.5 px-2.5 border-r border-slate-300 w-24">Hari & Tanggal</th>
+                  <th className="py-1.5 px-2 border-r border-slate-300 text-right w-16">Karbo (kg)</th>
+                  <th className="py-1.5 px-2 border-r border-slate-300 text-right w-16">Sayur (kg)</th>
+                  <th className="py-1.5 px-2 border-r border-slate-300 text-right w-16">Hewani (kg)</th>
+                  <th className="py-1.5 px-2 border-r border-slate-300 text-right w-16">Nabati (kg)</th>
+                  <th className="py-1.5 px-2 border-r border-slate-300 text-right w-16">Buah (kg)</th>
+                  <th className="py-1.5 px-2.5 border-r border-slate-300 text-right w-20 font-bold">
+                    Total (kg)
+                  </th>
+                  <th className="py-1.5 px-2.5 border-r border-slate-300 w-36">Metode Pengelolaan</th>
+                  <th className="py-1.5 px-2.5">Catatan / Alasan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {dailySheetData.map((d, idx) => {
+                  const getKg = (cat: string) => {
+                    const it = d.items.find(i => i.category.toLowerCase().includes(cat));
+                    return it ? it.quantity : 0;
+                  };
+                  const allLogs = d.items.flatMap(i => i.rawLogs);
+                  const disposal = allLogs[0]?.disposalMethod || 'Pakan Ternak & Kompos Organik';
+                  const notes =
+                    allLogs
+                      .map(l => l.reason || l.notes)
+                      .filter(Boolean)
+                      .join('; ') || 'Sisa makanan konsumsi santri/siswa';
+
+                  return (
+                    <tr key={d.date} className="hover:bg-slate-50">
+                      <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-500 font-mono">
+                        {idx + 1}
+                      </td>
+                      <td className="py-1.5 px-2.5 border-r border-slate-300 font-medium text-slate-800">
+                        {d.dayName}, {d.sheetDate}
+                      </td>
+                      <td className="py-1.5 px-2 border-r border-slate-300 text-right font-mono text-slate-700">
+                        {formatNumberId(getKg('karbo'))}
+                      </td>
+                      <td className="py-1.5 px-2 border-r border-slate-300 text-right font-mono text-slate-700">
+                        {formatNumberId(getKg('sayur'))}
+                      </td>
+                      <td className="py-1.5 px-2 border-r border-slate-300 text-right font-mono text-slate-700">
+                        {formatNumberId(getKg('hewani'))}
+                      </td>
+                      <td className="py-1.5 px-2 border-r border-slate-300 text-right font-mono text-slate-700">
+                        {formatNumberId(getKg('nabati'))}
+                      </td>
+                      <td className="py-1.5 px-2 border-r border-slate-300 text-right font-mono text-slate-700">
+                        {formatNumberId(getKg('buah'))}
+                      </td>
+                      <td className="py-1.5 px-2.5 border-r border-slate-300 text-right font-mono font-bold text-slate-900 bg-slate-50">
+                        {formatNumberId(d.dayTotal)}
+                      </td>
+                      <td className="py-1.5 px-2.5 border-r border-slate-300 text-slate-700">
+                        {disposal}
+                      </td>
+                      <td className="py-1.5 px-2.5 text-slate-600 truncate max-w-xs" title={notes}>
+                        {notes}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900">
+                  <td colSpan={2} className="py-2 px-2.5 border-r border-slate-300 text-right">
+                    Total Akumulasi:
+                  </td>
+                  <td className="py-2 px-2 border-r border-slate-300 text-right font-mono">
+                    {formatNumberId(stats.karboKg)}
+                  </td>
+                  <td className="py-2 px-2 border-r border-slate-300 text-right font-mono">
+                    {formatNumberId(stats.sayurKg)}
+                  </td>
+                  <td className="py-2 px-2 border-r border-slate-300 text-right font-mono">
+                    {formatNumberId(stats.hewaniKg)}
+                  </td>
+                  <td className="py-2 px-2 border-r border-slate-300 text-right font-mono">
+                    {formatNumberId(stats.nabatiKg)}
+                  </td>
+                  <td className="py-2 px-2 border-r border-slate-300 text-right font-mono">
+                    {formatNumberId(stats.buahKg)}
+                  </td>
+                  <td className="py-2 px-2.5 border-r border-slate-300 text-right font-mono font-bold text-emerald-800 bg-emerald-50">
+                    {formatNumberId(stats.totalKg)}
+                  </td>
+                  <td colSpan={2} className="py-2 px-2.5 text-slate-500 font-normal">
+                    kg (Seluruh Timbulan Periode Aktif)
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+
+        {/* Lembar Tanda Tangan Pengesahan (3 Kolom) */}
+        <div className="pt-6 border-t border-slate-300 text-xs mt-8 print:mt-6">
+          <div className="grid grid-cols-3 gap-6 text-center">
+            <div>
+              <div className="text-slate-500">Dibuat Oleh,</div>
+              <div className="font-semibold text-slate-800">Petugas Sanitasi & Limbah</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                ({currentUser.name})
+              </div>
+            </div>
+
+            <div>
+              <div className="text-slate-500">Diverifikasi Oleh,</div>
+              <div className="font-semibold text-slate-800">Ahli Gizi SPPG</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                (Rina Kartika, S.Gz)
+              </div>
+            </div>
+
+            <div>
+              <div className="text-slate-500">Mengetahui & Menyetujui,</div>
+              <div className="font-semibold text-slate-800">Kepala SPPG Jeru Tumpang</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                (Dr. Siti Rahma, M.M)
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Buka Modal Input Harian (bisa pre-fill jika ada tanggal yang dipilih)
   const handleOpenDailyModal = (targetDate?: string) => {
@@ -784,118 +1283,145 @@ export const WasteLogModule: React.FC = () => {
 
   return (
     <div className="space-y-5">
-      {/* Alert Notice */}
-      {successNotice && (
-        <div className="flex items-center gap-2.5 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-semibold shadow-2xs">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{successNotice}</span>
-        </div>
-      )}
+      {/* Stylesheet khusus untuk print agar rapi & hanya mencetak lembar rekap */}
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          #print-waste-rekap, #print-waste-rekap * {
+            visibility: visible;
+          }
+          #print-waste-rekap {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            padding: 15px !important;
+            margin: 0 !important;
+            background: white !important;
+            color: black !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
 
-      {/* Header Utama */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">
-            Rekapitulasi & Buku Catatan Limbah
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Input rekap harian sisa makanan dan penarikan total limbah per minggu atau per bulan.
-          </p>
-        </div>
+      {/* Konten Dashboard Utama (Disembunyikan saat mencetak) */}
+      <div className="no-print space-y-5">
+        {/* Alert Notice */}
+        {successNotice && (
+          <div className="flex items-center gap-2.5 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-semibold shadow-2xs">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{successNotice}</span>
+          </div>
+        )}
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-2 shrink-0" ref={actionDropdownRef}>
-          {/* Split Button: Primary Input Rekap + Dropdown for Tools */}
-          <div className="relative inline-flex rounded-xl shadow-2xs">
-            <button
-              type="button"
-              onClick={() => handleOpenDailyModal()}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-l-xl bg-emerald-700 hover:bg-emerald-800 text-white transition-colors cursor-pointer"
-              title="Input rekap harian sisa makanan (5 Kategori)"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Input Rekap Harian</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsInputDropdownOpen(!isInputDropdownOpen)}
-              className="inline-flex items-center px-2 py-2 text-xs font-bold rounded-r-xl bg-emerald-800 hover:bg-emerald-900 text-white border-l border-emerald-600/40 transition-colors cursor-pointer"
-              title="Pilihan input & alat bantu lainnya"
-            >
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isInputDropdownOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {/* Dropdown Menu Input & Tools */}
-            {isInputDropdownOpen && (
-              <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
-                <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100">
-                  Pilihan Input & Alat
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsInputDropdownOpen(false);
-                    handleOpenDailyModal();
-                  }}
-                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                    <Plus className="w-4 h-4 text-emerald-700" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-slate-900">Input Rekap Harian</div>
-                    <div className="text-[10px] text-slate-500">5 kategori sisa makanan per hari</div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsInputDropdownOpen(false);
-                    setIsCalcModalOpen(true);
-                  }}
-                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                    <Calculator className="w-4 h-4 text-emerald-700" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-slate-900">Kalkulator Piring</div>
-                    <div className="text-[10px] text-slate-500">Hitung proporsi sisa per piring</div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsInputDropdownOpen(false);
-                    setIsBatchModalOpen(true);
-                  }}
-                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-teal-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center shrink-0">
-                    <Layers className="w-4 h-4 text-teal-700" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-slate-900">Batch Non-Gizi</div>
-                    <div className="text-[10px] text-slate-500">Pencatatan limbah khusus non-porsi</div>
-                  </div>
-                </button>
-              </div>
-            )}
+        {/* Header Utama */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">
+              Rekapitulasi & Buku Catatan Limbah
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Input rekap harian sisa makanan dan penarikan total limbah per minggu atau per bulan.
+            </p>
           </div>
 
-          {/* Cetak PDF */}
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-          >
-            <Printer className="w-3.5 h-3.5 text-slate-500" />
-            <span>Cetak PDF</span>
-          </button>
+          {/* Action Controls */}
+          <div className="flex items-center gap-2 shrink-0" ref={actionDropdownRef}>
+            {/* Split Button: Primary Input Rekap + Dropdown for Tools */}
+            <div className="relative inline-flex rounded-xl shadow-2xs">
+              <button
+                type="button"
+                onClick={() => handleOpenDailyModal()}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-l-xl bg-emerald-700 hover:bg-emerald-800 text-white transition-colors cursor-pointer"
+                title="Input rekap harian sisa makanan (5 Kategori)"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Input Rekap Harian</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsInputDropdownOpen(!isInputDropdownOpen)}
+                className="inline-flex items-center px-2 py-2 text-xs font-bold rounded-r-xl bg-emerald-800 hover:bg-emerald-900 text-white border-l border-emerald-600/40 transition-colors cursor-pointer"
+                title="Pilihan input & alat bantu lainnya"
+              >
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isInputDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Dropdown Menu Input & Tools */}
+              {isInputDropdownOpen && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100">
+                    Pilihan Input & Alat
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsInputDropdownOpen(false);
+                      handleOpenDailyModal();
+                    }}
+                    className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                      <Plus className="w-4 h-4 text-emerald-700" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900">Input Rekap Harian</div>
+                      <div className="text-[10px] text-slate-500">5 kategori sisa makanan per hari</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsInputDropdownOpen(false);
+                      setIsCalcModalOpen(true);
+                    }}
+                    className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                      <Calculator className="w-4 h-4 text-emerald-700" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900">Kalkulator Piring</div>
+                      <div className="text-[10px] text-slate-500">Hitung proporsi sisa per piring</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsInputDropdownOpen(false);
+                      setIsBatchModalOpen(true);
+                    }}
+                    className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-teal-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center shrink-0">
+                      <Layers className="w-4 h-4 text-teal-700" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900">Batch Non-Gizi</div>
+                      <div className="text-[10px] text-slate-500">Pencatatan limbah khusus non-porsi</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Cetak PDF */}
+            <button
+              type="button"
+              onClick={() => setIsPrintPreviewOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5 text-slate-500" />
+              <span>Cetak PDF</span>
+            </button>
 
           {/* Ekspor Excel */}
           <button
@@ -1602,12 +2128,13 @@ export const WasteLogModule: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
 
       {/* ========================================================================= */}
       {/* MODAL UTAMA: INPUT REKAP LIMBAH HARIAN (5 KATEGORI LANGSUNG)             */}
       {/* ========================================================================= */}
       {isDailyInputModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="no-print fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
@@ -1908,7 +2435,7 @@ export const WasteLogModule: React.FC = () => {
       {/* MODAL 2: KALKULATOR KOMPOSISI PIRING BERGIZI                              */}
       {/* ========================================================================= */}
       {isCalcModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="no-print fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <div className="flex items-center gap-2.5">
@@ -2125,7 +2652,7 @@ export const WasteLogModule: React.FC = () => {
       {/* MODAL 3: INPUT BATCH NON-GIZI                                            */}
       {/* ========================================================================= */}
       {isBatchModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="no-print fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-3xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4 shrink-0">
               <div className="flex items-center gap-2.5">
@@ -2325,7 +2852,7 @@ export const WasteLogModule: React.FC = () => {
       {/* MODAL 4: PENCATATAN TUNGGAL                                              */}
       {/* ========================================================================= */}
       {isSingleModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="no-print fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <h4 className="text-sm font-bold text-slate-900">
@@ -2470,6 +2997,63 @@ export const WasteLogModule: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL PRATINJAU CETAK RESMI SPPG (PRINT PREVIEW)                          */}
+      {/* ========================================================================= */}
+      {isPrintPreviewOpen && (
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header Controls */}
+            <div className="px-6 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                  <Printer className="w-4 h-4 text-emerald-700" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Pratinjau Cetak Laporan Rekapitulasi Limbah
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Format dokumen resmi SPPG • Mengikuti filter aktif ({activeDateRange.label})
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Cetak / Simpan PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPrintPreviewOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 text-base font-bold p-1.5 rounded-lg hover:bg-slate-200/60 cursor-pointer"
+                  title="Tutup Pratinjau"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Preview Body */}
+            <div className="p-6 sm:p-8 overflow-y-auto bg-slate-100 flex-1">
+              <div className="bg-white p-6 sm:p-8 rounded-xl shadow-xs border border-slate-200 max-w-4xl mx-auto">
+                {renderPrintableWasteSheet()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Target Render untuk Print Langsung Browser */}
+      <div className="hidden print:block">
+        {renderPrintableWasteSheet()}
+      </div>
     </div>
   );
 };
