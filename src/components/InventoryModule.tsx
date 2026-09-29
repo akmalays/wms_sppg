@@ -37,9 +37,11 @@ import {
   ShoppingBag,
   Store,
   Layers,
-  Minus
+  Minus,
+  FileText
 } from 'lucide-react';
 import { exportToExcel, downloadExcelTemplate } from '../lib/excelExport';
+import { SppgLogo } from './SppgLogo';
 
 interface InventoryModuleProps {
   onRefreshData?: () => void;
@@ -214,6 +216,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<SppgCategory>('Semua Kategori');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [successNotice, setSuccessNotice] = useState<string>('');
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
 
   // ----------------------------------------------------
   // Stock Tab Modals
@@ -344,6 +347,357 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       categoryItemCounts,
     };
   }, [items]);
+
+  // Indonesian print date formatted
+  const printDate = useMemo(() => {
+    return new Date().toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  }, []);
+
+  // Category breakdown for Stock Recap Report
+  const categoryStockSummaries = useMemo(() => {
+    const categories: SppgCategory[] = [
+      'Bahan Basah',
+      'Bahan Kering',
+      'ATK & Administrasi',
+      'Alat Kebersihan',
+      'Perlengkapan & APD',
+      'Operasional & Keperluan Lain',
+    ];
+
+    const targetItems = filteredItems;
+
+    const summaryMap: Record<
+      string,
+      {
+        category: SppgCategory;
+        items: ItemMaster[];
+        totalQty: number;
+        totalValue: number;
+        normalCount: number;
+        lowCount: number;
+        outCount: number;
+      }
+    > = {};
+
+    categories.forEach(cat => {
+      summaryMap[cat] = {
+        category: cat,
+        items: [],
+        totalQty: 0,
+        totalValue: 0,
+        normalCount: 0,
+        lowCount: 0,
+        outCount: 0,
+      };
+    });
+
+    targetItems.forEach(item => {
+      const cat = getDetailedItemCategory(item);
+      if (!summaryMap[cat]) {
+        summaryMap[cat] = {
+          category: cat,
+          items: [],
+          totalQty: 0,
+          totalValue: 0,
+          normalCount: 0,
+          lowCount: 0,
+          outCount: 0,
+        };
+      }
+      summaryMap[cat].items.push(item);
+      const stock = Math.max(0, item.currentStock);
+      summaryMap[cat].totalQty += stock;
+      const unitPrice = getItemEstimatedUnitPrice(item.name, cat);
+      summaryMap[cat].totalValue += stock * unitPrice;
+
+      const st = getItemStockStatus(item);
+      if (st === 'NORMAL') summaryMap[cat].normalCount++;
+      else if (st === 'LOW') summaryMap[cat].lowCount++;
+      else summaryMap[cat].outCount++;
+    });
+
+    return categories.map(cat => summaryMap[cat]);
+  }, [filteredItems]);
+
+  const recapGrandTotals = useMemo(() => {
+    return categoryStockSummaries.reduce(
+      (acc, curr) => {
+        acc.totalItems += curr.items.length;
+        acc.totalQty += curr.totalQty;
+        acc.totalValue += curr.totalValue;
+        acc.normalCount += curr.normalCount;
+        acc.lowCount += curr.lowCount;
+        acc.outCount += curr.outCount;
+        return acc;
+      },
+      { totalItems: 0, totalQty: 0, totalValue: 0, normalCount: 0, lowCount: 0, outCount: 0 }
+    );
+  }, [categoryStockSummaries]);
+
+  // Printable Stock Sheet matching official SPPG Header standards
+  const renderPrintableStockSheet = () => {
+    return (
+      <div id="print-inventory-rekap" className="bg-white font-sans text-slate-900 w-full">
+        {/* Kop Surat Resmi Standar SPPG (Sama persis seperti di ToolsPrintModule & DailyExpensesModule) */}
+        <div className="border-b-2 border-slate-900 pb-4 mb-6 flex items-start justify-between">
+          <div className="flex items-center gap-3.5">
+            <SppgLogo size="lg" variant="color" showText={false} />
+            <div>
+              <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
+                Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+              </h1>
+              <p className="text-xs text-slate-600 font-medium">
+                SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi
+              </p>
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
+              </p>
+            </div>
+          </div>
+
+          <div className="text-right text-[11px] text-slate-500 space-y-0.5">
+            <div>
+              Tanggal Cetak: <span className="font-semibold text-slate-700">{printDate}</span>
+            </div>
+            <div>
+              Operator: <span className="font-semibold text-slate-700">{currentUser.name}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Judul Dokumen */}
+        <div className="text-center my-4">
+          <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+            LAPORAN REKAPITULASI STOK FISIK & NILAI ASET GUDANG
+          </h2>
+        </div>
+
+        {/* Bagian A: Rekapitulasi per Kategori Barang */}
+        <div className="mb-6">
+          <div className="font-bold text-xs text-slate-800 mb-2 flex items-center justify-between border-b border-slate-200 pb-1">
+            <span>A. Rekapitulasi Stok Berdasarkan Kategori Barang</span>
+            <span className="text-[11px] font-normal text-slate-500">Ringkasan Fisik, Status & Nilai Aset</span>
+          </div>
+
+          <table className="w-full text-left text-xs border border-slate-300 border-collapse">
+            <thead>
+              <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-semibold">
+                <th className="py-2 px-2.5 border-r border-slate-300 text-center w-8">No</th>
+                <th className="py-2 px-3 border-r border-slate-300">Kategori Barang</th>
+                <th className="py-2 px-2.5 border-r border-slate-300 text-center w-24">Jumlah Item</th>
+                <th className="py-2 px-2.5 border-r border-slate-300 text-right w-28">Total Saldo Stok</th>
+                <th className="py-2 px-2 border-r border-slate-300 text-center w-16">Aman</th>
+                <th className="py-2 px-2 border-r border-slate-300 text-center w-16">Menipis</th>
+                <th className="py-2 px-2 border-r border-slate-300 text-center w-16">Habis</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-right w-36">Estimasi Nilai Aset</th>
+                <th className="py-2 px-2.5 text-right w-16">Porsi (%)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-[11px]">
+              {categoryStockSummaries.map((catSummary, idx) => {
+                const pct =
+                  recapGrandTotals.totalValue > 0
+                    ? Math.round((catSummary.totalValue / recapGrandTotals.totalValue) * 100)
+                    : 0;
+
+                return (
+                  <tr key={catSummary.category} className="hover:bg-slate-50">
+                    <td className="py-2 px-2.5 border-r border-slate-300 text-center text-slate-500">{idx + 1}</td>
+                    <td className="py-2 px-3 border-r border-slate-300 font-semibold text-slate-800">
+                      {catSummary.category}
+                    </td>
+                    <td className="py-2 px-2.5 border-r border-slate-300 text-center">
+                      {catSummary.items.length} item
+                    </td>
+                    <td className="py-2 px-2.5 border-r border-slate-300 text-right font-medium">
+                      {catSummary.totalQty.toLocaleString('id-ID')}
+                    </td>
+                    <td className="py-2 px-2 border-r border-slate-300 text-center font-medium text-emerald-700">
+                      {catSummary.normalCount}
+                    </td>
+                    <td className="py-2 px-2 border-r border-slate-300 text-center font-medium text-amber-600">
+                      {catSummary.lowCount}
+                    </td>
+                    <td className="py-2 px-2 border-r border-slate-300 text-center font-medium text-rose-600">
+                      {catSummary.outCount}
+                    </td>
+                    <td className="py-2 px-3 border-r border-slate-300 text-right font-semibold text-slate-900">
+                      Rp {catSummary.totalValue.toLocaleString('id-ID')}
+                    </td>
+                    <td className="py-2 px-2.5 text-right font-medium">{pct}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-slate-100 font-bold border-t-2 border-slate-400 text-slate-900 text-xs">
+                <td colSpan={2} className="py-2.5 px-3 border-r border-slate-300 text-right">
+                  TOTAL KESELURUHAN:
+                </td>
+                <td className="py-2.5 px-2.5 border-r border-slate-300 text-center">
+                  {recapGrandTotals.totalItems} item
+                </td>
+                <td className="py-2.5 px-2.5 border-r border-slate-300 text-right">
+                  {recapGrandTotals.totalQty.toLocaleString('id-ID')}
+                </td>
+                <td className="py-2.5 px-2 border-r border-slate-300 text-center text-emerald-800">
+                  {recapGrandTotals.normalCount}
+                </td>
+                <td className="py-2.5 px-2 border-r border-slate-300 text-center text-amber-700">
+                  {recapGrandTotals.lowCount}
+                </td>
+                <td className="py-2.5 px-2 border-r border-slate-300 text-center text-rose-700">
+                  {recapGrandTotals.outCount}
+                </td>
+                <td className="py-2.5 px-3 border-r border-slate-300 text-right text-emerald-800">
+                  Rp {recapGrandTotals.totalValue.toLocaleString('id-ID')}
+                </td>
+                <td className="py-2.5 px-2.5 text-right">100%</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        {/* Bagian B: Rincian Saldo Stok Fisik per Kategori Barang */}
+        <div className="mb-6 space-y-5">
+          <div className="font-bold text-xs text-slate-800 pb-1 border-b border-slate-200">
+            B. Rincian Saldo Stok Fisik per Kategori Barang
+          </div>
+
+          {filteredItems.length === 0 ? (
+            <div className="p-4 text-center text-slate-400 text-xs italic border border-dashed border-slate-200 rounded">
+              Tidak ada data barang yang sesuai dengan filter saat ini.
+            </div>
+          ) : (
+            categoryStockSummaries
+              .filter(cat => cat.items.length > 0)
+              .map((catSummary, catIdx) => (
+                <div key={catSummary.category} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-bold bg-slate-100 px-3 py-1.5 rounded border border-slate-200">
+                    <span className="text-slate-800">
+                      {catIdx + 1}. Kategori {catSummary.category} ({catSummary.items.length} item)
+                    </span>
+                    <span className="text-slate-900 font-mono text-[11px]">
+                      Subtotal Nilai: Rp {catSummary.totalValue.toLocaleString('id-ID')}
+                    </span>
+                  </div>
+
+                  <table className="w-full text-left text-[10px] border border-slate-300 border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-300 text-slate-600 font-semibold">
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-7">No</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 font-mono w-20">SKU / ID</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300">Nama Barang</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 w-32">Lokasi Gudang</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-14">Min</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-right w-16">Stok Fisik</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-12">Satuan</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-right w-24">Harga Satuan</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-right w-24">Total Nilai</th>
+                        <th className="py-1.5 px-2 text-center w-16">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {catSummary.items.map((item, itIdx) => {
+                        const status = getItemStockStatus(item);
+                        const price = getItemEstimatedUnitPrice(item.name, catSummary.category);
+                        const totalVal = Math.max(0, item.currentStock) * price;
+
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-50/60">
+                            <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-400">
+                              {itIdx + 1}
+                            </td>
+                            <td className="py-1.5 px-2 border-r border-slate-300 font-mono text-slate-700">
+                              {item.id}
+                            </td>
+                            <td className="py-1.5 px-2 border-r border-slate-300 font-medium text-slate-900">
+                              {item.name}
+                            </td>
+                            <td className="py-1.5 px-2 border-r border-slate-300 text-slate-600">{item.location}</td>
+                            <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-500">
+                              {item.minimumStock}
+                            </td>
+                            <td className="py-1.5 px-2 border-r border-slate-300 text-right font-bold text-slate-900">
+                              {item.currentStock.toLocaleString('id-ID')}
+                            </td>
+                            <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-600">
+                              {item.baseUnit}
+                            </td>
+                            <td className="py-1.5 px-2 border-r border-slate-300 text-right font-mono text-slate-600">
+                              Rp {price.toLocaleString('id-ID')}
+                            </td>
+                            <td className="py-1.5 px-2 border-r border-slate-300 text-right font-mono font-bold text-slate-900">
+                              Rp {totalVal.toLocaleString('id-ID')}
+                            </td>
+                            <td className="py-1.5 px-2 text-center font-medium">
+                              {status === 'NORMAL' ? (
+                                <span className="text-emerald-700">Aman</span>
+                              ) : status === 'LOW' ? (
+                                <span className="text-amber-700 font-semibold">Menipis</span>
+                              ) : (
+                                <span className="text-rose-700 font-bold">Habis</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      <tr className="bg-slate-50 font-bold border-t border-slate-300 text-slate-800">
+                        <td colSpan={5} className="py-1.5 px-2 border-r border-slate-300 text-right">
+                          Subtotal {catSummary.category}:
+                        </td>
+                        <td className="py-1.5 px-2 border-r border-slate-300 text-right font-bold">
+                          {catSummary.totalQty.toLocaleString('id-ID')}
+                        </td>
+                        <td className="py-1.5 px-2 border-r border-slate-300"></td>
+                        <td className="py-1.5 px-2 border-r border-slate-300"></td>
+                        <td className="py-1.5 px-2 border-r border-slate-300 text-right font-bold text-slate-900">
+                          Rp {catSummary.totalValue.toLocaleString('id-ID')}
+                        </td>
+                        <td className="py-1.5 px-2"></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              ))
+          )}
+        </div>
+
+        {/* Lembar Pengesahan Dokumen / Tanda Tangan */}
+        <div className="pt-6 border-t border-slate-300 text-xs mt-8">
+          <div className="grid grid-cols-3 gap-6 text-center">
+            <div>
+              <div className="text-slate-500">Dibuat Oleh,</div>
+              <div className="font-semibold text-slate-800">Petugas Gudang / Logistik</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                ({currentUser.name})
+              </div>
+            </div>
+
+            <div>
+              <div className="text-slate-500">Diverifikasi Oleh,</div>
+              <div className="font-semibold text-slate-800">Akuntan SPPG</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                (Dewi Lestari, S.Ak)
+              </div>
+            </div>
+
+            <div>
+              <div className="text-slate-500">Mengetahui & Menyetujui,</div>
+              <div className="font-semibold text-slate-800">Kepala SPPG Jeru Tumpang</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                (Dr. Siti Rahma, M.M)
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // ----------------------------------------------------
   // Opname Logic & Handlers
@@ -811,16 +1165,48 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
   return (
     <div className="space-y-5">
-      {/* Toast Alert Notice */}
-      {successNotice && (
-        <div className="flex items-center gap-2.5 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-medium animate-in fade-in duration-150">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{successNotice}</span>
-        </div>
-      )}
+      {/* Print-specific stylesheet */}
+      <style>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 10mm 12mm;
+          }
+          body {
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+            font-size: 10pt;
+          }
+          nav, header, footer, .no-print {
+            display: none !important;
+          }
+          #print-inventory-rekap, #print-opname-modal-area {
+            display: block !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            background: transparent !important;
+          }
+          .page-break {
+            page-break-after: always;
+          }
+        }
+      `}</style>
 
-      {/* ========================================================================= */}
-      {/* MODULE HEADER BAR */}
+      {/* Main Screen Content (hidden during print) */}
+      <div className="no-print space-y-5">
+        {/* Toast Alert Notice */}
+        {successNotice && (
+          <div className="flex items-center gap-2.5 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-medium animate-in fade-in duration-150">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{successNotice}</span>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* MODULE HEADER BAR */}
       {/* ========================================================================= */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div>
@@ -991,8 +1377,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
               <button
                 type="button"
-                onClick={() => window.print()}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                onClick={() => setIsPrintPreviewOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer shadow-2xs"
+                title="Buka pratinjau dan cetak rekapitulasi stok resmi SPPG"
               >
                 <Printer className="w-3.5 h-3.5 text-slate-600" />
                 <span>Cetak Rekap</span>
@@ -1363,12 +1750,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
           </div>
         </div>
       )}
+      </div>
 
       {/* ========================================================================= */}
       {/* MODAL: FORMULIR PELAKSANAAN STOCK OPNAME BARU (BISA PER KATEGORI) */}
       {/* ========================================================================= */}
       {isCreateOpnameModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
@@ -1632,9 +2020,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {/* MODAL: BERITA ACARA STOCK OPNAME RESMI */}
       {/* ========================================================================= */}
       {viewingOpname && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white print:static print:z-auto">
+          <div id="print-opname-modal-area" className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150 print:max-w-none print:max-h-none print:shadow-none print:border-none print:rounded-none">
+            <div className="no-print px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2">
                 <ClipboardCheck className="w-5 h-5 text-emerald-600" />
                 <h3 className="text-base font-bold text-slate-900">
@@ -1659,7 +2047,34 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto space-y-4 text-xs">
+            <div className="p-6 overflow-y-auto space-y-4 text-xs print:p-0 print:overflow-visible">
+              {/* Kop Surat Resmi Standar SPPG (Tampil saat cetak) */}
+              <div className="border-b-2 border-slate-900 pb-4 mb-4 hidden print:flex items-start justify-between">
+                <div className="flex items-center gap-3.5">
+                  <SppgLogo size="lg" variant="color" showText={false} />
+                  <div>
+                    <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
+                      Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+                    </h1>
+                    <p className="text-xs text-slate-600 font-medium">
+                      SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right text-[11px] text-slate-500 space-y-0.5">
+                  <div>
+                    Tanggal Cetak: <span className="font-semibold text-slate-700">{printDate}</span>
+                  </div>
+                  <div>
+                    Operator: <span className="font-semibold text-slate-700">{currentUser.name}</span>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                 <div>
                   <span className="text-slate-400 block text-[10px]">Tanggal Opname</span>
@@ -1724,9 +2139,38 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                   </tbody>
                 </table>
               </div>
+
+              {/* Lembar Pengesahan Dokumen Opname (Tampil saat cetak) */}
+              <div className="pt-6 border-t border-slate-300 text-xs mt-6 hidden print:block">
+                <div className="grid grid-cols-3 gap-6 text-center">
+                  <div>
+                    <div className="text-slate-500">Pencatat Fisik,</div>
+                    <div className="font-semibold text-slate-800">Petugas Gudang / Logistik</div>
+                    <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                      ({viewingOpname.createdByName})
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-slate-500">Diverifikasi Oleh,</div>
+                    <div className="font-semibold text-slate-800">Akuntan SPPG</div>
+                    <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                      (Dewi Lestari, S.Ak)
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-slate-500">Otorisasi / Persetujuan,</div>
+                    <div className="font-semibold text-slate-800">Kepala SPPG Jeru Tumpang</div>
+                    <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                      ({viewingOpname.approvedByName || 'Dr. Siti Rahma, M.M'})
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50 text-xs">
+            <div className="no-print flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50 text-xs">
               <button
                 type="button"
                 onClick={() => window.print()}
@@ -1764,7 +2208,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {/* MODAL: PENYESUAIAN STOK CEPAT (QUICK ADJUSTMENT) */}
       {/* ========================================================================= */}
       {adjustingItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs">
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
@@ -1872,7 +2316,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {/* MODAL: TAMBAH / EDIT MASTER BARANG SATUAN */}
       {/* ========================================================================= */}
       {isSingleModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs">
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
@@ -2016,7 +2460,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {/* MODAL: INPUT MASAL MASTER BARANG */}
       {/* ========================================================================= */}
       {isBatchModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
@@ -2242,6 +2686,54 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL PRATINJAU CETAK REKAPITULASI STOK RESMI SPPG */}
+      {/* ========================================================================= */}
+      {isPrintPreviewOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 print:p-0 print:bg-white print:static print:z-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 print:max-w-none print:max-h-none print:shadow-none print:border-none print:rounded-none">
+            {/* Modal Toolbar (hidden during printing) */}
+            <div className="no-print px-6 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Printer className="w-4 h-4 text-emerald-600" />
+                <span className="text-xs font-bold text-slate-800">
+                  Pratinjau Format Cetak Dokumen Resmi Rekapitulasi Stok
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPrintPreviewOpen(false)}
+                  className="px-3.5 py-1.5 text-xs text-slate-600 hover:bg-slate-200 rounded-lg font-medium cursor-pointer"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold shadow-2xs cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Cetak / Simpan PDF</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Document Sheet */}
+            <div className="p-6 sm:p-10 overflow-y-auto print:p-0 print:overflow-visible">
+              {renderPrintableStockSheet()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden printable area when modal is not open (for direct shortcut Cmd+P / window.print) */}
+      {!isPrintPreviewOpen && !viewingOpname && (
+        <div className="hidden print:block">
+          {renderPrintableStockSheet()}
         </div>
       )}
     </div>

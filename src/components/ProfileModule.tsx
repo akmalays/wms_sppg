@@ -29,7 +29,11 @@ import {
   Users
 } from 'lucide-react';
 
-export const ProfileModule: React.FC = () => {
+export interface ProfileModuleProps {
+  onNavigate?: (tab: string) => void;
+}
+
+export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
   const { currentUser, updateProfile, availableUsers } = useAuth();
 
   // Internal module tab state: 'profile' | 'todos' | 'report'
@@ -531,6 +535,19 @@ export const ProfileModule: React.FC = () => {
                   <span className="font-medium text-slate-800">SPPG Jeru Tumpang 01</span>
                 </div>
               </div>
+
+              {onNavigate && (
+                <div className="pt-3 mt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('user_management')}
+                    className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg border border-emerald-300 bg-emerald-50/70 hover:bg-emerald-100 text-xs font-semibold text-emerald-800 transition-colors cursor-pointer"
+                  >
+                    <Users className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Kelola & Buat User Baru</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Quick Checklist Widget */}
@@ -872,8 +889,12 @@ export const ProfileModule: React.FC = () => {
           >
             {/* Report Header */}
             <div className="flex items-start justify-between border-b-2 border-slate-800 pb-5 mb-6">
-              <div className="flex items-center gap-3.5">
-                <SppgLogo size="lg" variant="color" />
+              <div className="flex items-start gap-4">
+                <SppgLogo
+                  size="lg"
+                  variant="color"
+                  address="Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang"
+                />
                 <div>
                   <h2 className="text-base font-bold text-slate-900 leading-tight">
                     Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)

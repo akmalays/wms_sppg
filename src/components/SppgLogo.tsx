@@ -6,6 +6,7 @@ interface SppgLogoProps {
   showText?: boolean;
   className?: string;
   variant?: 'color' | 'monochrome' | 'white';
+  address?: string;
 }
 
 export const SppgLogo: React.FC<SppgLogoProps> = ({
@@ -13,6 +14,7 @@ export const SppgLogo: React.FC<SppgLogoProps> = ({
   showText = true,
   className = '',
   variant = 'color',
+  address,
 }) => {
   const [imageError, setImageError] = useState(false);
 
@@ -47,7 +49,7 @@ export const SppgLogo: React.FC<SppgLogoProps> = ({
   const colors = getColors();
 
   return (
-    <div className={`inline-flex items-center gap-2.5 ${className}`}>
+    <div className={`inline-flex ${address ? 'items-start' : 'items-center'} gap-2.5 ${className}`}>
       {/* Official SPPG Brand Emblem from src/assets */}
       {!imageError ? (
         <img
@@ -85,7 +87,7 @@ export const SppgLogo: React.FC<SppgLogoProps> = ({
 
       {/* Brand Typography */}
       {showText && (
-        <div className="text-left leading-none">
+        <div className="text-left leading-tight">
           <div className="flex items-center gap-1.5">
             <span className={`font-bold tracking-tight ${currentSize.text} ${colors.textTitle}`}>
               SPPG Jeru Tumpang
@@ -94,9 +96,14 @@ export const SppgLogo: React.FC<SppgLogoProps> = ({
               WMS
             </span>
           </div>
-          <p className={`${currentSize.sub} ${colors.textSub} mt-1 font-medium`}>
+          <p className={`${currentSize.sub} ${colors.textSub} mt-0.5 font-medium`}>
             Satuan Pelayanan Pemenuhan Gizi
           </p>
+          {address && (
+            <p className="text-[10.5px] text-slate-500 font-normal mt-0.5 leading-snug max-w-[280px]">
+              {address}
+            </p>
+          )}
         </div>
       )}
     </div>

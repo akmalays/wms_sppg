@@ -26,7 +26,8 @@ import {
   Users,
   PackagePlus,
   Calendar,
-  Clock
+  Clock,
+  UserPlus
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -105,6 +106,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
     { id: 'stock_opname', label: 'Stock Opname Fisik', icon: ClipboardCheck },
     { id: 'equipment', label: 'Inventaris Aset Dapur', icon: Wrench },
     { id: 'suppliers', label: 'Manajemen Rekanan Supplier', icon: Building2 },
+    { id: 'user_management', label: 'Kelola & Buat User Baru', icon: UserPlus },
     { id: 'audit', label: 'Audit Trail & Keamanan', icon: ShieldAlert },
   ];
 

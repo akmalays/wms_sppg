@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole } from '../types/warehouse';
-import { INITIAL_USERS } from '../db/storage';
+import { INITIAL_USERS, warehouseDb } from '../db/storage';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface AuthContextType {
@@ -12,6 +12,14 @@ interface AuthContextType {
   logout: () => void;
   switchUser: (userId: string) => void;
   updateProfile: (updatedData: { name?: string; role?: UserRole; password?: string }) => Promise<{ success: boolean; error?: string }>;
+  registerUser: (userData: {
+    name: string;
+    email: string;
+    role: UserRole;
+    password: string;
+    phone?: string;
+    nip?: string;
+  }) => Promise<{ success: boolean; user?: User; error?: string }>;
   can: (action: PermissionAction) => boolean;
 }
 
@@ -72,12 +80,15 @@ const ROLE_PERMISSIONS: Record<UserRole, PermissionAction[]> = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [availableUsers, setAvailableUsers] = useState<User[]>(() => warehouseDb.getUsers());
+
   const [currentUser, setCurrentUser] = useState<User>(() => {
+    const allUsers = warehouseDb.getUsers();
     const saved = localStorage.getItem('sppg_active_user_id');
     const savedName = localStorage.getItem('sppg_active_user_name');
     const savedRole = localStorage.getItem('sppg_active_user_role') as UserRole;
     if (saved) {
-      const found = INITIAL_USERS.find(u => u.id === saved);
+      const found = allUsers.find(u => u.id === saved);
       if (found) {
         return {
           ...found,
@@ -87,7 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
     // Default fallback to Admin or Ka SPPG
-    const def = INITIAL_USERS.find(u => u.role === 'ADMIN') || INITIAL_USERS[0];
+    const def = allUsers.find(u => u.role === 'ADMIN') || allUsers[0] || INITIAL_USERS[0];
     return {
       ...def,
       name: savedName || def.name,
@@ -137,12 +148,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    // 2. Demo accounts validation
-    const matchedUser = INITIAL_USERS.find(
+    // 2. Stored / local users validation
+    const matchedUser = availableUsers.find(
       u => u.email.toLowerCase() === cleanEmail
     );
 
     if (matchedUser) {
+      const savedPassword = warehouseDb.getUserPassword(cleanEmail);
+      if (savedPassword && password && savedPassword !== password) {
+        return {
+          success: false,
+          error: 'Kata sandi yang Anda masukkan salah.',
+        };
+      }
+
       setCurrentUser(matchedUser);
       setIsAuthenticated(true);
       localStorage.setItem('sppg_active_user_id', matchedUser.id);
@@ -152,17 +171,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return {
       success: false,
-      error: 'Email tidak ditemukan dalam sistem. Gunakan salah satu email akun demo SPPG atau akun Supabase yang valid.',
+      error: 'Email tidak ditemukan dalam sistem. Gunakan salah satu email akun demo SPPG atau buat akun petugas baru.',
     };
   };
 
   const loginAsUser = (userId: string) => {
-    const user = INITIAL_USERS.find(u => u.id === userId);
+    const user = availableUsers.find(u => u.id === userId);
     if (user) {
       setCurrentUser(user);
       setIsAuthenticated(true);
       localStorage.setItem('sppg_active_user_id', user.id);
       localStorage.setItem('sppg_is_authenticated', 'true');
+    }
+  };
+
+  const registerUser = async (userData: {
+    name: string;
+    email: string;
+    role: UserRole;
+    password: string;
+    phone?: string;
+    nip?: string;
+  }): Promise<{ success: boolean; user?: User; error?: string }> => {
+    try {
+      const cleanEmail = userData.email.trim().toLowerCase();
+      const currentList = warehouseDb.getUsers();
+
+      if (currentList.some(u => u.email.toLowerCase() === cleanEmail)) {
+        return { success: false, error: 'Alamat email tersebut sudah terdaftar dalam sistem.' };
+      }
+
+      // Supabase signup if connected
+      if (isSupabaseConfigured()) {
+        try {
+          await supabase.auth.signUp({
+            email: cleanEmail,
+            password: userData.password,
+            options: {
+              data: {
+                name: userData.name.trim(),
+                role: userData.role,
+                phone: userData.phone,
+                nip: userData.nip,
+              },
+            },
+          });
+        } catch (e) {
+          // ignore offline
+        }
+      }
+
+      const newUser = warehouseDb.registerUser({
+        name: userData.name,
+        email: cleanEmail,
+        role: userData.role,
+        password: userData.password,
+        phone: userData.phone,
+        nip: userData.nip,
+      });
+
+      const updatedUsers = warehouseDb.getUsers();
+      setAvailableUsers(updatedUsers);
+
+      // Auto login the new user
+      setCurrentUser(newUser);
+      setIsAuthenticated(true);
+      localStorage.setItem('sppg_active_user_id', newUser.id);
+      localStorage.setItem('sppg_active_user_name', newUser.name);
+      localStorage.setItem('sppg_active_user_role', newUser.role);
+      localStorage.setItem('sppg_is_authenticated', 'true');
+
+      return { success: true, user: newUser };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Gagal membuat user baru.' };
     }
   };
 
@@ -179,7 +260,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const switchUser = (userId: string) => {
-    const user = INITIAL_USERS.find(u => u.id === userId);
+    const user = availableUsers.find(u => u.id === userId);
     if (user) {
       setCurrentUser(user);
       setIsAuthenticated(true);
@@ -234,11 +315,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('sppg_active_user_id', currentUser.id);
 
       // Cache update
-      const idx = INITIAL_USERS.findIndex(u => u.id === currentUser.id);
-      if (idx >= 0) {
-        INITIAL_USERS[idx].name = newName;
-        INITIAL_USERS[idx].role = newRole;
-      }
+      const updatedList = warehouseDb.getUsers().map(u => {
+        if (u.id === currentUser.id) {
+          return { ...u, name: newName, role: newRole };
+        }
+        return u;
+      });
+      setAvailableUsers(updatedList);
 
       return { success: true };
     } catch (err: any) {
@@ -257,12 +340,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         currentUser,
         isAuthenticated,
-        availableUsers: INITIAL_USERS,
+        availableUsers,
         login,
         loginAsUser,
         logout,
         switchUser,
         updateProfile,
+        registerUser,
         can,
       }}
     >

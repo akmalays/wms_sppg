@@ -19,15 +19,21 @@ import { SuppliersModule } from './components/SuppliersModule';
 import { AuditLogModule } from './components/AuditLogModule';
 import { MenuPrintModule } from './components/MenuPrintModule';
 import { LoginPage } from './components/LoginPage';
+import { RegisterPage } from './components/RegisterPage';
+import { UserManagementModule } from './components/UserManagementModule';
 import { warehouseDb } from './db/storage';
 
 const MainLayout: React.FC = () => {
   const { currentUser, isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [authView, setAuthView] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
   const [dataVersion, setDataVersion] = useState<number>(0);
 
   if (!isAuthenticated) {
-    return <LoginPage />;
+    if (authView === 'REGISTER') {
+      return <RegisterPage onNavigateToLogin={() => setAuthView('LOGIN')} />;
+    }
+    return <LoginPage onNavigateToRegister={() => setAuthView('REGISTER')} />;
   }
 
   const handleRefresh = () => {
@@ -90,7 +96,7 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'profile' && (
-            <ProfileModule />
+            <ProfileModule onNavigate={setActiveTab} />
           )}
 
           {activeTab === 'tools_forms' && <ToolsPrintModule />}
@@ -121,6 +127,8 @@ const MainLayout: React.FC = () => {
           {activeTab === 'menu_print' && (
             <MenuPrintModule onNavigate={setActiveTab} />
           )}
+
+          {activeTab === 'user_management' && <UserManagementModule />}
 
           {activeTab === 'audit' && <AuditLogModule />}
         </div>

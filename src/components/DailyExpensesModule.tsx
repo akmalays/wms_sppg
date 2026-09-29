@@ -7,8 +7,9 @@ import {
   NonFoodExpense,
   InventoryTransaction
 } from '../types/warehouse';
-import { Calendar, Printer, Search, TrendingDown, Clock, CheckCircle2, FileSpreadsheet, Trash2, CalendarRange, DollarSign, ChevronDown, ChevronRight } from 'lucide-react';
+import { Calendar, Printer, Search, TrendingDown, Clock, CheckCircle2, FileSpreadsheet, Trash2, CalendarRange, DollarSign, ChevronDown, ChevronRight, FileText } from 'lucide-react';
 import { exportToExcel } from '../lib/excelExport';
+import { SppgLogo } from './SppgLogo';
 
 type PeriodType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
 
@@ -151,7 +152,7 @@ export const DailyExpensesModule: React.FC = () => {
 
   // Search & Views
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeSubTab, setActiveSubTab] = useState<'SUMMARY' | 'TRANSACTIONS'>('SUMMARY');
+  const [activeSubTab, setActiveSubTab] = useState<'SUMMARY' | 'TRANSACTIONS' | 'PRINT_VIEW'>('SUMMARY');
   const [successNotice, setSuccessNotice] = useState<string>('');
 
   // Data sources
@@ -247,17 +248,27 @@ export const DailyExpensesModule: React.FC = () => {
     });
   }, [manualExpenses, transactions, currentUser.name]);
 
+  const formatFriendlyDate = (dateStr: string) => {
+    const d = parseExpenseDate(dateStr);
+    if (!d) return dateStr;
+    return d.toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  };
+
   // Effective Date Range based on periodType
   const effectiveDateRange = useMemo(() => {
     if (periodType === 'DAILY') {
       const target = parseExpenseDate(selectedDailyDate);
-      return { start: target, end: target, label: `Harian: ${selectedDailyDate}` };
+      return { start: target, end: target, label: `Harian (${formatFriendlyDate(selectedDailyDate)})` };
     }
 
     if (periodType === 'WEEKLY') {
       const s = parseExpenseDate(startDate);
       const e = parseExpenseDate(endDate);
-      return { start: s, end: e, label: `Mingguan: ${startDate} s/d ${endDate}` };
+      return { start: s, end: e, label: `Mingguan (${formatFriendlyDate(startDate)} s/d ${formatFriendlyDate(endDate)})` };
     }
 
     if (periodType === 'MONTHLY') {
@@ -278,8 +289,17 @@ export const DailyExpensesModule: React.FC = () => {
     // CUSTOM
     const s = parseExpenseDate(startDate);
     const e = parseExpenseDate(endDate);
-    return { start: s, end: e, label: `${startDate} s/d ${endDate}` };
+    return { start: s, end: e, label: `Periode ${formatFriendlyDate(startDate)} s/d ${formatFriendlyDate(endDate)}` };
   }, [periodType, selectedDailyDate, startDate, endDate, selectedMonth]);
+
+  const printDate = useMemo(() => {
+    return new Date().toLocaleDateString('id-ID', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  }, []);
 
   // Filtered expenses based on Period, Category, and Search
   const filteredExpenses = useMemo(() => {
@@ -469,21 +489,54 @@ export const DailyExpensesModule: React.FC = () => {
   };
 
   const handlePrint = () => {
-    window.print();
+    setActiveSubTab('PRINT_VIEW');
+    setTimeout(() => {
+      window.print();
+    }, 150);
   };
 
   return (
     <div className="space-y-5">
+      {/* Print-specific style injected into head */}
+      <style>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 10mm 12mm;
+          }
+          body {
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+            font-size: 10pt;
+          }
+          nav, header, footer, .no-print {
+            display: none !important;
+          }
+          #print-expenses-area {
+            display: block !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            background: transparent !important;
+          }
+          .page-break {
+            page-break-after: always;
+          }
+        }
+      `}</style>
+
       {/* Alert Notice */}
       {successNotice && (
-        <div className="flex items-center gap-2.5 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-lg text-xs font-medium">
+        <div className="no-print flex items-center gap-2.5 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-lg text-xs font-medium">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>{successNotice}</span>
         </div>
       )}
 
       {/* Header bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
+      <div className="no-print flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">
             Laporan & Rekap Pengeluaran
@@ -516,7 +569,7 @@ export const DailyExpensesModule: React.FC = () => {
       </div>
 
       {/* Filter Control Box: Period (Minggu, Bulan, Hari) & Categories */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3.5">
+      <div className="no-print bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3.5">
         {/* Row 1: Period Mode Selector & Date Controls */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
@@ -703,7 +756,7 @@ export const DailyExpensesModule: React.FC = () => {
       {/* ========================================================================= */}
       {/* SUMMARY NOMINAL CARDS: TOTAL & 3 KATEGORI (SESUAI PERMINTAAN USER) */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="no-print grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* Card 1: Total Pengeluaran Periode */}
         <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
           <div className="text-[11px] font-medium text-slate-500">
@@ -766,8 +819,8 @@ export const DailyExpensesModule: React.FC = () => {
         </div>
       </div>
 
-      {/* View Switcher: Rekapitulasi Nominal vs Rincian Transaksi */}
-      <div className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-2xs">
+      {/* View Switcher: Rekapitulasi Nominal vs Rincian Transaksi vs Lembar Cetak */}
+      <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-2xs">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-slate-800">Tampilan Data:</span>
           <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
@@ -777,7 +830,7 @@ export const DailyExpensesModule: React.FC = () => {
                 activeSubTab === 'SUMMARY' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Rekapitulasi Barang & Nominal Biaya
+              Rekapitulasi Barang & Biaya
             </button>
             <button
               onClick={() => setActiveSubTab('TRANSACTIONS')}
@@ -785,7 +838,16 @@ export const DailyExpensesModule: React.FC = () => {
                 activeSubTab === 'TRANSACTIONS' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Log Catatan Transaksi Harian
+              Log Catatan Transaksi
+            </button>
+            <button
+              onClick={() => setActiveSubTab('PRINT_VIEW')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                activeSubTab === 'PRINT_VIEW' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Printer className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Lembar Cetak Laporan (Resmi)</span>
             </button>
           </div>
         </div>
@@ -799,7 +861,7 @@ export const DailyExpensesModule: React.FC = () => {
       {/* TAMPILAN 1: REKAPITULASI BARANG & NOMINAL PER KATEGORI (INTI PERMINTAAN USER) */}
       {/* ========================================================================= */}
       {activeSubTab === 'SUMMARY' && (
-        <div className="space-y-6">
+        <div className="no-print space-y-6">
           {(['Bahan Basah', 'Bahan Kering', 'Bahan Peralatan'] as MainItemCategory[]).map(cat => {
             if (selectedCategoryTab !== 'ALL' && selectedCategoryTab !== cat) {
               return null;
@@ -915,7 +977,7 @@ export const DailyExpensesModule: React.FC = () => {
       {/* TAMPILAN 2: RINCIAN LOG TRANSAKSI PER BARIS */}
       {/* ========================================================================= */}
       {activeSubTab === 'TRANSACTIONS' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+        <div className="no-print bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
           <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
             <div className="flex items-center gap-2">
               <TrendingDown className="w-4 h-4 text-rose-600" />
@@ -1016,6 +1078,244 @@ export const DailyExpensesModule: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* TAMPILAN 3 / DOKUMEN CETAK: LEMBAR LAPORAN RESMI SPPG BERDASARKAN FILTER */}
+      {/* ========================================================================= */}
+      <div
+        id="print-expenses-area"
+        className={`${
+          activeSubTab === 'PRINT_VIEW' ? 'block' : 'hidden print:block'
+        } bg-white p-6 sm:p-10 rounded-2xl border border-slate-300 shadow-sm max-w-4xl mx-auto font-sans text-slate-900 print:p-0 print:border-none print:shadow-none`}
+      >
+        {/* Actions bar visible only on screen in PRINT_VIEW */}
+        <div className="no-print mb-6 pb-4 border-b border-slate-200 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+            <FileText className="w-4 h-4 text-emerald-600" />
+            <span>Pratinjau Format Cetak Dokumen Resmi SPPG</span>
+          </div>
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Cetak / Simpan PDF Sekarang</span>
+          </button>
+        </div>
+
+        {/* KOP SURAT RESMI STANDAR SPPG (PERSIS SEPERTI CETAK FORM) */}
+        <div className="border-b-2 border-slate-900 pb-4 mb-6 flex items-start justify-between">
+          <div className="flex items-center gap-3.5">
+            <SppgLogo size="lg" variant="color" showText={false} />
+            <div>
+              <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
+                Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+              </h1>
+              <p className="text-xs text-slate-600 font-medium">
+                SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi
+              </p>
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
+              </p>
+            </div>
+          </div>
+
+          <div className="text-right text-[11px] text-slate-500 space-y-0.5">
+            <div className="font-bold text-slate-800 text-xs">
+              BERITA ACARA REKAP PENGELUARAN
+            </div>
+            <div>
+              Tanggal Cetak: <span className="font-semibold text-slate-700">{printDate}</span>
+            </div>
+            <div>
+              Operator: <span className="font-semibold text-slate-700">{currentUser.name}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* JUDUL DOKUMEN & IDENTITAS FILTER WAKTU */}
+        <div className="text-center my-5">
+          <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+            LAPORAN REKAPITULASI BIAYA & PENGELUARAN LOGISTIK
+          </h2>
+          <p className="text-xs text-slate-600 font-medium mt-0.5">
+            Program Makanan Bergizi Gratis (MBG) • Satuan Pelayanan Pemenuhan Gizi
+          </p>
+          <div className="inline-block mt-2 px-3 py-1 bg-slate-100 rounded-lg text-xs font-semibold text-slate-700 border border-slate-200">
+            Filter Periode: {effectiveDateRange.label}
+          </div>
+        </div>
+
+        {/* BAGIAN 1: REKAPITULASI PER KATEGORI (RINGKASAN TOTAL QTY & BIAYA) */}
+        <div className="mb-6">
+          <div className="font-bold text-xs text-slate-800 mb-2 flex items-center justify-between border-b border-slate-200 pb-1">
+            <span>A. Rekapitulasi Berdasarkan Kategori Bahan</span>
+            <span className="text-[11px] font-normal text-slate-500">Akumulasi Qty & Nominal Biaya</span>
+          </div>
+
+          <table className="w-full text-left text-xs border border-slate-300 border-collapse">
+            <thead>
+              <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-semibold">
+                <th className="py-2 px-3 border-r border-slate-300 text-center w-10">No</th>
+                <th className="py-2 px-3 border-r border-slate-300">Kategori Barang</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-center w-28">Jumlah Ragam</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-right w-36">Total Akumulasi Qty</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-right w-44">Total Biaya (Rp)</th>
+                <th className="py-2 px-3 text-right w-24">Porsi (%)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {(['Bahan Basah', 'Bahan Kering', 'Bahan Peralatan'] as MainItemCategory[]).map((cat, idx) => {
+                const catData = categoryBreakdowns[cat];
+                const totalQty = catData.items.reduce((s, it) => s + it.totalQty, 0);
+                const pct = grandTotalNominal > 0 ? Math.round((catData.totalNominal / grandTotalNominal) * 100) : 0;
+
+                return (
+                  <tr key={cat} className="hover:bg-slate-50">
+                    <td className="py-2 px-3 border-r border-slate-300 text-center text-slate-500">{idx + 1}</td>
+                    <td className="py-2 px-3 border-r border-slate-300 font-semibold text-slate-800">{cat}</td>
+                    <td className="py-2 px-3 border-r border-slate-300 text-center">{catData.items.length} jenis item</td>
+                    <td className="py-2 px-3 border-r border-slate-300 text-right font-medium">{totalQty.toLocaleString('id-ID')}</td>
+                    <td className="py-2 px-3 border-r border-slate-300 text-right font-bold text-slate-900">
+                      Rp {catData.totalNominal.toLocaleString('id-ID')}
+                    </td>
+                    <td className="py-2 px-3 text-right font-semibold">{pct}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-slate-100 font-bold border-t-2 border-slate-400 text-slate-900">
+                <td colSpan={2} className="py-2.5 px-3 border-r border-slate-300 text-right">
+                  TOTAL KESELURUHAN PENGELUARAN:
+                </td>
+                <td className="py-2.5 px-3 border-r border-slate-300 text-center">
+                  {categoryBreakdowns['Bahan Basah'].items.length +
+                    categoryBreakdowns['Bahan Kering'].items.length +
+                    categoryBreakdowns['Bahan Peralatan'].items.length} jenis
+                </td>
+                <td className="py-2.5 px-3 border-r border-slate-300 text-right">
+                  {(
+                    categoryBreakdowns['Bahan Basah'].items.reduce((s, it) => s + it.totalQty, 0) +
+                    categoryBreakdowns['Bahan Kering'].items.reduce((s, it) => s + it.totalQty, 0) +
+                    categoryBreakdowns['Bahan Peralatan'].items.reduce((s, it) => s + it.totalQty, 0)
+                  ).toLocaleString('id-ID')}
+                </td>
+                <td className="py-2.5 px-3 border-r border-slate-300 text-right text-emerald-800 text-sm">
+                  Rp {grandTotalNominal.toLocaleString('id-ID')}
+                </td>
+                <td className="py-2.5 px-3 text-right">100%</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        {/* BAGIAN 2: RINCIAN PENGELUARAN TERPISAH PER KATEGORI */}
+        <div className="mb-6 space-y-6">
+          <div className="font-bold text-xs text-slate-800 pb-1 border-b border-slate-200">
+            B. Rincian Item Barang Keluar per Kategori
+          </div>
+
+          {(['Bahan Basah', 'Bahan Kering', 'Bahan Peralatan'] as MainItemCategory[]).map((cat, catIdx) => {
+            const catData = categoryBreakdowns[cat];
+            const totalQty = catData.items.reduce((s, it) => s + it.totalQty, 0);
+
+            return (
+              <div key={cat} className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-bold bg-slate-100 px-3 py-1.5 rounded border border-slate-200">
+                  <span className="text-slate-800">
+                    {catIdx + 1}. Kategori {cat} ({catData.items.length} jenis barang)
+                  </span>
+                  <span className="text-slate-900 font-mono">
+                    Subtotal: Rp {catData.totalNominal.toLocaleString('id-ID')}
+                  </span>
+                </div>
+
+                {catData.items.length === 0 ? (
+                  <div className="p-3 text-center text-slate-400 text-[11px] italic border border-dashed border-slate-200 rounded">
+                    Tidak ada pengeluaran {cat} yang tercatat pada periode ini.
+                  </div>
+                ) : (
+                  <table className="w-full text-left text-[11px] border border-slate-300 border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-300 text-slate-600 font-semibold">
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-8">No</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300">Nama Barang</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-16">Satuan</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-right w-24">Total Qty</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-right w-28">Harga Satuan</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-right w-32">Total Biaya (Rp)</th>
+                        <th className="py-1.5 px-2 text-right w-16">% Kat.</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {catData.items.map((it, itIdx) => (
+                        <tr key={it.itemName} className="hover:bg-slate-50/60">
+                          <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-400">{itIdx + 1}</td>
+                          <td className="py-1.5 px-2 border-r border-slate-300 font-medium text-slate-900">{it.itemName}</td>
+                          <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-600">{it.unit}</td>
+                          <td className="py-1.5 px-2 border-r border-slate-300 text-right font-semibold text-slate-800">
+                            {it.totalQty.toLocaleString('id-ID')}
+                          </td>
+                          <td className="py-1.5 px-2 border-r border-slate-300 text-right font-mono text-slate-600">
+                            Rp {it.unitPrice.toLocaleString('id-ID')}
+                          </td>
+                          <td className="py-1.5 px-2 border-r border-slate-300 text-right font-mono font-bold text-slate-900">
+                            Rp {it.totalNominal.toLocaleString('id-ID')}
+                          </td>
+                          <td className="py-1.5 px-2 text-right text-slate-600">{it.percentageOfCategory}%</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-slate-50 font-bold border-t border-slate-300 text-slate-800">
+                        <td colSpan={3} className="py-1.5 px-2 border-r border-slate-300 text-right">
+                          Subtotal {cat}:
+                        </td>
+                        <td className="py-1.5 px-2 border-r border-slate-300 text-right font-bold">
+                          {totalQty.toLocaleString('id-ID')}
+                        </td>
+                        <td className="py-1.5 px-2 border-r border-slate-300"></td>
+                        <td className="py-1.5 px-2 border-r border-slate-300 text-right font-bold text-slate-900">
+                          Rp {catData.totalNominal.toLocaleString('id-ID')}
+                        </td>
+                        <td className="py-1.5 px-2 text-right">100%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* LEMBAR PENGESAHAN DOKUMEN / TANDA TANGAN */}
+        <div className="pt-6 border-t border-slate-300 text-xs">
+          <div className="grid grid-cols-3 gap-6 text-center">
+            <div>
+              <div className="text-slate-500">Dibuat Oleh,</div>
+              <div className="font-semibold text-slate-800">Petugas Gudang / Logistik</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                ({currentUser.name})
+              </div>
+            </div>
+
+            <div>
+              <div className="text-slate-500">Diverifikasi Oleh,</div>
+              <div className="font-semibold text-slate-800">Akuntan SPPG</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                (Dewi Lestari, S.Ak)
+              </div>
+            </div>
+
+            <div>
+              <div className="text-slate-500">Mengetahui & Menyetujui,</div>
+              <div className="font-semibold text-slate-800">Kepala SPPG Jeru Tumpang</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                (Dr. Siti Rahma, M.M)
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

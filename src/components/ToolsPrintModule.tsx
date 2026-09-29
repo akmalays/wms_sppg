@@ -306,16 +306,13 @@ export const ToolsPrintModule: React.FC = () => {
                 Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
               </h1>
               <p className="text-xs text-slate-600 font-medium">{unitName}</p>
-              <p className="text-[11px] text-slate-500">
-                Divisi Manajemen Gudang, Logistik Pangan & Kesiapan Dapur
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
               </p>
             </div>
           </div>
 
           <div className="text-right text-[11px] text-slate-500 space-y-0.5">
-            <div>
-              Format: <span className="font-semibold text-slate-700">A4 Standar Lapangan</span>
-            </div>
             <div>
               Tanggal Cetak: <span className="font-semibold text-slate-700">{printDate}</span>
             </div>

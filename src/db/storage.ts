@@ -47,6 +47,7 @@ const STORAGE_KEYS = {
   TODOS: 'sppg_todos_v1',
   EMPLOYEES: 'sppg_employees_v1',
   ATTENDANCE: 'sppg_attendance_v1',
+  USERS: 'sppg_users_v1',
 };
 
 // Initial realistic users for SPPG role-based testing
@@ -1072,8 +1073,10 @@ class WarehouseDatabase {
   private todos: DailyTodoItem[];
   private employees: Employee[];
   private attendanceLogs: EmployeeAttendance[];
+  private users: User[];
 
   constructor() {
+    this.users = getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
     this.items = getStored<ItemMaster[]>(STORAGE_KEYS.ITEMS, INITIAL_ITEMS);
     this.suppliers = getStored<Supplier[]>(STORAGE_KEYS.SUPPLIERS, INITIAL_SUPPLIERS);
     this.receivings = getStored<ReceivingDocument[]>(STORAGE_KEYS.RECEIVINGS, INITIAL_RECEIVINGS);
@@ -2244,6 +2247,68 @@ class WarehouseDatabase {
     setStored(STORAGE_KEYS.TODOS, this.todos);
     setStored(STORAGE_KEYS.EMPLOYEES, this.employees);
     setStored(STORAGE_KEYS.ATTENDANCE, this.attendanceLogs);
+  }
+
+  // --- USERS MANAGEMENT ---
+  public getUsers(): User[] {
+    return [...this.users];
+  }
+
+  public registerUser(userData: Omit<User, 'id'> & { password?: string }): User {
+    const nextNum = this.users.length + 1;
+    const newId = `USR-${String(nextNum).padStart(3, '0')}`;
+    const newUser: User = {
+      id: newId,
+      name: userData.name.trim(),
+      email: userData.email.trim().toLowerCase(),
+      role: userData.role,
+      avatarUrl: userData.avatarUrl,
+      phone: userData.phone,
+      nip: userData.nip,
+    };
+    this.users.push(newUser);
+    setStored(STORAGE_KEYS.USERS, this.users);
+
+    if (userData.password) {
+      const passwords = getStored<Record<string, string>>('sppg_user_passwords_v1', {});
+      passwords[newUser.email] = userData.password;
+      setStored('sppg_user_passwords_v1', passwords);
+    }
+
+    return newUser;
+  }
+
+  public getUserPassword(email: string): string | undefined {
+    const passwords = getStored<Record<string, string>>('sppg_user_passwords_v1', {});
+    return passwords[email.toLowerCase()];
+  }
+
+  public updateUser(userId: string, data: Partial<User> & { password?: string }): User {
+    const index = this.users.findIndex(u => u.id === userId);
+    if (index === -1) throw new Error('Pengguna tidak ditemukan.');
+    const updated = {
+      ...this.users[index],
+      ...data,
+      name: data.name !== undefined ? data.name.trim() : this.users[index].name,
+      email: data.email !== undefined ? data.email.trim().toLowerCase() : this.users[index].email,
+    };
+    this.users[index] = updated;
+    setStored(STORAGE_KEYS.USERS, this.users);
+
+    if (data.password) {
+      const passwords = getStored<Record<string, string>>('sppg_user_passwords_v1', {});
+      passwords[updated.email] = data.password;
+      setStored('sppg_user_passwords_v1', passwords);
+    }
+    return updated;
+  }
+
+  public deleteUser(userId: string): boolean {
+    const user = this.users.find(u => u.id === userId);
+    if (!user) return false;
+    this.users = this.users.filter(u => u.id !== userId);
+    setStored(STORAGE_KEYS.USERS, this.users);
+    return true;
   }
 }
 
