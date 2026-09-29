@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import {
@@ -36,9 +36,11 @@ import {
   Sparkles,
   Layers,
   ArrowRight,
+  FileText,
 } from 'lucide-react';
 import { exportToExcel } from '../lib/excelExport';
 import { PhotoUploadCompressor } from './PhotoUploadCompressor';
+import { SppgLogo } from './SppgLogo';
 
 const DEPARTMENTS: EmployeeDepartment[] = [
   'Dapur & Masak',
@@ -61,6 +63,33 @@ const EMPLOYMENT_TYPES: EmploymentType[] = [
   'Relawan / Mitra Harian',
 ];
 
+// Helper format tanggal bahasa Indonesia (misal: "29 September 2026")
+const formatIndonesianDate = (dateStr: string): string => {
+  if (!dateStr) return '-';
+  try {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  } catch {
+    return dateStr;
+  }
+};
+
+// Helper nama hari bahasa Indonesia (misal: "Selasa")
+const getIndonesianDay = (dateStr: string): string => {
+  if (!dateStr) return '';
+  try {
+    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const d = new Date(dateStr + 'T00:00:00');
+    return days[d.getDay()] || '';
+  } catch {
+    return '';
+  }
+};
+
 export const EmployeeAttendanceModule: React.FC = () => {
   const { currentUser } = useAuth();
 
@@ -70,6 +99,41 @@ export const EmployeeAttendanceModule: React.FC = () => {
   // Selected Date for Attendance (Default to today in local YYYY-MM-DD)
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+
+  // States untuk modal cetak dokumen resmi SPPG
+  const [isPrintAttendanceOpen, setIsPrintAttendanceOpen] = useState(false);
+  const [isPrintEmployeesOpen, setIsPrintEmployeesOpen] = useState(false);
+
+  // Filter khusus opsi cetak presensi
+  const [attPrintMode, setAttPrintMode] = useState<'DAILY' | 'RANGE'>('DAILY');
+  const [attPrintTargetDate, setAttPrintTargetDate] = useState<string>(todayStr);
+  const [attPrintStartDate, setAttPrintStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return d.toISOString().slice(0, 10);
+  });
+  const [attPrintEndDate, setAttPrintEndDate] = useState<string>(todayStr);
+  const [attPrintDept, setAttPrintDept] = useState<string>('ALL');
+  const [attPrintStatus, setAttPrintStatus] = useState<string>('ALL');
+
+  // Filter khusus opsi cetak master karyawan
+  const [empPrintDept, setEmpPrintDept] = useState<string>('ALL');
+  const [empPrintStatus, setEmpPrintStatus] = useState<string>('ALL');
+  const [empPrintSearch, setEmpPrintSearch] = useState<string>('');
+
+  // Sinkronisasi tanggal aktif ke filter cetak harian
+  useEffect(() => {
+    setAttPrintTargetDate(selectedDate);
+  }, [selectedDate]);
+
+  // Tanggal cetak terformat untuk Kop Surat
+  const printDate = useMemo(() => {
+    return new Date().toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  }, []);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -553,64 +617,857 @@ export const EmployeeAttendanceModule: React.FC = () => {
     }
   };
 
-  return (
-    <div className="space-y-5">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="flex items-center gap-2.5 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-semibold shadow-2xs animate-in fade-in">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
+  // -------------------------------------------------------------
+  // PRINTABLE SHEETS: LAPORAN PRESENSI (HARIAN ATAU RENTANG PERIODE)
+  // -------------------------------------------------------------
+  const renderPrintableAttendanceSheet = () => {
+    const isDaily = attPrintMode === 'DAILY';
+    const targetDate = attPrintTargetDate || selectedDate;
+    const startDate = attPrintStartDate;
+    const endDate = attPrintEndDate;
 
-      {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-            Manajemen Karyawan & Presensi Kerja
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Pusat data staf operasional dapur gizi, monitoring jam kerja, presensi harian, dan dokumentasi kehadiran.
-          </p>
-        </div>
+    // Filter employees according to attPrintDept and searchQuery
+    const targetEmployees = activeEmployees.filter(emp => {
+      const matchSearch =
+        !searchQuery.trim() ||
+        emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        emp.nip.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        emp.position.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchDept = attPrintDept === 'ALL' || emp.department === attPrintDept;
+      return matchSearch && matchDept;
+    });
 
-        {/* Tab Switcher & Print Action */}
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-          <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-semibold">
-            <button
-              onClick={() => setActiveTab('ATTENDANCE')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                activeTab === 'ATTENDANCE'
-                  ? 'bg-white text-emerald-800 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-              Presensi Harian
-            </button>
-            <button
-              onClick={() => setActiveTab('EMPLOYEES')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                activeTab === 'EMPLOYEES'
-                  ? 'bg-white text-emerald-800 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5 text-emerald-600" />
-              Master Karyawan ({employees.length})
-            </button>
+    // Departments to display
+    const departmentsToRender =
+      attPrintDept === 'ALL'
+        ? DEPARTMENTS.filter(d => targetEmployees.some(e => e.department === d))
+        : [attPrintDept as EmployeeDepartment];
+
+    // Data computation depending on DAILY vs RANGE
+    // 1. DAILY MODE
+    const dailyLogs = allAttendances.filter(a => a.date === targetDate);
+    const allDailyRowViews = targetEmployees.map(emp => {
+      const att = dailyLogs.find(a => a.employeeId === emp.id);
+      return {
+        employee: emp,
+        attendance: att,
+        status: att ? att.status : ('BELUM_ABSEN' as AttendanceStatus | 'BELUM_ABSEN'),
+      };
+    });
+
+    let dailyHadir = 0;
+    let dailyTerlambat = 0;
+    let dailyIzin = 0;
+    let dailySakit = 0;
+    let dailyAlpa = 0;
+    let dailyBelum = 0;
+    allDailyRowViews.forEach(r => {
+      if (r.status === 'HADIR') dailyHadir++;
+      else if (r.status === 'TERLAMBAT') dailyTerlambat++;
+      else if (r.status === 'IZIN') dailyIzin++;
+      else if (r.status === 'SAKIT') dailySakit++;
+      else if (r.status === 'ALPA') dailyAlpa++;
+      else dailyBelum++;
+    });
+    const dailyTotal = allDailyRowViews.length;
+    const dailyAttended = dailyHadir + dailyTerlambat;
+    const dailyRate = dailyTotal > 0 ? Math.round((dailyAttended / dailyTotal) * 100) : 0;
+
+    // Filter baris detail berdasarkan status cetak
+    const dailyRowViews = allDailyRowViews.filter(
+      r => attPrintStatus === 'ALL' || r.status === attPrintStatus
+    );
+
+    // 2. RANGE MODE
+    const rangeLogs = allAttendances.filter(a => a.date >= startDate && a.date <= endDate);
+    const distinctDates = Array.from(new Set(rangeLogs.map(a => a.date))).sort();
+
+    const rangeEmployeeStats = targetEmployees.map(emp => {
+      const empLogs = rangeLogs.filter(a => a.employeeId === emp.id);
+      const hadir = empLogs.filter(a => a.status === 'HADIR').length;
+      const terlambat = empLogs.filter(a => a.status === 'TERLAMBAT').length;
+      const izin = empLogs.filter(a => a.status === 'IZIN').length;
+      const sakit = empLogs.filter(a => a.status === 'SAKIT').length;
+      const alpa = empLogs.filter(a => a.status === 'ALPA').length;
+      const totalLoggedDays = empLogs.length;
+      const totalHadir = hadir + terlambat;
+      const rate = totalLoggedDays > 0 ? Math.round((totalHadir / totalLoggedDays) * 100) : 0;
+
+      return {
+        employee: emp,
+        totalLoggedDays,
+        hadir,
+        terlambat,
+        izin,
+        sakit,
+        alpa,
+        totalHadir,
+        rate,
+      };
+    });
+
+    const totalRangeLogs = rangeLogs.length;
+    let rangeTotalHadir = 0;
+    let rangeTotalTerlambat = 0;
+    let rangeTotalIzin = 0;
+    let rangeTotalSakit = 0;
+    let rangeTotalAlpa = 0;
+    rangeLogs.forEach(a => {
+      if (a.status === 'HADIR') rangeTotalHadir++;
+      else if (a.status === 'TERLAMBAT') rangeTotalTerlambat++;
+      else if (a.status === 'IZIN') rangeTotalIzin++;
+      else if (a.status === 'SAKIT') rangeTotalSakit++;
+      else if (a.status === 'ALPA') rangeTotalAlpa++;
+    });
+    const rangeTotalAttended = rangeTotalHadir + rangeTotalTerlambat;
+    const rangeOverallRate =
+      totalRangeLogs > 0 ? Math.round((rangeTotalAttended / totalRangeLogs) * 100) : 0;
+
+    return (
+      <div id="print-attendance-sheet" className="bg-white font-sans text-slate-900 w-full text-xs">
+        {/* Kop Surat Resmi Standar SPPG */}
+        <div className="border-b-2 border-slate-900 pb-4 mb-5 flex items-start justify-between">
+          <div className="flex items-center gap-3.5">
+            <SppgLogo size="lg" variant="color" showText={false} />
+            <div>
+              <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
+                Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+              </h1>
+              <p className="text-xs text-slate-600 font-medium">
+                SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi
+              </p>
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
+              </p>
+            </div>
           </div>
 
-          <button
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-            title="Cetak Laporan / Berita Acara Presensi"
-          >
-            <Printer className="w-3.5 h-3.5 text-slate-500" />
-            <span>Cetak</span>
-          </button>
+          <div className="text-right text-[11px] text-slate-500 space-y-0.5">
+            <div>
+              Tanggal Cetak: <span className="font-semibold text-slate-700">{printDate}</span>
+            </div>
+            <div>
+              Operator: <span className="font-semibold text-slate-700">{currentUser?.name || 'Petugas SPPG'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Judul Dokumen & Identitas Filter */}
+        <div className="text-center my-4">
+          <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+            {isDaily
+              ? 'LAPORAN REKAPITULASI PRESENSI HARIAN KARYAWAN'
+              : 'LAPORAN REKAPITULASI PRESENSI & KEHADIRAN KARYAWAN'}
+          </h2>
+          <div className="inline-flex flex-wrap items-center justify-center gap-2 mt-2 px-3 py-1 bg-slate-100 rounded-lg text-xs font-semibold text-slate-700 border border-slate-200">
+            {isDaily ? (
+              <span>Hari & Tanggal: {getIndonesianDay(targetDate)}, {formatIndonesianDate(targetDate)}</span>
+            ) : (
+              <span>Periode: {formatIndonesianDate(startDate)} s/d {formatIndonesianDate(endDate)} ({distinctDates.length} hari operasional)</span>
+            )}
+            <span>• Divisi: {attPrintDept === 'ALL' ? 'Semua Divisi' : attPrintDept}</span>
+            {attPrintStatus !== 'ALL' && <span>• Status: {attPrintStatus}</span>}
+            {searchQuery.trim() && <span>• Cari: &ldquo;{searchQuery}&rdquo;</span>}
+          </div>
+        </div>
+
+        {/* Ringkasan Indikator Kehadiran (KPI Cards) */}
+        {isDaily ? (
+          <div className="grid grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 mb-5">
+            <div>
+              <span className="text-slate-500 block text-[10px]">Total Staf Aktif Terdaftar</span>
+              <span className="font-bold font-mono text-sm text-slate-900">{dailyTotal} orang</span>
+              <span className="block text-[10px] text-slate-400">{departmentsToRender.length} divisi operasional</span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[10px]">Kehadiran Hari Ini</span>
+              <span className="font-bold font-mono text-sm text-emerald-700">
+                {dailyAttended} orang
+              </span>
+              <span className="block text-[10px] text-emerald-600 font-semibold">
+                Tepat Waktu: {dailyHadir} • Terlambat: {dailyTerlambat}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[10px]">Izin, Sakit & Alpa</span>
+              <span className="font-bold font-mono text-sm text-amber-700">
+                {dailyIzin + dailySakit + dailyAlpa} orang
+              </span>
+              <span className="block text-[10px] text-slate-400">
+                Izin: {dailyIzin} • Sakit: {dailySakit} • Alpa: {dailyAlpa}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[10px]">Tingkat Kehadiran SPPG</span>
+              <span className="font-bold font-mono text-sm text-slate-900">{dailyRate}%</span>
+              <span className="block text-[10px] text-slate-400">Belum Absen: {dailyBelum} orang</span>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 mb-5">
+            <div>
+              <span className="text-slate-500 block text-[10px]">Total Personil Dipantau</span>
+              <span className="font-bold font-mono text-sm text-slate-900">{targetEmployees.length} orang</span>
+              <span className="block text-[10px] text-slate-400">{distinctDates.length} hari operasional</span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[10px]">Total Presensi Masuk</span>
+              <span className="font-bold font-mono text-sm text-emerald-700">
+                {rangeTotalAttended} kehadiran
+              </span>
+              <span className="block text-[10px] text-emerald-600 font-semibold">
+                Hadir: {rangeTotalHadir} • Terlambat: {rangeTotalTerlambat}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[10px]">Total Izin, Sakit & Alpa</span>
+              <span className="font-bold font-mono text-sm text-amber-700">
+                {rangeTotalIzin + rangeTotalSakit + rangeTotalAlpa} presensi
+              </span>
+              <span className="block text-[10px] text-slate-400">
+                Izin: {rangeTotalIzin} • Sakit: {rangeTotalSakit} • Alpa: {rangeTotalAlpa}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[10px]">Rata-rata Kehadiran</span>
+              <span className="font-bold font-mono text-sm text-slate-900">{rangeOverallRate}%</span>
+              <span className="block text-[10px] text-slate-400">Akumulasi seluruh divisi</span>
+            </div>
+          </div>
+        )}
+
+        {/* Bagian A: Ringkasan Rekapitulasi Presensi per Divisi */}
+        <div className="mb-6">
+          <div className="font-bold text-xs text-slate-800 mb-2 flex items-center justify-between border-b border-slate-200 pb-1">
+            <span>A. Rekapitulasi Presensi Berdasarkan Divisi / Departemen</span>
+            <span className="text-[11px] font-normal text-slate-500">
+              {isDaily ? 'Status kehadiran hari ini' : 'Akumulasi log kehadiran dalam periode'}
+            </span>
+          </div>
+
+          <table className="w-full text-left text-xs border border-slate-300 border-collapse">
+            <thead>
+              <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-semibold">
+                <th className="py-2 px-2.5 border-r border-slate-300 text-center w-10">No</th>
+                <th className="py-2 px-3 border-r border-slate-300">Departemen / Divisi</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-center w-24">Total Staf</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-center w-20">Hadir</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-center w-24">Terlambat</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-center w-20">Izin</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-center w-20">Sakit</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-center w-20">{isDaily ? 'Alpa / Blm' : 'Alpa'}</th>
+                <th className="py-2 px-3 text-right w-28">Tingkat Hadir (%)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-[11px]">
+              {departmentsToRender.map((dept, idx) => {
+                if (isDaily) {
+                  const deptRows = dailyRowViews.filter(r => r.employee.department === dept);
+                  const h = deptRows.filter(r => r.status === 'HADIR').length;
+                  const t = deptRows.filter(r => r.status === 'TERLAMBAT').length;
+                  const i = deptRows.filter(r => r.status === 'IZIN').length;
+                  const s = deptRows.filter(r => r.status === 'SAKIT').length;
+                  const a = deptRows.filter(r => r.status === 'ALPA' || r.status === 'BELUM_ABSEN').length;
+                  const tot = deptRows.length;
+                  const rate = tot > 0 ? Math.round(((h + t) / tot) * 100) : 0;
+
+                  return (
+                    <tr key={dept} className="hover:bg-slate-50">
+                      <td className="py-2 px-2.5 border-r border-slate-300 text-center text-slate-500 font-mono">{idx + 1}</td>
+                      <td className="py-2 px-3 border-r border-slate-300 font-semibold text-slate-800">{dept}</td>
+                      <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">{tot}</td>
+                      <td className="py-2 px-3 border-r border-slate-300 text-center font-mono text-emerald-700 font-semibold">{h}</td>
+                      <td className="py-2 px-3 border-r border-slate-300 text-center font-mono text-amber-700">{t}</td>
+                      <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">{i}</td>
+                      <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">{s}</td>
+                      <td className="py-2 px-3 border-r border-slate-300 text-center font-mono text-rose-700">{a}</td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{rate}%</td>
+                    </tr>
+                  );
+                } else {
+                  const deptEmps = rangeEmployeeStats.filter(e => e.employee.department === dept);
+                  const h = deptEmps.reduce((acc, curr) => acc + curr.hadir, 0);
+                  const t = deptEmps.reduce((acc, curr) => acc + curr.terlambat, 0);
+                  const i = deptEmps.reduce((acc, curr) => acc + curr.izin, 0);
+                  const s = deptEmps.reduce((acc, curr) => acc + curr.sakit, 0);
+                  const a = deptEmps.reduce((acc, curr) => acc + curr.alpa, 0);
+                  const totLogs = deptEmps.reduce((acc, curr) => acc + curr.totalLoggedDays, 0);
+                  const rate = totLogs > 0 ? Math.round(((h + t) / totLogs) * 100) : 0;
+
+                  return (
+                    <tr key={dept} className="hover:bg-slate-50">
+                      <td className="py-2 px-2.5 border-r border-slate-300 text-center text-slate-500 font-mono">{idx + 1}</td>
+                      <td className="py-2 px-3 border-r border-slate-300 font-semibold text-slate-800">{dept}</td>
+                      <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">{deptEmps.length}</td>
+                      <td className="py-2 px-3 border-r border-slate-300 text-center font-mono text-emerald-700 font-semibold">{h}</td>
+                      <td className="py-2 px-3 border-r border-slate-300 text-center font-mono text-amber-700">{t}</td>
+                      <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">{i}</td>
+                      <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">{s}</td>
+                      <td className="py-2 px-3 border-r border-slate-300 text-center font-mono text-rose-700">{a}</td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{rate}%</td>
+                    </tr>
+                  );
+                }
+              })}
+              <tr className="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900">
+                <td colSpan={2} className="py-2 px-3 border-r border-slate-300 text-right">
+                  Total Seluruh Divisi:
+                </td>
+                <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">
+                  {isDaily ? dailyTotal : targetEmployees.length}
+                </td>
+                <td className="py-2 px-3 border-r border-slate-300 text-center font-mono text-emerald-800">
+                  {isDaily ? dailyHadir : rangeTotalHadir}
+                </td>
+                <td className="py-2 px-3 border-r border-slate-300 text-center font-mono text-amber-800">
+                  {isDaily ? dailyTerlambat : rangeTotalTerlambat}
+                </td>
+                <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">
+                  {isDaily ? dailyIzin : rangeTotalIzin}
+                </td>
+                <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">
+                  {isDaily ? dailySakit : rangeTotalSakit}
+                </td>
+                <td className="py-2 px-3 border-r border-slate-300 text-center font-mono text-rose-800">
+                  {isDaily ? dailyAlpa + dailyBelum : rangeTotalAlpa}
+                </td>
+                <td className="py-2 px-3 text-right font-mono font-bold text-emerald-800">
+                  {isDaily ? dailyRate : rangeOverallRate}%
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Bagian B: Rincian Presensi per Divisi (Dipisahkan per Divisi) */}
+        <div className="space-y-6">
+          <div className="font-bold text-xs text-slate-800 border-b border-slate-200 pb-1">
+            <span>B. Rincian Presensi Karyawan per Divisi Kerja</span>
+          </div>
+
+          {departmentsToRender.map((dept, deptIdx) => {
+            if (isDaily) {
+              const deptRows = dailyRowViews.filter(r => r.employee.department === dept);
+              if (deptRows.length === 0) return null;
+
+              return (
+                <div key={dept} className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold bg-slate-100 px-3 py-1.5 rounded border border-slate-200">
+                    <span className="text-slate-800">
+                      {deptIdx + 1}. Divisi {dept} ({deptRows.length} Karyawan)
+                    </span>
+                    <span className="text-slate-600 text-[11px] font-medium">
+                      Hadir: {deptRows.filter(r => r.status === 'HADIR' || r.status === 'TERLAMBAT').length} •
+                      Izin/Sakit: {deptRows.filter(r => r.status === 'IZIN' || r.status === 'SAKIT').length} •
+                      Alpa/Belum: {deptRows.filter(r => r.status === 'ALPA' || r.status === 'BELUM_ABSEN').length}
+                    </span>
+                  </div>
+
+                  <table className="w-full text-left text-[10px] border border-slate-300 border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-300 text-slate-600 font-semibold">
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-7">No</th>
+                        <th className="py-1.5 px-2.5 border-r border-slate-300 font-mono w-24">NIP / ID</th>
+                        <th className="py-1.5 px-3 border-r border-slate-300">Nama Karyawan</th>
+                        <th className="py-1.5 px-2.5 border-r border-slate-300 w-32">Posisi / Jabatan</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 w-28">Shift</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-24">Status Presensi</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center font-mono w-16">Jam Masuk</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center font-mono w-16">Jam Pulang</th>
+                        <th className="py-1.5 px-3">Keterangan / Catatan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {deptRows.map((row, rIdx) => {
+                        const att = row.attendance;
+                        const statusLabel =
+                          row.status === 'HADIR'
+                            ? 'Hadir'
+                            : row.status === 'TERLAMBAT'
+                            ? `Terlambat (${att?.lateMinutes || 0}m)`
+                            : row.status === 'IZIN'
+                            ? 'Izin'
+                            : row.status === 'SAKIT'
+                            ? 'Sakit'
+                            : row.status === 'ALPA'
+                            ? 'Alpa'
+                            : 'Belum Absen';
+
+                        const statusColor =
+                          row.status === 'HADIR'
+                            ? 'text-emerald-700 font-semibold'
+                            : row.status === 'TERLAMBAT'
+                            ? 'text-amber-700 font-semibold'
+                            : row.status === 'IZIN' || row.status === 'SAKIT'
+                            ? 'text-purple-700 font-medium'
+                            : row.status === 'ALPA'
+                            ? 'text-rose-700 font-bold'
+                            : 'text-slate-400';
+
+                        return (
+                          <tr key={row.employee.id} className="hover:bg-slate-50/60">
+                            <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-400">{rIdx + 1}</td>
+                            <td className="py-1.5 px-2.5 border-r border-slate-300 font-mono text-slate-700">{row.employee.nip}</td>
+                            <td className="py-1.5 px-3 border-r border-slate-300 font-semibold text-slate-900">{row.employee.name}</td>
+                            <td className="py-1.5 px-2.5 border-r border-slate-300 text-slate-700">{row.employee.position}</td>
+                            <td className="py-1.5 px-2 border-r border-slate-300 text-slate-600 text-[9px]">{row.employee.shift}</td>
+                            <td className={`py-1.5 px-2 border-r border-slate-300 text-center ${statusColor}`}>{statusLabel}</td>
+                            <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono text-slate-800">{att?.checkInTime || '-'}</td>
+                            <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono text-slate-800">{att?.checkOutTime || '-'}</td>
+                            <td className="py-1.5 px-3 text-slate-600 truncate max-w-xs">{att?.notes || '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            } else {
+              const deptEmps = rangeEmployeeStats.filter(e => e.employee.department === dept);
+              if (deptEmps.length === 0) return null;
+
+              return (
+                <div key={dept} className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold bg-slate-100 px-3 py-1.5 rounded border border-slate-200">
+                    <span className="text-slate-800">
+                      {deptIdx + 1}. Divisi {dept} ({deptEmps.length} Karyawan)
+                    </span>
+                    <span className="text-slate-600 text-[11px] font-medium">
+                      Total Hari Kerja Terdata: {deptEmps.reduce((acc, c) => acc + c.totalLoggedDays, 0)} hari-staf
+                    </span>
+                  </div>
+
+                  <table className="w-full text-left text-[10px] border border-slate-300 border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-300 text-slate-600 font-semibold">
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-7">No</th>
+                        <th className="py-1.5 px-2.5 border-r border-slate-300 font-mono w-24">NIP / ID</th>
+                        <th className="py-1.5 px-3 border-r border-slate-300">Nama Karyawan</th>
+                        <th className="py-1.5 px-2.5 border-r border-slate-300 w-32">Posisi / Jabatan</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 w-28">Shift</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-16">Total Hari</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-16 text-emerald-700">Hadir</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-16 text-amber-700">Terlambat</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-14">Izin</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-14">Sakit</th>
+                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-14 text-rose-700">Alpa</th>
+                        <th className="py-1.5 px-2.5 text-right w-20 font-bold">Kehadiran (%)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {deptEmps.map((row, rIdx) => (
+                        <tr key={row.employee.id} className="hover:bg-slate-50/60">
+                          <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-400">{rIdx + 1}</td>
+                          <td className="py-1.5 px-2.5 border-r border-slate-300 font-mono text-slate-700">{row.employee.nip}</td>
+                          <td className="py-1.5 px-3 border-r border-slate-300 font-semibold text-slate-900">{row.employee.name}</td>
+                          <td className="py-1.5 px-2.5 border-r border-slate-300 text-slate-700">{row.employee.position}</td>
+                          <td className="py-1.5 px-2 border-r border-slate-300 text-slate-600 text-[9px]">{row.employee.shift}</td>
+                          <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono">{row.totalLoggedDays}</td>
+                          <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono text-emerald-700 font-semibold">{row.hadir}</td>
+                          <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono text-amber-700">{row.terlambat}</td>
+                          <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono">{row.izin}</td>
+                          <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono">{row.sakit}</td>
+                          <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono text-rose-700">{row.alpa}</td>
+                          <td className="py-1.5 px-2.5 text-right font-mono font-bold text-slate-900">{row.rate}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            }
+          })}
+        </div>
+
+        {/* Lembar Pengesahan Dokumen / Tanda Tangan */}
+        <div className="pt-6 border-t border-slate-300 text-xs mt-8 print:mt-6">
+          <div className="grid grid-cols-3 gap-6 text-center">
+            <div>
+              <div className="text-slate-500">Dibuat Oleh,</div>
+              <div className="font-semibold text-slate-800">Petugas Presensi & Personalia</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                ({currentUser?.name || 'Petugas SPPG'})
+              </div>
+            </div>
+
+            <div>
+              <div className="text-slate-500">Diverifikasi Oleh,</div>
+              <div className="font-semibold text-slate-800">Koordinator Operasional Dapur</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                (Budi Santoso, S.T)
+              </div>
+            </div>
+
+            <div>
+              <div className="text-slate-500">Mengetahui & Menyetujui,</div>
+              <div className="font-semibold text-slate-800">Kepala SPPG Jeru Tumpang</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                (Dr. Siti Rahma, M.M)
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+    );
+  };
+
+  // -------------------------------------------------------------
+  // PRINTABLE SHEETS: LAPORAN DATA INDUK & MASTER KARYAWAN
+  // -------------------------------------------------------------
+  const renderPrintableEmployeesSheet = () => {
+    // Filter employees according to empPrintDept, empPrintStatus, and empPrintSearch
+    const targetEmployees = employees.filter(emp => {
+      const matchSearch =
+        !empPrintSearch.trim() ||
+        emp.name.toLowerCase().includes(empPrintSearch.toLowerCase()) ||
+        emp.nip.toLowerCase().includes(empPrintSearch.toLowerCase()) ||
+        emp.position.toLowerCase().includes(empPrintSearch.toLowerCase()) ||
+        emp.phone.toLowerCase().includes(empPrintSearch.toLowerCase());
+      const matchDept = empPrintDept === 'ALL' || emp.department === empPrintDept;
+      const matchStatus = empPrintStatus === 'ALL' || emp.status === empPrintStatus;
+      return matchSearch && matchDept && matchStatus;
+    });
+
+    const totalStaff = targetEmployees.length;
+    const activeStaff = targetEmployees.filter(e => e.status === 'AKTIF').length;
+    const tetapStaff = targetEmployees.filter(e => e.employmentType === 'Tetap').length;
+    const kontrakStaff = targetEmployees.filter(e => e.employmentType === 'Kontrak').length;
+    const relawanStaff = targetEmployees.filter(e => e.employmentType === 'Relawan / Mitra Harian').length;
+
+    // Departments to display
+    const departmentsToRender =
+      empPrintDept === 'ALL'
+        ? DEPARTMENTS.filter(d => targetEmployees.some(e => e.department === d))
+        : [empPrintDept as EmployeeDepartment];
+
+    return (
+      <div id="print-employees-sheet" className="bg-white font-sans text-slate-900 w-full text-xs">
+        {/* Kop Surat Resmi Standar SPPG */}
+        <div className="border-b-2 border-slate-900 pb-4 mb-5 flex items-start justify-between">
+          <div className="flex items-center gap-3.5">
+            <SppgLogo size="lg" variant="color" showText={false} />
+            <div>
+              <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
+                Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+              </h1>
+              <p className="text-xs text-slate-600 font-medium">
+                SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi
+              </p>
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
+              </p>
+            </div>
+          </div>
+
+          <div className="text-right text-[11px] text-slate-500 space-y-0.5">
+            <div>
+              Tanggal Cetak: <span className="font-semibold text-slate-700">{printDate}</span>
+            </div>
+            <div>
+              Operator: <span className="font-semibold text-slate-700">{currentUser?.name || 'Petugas SPPG'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Judul Dokumen & Identitas Filter */}
+        <div className="text-center my-4">
+          <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+            LAPORAN DATA INDUK & MASTER KARYAWAN
+          </h2>
+          <div className="inline-flex flex-wrap items-center justify-center gap-2 mt-2 px-3 py-1 bg-slate-100 rounded-lg text-xs font-semibold text-slate-700 border border-slate-200">
+            <span>Per Tanggal: {printDate}</span>
+            <span>• Filter Divisi: {empPrintDept === 'ALL' ? 'Semua Divisi' : empPrintDept}</span>
+            <span>• Status: {empPrintStatus === 'ALL' ? 'Semua Status' : empPrintStatus}</span>
+            {empPrintSearch.trim() && <span>• Cari: &ldquo;{empPrintSearch}&rdquo;</span>}
+          </div>
+        </div>
+
+        {/* Ringkasan Distribusi Personil (KPI Cards) */}
+        <div className="grid grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 mb-5">
+          <div>
+            <span className="text-slate-500 block text-[10px]">Total Personil Terdaftar</span>
+            <span className="font-bold font-mono text-sm text-slate-900">{totalStaff} orang</span>
+            <span className="block text-[10px] text-slate-400">{departmentsToRender.length} divisi aktif</span>
+          </div>
+          <div>
+            <span className="text-slate-500 block text-[10px]">Personil Status Aktif</span>
+            <span className="font-bold font-mono text-sm text-emerald-700">
+              {activeStaff} orang
+            </span>
+            <span className="block text-[10px] text-emerald-600 font-semibold">
+              {totalStaff > 0 ? Math.round((activeStaff / totalStaff) * 100) : 0}% kesiapan kerja
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-500 block text-[10px]">Karyawan Tetap</span>
+            <span className="font-bold font-mono text-sm text-slate-900">{tetapStaff} orang</span>
+            <span className="block text-[10px] text-slate-400">
+              Staf inti operasional
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-500 block text-[10px]">Kontrak & Mitra Relawan</span>
+            <span className="font-bold font-mono text-sm text-slate-900">
+              {kontrakStaff + relawanStaff} orang
+            </span>
+            <span className="block text-[10px] text-slate-400">
+              Kontrak: {kontrakStaff} • Mitra/Relawan: {relawanStaff}
+            </span>
+          </div>
+        </div>
+
+        {/* Bagian A: Ringkasan Distribusi Karyawan per Divisi */}
+        <div className="mb-6">
+          <div className="font-bold text-xs text-slate-800 mb-2 flex items-center justify-between border-b border-slate-200 pb-1">
+            <span>A. Rekapitulasi Komposisi Personil per Divisi / Departemen</span>
+            <span className="text-[11px] font-normal text-slate-500">
+              Distribusi status kepegawaian
+            </span>
+          </div>
+
+          <table className="w-full text-left text-xs border border-slate-300 border-collapse">
+            <thead>
+              <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-semibold">
+                <th className="py-2 px-2.5 border-r border-slate-300 text-center w-10">No</th>
+                <th className="py-2 px-3 border-r border-slate-300">Departemen / Divisi</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-center w-24">Staf Tetap</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-center w-24">Staf Kontrak</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-center w-28">Mitra / Relawan</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-center w-24 font-bold">Total Staf</th>
+                <th className="py-2 px-3 text-right w-24">Porsi (%)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-[11px]">
+              {departmentsToRender.map((dept, idx) => {
+                const deptEmps = targetEmployees.filter(e => e.department === dept);
+                const tetap = deptEmps.filter(e => e.employmentType === 'Tetap').length;
+                const kontrak = deptEmps.filter(e => e.employmentType === 'Kontrak').length;
+                const relawan = deptEmps.filter(e => e.employmentType === 'Relawan / Mitra Harian').length;
+                const tot = deptEmps.length;
+                const pct = totalStaff > 0 ? Math.round((tot / totalStaff) * 100) : 0;
+
+                return (
+                  <tr key={dept} className="hover:bg-slate-50">
+                    <td className="py-2 px-2.5 border-r border-slate-300 text-center text-slate-500 font-mono">{idx + 1}</td>
+                    <td className="py-2 px-3 border-r border-slate-300 font-semibold text-slate-800">{dept}</td>
+                    <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">{tetap}</td>
+                    <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">{kontrak}</td>
+                    <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">{relawan}</td>
+                    <td className="py-2 px-3 border-r border-slate-300 text-center font-mono font-bold text-slate-900 bg-slate-50">{tot}</td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-700">{pct}%</td>
+                  </tr>
+                );
+              })}
+              <tr className="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900">
+                <td colSpan={2} className="py-2 px-3 border-r border-slate-300 text-right">
+                  Total Akumulasi Personil:
+                </td>
+                <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">{tetapStaff}</td>
+                <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">{kontrakStaff}</td>
+                <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">{relawanStaff}</td>
+                <td className="py-2 px-3 border-r border-slate-300 text-center font-mono font-bold text-emerald-800 bg-emerald-50">{totalStaff}</td>
+                <td className="py-2 px-3 text-right font-mono">100%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Bagian B: Rincian Data Karyawan per Divisi (Dipisahkan per Divisi) */}
+        <div className="space-y-6">
+          <div className="font-bold text-xs text-slate-800 border-b border-slate-200 pb-1">
+            <span>B. Rincian Personil Berdasarkan Divisi Kerja</span>
+          </div>
+
+          {departmentsToRender.map((dept, deptIdx) => {
+            const deptEmps = targetEmployees.filter(e => e.department === dept);
+            if (deptEmps.length === 0) return null;
+
+            return (
+              <div key={dept} className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold bg-slate-100 px-3 py-1.5 rounded border border-slate-200">
+                  <span className="text-slate-800">
+                    {deptIdx + 1}. Divisi {dept} ({deptEmps.length} Personil)
+                  </span>
+                  <span className="text-slate-600 text-[11px] font-medium">
+                    Tetap: {deptEmps.filter(e => e.employmentType === 'Tetap').length} •
+                    Kontrak: {deptEmps.filter(e => e.employmentType === 'Kontrak').length} •
+                    Relawan/Mitra: {deptEmps.filter(e => e.employmentType === 'Relawan / Mitra Harian').length}
+                  </span>
+                </div>
+
+                <table className="w-full text-left text-[10px] border border-slate-300 border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-300 text-slate-600 font-semibold">
+                      <th className="py-1.5 px-2 border-r border-slate-300 text-center w-7">No</th>
+                      <th className="py-1.5 px-2.5 border-r border-slate-300 font-mono w-24">NIP / ID</th>
+                      <th className="py-1.5 px-3 border-r border-slate-300">Nama Lengkap</th>
+                      <th className="py-1.5 px-2 border-r border-slate-300 text-center w-8">L/P</th>
+                      <th className="py-1.5 px-2.5 border-r border-slate-300 w-32">Jabatan / Posisi</th>
+                      <th className="py-1.5 px-2.5 border-r border-slate-300 w-28">Status Kerja</th>
+                      <th className="py-1.5 px-2.5 border-r border-slate-300 w-28">Shift Kerja</th>
+                      <th className="py-1.5 px-2.5 border-r border-slate-300 font-mono w-28">Kontak / HP</th>
+                      <th className="py-1.5 px-3 border-r border-slate-300">Domisili</th>
+                      <th className="py-1.5 px-2 text-center w-16">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {deptEmps.map((emp, rIdx) => (
+                      <tr key={emp.id} className="hover:bg-slate-50/60">
+                        <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-400">{rIdx + 1}</td>
+                        <td className="py-1.5 px-2.5 border-r border-slate-300 font-mono text-slate-700">{emp.nip}</td>
+                        <td className="py-1.5 px-3 border-r border-slate-300 font-semibold text-slate-900">{emp.name}</td>
+                        <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono text-slate-600">{emp.gender}</td>
+                        <td className="py-1.5 px-2.5 border-r border-slate-300 text-slate-700">{emp.position}</td>
+                        <td className="py-1.5 px-2.5 border-r border-slate-300 text-slate-700">{emp.employmentType}</td>
+                        <td className="py-1.5 px-2.5 border-r border-slate-300 text-slate-600 text-[9px]">{emp.shift}</td>
+                        <td className="py-1.5 px-2.5 border-r border-slate-300 font-mono text-slate-700">{emp.phone || '-'}</td>
+                        <td className="py-1.5 px-3 border-r border-slate-300 text-slate-600 truncate max-w-xs">{emp.address || '-'}</td>
+                        <td className="py-1.5 px-2 text-center font-semibold">
+                          {emp.status === 'AKTIF' ? (
+                            <span className="text-emerald-700">Aktif</span>
+                          ) : emp.status === 'CUTI' ? (
+                            <span className="text-amber-700">Cuti</span>
+                          ) : (
+                            <span className="text-rose-700">Nonaktif</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Lembar Pengesahan Dokumen / Tanda Tangan */}
+        <div className="pt-6 border-t border-slate-300 text-xs mt-8 print:mt-6">
+          <div className="grid grid-cols-3 gap-6 text-center">
+            <div>
+              <div className="text-slate-500">Dibuat Oleh,</div>
+              <div className="font-semibold text-slate-800">Petugas Personalia / HRD</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                ({currentUser?.name || 'Petugas SPPG'})
+              </div>
+            </div>
+
+            <div>
+              <div className="text-slate-500">Diverifikasi Oleh,</div>
+              <div className="font-semibold text-slate-800">Koordinator Operasional SPPG</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                (Budi Santoso, S.T)
+              </div>
+            </div>
+
+            <div>
+              <div className="text-slate-500">Mengetahui & Menyetujui,</div>
+              <div className="font-semibold text-slate-800">Kepala SPPG Jeru Tumpang</div>
+              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                (Dr. Siti Rahma, M.M)
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Stylesheet cetak dokumen resmi SPPG */}
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          #print-attendance-sheet, #print-attendance-sheet *,
+          #print-employees-sheet, #print-employees-sheet * {
+            visibility: visible;
+          }
+          #print-attendance-sheet,
+          #print-employees-sheet {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            padding: 15px !important;
+            margin: 0 !important;
+            background: white !important;
+            color: black !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      {/* Konten Dashboard Utama (Disembunyikan saat mencetak) */}
+      <div className="no-print space-y-5">
+        {/* Toast Notification */}
+        {toastMessage && (
+          <div className="flex items-center gap-2.5 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-semibold shadow-2xs animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
+
+        {/* Header Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+              Manajemen Karyawan & Presensi Kerja
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Pusat data staf operasional dapur gizi, monitoring jam kerja, presensi harian, dan dokumentasi kehadiran.
+            </p>
+          </div>
+
+          {/* Tab Switcher & Print Action */}
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setActiveTab('ATTENDANCE')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  activeTab === 'ATTENDANCE'
+                    ? 'bg-white text-emerald-800 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                Presensi Harian
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('EMPLOYEES')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  activeTab === 'EMPLOYEES'
+                    ? 'bg-white text-emerald-800 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5 text-emerald-600" />
+                Master Karyawan ({employees.length})
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (activeTab === 'ATTENDANCE') {
+                  setIsPrintAttendanceOpen(true);
+                } else {
+                  setIsPrintEmployeesOpen(true);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
+              title={`Cetak Laporan ${activeTab === 'ATTENDANCE' ? 'Presensi' : 'Master Karyawan'}`}
+            >
+              <Printer className="w-3.5 h-3.5 text-slate-500" />
+              <span>Cetak {activeTab === 'ATTENDANCE' ? 'Presensi' : 'Karyawan'}</span>
+            </button>
+          </div>
+        </div>
 
       {/* =========================================================================
           TAB 1: PRESENSI & ABSENSI HARIAN
@@ -769,6 +1626,20 @@ export const EmployeeAttendanceModule: React.FC = () => {
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
                 <span>Ekspor Excel</span>
+              </button>
+
+              {/* Cetak Rekap Presensi */}
+              <button
+                type="button"
+                onClick={() => {
+                  setAttPrintTargetDate(selectedDate);
+                  setIsPrintAttendanceOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
+                title="Cetak formulir dan rekapitulasi presensi karyawan"
+              >
+                <Printer className="w-3.5 h-3.5 text-slate-500" />
+                <span>Cetak Rekap Presensi</span>
               </button>
             </div>
           </div>
@@ -977,6 +1848,21 @@ export const EmployeeAttendanceModule: React.FC = () => {
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
                 <span>Ekspor Master Excel</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEmpPrintDept(selectedDept);
+                  setEmpPrintStatus(selectedStatus);
+                  setEmpPrintSearch(searchQuery);
+                  setIsPrintEmployeesOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
+                title="Cetak berkas resmi data induk / master karyawan"
+              >
+                <Printer className="w-3.5 h-3.5 text-slate-500" />
+                <span>Cetak Master</span>
+              </button>
             </div>
           </div>
 
@@ -1088,12 +1974,13 @@ export const EmployeeAttendanceModule: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
 
       {/* =========================================================================
           MODAL 1: QUICK BATCH DAILY ATTENDANCE (1-CLICK CHECKLIST)
       ========================================================================= */}
       {isQuickModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto no-print">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
@@ -1270,7 +2157,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
           MODAL 2: SINGLE ATTENDANCE FORM (INDIVIDUAL & FOTO BUKTI WEBP)
       ========================================================================= */}
       {isSingleAttModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto no-print">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
@@ -1443,7 +2330,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
           MODAL 3: EMPLOYEE MASTER (ADD / EDIT)
       ========================================================================= */}
       {isEmployeeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto no-print">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2.5">
@@ -1714,7 +2601,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
           MODAL 4: PHOTO PREVIEW POPUP
       ========================================================================= */}
       {photoPreviewUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-xs no-print">
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-4 overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-3">
               <span className="text-xs font-bold text-slate-800">
@@ -1738,6 +2625,364 @@ export const EmployeeAttendanceModule: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* =========================================================================
+          MODAL 5: MODAL CETAK & PRATINJAU PRESENSI KARYAWAN
+      ========================================================================= */}
+      {isPrintAttendanceOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto no-print">
+          <div className="bg-slate-50 rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[96vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header Modal */}
+            <div className="px-6 py-4 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                  <Printer className="w-5 h-5 text-emerald-700" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Pratinjau Cetak Laporan Presensi Karyawan
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang) • Format resmi kop dinas & rekapitulasi per divisi
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-sm transition-colors cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Cetak / Simpan PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPrintAttendanceOpen(false)}
+                  className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Tutup pratinjau"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Filter & Kontrol Cetak Presensi */}
+            <div className="px-6 py-3.5 bg-white border-b border-slate-200">
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                {/* Mode Cetak Toggle */}
+                <div className="flex items-center p-1 bg-slate-100 rounded-lg border border-slate-200 font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setAttPrintMode('DAILY')}
+                    className={`px-3 py-1 rounded transition-colors cursor-pointer ${
+                      attPrintMode === 'DAILY'
+                        ? 'bg-white text-emerald-800 shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Presensi Harian
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAttPrintMode('RANGE')}
+                    className={`px-3 py-1 rounded transition-colors cursor-pointer ${
+                      attPrintMode === 'RANGE'
+                        ? 'bg-white text-emerald-800 shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Rekap Rentang Tanggal
+                  </button>
+                </div>
+
+                <div className="h-6 w-px bg-slate-200 hidden sm:block" />
+
+                {/* Date Controls */}
+                {attPrintMode === 'DAILY' ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500 font-medium">Tanggal:</span>
+                    <input
+                      type="date"
+                      value={attPrintTargetDate}
+                      onChange={e => setAttPrintTargetDate(e.target.value)}
+                      className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-slate-50 text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAttPrintTargetDate(todayStr)}
+                      className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                    >
+                      Hari Ini
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-slate-500 font-medium">Periode:</span>
+                    <input
+                      type="date"
+                      value={attPrintStartDate}
+                      onChange={e => setAttPrintStartDate(e.target.value)}
+                      className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-slate-50 text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                    <span className="text-slate-400">s/d</span>
+                    <input
+                      type="date"
+                      value={attPrintEndDate}
+                      onChange={e => setAttPrintEndDate(e.target.value)}
+                      className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-slate-50 text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() - 6);
+                        setAttPrintStartDate(d.toISOString().slice(0, 10));
+                        setAttPrintEndDate(todayStr);
+                      }}
+                      className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                    >
+                      7 Hari Terakhir
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+                        setAttPrintStartDate(start);
+                        setAttPrintEndDate(todayStr);
+                      }}
+                      className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                    >
+                      Bulan Ini
+                    </button>
+                  </div>
+                )}
+
+                <div className="h-6 w-px bg-slate-200 hidden sm:block" />
+
+                {/* Filter Divisi */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-500 font-medium">Divisi:</span>
+                  <select
+                    value={attPrintDept}
+                    onChange={e => setAttPrintDept(e.target.value)}
+                    className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-white text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="ALL">Semua Divisi (Pisah per Divisi)</option>
+                    {DEPARTMENTS.map(d => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Filter Status (Untuk Harian) */}
+                {attPrintMode === 'DAILY' && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500 font-medium">Status:</span>
+                    <select
+                      value={attPrintStatus}
+                      onChange={e => setAttPrintStatus(e.target.value)}
+                      className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-white text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="ALL">Semua Status</option>
+                      <option value="HADIR">Hadir Tepat Waktu</option>
+                      <option value="TERLAMBAT">Terlambat</option>
+                      <option value="IZIN">Izin</option>
+                      <option value="SAKIT">Sakit</option>
+                      <option value="ALPA">Alpa</option>
+                      <option value="BELUM_ABSEN">Belum Absen</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Area Pratinjau Kertas Cetak */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100">
+              <div className="bg-white rounded-xl shadow-md border border-slate-200 p-6 sm:p-8 max-w-4xl mx-auto">
+                {renderPrintableAttendanceSheet()}
+              </div>
+            </div>
+
+            {/* Footer Modal */}
+            <div className="px-6 py-3 bg-white border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
+              <div className="flex items-center gap-2">
+                <Info className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>
+                  Tips: Pada dialog cetak peramban, pilih &ldquo;Save as PDF&rdquo; untuk menyimpan arsip PDF atau langsung cetak ke printer fisik.
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPrintAttendanceOpen(false)}
+                  className="px-4 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-sm transition-colors cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Cetak / Cetak PDF</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 6: MODAL CETAK & PRATINJAU MASTER KARYAWAN
+      ========================================================================= */}
+      {isPrintEmployeesOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto no-print">
+          <div className="bg-slate-50 rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[96vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header Modal */}
+            <div className="px-6 py-4 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                  <Users className="w-5 h-5 text-emerald-700" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Pratinjau Cetak Data Induk / Master Karyawan
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang) • Format resmi kop dinas & rincian per divisi
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-sm transition-colors cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Cetak / Simpan PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPrintEmployeesOpen(false)}
+                  className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Tutup pratinjau"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Filter & Kontrol Cetak Master Karyawan */}
+            <div className="px-6 py-3.5 bg-white border-b border-slate-200">
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                {/* Filter Divisi */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-500 font-medium">Divisi:</span>
+                  <select
+                    value={empPrintDept}
+                    onChange={e => setEmpPrintDept(e.target.value)}
+                    className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-white text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="ALL">Semua Divisi (Pisah per Divisi)</option>
+                    {DEPARTMENTS.map(d => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Filter Status Keaktifan */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-500 font-medium">Status:</span>
+                  <select
+                    value={empPrintStatus}
+                    onChange={e => setEmpPrintStatus(e.target.value)}
+                    className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-white text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="ALL">Semua Status</option>
+                    <option value="AKTIF">Aktif</option>
+                    <option value="CUTI">Cuti</option>
+                    <option value="NONAKTIF">Nonaktif</option>
+                  </select>
+                </div>
+
+                {/* Search Filter */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-500 font-medium">Cari:</span>
+                  <input
+                    type="text"
+                    placeholder="Nama, NIP, posisi..."
+                    value={empPrintSearch}
+                    onChange={e => setEmpPrintSearch(e.target.value)}
+                    className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-slate-50 text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 w-44"
+                  />
+                  {empPrintSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setEmpPrintSearch('')}
+                      className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Area Pratinjau Kertas Cetak */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100">
+              <div className="bg-white rounded-xl shadow-md border border-slate-200 p-6 sm:p-8 max-w-4xl mx-auto">
+                {renderPrintableEmployeesSheet()}
+              </div>
+            </div>
+
+            {/* Footer Modal */}
+            <div className="px-6 py-3 bg-white border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
+              <div className="flex items-center gap-2">
+                <Info className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>
+                  Tips: Pada dialog cetak peramban, pilih &ldquo;Save as PDF&rdquo; untuk menyimpan arsip PDF atau langsung cetak ke printer fisik.
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPrintEmployeesOpen(false)}
+                  className="px-4 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-sm transition-colors cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Cetak / Cetak PDF</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          CONTAINER CETAK TERSEMBUNYI (DITAMPILKAN KETIKA WINDOW.PRINT() DIPANGGIL)
+      ========================================================================= */}
+      <div className="hidden print:block">
+        {isPrintEmployeesOpen || (!isPrintAttendanceOpen && activeTab === 'EMPLOYEES')
+          ? renderPrintableEmployeesSheet()
+          : renderPrintableAttendanceSheet()}
+      </div>
     </div>
   );
 };
