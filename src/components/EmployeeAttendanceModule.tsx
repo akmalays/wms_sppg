@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import {
@@ -90,11 +90,13 @@ const getIndonesianDay = (dateStr: string): string => {
   }
 };
 
-// Helper nama hari singkatan (misal: "Sel")
-const getIndonesianShortDay = (dateStr: string): string => {
+// Helper nama hari singkatan (misal: "Sel" atau "Sl" jika padat)
+const getIndonesianShortDay = (dateStr: string, veryDense = false): string => {
   if (!dateStr) return '';
   try {
-    const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+    const days = veryDense
+      ? ['Mn', 'Sn', 'Sl', 'Rb', 'Km', 'Jm', 'Sb']
+      : ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
     const d = new Date(dateStr + 'T00:00:00');
     return days[d.getDay()] || '';
   } catch {
@@ -137,6 +139,38 @@ export const EmployeeAttendanceModule: React.FC = () => {
   useEffect(() => {
     setAttPrintTargetDate(selectedDate);
   }, [selectedDate]);
+
+  // Hitung jumlah hari dalam rentang cetak
+  const printRangeDaysCount = useMemo(() => {
+    if (!attPrintStartDate || !attPrintEndDate) return 0;
+    try {
+      const s = new Date(attPrintStartDate + 'T00:00:00');
+      const e = new Date(attPrintEndDate + 'T00:00:00');
+      const diffTime = e.getTime() - s.getTime();
+      return Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1);
+    } catch {
+      return 1;
+    }
+  }, [attPrintStartDate, attPrintEndDate]);
+
+  // Action Split Button Dropdown states & refs
+  const [isAttActionDropdownOpen, setIsAttActionDropdownOpen] = useState(false);
+  const attDropdownRef = useRef<HTMLDivElement>(null);
+  const [isEmpActionDropdownOpen, setIsEmpActionDropdownOpen] = useState(false);
+  const empDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (attDropdownRef.current && !attDropdownRef.current.contains(event.target as Node)) {
+        setIsAttActionDropdownOpen(false);
+      }
+      if (empDropdownRef.current && !empDropdownRef.current.contains(event.target as Node)) {
+        setIsEmpActionDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Tanggal cetak terformat untuk Kop Surat
   const printDate = useMemo(() => {
@@ -1014,6 +1048,10 @@ export const EmployeeAttendanceModule: React.FC = () => {
                   ? Math.round(((totalDeptHadir + totalDeptTerlambat) / totalDeptCapacity) * 100)
                   : 0;
 
+              const totalDays = datesToDisplay.length;
+              const isDense = totalDays > 14;
+              const isVeryDense = totalDays > 22;
+
               return (
                 <div key={dept} className="space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold bg-slate-100 px-3 py-1.5 rounded border border-slate-200">
@@ -1025,38 +1063,57 @@ export const EmployeeAttendanceModule: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-[10px] border border-slate-300 border-collapse">
+                  <div className="overflow-x-auto print:overflow-visible">
+                    <table className={`w-full text-left border border-slate-300 border-collapse table-fixed ${isVeryDense ? 'text-[8.5px]' : isDense ? 'text-[9px]' : 'text-[10px]'}`}>
+                      <colgroup>
+                        <col style={{ width: isVeryDense ? '22px' : '26px' }} />
+                        <col style={{ width: isVeryDense ? '54px' : '65px' }} />
+                        <col style={{ width: isVeryDense ? '105px' : '125px' }} />
+                        <col style={{ width: isVeryDense ? '70px' : '85px' }} />
+                        {datesToDisplay.map(d => (
+                          <col key={d} />
+                        ))}
+                        <col style={{ width: isVeryDense ? '18px' : '22px' }} />
+                        <col style={{ width: isVeryDense ? '18px' : '22px' }} />
+                        <col style={{ width: isVeryDense ? '18px' : '22px' }} />
+                        <col style={{ width: isVeryDense ? '18px' : '22px' }} />
+                        <col style={{ width: isVeryDense ? '18px' : '22px' }} />
+                        <col style={{ width: isVeryDense ? '28px' : '34px' }} />
+                      </colgroup>
                       <thead>
                         <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-semibold">
-                          <th rowSpan={2} className="py-1 px-1.5 border-r border-slate-300 text-center w-7">No</th>
-                          <th rowSpan={2} className="py-1 px-2 border-r border-slate-300 font-mono w-20">NIP / ID</th>
-                          <th rowSpan={2} className="py-1 px-2.5 border-r border-slate-300 min-w-[130px]">Nama Karyawan</th>
-                          <th rowSpan={2} className="py-1 px-2 border-r border-slate-300 w-24">Jabatan</th>
+                          <th rowSpan={2} className="py-1 px-0.5 border-r border-slate-300 text-center">No</th>
+                          <th rowSpan={2} className="py-1 px-1 border-r border-slate-300 font-mono">NIP</th>
+                          <th rowSpan={2} className="py-1 px-1.5 border-r border-slate-300">Nama Karyawan</th>
+                          <th rowSpan={2} className="py-1 px-1 border-r border-slate-300">Jabatan</th>
 
                           {/* Header Kolom Tanggal-tanggal Presensi */}
-                          <th colSpan={datesToDisplay.length} className="py-1 px-1 border-r border-slate-300 text-center bg-slate-100/90 font-bold text-slate-800">
+                          <th colSpan={datesToDisplay.length} className="py-1 px-0.5 border-r border-slate-300 text-center bg-slate-100/90 font-bold text-slate-800">
                             Presensi Harian (Tanggal & Hari)
                           </th>
 
                           {/* Header Kolom Akumulasi Rekap */}
-                          <th colSpan={6} className="py-1 px-1 text-center bg-slate-100/90 font-bold text-slate-800">
+                          <th colSpan={6} className="py-1 px-0.5 text-center bg-slate-100/90 font-bold text-slate-800">
                             Akumulasi
                           </th>
                         </tr>
                         <tr className="bg-slate-50 border-b border-slate-300 text-[9px]">
                           {datesToDisplay.map(d => (
-                            <th key={d} className="py-1 px-1 border-r border-slate-300 text-center font-mono min-w-[22px]">
-                              <div className="text-[8px] text-slate-500 font-normal leading-tight">{getIndonesianShortDay(d)}</div>
-                              <div className="font-bold text-slate-800 leading-tight">{d.slice(8, 10)}</div>
+                            <th key={d} className="py-1 px-0.5 border-r border-slate-300 text-center font-mono">
+                              <div className={`${isVeryDense ? 'text-[7px]' : 'text-[8px]'} text-slate-500 font-normal leading-none`}>
+                                {getIndonesianShortDay(d, isVeryDense)}
+                              </div>
+                              <div className={`font-bold text-slate-800 leading-tight ${isVeryDense ? 'text-[8px]' : 'text-[9px]'}`}>
+                                {d.slice(8, 10)}
+                              </div>
                             </th>
                           ))}
-                          <th className="py-1 px-1 border-r border-slate-300 text-center w-7 text-emerald-700 font-bold" title="Total Hadir Tepat Waktu (H)">H</th>
-                          <th className="py-1 px-1 border-r border-slate-300 text-center w-7 text-amber-700 font-bold" title="Total Terlambat (T)">T</th>
-                          <th className="py-1 px-1 border-r border-slate-300 text-center w-7 text-sky-700 font-bold" title="Total Izin (I)">I</th>
-                          <th className="py-1 px-1 border-r border-slate-300 text-center w-7 text-purple-700 font-bold" title="Total Sakit (S)">S</th>
-                          <th className="py-1 px-1 border-r border-slate-300 text-center w-7 text-rose-700 font-bold" title="Total Alpa (A)">A</th>
-                          <th className="py-1 px-1.5 text-right w-11 font-bold text-slate-900" title="Persentase Kehadiran">%</th>
+                          <th className="py-1 px-0.5 border-r border-slate-300 text-center text-emerald-700 font-bold text-[8px]" title="Hadir Tepat Waktu (H)">H</th>
+                          <th className="py-1 px-0.5 border-r border-slate-300 text-center text-amber-700 font-bold text-[8px]" title="Terlambat (T)">T</th>
+                          <th className="py-1 px-0.5 border-r border-slate-300 text-center text-sky-700 font-bold text-[8px]" title="Izin (I)">I</th>
+                          <th className="py-1 px-0.5 border-r border-slate-300 text-center text-purple-700 font-bold text-[8px]" title="Sakit (S)">S</th>
+                          <th className="py-1 px-0.5 border-r border-slate-300 text-center text-rose-700 font-bold text-[8px]" title="Alpa (A)">A</th>
+                          <th className="py-1 px-0.5 text-right font-bold text-slate-900 text-[8px]" title="Persentase Kehadiran (%)">%</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -1064,10 +1121,10 @@ export const EmployeeAttendanceModule: React.FC = () => {
                           const emp = row.employee;
                           return (
                             <tr key={emp.id} className="hover:bg-slate-50/60">
-                              <td className="py-1 px-1.5 border-r border-slate-300 text-center text-slate-400">{rIdx + 1}</td>
-                              <td className="py-1 px-2 border-r border-slate-300 font-mono text-slate-700 text-[9px]">{emp.nip}</td>
-                              <td className="py-1 px-2.5 border-r border-slate-300 font-semibold text-slate-900 whitespace-nowrap">{emp.name}</td>
-                              <td className="py-1 px-2 border-r border-slate-300 text-slate-600 text-[9px] truncate max-w-[120px]">{emp.position}</td>
+                              <td className="py-1 px-0.5 border-r border-slate-300 text-center text-slate-400 text-[8px]">{rIdx + 1}</td>
+                              <td className="py-1 px-0.5 border-r border-slate-300 font-mono text-slate-700 text-[8px] truncate" title={emp.nip}>{emp.nip}</td>
+                              <td className="py-1 px-1.5 border-r border-slate-300 font-semibold text-slate-900 truncate" title={emp.name}>{emp.name}</td>
+                              <td className="py-1 px-1 border-r border-slate-300 text-slate-600 text-[8px] truncate" title={emp.position}>{emp.position}</td>
 
                               {/* Data Absen Per Hari untuk Karyawan */}
                               {datesToDisplay.map(dateStr => {
@@ -1078,7 +1135,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                                   return (
                                     <td
                                       key={dateStr}
-                                      className="py-1 px-0.5 border-r border-slate-300 text-center font-bold text-emerald-700 bg-emerald-50/30 text-[11px]"
+                                      className="py-0.5 px-0 border-r border-slate-300 text-center font-bold text-emerald-700 bg-emerald-50/30 text-[9.5px]"
                                       title={`${emp.name} - ${dateStr}: Hadir (${log?.checkInTime || '-'})`}
                                     >
                                       ✓
@@ -1089,7 +1146,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                                   return (
                                     <td
                                       key={dateStr}
-                                      className="py-1 px-0.5 border-r border-slate-300 text-center font-bold text-amber-700 bg-amber-50/40 text-[10px]"
+                                      className="py-0.5 px-0 border-r border-slate-300 text-center font-bold text-amber-700 bg-amber-50/40 text-[9px]"
                                       title={`${emp.name} - ${dateStr}: Terlambat ${log?.lateMinutes || 0}m (${log?.checkInTime || '-'})`}
                                     >
                                       T
@@ -1100,7 +1157,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                                   return (
                                     <td
                                       key={dateStr}
-                                      className="py-1 px-0.5 border-r border-slate-300 text-center font-bold text-sky-700 bg-sky-50/40 text-[10px]"
+                                      className="py-0.5 px-0 border-r border-slate-300 text-center font-bold text-sky-700 bg-sky-50/40 text-[9px]"
                                       title={`${emp.name} - ${dateStr}: Izin (${log?.notes || '-'})`}
                                     >
                                       I
@@ -1111,7 +1168,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                                   return (
                                     <td
                                       key={dateStr}
-                                      className="py-1 px-0.5 border-r border-slate-300 text-center font-bold text-purple-700 bg-purple-50/40 text-[10px]"
+                                      className="py-0.5 px-0 border-r border-slate-300 text-center font-bold text-purple-700 bg-purple-50/40 text-[9px]"
                                       title={`${emp.name} - ${dateStr}: Sakit (${log?.notes || '-'})`}
                                     >
                                       S
@@ -1122,7 +1179,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                                   return (
                                     <td
                                       key={dateStr}
-                                      className="py-1 px-0.5 border-r border-slate-300 text-center font-bold text-rose-700 bg-rose-50/40 text-[10px]"
+                                      className="py-0.5 px-0 border-r border-slate-300 text-center font-bold text-rose-700 bg-rose-50/40 text-[9px]"
                                       title={`${emp.name} - ${dateStr}: Alpa / Tanpa Keterangan`}
                                     >
                                       A
@@ -1132,7 +1189,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                                 return (
                                   <td
                                     key={dateStr}
-                                    className="py-1 px-0.5 border-r border-slate-300 text-center text-slate-300 text-[10px]"
+                                    className="py-0.5 px-0 border-r border-slate-300 text-center text-slate-300 text-[9px]"
                                     title={`${emp.name} - ${dateStr}: Belum Ada Data Presensi`}
                                   >
                                     -
@@ -1141,19 +1198,19 @@ export const EmployeeAttendanceModule: React.FC = () => {
                               })}
 
                               {/* Kolom Total Akumulasi Karyawan */}
-                              <td className="py-1 px-1 border-r border-slate-300 text-center font-mono text-emerald-700 font-bold">{row.hadir}</td>
-                              <td className="py-1 px-1 border-r border-slate-300 text-center font-mono text-amber-700 font-bold">{row.terlambat}</td>
-                              <td className="py-1 px-1 border-r border-slate-300 text-center font-mono text-sky-700 font-semibold">{row.izin}</td>
-                              <td className="py-1 px-1 border-r border-slate-300 text-center font-mono text-purple-700 font-semibold">{row.sakit}</td>
-                              <td className="py-1 px-1 border-r border-slate-300 text-center font-mono text-rose-700 font-bold">{row.alpa}</td>
-                              <td className="py-1 px-1.5 text-right font-mono font-bold text-slate-900">{row.rate}%</td>
+                              <td className="py-1 px-0.5 border-r border-slate-300 text-center font-mono text-emerald-700 font-bold text-[8px]">{row.hadir}</td>
+                              <td className="py-1 px-0.5 border-r border-slate-300 text-center font-mono text-amber-700 font-bold text-[8px]">{row.terlambat}</td>
+                              <td className="py-1 px-0.5 border-r border-slate-300 text-center font-mono text-sky-700 font-semibold text-[8px]">{row.izin}</td>
+                              <td className="py-1 px-0.5 border-r border-slate-300 text-center font-mono text-purple-700 font-semibold text-[8px]">{row.sakit}</td>
+                              <td className="py-1 px-0.5 border-r border-slate-300 text-center font-mono text-rose-700 font-bold text-[8px]">{row.alpa}</td>
+                              <td className="py-1 px-0.5 text-right font-mono font-bold text-slate-900 text-[8px]">{row.rate}%</td>
                             </tr>
                           );
                         })}
                       </tbody>
-                      <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300 text-[9px] text-slate-900">
+                      <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300 text-[8px] text-slate-900">
                         <tr>
-                          <td colSpan={4} className="py-1.5 px-2 border-r border-slate-300 text-right">
+                          <td colSpan={4} className="py-1.5 px-1.5 border-r border-slate-300 text-right">
                             Total Hadir per Hari (✓ + T):
                           </td>
                           {datesToDisplay.map(dateStr => {
@@ -1162,17 +1219,17 @@ export const EmployeeAttendanceModule: React.FC = () => {
                               return log && (log.status === 'HADIR' || log.status === 'TERLAMBAT');
                             }).length;
                             return (
-                              <td key={dateStr} className="py-1.5 px-0.5 border-r border-slate-300 text-center font-mono text-emerald-800">
+                              <td key={dateStr} className="py-1.5 px-0 border-r border-slate-300 text-center font-mono text-emerald-800">
                                 {hadirOnDate > 0 ? hadirOnDate : '-'}
                               </td>
                             );
                           })}
-                          <td className="py-1.5 px-1 border-r border-slate-300 text-center font-mono text-emerald-800">{totalDeptHadir}</td>
-                          <td className="py-1.5 px-1 border-r border-slate-300 text-center font-mono text-amber-800">{totalDeptTerlambat}</td>
-                          <td className="py-1.5 px-1 border-r border-slate-300 text-center font-mono text-sky-800">{totalDeptIzin}</td>
-                          <td className="py-1.5 px-1 border-r border-slate-300 text-center font-mono text-purple-800">{totalDeptSakit}</td>
-                          <td className="py-1.5 px-1 border-r border-slate-300 text-center font-mono text-rose-800">{totalDeptAlpa}</td>
-                          <td className="py-1.5 px-1.5 text-right font-mono font-bold text-emerald-800">{deptRate}%</td>
+                          <td className="py-1.5 px-0.5 border-r border-slate-300 text-center font-mono text-emerald-800">{totalDeptHadir}</td>
+                          <td className="py-1.5 px-0.5 border-r border-slate-300 text-center font-mono text-amber-800">{totalDeptTerlambat}</td>
+                          <td className="py-1.5 px-0.5 border-r border-slate-300 text-center font-mono text-sky-800">{totalDeptIzin}</td>
+                          <td className="py-1.5 px-0.5 border-r border-slate-300 text-center font-mono text-purple-800">{totalDeptSakit}</td>
+                          <td className="py-1.5 px-0.5 border-r border-slate-300 text-center font-mono text-rose-800">{totalDeptAlpa}</td>
+                          <td className="py-1.5 px-0.5 text-right font-mono text-emerald-800 font-bold">{deptRate}%</td>
                         </tr>
                       </tfoot>
                     </table>
@@ -1477,6 +1534,10 @@ export const EmployeeAttendanceModule: React.FC = () => {
       {/* Stylesheet cetak dokumen resmi SPPG */}
       <style>{`
         @media print {
+          @page {
+            size: ${attPrintMode === 'RANGE' ? 'A4 landscape' : 'A4 portrait'};
+            margin: ${attPrintMode === 'RANGE' ? '5mm 6mm' : '8mm 10mm'};
+          }
           body * {
             visibility: hidden;
           }
@@ -1489,11 +1550,16 @@ export const EmployeeAttendanceModule: React.FC = () => {
             position: absolute;
             left: 0;
             top: 0;
-            width: 100%;
-            padding: 15px !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            padding: 0 !important;
             margin: 0 !important;
             background: white !important;
             color: black !important;
+            box-sizing: border-box !important;
+          }
+          .overflow-x-auto {
+            overflow: visible !important;
           }
           .no-print {
             display: none !important;
@@ -1622,11 +1688,11 @@ export const EmployeeAttendanceModule: React.FC = () => {
           </div>
 
           {/* Action & Filter Toolbar */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            {/* Left: Date navigation */}
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
-                <Calendar className="w-4 h-4 text-emerald-600" />
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col xl:flex-row xl:items-center justify-between gap-2.5">
+            {/* Left: Date navigation & Filters */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
+                <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                 <input
                   type="date"
                   value={selectedDate}
@@ -1638,7 +1704,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setSelectedDate(todayStr)}
-                className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
+                className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer shrink-0 ${
                   selectedDate === todayStr
                     ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold'
                     : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
@@ -1647,17 +1713,17 @@ export const EmployeeAttendanceModule: React.FC = () => {
                 Hari Ini
               </button>
 
-              <div className="h-5 w-px bg-slate-200 hidden sm:block"></div>
+              <div className="h-4 w-px bg-slate-200 hidden sm:block"></div>
 
               {/* Department Filter */}
-              <div className="flex items-center gap-1.5">
-                <Filter className="w-3.5 h-3.5 text-slate-400" />
+              <div className="flex items-center gap-1">
+                <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <select
                   value={selectedDept}
                   onChange={e => setSelectedDept(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
                 >
-                  <option value="ALL">Semua Departemen</option>
+                  <option value="ALL">Semua Dept</option>
                   {DEPARTMENTS.map(d => (
                     <option key={d} value={d}>
                       {d}
@@ -1670,7 +1736,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
               <select
                 value={selectedStatus}
                 onChange={e => setSelectedStatus(e.target.value)}
-                className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
               >
                 <option value="ALL">Semua Status</option>
                 <option value="HADIR">Hadir</option>
@@ -1682,51 +1748,100 @@ export const EmployeeAttendanceModule: React.FC = () => {
               </select>
             </div>
 
-            {/* Right: Search & Actions */}
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative min-w-[200px] flex-1 sm:flex-initial">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            {/* Right: Search & Actions (Ringkas & Sejajar) */}
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
+              <div className="relative w-full sm:w-40 md:w-44 focus-within:sm:w-52 transition-all">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="Cari nama, NIP, posisi..."
+                  placeholder="Cari staf / NIP..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors"
                 />
               </div>
 
-              {/* Quick Attendance Checklist (1-Click) */}
-              <button
-                type="button"
-                onClick={handleOpenQuickAttendance}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
-                title="Presensi serentak seluruh staf hari ini"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Presensi Cepat 1-Klik</span>
-              </button>
+              {/* Split Button: Primary Presensi Cepat + Dropdown for Input Tools */}
+              <div className="relative inline-flex rounded-xl shadow-2xs shrink-0" ref={attDropdownRef}>
+                <button
+                  type="button"
+                  onClick={handleOpenQuickAttendance}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-l-xl bg-emerald-700 hover:bg-emerald-800 text-white transition-colors cursor-pointer shrink-0"
+                  title="Presensi serentak seluruh staf hari ini (1-Klik)"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Presensi Cepat</span>
+                </button>
 
-              {/* Single Attendance Record */}
-              <button
-                type="button"
-                onClick={() => handleOpenSingleAtt()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-                title="Catat kehadiran staf individu"
-              >
-                <Plus className="w-3.5 h-3.5 text-slate-500" />
-                <span>Catat Absensi</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAttActionDropdownOpen(!isAttActionDropdownOpen)}
+                  className="inline-flex items-center px-2 py-1.5 text-xs font-bold rounded-r-xl bg-emerald-800 hover:bg-emerald-900 text-white border-l border-emerald-600/40 transition-colors cursor-pointer shrink-0"
+                  title="Pilihan input presensi & alat"
+                >
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isAttActionDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
 
-              {/* Export to Excel */}
-              <button
-                type="button"
-                onClick={handleExportAttendanceExcel}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 shadow-2xs transition-colors cursor-pointer"
-                title="Unduh laporan presensi format Excel"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Ekspor Excel</span>
-              </button>
+                {/* Dropdown Menu */}
+                {isAttActionDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100">
+                      Pilihan Input & Alat
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAttActionDropdownOpen(false);
+                        handleOpenQuickAttendance();
+                      }}
+                      className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                        <Sparkles className="w-4 h-4 text-emerald-700" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900">Presensi Cepat 1-Klik</div>
+                        <div className="text-[10px] text-slate-500">Presensi serentak seluruh staf hari ini</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAttActionDropdownOpen(false);
+                        handleOpenSingleAtt();
+                      }}
+                      className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                        <Plus className="w-4 h-4 text-emerald-700" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900">Catat Absensi Manual</div>
+                        <div className="text-[10px] text-slate-500">Input kehadiran staf secara individu</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAttActionDropdownOpen(false);
+                        handleOpenAddEmployee();
+                      }}
+                      className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-teal-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center shrink-0">
+                        <Users className="w-4 h-4 text-teal-700" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900">Tambah Karyawan</div>
+                        <div className="text-[10px] text-slate-500">Daftarkan personil baru ke master data</div>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {/* Cetak Rekap Presensi */}
               <button
@@ -1735,11 +1850,22 @@ export const EmployeeAttendanceModule: React.FC = () => {
                   setAttPrintTargetDate(selectedDate);
                   setIsPrintAttendanceOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer shrink-0"
                 title="Cetak formulir dan rekapitulasi presensi karyawan"
               >
                 <Printer className="w-3.5 h-3.5 text-slate-500" />
-                <span>Cetak Rekap Presensi</span>
+                <span>Cetak Rekap</span>
+              </button>
+
+              {/* Export to Excel */}
+              <button
+                type="button"
+                onClick={handleExportAttendanceExcel}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer shrink-0"
+                title="Unduh laporan presensi format Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Ekspor Excel</span>
               </button>
             </div>
           </div>
@@ -1892,25 +2018,25 @@ export const EmployeeAttendanceModule: React.FC = () => {
           </div>
 
           {/* Toolbar Master Karyawan */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div className="flex flex-wrap items-center gap-2 flex-1">
-              <div className="relative min-w-[220px] flex-1 sm:flex-initial">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <div className="relative w-full sm:w-44 md:w-52 focus-within:sm:w-60 transition-all">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="Cari nama, NIP, no WA..."
+                  placeholder="Cari staf / NIP..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors"
                 />
               </div>
 
               <select
                 value={selectedDept}
                 onChange={e => setSelectedDept(e.target.value)}
-                className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
               >
-                <option value="ALL">Semua Departemen</option>
+                <option value="ALL">Semua Dept</option>
                 {DEPARTMENTS.map(d => (
                   <option key={d} value={d}>
                     {d}
@@ -1921,7 +2047,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
               <select
                 value={selectedStatus}
                 onChange={e => setSelectedStatus(e.target.value)}
-                className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
               >
                 <option value="ALL">Semua Status</option>
                 <option value="AKTIF">Aktif</option>
@@ -1930,25 +2056,92 @@ export const EmployeeAttendanceModule: React.FC = () => {
               </select>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleOpenAddEmployee}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Tambah Karyawan</span>
-              </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Split Button: Primary Tambah Karyawan + Dropdown for Other Tools */}
+              <div className="relative inline-flex rounded-xl shadow-2xs shrink-0" ref={empDropdownRef}>
+                <button
+                  type="button"
+                  onClick={handleOpenAddEmployee}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-l-xl bg-emerald-700 hover:bg-emerald-800 text-white transition-colors cursor-pointer shrink-0"
+                  title="Daftarkan karyawan baru ke master data"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tambah Karyawan</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={handleExportEmployeesExcel}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 shadow-2xs transition-colors cursor-pointer"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Ekspor Master Excel</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEmpActionDropdownOpen(!isEmpActionDropdownOpen)}
+                  className="inline-flex items-center px-2 py-1.5 text-xs font-bold rounded-r-xl bg-emerald-800 hover:bg-emerald-900 text-white border-l border-emerald-600/40 transition-colors cursor-pointer shrink-0"
+                  title="Pilihan aksi master staf & presensi"
+                >
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isEmpActionDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
 
+                {/* Dropdown Menu */}
+                {isEmpActionDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100">
+                      Pilihan Kelola & Aksi
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEmpActionDropdownOpen(false);
+                        handleOpenAddEmployee();
+                      }}
+                      className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                        <Plus className="w-4 h-4 text-emerald-700" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900">Tambah Karyawan Baru</div>
+                        <div className="text-[10px] text-slate-500">Daftarkan personil baru ke master data</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEmpActionDropdownOpen(false);
+                        setActiveTab('ATTENDANCE');
+                        handleOpenQuickAttendance();
+                      }}
+                      className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                        <Sparkles className="w-4 h-4 text-emerald-700" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900">Presensi Cepat 1-Klik</div>
+                        <div className="text-[10px] text-slate-500">Presensi serentak seluruh staf hari ini</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEmpActionDropdownOpen(false);
+                        setActiveTab('ATTENDANCE');
+                        handleOpenSingleAtt();
+                      }}
+                      className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-teal-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center shrink-0">
+                        <UserCheck className="w-4 h-4 text-teal-700" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900">Catat Absensi Manual</div>
+                        <div className="text-[10px] text-slate-500">Input kehadiran staf secara individu</div>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Cetak Master */}
               <button
                 type="button"
                 onClick={() => {
@@ -1957,11 +2150,22 @@ export const EmployeeAttendanceModule: React.FC = () => {
                   setEmpPrintSearch(searchQuery);
                   setIsPrintEmployeesOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer shrink-0"
                 title="Cetak berkas resmi data induk / master karyawan"
               >
                 <Printer className="w-3.5 h-3.5 text-slate-500" />
                 <span>Cetak Master</span>
+              </button>
+
+              {/* Ekspor Excel */}
+              <button
+                type="button"
+                onClick={handleExportEmployeesExcel}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer shrink-0"
+                title="Unduh master data karyawan format Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Ekspor Excel</span>
               </button>
             </div>
           </div>
@@ -2731,7 +2935,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
       ========================================================================= */}
       {isPrintAttendanceOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto no-print">
-          <div className="bg-slate-50 rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[96vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className={`bg-slate-50 rounded-2xl shadow-2xl border border-slate-200 ${attPrintMode === 'RANGE' ? 'max-w-[96vw]' : 'max-w-5xl'} w-full max-h-[96vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150`}>
             {/* Header Modal */}
             <div className="px-6 py-4 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -2843,7 +3047,19 @@ export const EmployeeAttendanceModule: React.FC = () => {
                       }}
                       className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
                     >
-                      7 Hari Terakhir
+                      7 Hari
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() - 13);
+                        setAttPrintStartDate(d.toISOString().slice(0, 10));
+                        setAttPrintEndDate(todayStr);
+                      }}
+                      className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                    >
+                      14 Hari
                     </button>
                     <button
                       type="button"
@@ -2857,6 +3073,21 @@ export const EmployeeAttendanceModule: React.FC = () => {
                     >
                       Bulan Ini
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() - 29);
+                        setAttPrintStartDate(d.toISOString().slice(0, 10));
+                        setAttPrintEndDate(todayStr);
+                      }}
+                      className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                    >
+                      30 Hari
+                    </button>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded text-[11px] font-semibold">
+                      Otomatis Landscape A4 ({printRangeDaysCount} hari muat 100%)
+                    </span>
                   </div>
                 )}
 
