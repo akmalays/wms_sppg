@@ -90,6 +90,18 @@ const getIndonesianDay = (dateStr: string): string => {
   }
 };
 
+// Helper nama hari singkatan (misal: "Sel")
+const getIndonesianShortDay = (dateStr: string): string => {
+  if (!dateStr) return '';
+  try {
+    const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+    const d = new Date(dateStr + 'T00:00:00');
+    return days[d.getDay()] || '';
+  } catch {
+    return '';
+  }
+};
+
 export const EmployeeAttendanceModule: React.FC = () => {
   const { currentUser } = useAuth();
 
@@ -680,7 +692,26 @@ export const EmployeeAttendanceModule: React.FC = () => {
 
     // 2. RANGE MODE
     const rangeLogs = allAttendances.filter(a => a.date >= startDate && a.date <= endDate);
-    const distinctDates = Array.from(new Set(rangeLogs.map(a => a.date))).sort();
+    const distinctLoggedDates = Array.from(new Set(rangeLogs.map(a => a.date))).sort();
+
+    // Daftar semua tanggal kalender dalam rentang
+    const rangeDateList: string[] = [];
+    if (!isDaily && startDate && endDate) {
+      try {
+        const cur = new Date(startDate + 'T00:00:00');
+        const end = new Date(endDate + 'T00:00:00');
+        let count = 0;
+        while (cur <= end && count < 62) {
+          rangeDateList.push(cur.toISOString().slice(0, 10));
+          cur.setDate(cur.getDate() + 1);
+          count++;
+        }
+      } catch {
+        // fallback
+      }
+    }
+    const datesToDisplay =
+      rangeDateList.length > 0 ? rangeDateList : distinctLoggedDates.length > 0 ? distinctLoggedDates : [todayStr];
 
     const rangeEmployeeStats = targetEmployees.map(emp => {
       const empLogs = rangeLogs.filter(a => a.employeeId === emp.id);
@@ -691,7 +722,8 @@ export const EmployeeAttendanceModule: React.FC = () => {
       const alpa = empLogs.filter(a => a.status === 'ALPA').length;
       const totalLoggedDays = empLogs.length;
       const totalHadir = hadir + terlambat;
-      const rate = totalLoggedDays > 0 ? Math.round((totalHadir / totalLoggedDays) * 100) : 0;
+      const totalPeriodDays = datesToDisplay.length || 1;
+      const rate = Math.round((totalHadir / totalPeriodDays) * 100);
 
       return {
         employee: emp,
@@ -706,22 +738,23 @@ export const EmployeeAttendanceModule: React.FC = () => {
       };
     });
 
-    const totalRangeLogs = rangeLogs.length;
     let rangeTotalHadir = 0;
     let rangeTotalTerlambat = 0;
     let rangeTotalIzin = 0;
     let rangeTotalSakit = 0;
     let rangeTotalAlpa = 0;
-    rangeLogs.forEach(a => {
-      if (a.status === 'HADIR') rangeTotalHadir++;
-      else if (a.status === 'TERLAMBAT') rangeTotalTerlambat++;
-      else if (a.status === 'IZIN') rangeTotalIzin++;
-      else if (a.status === 'SAKIT') rangeTotalSakit++;
-      else if (a.status === 'ALPA') rangeTotalAlpa++;
+    rangeEmployeeStats.forEach(stat => {
+      rangeTotalHadir += stat.hadir;
+      rangeTotalTerlambat += stat.terlambat;
+      rangeTotalIzin += stat.izin;
+      rangeTotalSakit += stat.sakit;
+      rangeTotalAlpa += stat.alpa;
     });
-    const rangeTotalAttended = rangeTotalHadir + rangeTotalTerlambat;
+    const totalPotentialOpportunities = targetEmployees.length * (datesToDisplay.length || 1);
     const rangeOverallRate =
-      totalRangeLogs > 0 ? Math.round((rangeTotalAttended / totalRangeLogs) * 100) : 0;
+      totalPotentialOpportunities > 0
+        ? Math.round(((rangeTotalHadir + rangeTotalTerlambat) / totalPotentialOpportunities) * 100)
+        : 0;
 
     return (
       <div id="print-attendance-sheet" className="bg-white font-sans text-slate-900 w-full text-xs">
@@ -763,78 +796,13 @@ export const EmployeeAttendanceModule: React.FC = () => {
             {isDaily ? (
               <span>Hari & Tanggal: {getIndonesianDay(targetDate)}, {formatIndonesianDate(targetDate)}</span>
             ) : (
-              <span>Periode: {formatIndonesianDate(startDate)} s/d {formatIndonesianDate(endDate)} ({distinctDates.length} hari operasional)</span>
+              <span>Periode: {formatIndonesianDate(startDate)} s/d {formatIndonesianDate(endDate)} ({datesToDisplay.length} hari)</span>
             )}
             <span>• Divisi: {attPrintDept === 'ALL' ? 'Semua Divisi' : attPrintDept}</span>
             {attPrintStatus !== 'ALL' && <span>• Status: {attPrintStatus}</span>}
             {searchQuery.trim() && <span>• Cari: &ldquo;{searchQuery}&rdquo;</span>}
           </div>
         </div>
-
-        {/* Ringkasan Indikator Kehadiran (KPI Cards) */}
-        {isDaily ? (
-          <div className="grid grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 mb-5">
-            <div>
-              <span className="text-slate-500 block text-[10px]">Total Staf Aktif Terdaftar</span>
-              <span className="font-bold font-mono text-sm text-slate-900">{dailyTotal} orang</span>
-              <span className="block text-[10px] text-slate-400">{departmentsToRender.length} divisi operasional</span>
-            </div>
-            <div>
-              <span className="text-slate-500 block text-[10px]">Kehadiran Hari Ini</span>
-              <span className="font-bold font-mono text-sm text-emerald-700">
-                {dailyAttended} orang
-              </span>
-              <span className="block text-[10px] text-emerald-600 font-semibold">
-                Tepat Waktu: {dailyHadir} • Terlambat: {dailyTerlambat}
-              </span>
-            </div>
-            <div>
-              <span className="text-slate-500 block text-[10px]">Izin, Sakit & Alpa</span>
-              <span className="font-bold font-mono text-sm text-amber-700">
-                {dailyIzin + dailySakit + dailyAlpa} orang
-              </span>
-              <span className="block text-[10px] text-slate-400">
-                Izin: {dailyIzin} • Sakit: {dailySakit} • Alpa: {dailyAlpa}
-              </span>
-            </div>
-            <div>
-              <span className="text-slate-500 block text-[10px]">Tingkat Kehadiran SPPG</span>
-              <span className="font-bold font-mono text-sm text-slate-900">{dailyRate}%</span>
-              <span className="block text-[10px] text-slate-400">Belum Absen: {dailyBelum} orang</span>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 mb-5">
-            <div>
-              <span className="text-slate-500 block text-[10px]">Total Personil Dipantau</span>
-              <span className="font-bold font-mono text-sm text-slate-900">{targetEmployees.length} orang</span>
-              <span className="block text-[10px] text-slate-400">{distinctDates.length} hari operasional</span>
-            </div>
-            <div>
-              <span className="text-slate-500 block text-[10px]">Total Presensi Masuk</span>
-              <span className="font-bold font-mono text-sm text-emerald-700">
-                {rangeTotalAttended} kehadiran
-              </span>
-              <span className="block text-[10px] text-emerald-600 font-semibold">
-                Hadir: {rangeTotalHadir} • Terlambat: {rangeTotalTerlambat}
-              </span>
-            </div>
-            <div>
-              <span className="text-slate-500 block text-[10px]">Total Izin, Sakit & Alpa</span>
-              <span className="font-bold font-mono text-sm text-amber-700">
-                {rangeTotalIzin + rangeTotalSakit + rangeTotalAlpa} presensi
-              </span>
-              <span className="block text-[10px] text-slate-400">
-                Izin: {rangeTotalIzin} • Sakit: {rangeTotalSakit} • Alpa: {rangeTotalAlpa}
-              </span>
-            </div>
-            <div>
-              <span className="text-slate-500 block text-[10px]">Rata-rata Kehadiran</span>
-              <span className="font-bold font-mono text-sm text-slate-900">{rangeOverallRate}%</span>
-              <span className="block text-[10px] text-slate-400">Akumulasi seluruh divisi</span>
-            </div>
-          </div>
-        )}
 
         {/* Bagian A: Ringkasan Rekapitulasi Presensi per Divisi */}
         <div className="mb-6">
@@ -891,8 +859,8 @@ export const EmployeeAttendanceModule: React.FC = () => {
                   const i = deptEmps.reduce((acc, curr) => acc + curr.izin, 0);
                   const s = deptEmps.reduce((acc, curr) => acc + curr.sakit, 0);
                   const a = deptEmps.reduce((acc, curr) => acc + curr.alpa, 0);
-                  const totLogs = deptEmps.reduce((acc, curr) => acc + curr.totalLoggedDays, 0);
-                  const rate = totLogs > 0 ? Math.round(((h + t) / totLogs) * 100) : 0;
+                  const totalDeptCapacity = deptEmps.length * (datesToDisplay.length || 1);
+                  const rate = totalDeptCapacity > 0 ? Math.round(((h + t) / totalDeptCapacity) * 100) : 0;
 
                   return (
                     <tr key={dept} className="hover:bg-slate-50">
@@ -939,10 +907,19 @@ export const EmployeeAttendanceModule: React.FC = () => {
           </table>
         </div>
 
-        {/* Bagian B: Rincian Presensi per Divisi (Dipisahkan per Divisi) */}
+        {/* Bagian B: Matriks Presensi Karyawan per Divisi */}
         <div className="space-y-6">
-          <div className="font-bold text-xs text-slate-800 border-b border-slate-200 pb-1">
-            <span>B. Rincian Presensi Karyawan per Divisi Kerja</span>
+          <div className="font-bold text-xs text-slate-800 border-b border-slate-200 pb-1 flex items-center justify-between">
+            <span>
+              {isDaily
+                ? 'B. Rincian Presensi Karyawan per Divisi Kerja'
+                : 'B. Matriks Presensi & Kehadiran Harian Karyawan per Divisi'}
+            </span>
+            <span className="text-[11px] font-normal text-slate-500">
+              {isDaily
+                ? `Tanggal: ${formatIndonesianDate(targetDate)}`
+                : `Rentang: ${formatIndonesianDate(startDate)} s/d ${formatIndonesianDate(endDate)} (${datesToDisplay.length} hari)`}
+            </span>
           </div>
 
           {departmentsToRender.map((dept, deptIdx) => {
@@ -982,16 +959,16 @@ export const EmployeeAttendanceModule: React.FC = () => {
                         const att = row.attendance;
                         const statusLabel =
                           row.status === 'HADIR'
-                            ? 'Hadir'
+                            ? '✓ Hadir'
                             : row.status === 'TERLAMBAT'
-                            ? `Terlambat (${att?.lateMinutes || 0}m)`
+                            ? `T - Terlambat (${att?.lateMinutes || 0}m)`
                             : row.status === 'IZIN'
-                            ? 'Izin'
+                            ? 'I - Izin'
                             : row.status === 'SAKIT'
-                            ? 'Sakit'
+                            ? 'S - Sakit'
                             : row.status === 'ALPA'
-                            ? 'Alpa'
-                            : 'Belum Absen';
+                            ? 'A - Alpa'
+                            : '- Belum Absen';
 
                         const statusColor =
                           row.status === 'HADIR'
@@ -1026,57 +1003,214 @@ export const EmployeeAttendanceModule: React.FC = () => {
               const deptEmps = rangeEmployeeStats.filter(e => e.employee.department === dept);
               if (deptEmps.length === 0) return null;
 
+              const totalDeptHadir = deptEmps.reduce((acc, c) => acc + c.hadir, 0);
+              const totalDeptTerlambat = deptEmps.reduce((acc, c) => acc + c.terlambat, 0);
+              const totalDeptIzin = deptEmps.reduce((acc, c) => acc + c.izin, 0);
+              const totalDeptSakit = deptEmps.reduce((acc, c) => acc + c.sakit, 0);
+              const totalDeptAlpa = deptEmps.reduce((acc, c) => acc + c.alpa, 0);
+              const totalDeptCapacity = deptEmps.length * (datesToDisplay.length || 1);
+              const deptRate =
+                totalDeptCapacity > 0
+                  ? Math.round(((totalDeptHadir + totalDeptTerlambat) / totalDeptCapacity) * 100)
+                  : 0;
+
               return (
                 <div key={dept} className="space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold bg-slate-100 px-3 py-1.5 rounded border border-slate-200">
                     <span className="text-slate-800">
-                      {deptIdx + 1}. Divisi {dept} ({deptEmps.length} Karyawan)
+                      {deptIdx + 1}. Divisi {dept} ({deptEmps.length} Personil)
                     </span>
                     <span className="text-slate-600 text-[11px] font-medium">
-                      Total Hari Kerja Terdata: {deptEmps.reduce((acc, c) => acc + c.totalLoggedDays, 0)} hari-staf
+                      Periode: {formatIndonesianDate(startDate)} s/d {formatIndonesianDate(endDate)} ({datesToDisplay.length} hari) • Rata-rata Kehadiran: <strong className="text-emerald-800">{deptRate}%</strong>
                     </span>
                   </div>
 
-                  <table className="w-full text-left text-[10px] border border-slate-300 border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-300 text-slate-600 font-semibold">
-                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-7">No</th>
-                        <th className="py-1.5 px-2.5 border-r border-slate-300 font-mono w-24">NIP / ID</th>
-                        <th className="py-1.5 px-3 border-r border-slate-300">Nama Karyawan</th>
-                        <th className="py-1.5 px-2.5 border-r border-slate-300 w-32">Posisi / Jabatan</th>
-                        <th className="py-1.5 px-2 border-r border-slate-300 w-28">Shift</th>
-                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-16">Total Hari</th>
-                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-16 text-emerald-700">Hadir</th>
-                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-16 text-amber-700">Terlambat</th>
-                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-14">Izin</th>
-                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-14">Sakit</th>
-                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-14 text-rose-700">Alpa</th>
-                        <th className="py-1.5 px-2.5 text-right w-20 font-bold">Kehadiran (%)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {deptEmps.map((row, rIdx) => (
-                        <tr key={row.employee.id} className="hover:bg-slate-50/60">
-                          <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-400">{rIdx + 1}</td>
-                          <td className="py-1.5 px-2.5 border-r border-slate-300 font-mono text-slate-700">{row.employee.nip}</td>
-                          <td className="py-1.5 px-3 border-r border-slate-300 font-semibold text-slate-900">{row.employee.name}</td>
-                          <td className="py-1.5 px-2.5 border-r border-slate-300 text-slate-700">{row.employee.position}</td>
-                          <td className="py-1.5 px-2 border-r border-slate-300 text-slate-600 text-[9px]">{row.employee.shift}</td>
-                          <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono">{row.totalLoggedDays}</td>
-                          <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono text-emerald-700 font-semibold">{row.hadir}</td>
-                          <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono text-amber-700">{row.terlambat}</td>
-                          <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono">{row.izin}</td>
-                          <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono">{row.sakit}</td>
-                          <td className="py-1.5 px-2 border-r border-slate-300 text-center font-mono text-rose-700">{row.alpa}</td>
-                          <td className="py-1.5 px-2.5 text-right font-mono font-bold text-slate-900">{row.rate}%</td>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[10px] border border-slate-300 border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-semibold">
+                          <th rowSpan={2} className="py-1 px-1.5 border-r border-slate-300 text-center w-7">No</th>
+                          <th rowSpan={2} className="py-1 px-2 border-r border-slate-300 font-mono w-20">NIP / ID</th>
+                          <th rowSpan={2} className="py-1 px-2.5 border-r border-slate-300 min-w-[130px]">Nama Karyawan</th>
+                          <th rowSpan={2} className="py-1 px-2 border-r border-slate-300 w-24">Jabatan</th>
+
+                          {/* Header Kolom Tanggal-tanggal Presensi */}
+                          <th colSpan={datesToDisplay.length} className="py-1 px-1 border-r border-slate-300 text-center bg-slate-100/90 font-bold text-slate-800">
+                            Presensi Harian (Tanggal & Hari)
+                          </th>
+
+                          {/* Header Kolom Akumulasi Rekap */}
+                          <th colSpan={6} className="py-1 px-1 text-center bg-slate-100/90 font-bold text-slate-800">
+                            Akumulasi
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                        <tr className="bg-slate-50 border-b border-slate-300 text-[9px]">
+                          {datesToDisplay.map(d => (
+                            <th key={d} className="py-1 px-1 border-r border-slate-300 text-center font-mono min-w-[22px]">
+                              <div className="text-[8px] text-slate-500 font-normal leading-tight">{getIndonesianShortDay(d)}</div>
+                              <div className="font-bold text-slate-800 leading-tight">{d.slice(8, 10)}</div>
+                            </th>
+                          ))}
+                          <th className="py-1 px-1 border-r border-slate-300 text-center w-7 text-emerald-700 font-bold" title="Total Hadir Tepat Waktu (H)">H</th>
+                          <th className="py-1 px-1 border-r border-slate-300 text-center w-7 text-amber-700 font-bold" title="Total Terlambat (T)">T</th>
+                          <th className="py-1 px-1 border-r border-slate-300 text-center w-7 text-sky-700 font-bold" title="Total Izin (I)">I</th>
+                          <th className="py-1 px-1 border-r border-slate-300 text-center w-7 text-purple-700 font-bold" title="Total Sakit (S)">S</th>
+                          <th className="py-1 px-1 border-r border-slate-300 text-center w-7 text-rose-700 font-bold" title="Total Alpa (A)">A</th>
+                          <th className="py-1 px-1.5 text-right w-11 font-bold text-slate-900" title="Persentase Kehadiran">%</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {deptEmps.map((row, rIdx) => {
+                          const emp = row.employee;
+                          return (
+                            <tr key={emp.id} className="hover:bg-slate-50/60">
+                              <td className="py-1 px-1.5 border-r border-slate-300 text-center text-slate-400">{rIdx + 1}</td>
+                              <td className="py-1 px-2 border-r border-slate-300 font-mono text-slate-700 text-[9px]">{emp.nip}</td>
+                              <td className="py-1 px-2.5 border-r border-slate-300 font-semibold text-slate-900 whitespace-nowrap">{emp.name}</td>
+                              <td className="py-1 px-2 border-r border-slate-300 text-slate-600 text-[9px] truncate max-w-[120px]">{emp.position}</td>
+
+                              {/* Data Absen Per Hari untuk Karyawan */}
+                              {datesToDisplay.map(dateStr => {
+                                const log = rangeLogs.find(a => a.employeeId === emp.id && a.date === dateStr);
+                                const status = log?.status;
+
+                                if (status === 'HADIR') {
+                                  return (
+                                    <td
+                                      key={dateStr}
+                                      className="py-1 px-0.5 border-r border-slate-300 text-center font-bold text-emerald-700 bg-emerald-50/30 text-[11px]"
+                                      title={`${emp.name} - ${dateStr}: Hadir (${log?.checkInTime || '-'})`}
+                                    >
+                                      ✓
+                                    </td>
+                                  );
+                                }
+                                if (status === 'TERLAMBAT') {
+                                  return (
+                                    <td
+                                      key={dateStr}
+                                      className="py-1 px-0.5 border-r border-slate-300 text-center font-bold text-amber-700 bg-amber-50/40 text-[10px]"
+                                      title={`${emp.name} - ${dateStr}: Terlambat ${log?.lateMinutes || 0}m (${log?.checkInTime || '-'})`}
+                                    >
+                                      T
+                                    </td>
+                                  );
+                                }
+                                if (status === 'IZIN') {
+                                  return (
+                                    <td
+                                      key={dateStr}
+                                      className="py-1 px-0.5 border-r border-slate-300 text-center font-bold text-sky-700 bg-sky-50/40 text-[10px]"
+                                      title={`${emp.name} - ${dateStr}: Izin (${log?.notes || '-'})`}
+                                    >
+                                      I
+                                    </td>
+                                  );
+                                }
+                                if (status === 'SAKIT') {
+                                  return (
+                                    <td
+                                      key={dateStr}
+                                      className="py-1 px-0.5 border-r border-slate-300 text-center font-bold text-purple-700 bg-purple-50/40 text-[10px]"
+                                      title={`${emp.name} - ${dateStr}: Sakit (${log?.notes || '-'})`}
+                                    >
+                                      S
+                                    </td>
+                                  );
+                                }
+                                if (status === 'ALPA') {
+                                  return (
+                                    <td
+                                      key={dateStr}
+                                      className="py-1 px-0.5 border-r border-slate-300 text-center font-bold text-rose-700 bg-rose-50/40 text-[10px]"
+                                      title={`${emp.name} - ${dateStr}: Alpa / Tanpa Keterangan`}
+                                    >
+                                      A
+                                    </td>
+                                  );
+                                }
+                                return (
+                                  <td
+                                    key={dateStr}
+                                    className="py-1 px-0.5 border-r border-slate-300 text-center text-slate-300 text-[10px]"
+                                    title={`${emp.name} - ${dateStr}: Belum Ada Data Presensi`}
+                                  >
+                                    -
+                                  </td>
+                                );
+                              })}
+
+                              {/* Kolom Total Akumulasi Karyawan */}
+                              <td className="py-1 px-1 border-r border-slate-300 text-center font-mono text-emerald-700 font-bold">{row.hadir}</td>
+                              <td className="py-1 px-1 border-r border-slate-300 text-center font-mono text-amber-700 font-bold">{row.terlambat}</td>
+                              <td className="py-1 px-1 border-r border-slate-300 text-center font-mono text-sky-700 font-semibold">{row.izin}</td>
+                              <td className="py-1 px-1 border-r border-slate-300 text-center font-mono text-purple-700 font-semibold">{row.sakit}</td>
+                              <td className="py-1 px-1 border-r border-slate-300 text-center font-mono text-rose-700 font-bold">{row.alpa}</td>
+                              <td className="py-1 px-1.5 text-right font-mono font-bold text-slate-900">{row.rate}%</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300 text-[9px] text-slate-900">
+                        <tr>
+                          <td colSpan={4} className="py-1.5 px-2 border-r border-slate-300 text-right">
+                            Total Hadir per Hari (✓ + T):
+                          </td>
+                          {datesToDisplay.map(dateStr => {
+                            const hadirOnDate = deptEmps.filter(row => {
+                              const log = rangeLogs.find(a => a.employeeId === row.employee.id && a.date === dateStr);
+                              return log && (log.status === 'HADIR' || log.status === 'TERLAMBAT');
+                            }).length;
+                            return (
+                              <td key={dateStr} className="py-1.5 px-0.5 border-r border-slate-300 text-center font-mono text-emerald-800">
+                                {hadirOnDate > 0 ? hadirOnDate : '-'}
+                              </td>
+                            );
+                          })}
+                          <td className="py-1.5 px-1 border-r border-slate-300 text-center font-mono text-emerald-800">{totalDeptHadir}</td>
+                          <td className="py-1.5 px-1 border-r border-slate-300 text-center font-mono text-amber-800">{totalDeptTerlambat}</td>
+                          <td className="py-1.5 px-1 border-r border-slate-300 text-center font-mono text-sky-800">{totalDeptIzin}</td>
+                          <td className="py-1.5 px-1 border-r border-slate-300 text-center font-mono text-purple-800">{totalDeptSakit}</td>
+                          <td className="py-1.5 px-1 border-r border-slate-300 text-center font-mono text-rose-800">{totalDeptAlpa}</td>
+                          <td className="py-1.5 px-1.5 text-right font-mono font-bold text-emerald-800">{deptRate}%</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
                 </div>
               );
             }
           })}
+
+          {/* Legenda Keterangan Simbol Presensi */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-[10px] text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200 mt-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="font-bold text-slate-800">Keterangan Simbol Presensi:</span>
+              <span className="flex items-center gap-1 font-semibold text-emerald-700">
+                <span className="font-bold text-xs">✓</span> Hadir Tepat Waktu
+              </span>
+              <span className="flex items-center gap-1 font-semibold text-amber-700">
+                <span className="font-bold text-[11px]">T</span> Terlambat
+              </span>
+              <span className="flex items-center gap-1 font-semibold text-sky-700">
+                <span className="font-bold text-[11px]">I</span> Izin
+              </span>
+              <span className="flex items-center gap-1 font-semibold text-purple-700">
+                <span className="font-bold text-[11px]">S</span> Sakit
+              </span>
+              <span className="flex items-center gap-1 font-semibold text-rose-700">
+                <span className="font-bold text-[11px]">A</span> Alpa / Tanpa Keterangan
+              </span>
+              <span className="flex items-center gap-1 text-slate-400">
+                <span className="font-bold text-[11px]">-</span> Libur / Belum Absen
+              </span>
+            </div>
+            {!isDaily && (
+              <div className="text-[9px] text-slate-500 italic">
+                * Kolom H, T, I, S, A = Total akumulasi status presensi selama periode aktif
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Lembar Pengesahan Dokumen / Tanda Tangan */}
@@ -1179,40 +1313,6 @@ export const EmployeeAttendanceModule: React.FC = () => {
             <span>• Filter Divisi: {empPrintDept === 'ALL' ? 'Semua Divisi' : empPrintDept}</span>
             <span>• Status: {empPrintStatus === 'ALL' ? 'Semua Status' : empPrintStatus}</span>
             {empPrintSearch.trim() && <span>• Cari: &ldquo;{empPrintSearch}&rdquo;</span>}
-          </div>
-        </div>
-
-        {/* Ringkasan Distribusi Personil (KPI Cards) */}
-        <div className="grid grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 mb-5">
-          <div>
-            <span className="text-slate-500 block text-[10px]">Total Personil Terdaftar</span>
-            <span className="font-bold font-mono text-sm text-slate-900">{totalStaff} orang</span>
-            <span className="block text-[10px] text-slate-400">{departmentsToRender.length} divisi aktif</span>
-          </div>
-          <div>
-            <span className="text-slate-500 block text-[10px]">Personil Status Aktif</span>
-            <span className="font-bold font-mono text-sm text-emerald-700">
-              {activeStaff} orang
-            </span>
-            <span className="block text-[10px] text-emerald-600 font-semibold">
-              {totalStaff > 0 ? Math.round((activeStaff / totalStaff) * 100) : 0}% kesiapan kerja
-            </span>
-          </div>
-          <div>
-            <span className="text-slate-500 block text-[10px]">Karyawan Tetap</span>
-            <span className="font-bold font-mono text-sm text-slate-900">{tetapStaff} orang</span>
-            <span className="block text-[10px] text-slate-400">
-              Staf inti operasional
-            </span>
-          </div>
-          <div>
-            <span className="text-slate-500 block text-[10px]">Kontrak & Mitra Relawan</span>
-            <span className="font-bold font-mono text-sm text-slate-900">
-              {kontrakStaff + relawanStaff} orang
-            </span>
-            <span className="block text-[10px] text-slate-400">
-              Kontrak: {kontrakStaff} • Mitra/Relawan: {relawanStaff}
-            </span>
           </div>
         </div>
 
