@@ -8,7 +8,11 @@ import {
   Supplier,
   NonFoodExpense,
   normalizeItemCategory,
-  MainItemCategory
+  MainItemCategory,
+  PurchaseOrderNota,
+  PurchaseOrderItem,
+  PaymentMethod,
+  PurchaseOrderStatus,
 } from '../types/warehouse';
 import {
   Plus,
@@ -35,12 +39,29 @@ import {
   ChevronDown,
   X,
   FileSpreadsheet,
-  CalendarRange
+  CalendarRange,
+  Receipt,
+  Printer,
+  Building2,
+  FileCheck,
+  FilePlus,
+  Layers,
 } from 'lucide-react';
 import { SignaturePad } from './SignaturePad';
 import { ReceivingDetailModal } from './ReceivingDetailModal';
 import { PhotoUploadCompressor } from './PhotoUploadCompressor';
 import { exportToExcel } from '../lib/excelExport';
+import { NotaPesananModal } from './NotaPesananModal';
+import { MasterSupplierModal } from './MasterSupplierModal';
+import { BatchPrintNotaModal } from './BatchPrintNotaModal';
+import { angkaTerbilang } from './ToolsPrintModule';
+import { generateNextPoNumber } from '../utils/poNumberGenerator';
+import {
+  getPrintPoolIds,
+  addToPrintPool,
+  removeFromPrintPool,
+  clearPrintPool,
+} from '../utils/poPrintPool';
 
 interface ReceivingModuleProps {
   onRefreshData?: () => void;
@@ -266,6 +287,26 @@ interface BatchInputRow {
   notes: string;
 }
 
+export interface UnifiedRecord {
+  id: string;
+  source: 'EXPENSE_INPUT' | 'DELIVERY_ORDER';
+  date: string;
+  parsedDate: Date | null;
+  time: string;
+  category: string;
+  displayCategory: InputCategoryType | string;
+  itemName: string;
+  quantity: string | number;
+  unit: string;
+  unitPrice: number;
+  nominal: number;
+  supplierOrStore: string;
+  picOrUser: string;
+  volunteer?: string;
+  notes?: string;
+  rawDoc?: ReceivingDocument;
+}
+
 type PeriodType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
 
 function parseExpenseDate(dateStr: string): Date | null {
@@ -327,6 +368,55 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     () => warehouseDb.getSuppliers().filter(s => s.isActive),
     [dataVersion]
   );
+  const purchaseOrders = useMemo(() => warehouseDb.getPurchaseOrders(), [dataVersion]);
+
+  // Post-input CTA prompt state
+  const [justSavedPrompt, setJustSavedPrompt] = useState<{
+    title: string;
+    subtitle: string;
+    supplierName: string;
+    supplierId?: string;
+    items: PurchaseOrderItem[];
+    refId?: string;
+  } | null>(null);
+
+  // Nota Pesanan Modal state
+  const [isNotaModalOpen, setIsNotaModalOpen] = useState(false);
+  const [activeNota, setActiveNota] = useState<PurchaseOrderNota | null>(null);
+
+  // Pool Antrean Cetak Nota (Batch Print) state
+  const [isBatchPrintModalOpen, setIsBatchPrintModalOpen] = useState(false);
+  const [poolNotaIds, setPoolNotaIds] = useState<string[]>(() => getPrintPoolIds());
+
+  const handleAddToPool = (id: string) => {
+    const updated = addToPrintPool(id);
+    setPoolNotaIds(updated);
+    setSuccessMessage('Nota berhasil dimasukkan ke antrean pool cetak!');
+    setTimeout(() => setSuccessMessage(''), 3000);
+  };
+
+  const handleRemoveFromPool = (id: string) => {
+    const updated = removeFromPrintPool(id);
+    setPoolNotaIds(updated);
+  };
+
+  const handleClearPool = () => {
+    clearPrintPool();
+    setPoolNotaIds([]);
+    setSuccessMessage('Antrean pool cetak nota berhasil dikosongkan.');
+    setTimeout(() => setSuccessMessage(''), 3000);
+  };
+
+  const handleTogglePool = (id: string) => {
+    if (poolNotaIds.includes(id)) {
+      handleRemoveFromPool(id);
+    } else {
+      handleAddToPool(id);
+    }
+  };
+
+  // Master Supplier Modal state
+  const [isMasterSupplierModalOpen, setIsMasterSupplierModalOpen] = useState(false);
 
   // Active views & modals
   const [isCreatingDeliveryOrder, setIsCreatingDeliveryOrder] = useState(false);
@@ -540,7 +630,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     const finalPrice = singleUnitPrice > 0 ? singleUnitPrice : (getItemCatalogInfo(singleItemName)?.price || 0);
     const totalCost = numQty * finalPrice;
 
-    warehouseDb.recordNonFoodExpense(
+    const newRecord = warehouseDb.recordNonFoodExpense(
       {
         date: singleDate,
         time: singleTime.trim() || defaultCurrentTime,
@@ -566,6 +656,25 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     showToast(`Berhasil mencatat input barang: "${singleItemName.trim()}" (${singleQty} ${singleUnit})!`);
     setIsSingleInputModalOpen(false);
     refreshAll();
+
+    // Trigger post-input prompt for printing Nota Pesanan
+    const item: PurchaseOrderItem = {
+      id: `POI-${Date.now()}`,
+      name: singleItemName.trim(),
+      category: singleCategory,
+      quantity: numQty,
+      unit: singleUnit.trim() || 'Pcs',
+      unitPrice: finalPrice,
+      subtotal: totalCost,
+      notes: singleNotes.trim() || undefined,
+    };
+    setJustSavedPrompt({
+      title: 'Input Barang Berhasil Disimpan!',
+      subtitle: `Catatan belanja "${singleItemName.trim()}" (${singleQty} ${singleUnit}) telah tersimpan ke sistem.`,
+      supplierName: singleSupplier.trim() || 'Toko / Pasar Belanja Rutin',
+      items: [item],
+      refId: newRecord.id,
+    });
   };
 
   // ----------------------------------------------------
@@ -726,10 +835,34 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       };
     });
 
-    warehouseDb.recordNonFoodExpensesBatch(payload, currentUser);
+    const createdExpenses = warehouseDb.recordNonFoodExpensesBatch(payload, currentUser);
     showToast(`Berhasil menyimpan ${validRows.length} barang belanja & pengeluaran sekaligus!`);
     setIsBatchInputModalOpen(false);
     refreshAll();
+
+    // Trigger post-input prompt for printing Nota Pesanan
+    const batchItems: PurchaseOrderItem[] = validRows.map((r, i) => {
+      const numQty = parseFloat(r.qty) || 1;
+      const price = r.unitPrice > 0 ? r.unitPrice : (getItemCatalogInfo(r.itemName)?.price || 0);
+      return {
+        id: `POI-${Date.now()}-${i}`,
+        name: r.itemName.trim(),
+        category: r.category,
+        quantity: numQty,
+        unit: r.unit.trim() || 'Pcs',
+        unitPrice: price,
+        subtotal: numQty * price,
+        notes: r.notes.trim() || undefined,
+      };
+    });
+    const firstSupplier = validRows.find(r => r.supplier?.trim())?.supplier?.trim() || 'Supplier Belanja Bersama';
+    setJustSavedPrompt({
+      title: 'Input Masal Berhasil Disimpan!',
+      subtitle: `Sebanyak ${validRows.length} barang belanja operasional telah tersimpan ke sistem.`,
+      supplierName: firstSupplier,
+      items: batchItems,
+      refId: createdExpenses[0]?.id,
+    });
   };
 
   // ----------------------------------------------------
@@ -867,6 +1000,29 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       setIsCreatingDeliveryOrder(false);
       setSelectedDocForDetail(newDoc);
       refreshAll();
+
+      // Trigger post-input prompt for printing Nota Pesanan
+      const doItems: PurchaseOrderItem[] = lines.map((l, i) => {
+        const price = getItemCatalogInfo(l.itemName)?.price || 0;
+        return {
+          id: `POI-${Date.now()}-${i}`,
+          name: l.itemName,
+          category: l.category,
+          quantity: l.quantity,
+          unit: l.unit,
+          unitPrice: price,
+          subtotal: l.quantity * price,
+          notes: l.conditionNote || undefined,
+        };
+      });
+      setJustSavedPrompt({
+        title: 'Penerimaan Surat Jalan Berhasil Diposting!',
+        subtitle: `Penerimaan #${formDeliveryNote || newDoc.id} dari ${selectedSupplier.name} telah masuk ke stok gudang.`,
+        supplierName: selectedSupplier.name,
+        supplierId: selectedSupplier.id,
+        items: doItems,
+        refId: newDoc.id,
+      });
     } catch (err: any) {
       setErrorMessage(err.message || 'Terjadi kesalahan saat memposting penerimaan.');
     }
@@ -881,28 +1037,140 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   };
 
   // ----------------------------------------------------
+  // Helpers for Nota Pesanan / Purchase Order
+  // ----------------------------------------------------
+  const getMatchingNotaForRecord = (r: UnifiedRecord): PurchaseOrderNota | undefined => {
+    return purchaseOrders.find(po => {
+      // 1. Direct match by receiving document ID
+      if (r.source === 'DELIVERY_ORDER' && r.rawDoc && po.relatedReceivingId === r.rawDoc.id) {
+        return true;
+      }
+      // 2. Direct match by non-food expense ID
+      if (r.source === 'EXPENSE_INPUT' && po.relatedExpenseIds && po.relatedExpenseIds.includes(r.id)) {
+        return true;
+      }
+      // 3. Fallback match by supplier and item name
+      const poSupplier = (po.supplierName || '').toLowerCase().trim();
+      const rSupplier = (r.supplierOrStore || '').toLowerCase().trim();
+      if (poSupplier && rSupplier && rSupplier !== '-' && (poSupplier.includes(rSupplier) || rSupplier.includes(poSupplier))) {
+        const hasItem = po.items.some(it => it.name.toLowerCase().trim() === r.itemName.toLowerCase().trim());
+        if (hasItem) return true;
+      }
+      return false;
+    });
+  };
+
+  const handleOpenExistingNota = (nota: PurchaseOrderNota) => {
+    setActiveNota(nota);
+    setIsNotaModalOpen(true);
+  };
+
+  const handleCreateNotaFromRecord = (r: UnifiedRecord) => {
+    const targetDate = r.date || new Date().toISOString().slice(0, 10);
+    const nextPoNum = generateNextPoNumber(purchaseOrders, targetDate);
+    const suppObj = suppliers.find(s => s.name.toLowerCase() === r.supplierOrStore.toLowerCase());
+    const numQty = parseFloat(String(r.quantity)) || 1;
+    const unitPrice = r.unitPrice > 0 ? r.unitPrice : Math.round(r.nominal / numQty);
+
+    const initialItem: PurchaseOrderItem = {
+      id: `POI-${Date.now()}`,
+      name: r.itemName,
+      category: r.displayCategory || r.category,
+      quantity: numQty,
+      unit: r.unit || 'Pcs',
+      unitPrice: unitPrice,
+      subtotal: r.nominal,
+      notes: r.notes,
+    };
+
+    const newNota: PurchaseOrderNota = {
+      id: `PO-${Date.now()}`,
+      poNumber: nextPoNum,
+      date: r.date || new Date().toISOString().slice(0, 10),
+      deliveryDate: r.date || new Date().toISOString().slice(0, 10),
+      supplierId: suppObj?.id,
+      supplierName: r.supplierOrStore !== '-' ? r.supplierOrStore : (suppObj?.name || 'Toko / Rekanan'),
+      supplierContact: suppObj?.phone ? `${suppObj.phone} (${suppObj.contactPerson})` : '',
+      supplierAddress: suppObj?.address || '',
+      paymentMethod: 'TRANSFER',
+      bankInfo: suppObj ? `Transfer Bank Rekening Resmi ${suppObj.name}` : '',
+      status: 'DISETUJUI',
+      items: [initialItem],
+      subtotal: r.nominal,
+      discount: 0,
+      tax: 0,
+      grandTotal: r.nominal,
+      terbilang: angkaTerbilang(r.nominal),
+      notes: 'Barang harus dalam keadaan segar, higienis, dan sesuai standar pemenuhan gizi SPPG.',
+      deliveryTerms: 'Pengiriman langsung ke Satuan Pelayanan Pemenuhan Gizi (SPPG) Jeru Tumpang.',
+      createdBy: currentUser.name,
+      createdByRole: currentUser.role === 'ADMIN' ? 'Admin Logistik' : currentUser.role,
+      approvedBy: 'Dr. Siti Rahma',
+      approvedByRole: 'Kepala SPPG Jeru Tumpang',
+      supplierPic: suppObj?.contactPerson || 'Pihak Rekanan',
+      relatedExpenseIds: r.source === 'EXPENSE_INPUT' ? [r.id] : undefined,
+      relatedReceivingId: r.source === 'DELIVERY_ORDER' && r.rawDoc ? r.rawDoc.id : undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    setActiveNota(newNota);
+    setIsNotaModalOpen(true);
+  };
+
+  const handleStartNotaFromPrompt = () => {
+    if (!justSavedPrompt) return;
+    const info = justSavedPrompt;
+    const targetDate = new Date().toISOString().slice(0, 10);
+    const nextPoNum = generateNextPoNumber(purchaseOrders, targetDate);
+    const suppObj = suppliers.find(s => s.name.toLowerCase() === info.supplierName.toLowerCase() || s.id === info.supplierId);
+    const subtotal = info.items.reduce((sum, it) => sum + (it.subtotal || it.quantity * it.unitPrice), 0);
+
+    const newNota: PurchaseOrderNota = {
+      id: `PO-${Date.now()}`,
+      poNumber: nextPoNum,
+      date: new Date().toISOString().slice(0, 10),
+      deliveryDate: new Date().toISOString().slice(0, 10),
+      supplierId: suppObj?.id,
+      supplierName: suppObj?.name || info.supplierName,
+      supplierContact: suppObj?.phone ? `${suppObj.phone} (${suppObj.contactPerson})` : '',
+      supplierAddress: suppObj?.address || '',
+      paymentMethod: 'TRANSFER',
+      bankInfo: suppObj ? `Transfer Bank Rekening Resmi ${suppObj.name}` : '',
+      status: 'DISETUJUI',
+      items: info.items,
+      subtotal: subtotal,
+      discount: 0,
+      tax: 0,
+      grandTotal: subtotal,
+      terbilang: angkaTerbilang(subtotal),
+      notes: 'Barang harus dalam keadaan segar, higienis, dan sesuai standar pemenuhan gizi SPPG.',
+      deliveryTerms: 'Pengiriman langsung ke Satuan Pelayanan Pemenuhan Gizi (SPPG) Jeru Tumpang.',
+      createdBy: currentUser.name,
+      createdByRole: currentUser.role === 'ADMIN' ? 'Admin Logistik' : currentUser.role,
+      approvedBy: 'Dr. Siti Rahma',
+      approvedByRole: 'Kepala SPPG Jeru Tumpang',
+      supplierPic: suppObj?.contactPerson || 'Pihak Rekanan',
+      relatedExpenseIds: info.refId && info.refId.startsWith('NFE') ? [info.refId] : undefined,
+      relatedReceivingId: info.refId && !info.refId.startsWith('NFE') ? info.refId : undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    setActiveNota(newNota);
+    setIsNotaModalOpen(true);
+    setJustSavedPrompt(null);
+  };
+
+  const handleSaveNotaFromModal = (updatedNota: PurchaseOrderNota) => {
+    warehouseDb.savePurchaseOrder(updatedNota, currentUser);
+    setActiveNota(updatedNota);
+    refreshAll();
+  };
+
+  // ----------------------------------------------------
   // Summary Metrics & Unified Table Data
   // ----------------------------------------------------
   const unifiedRecords = useMemo(() => {
-    const list: Array<{
-      id: string;
-      source: 'EXPENSE_INPUT' | 'DELIVERY_ORDER';
-      date: string;
-      parsedDate: Date | null;
-      time: string;
-      category: string;
-      displayCategory: InputCategoryType | string;
-      itemName: string;
-      quantity: string | number;
-      unit: string;
-      unitPrice: number;
-      nominal: number;
-      supplierOrStore: string;
-      picOrUser: string;
-      volunteer?: string;
-      notes?: string;
-      rawDoc?: ReceivingDocument;
-    }> = [];
+    const list: UnifiedRecord[] = [];
 
     // Add manual / batch inputs
     expenses.forEach(exp => {
@@ -924,7 +1192,9 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
         unit: exp.unit || 'Pcs',
         unitPrice: price,
         nominal: total,
-        supplierOrStore: exp.notes && exp.notes.includes('[Toko') ? (exp.notes.match(/\[(?:Toko|Supplier):\s*([^\]]+)\]/)?.[1] || '-') : '-',
+        supplierOrStore: exp.notes && (exp.notes.includes('[Toko') || exp.notes.includes('[Supplier'))
+          ? (exp.notes.match(/\[(?:Toko|Supplier|Toko\/Supplier):\s*([^\]]+)\]/i)?.[1] || '-')
+          : '-',
         picOrUser: exp.pic || exp.recordedBy || currentUser.name,
         volunteer: exp.volunteer,
         notes: exp.notes,
@@ -1143,8 +1413,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
               {/* Dropdown Menu */}
               {isInputDropdownOpen && (
                 <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
-                  <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                    Opsi Input Barang
+                  <div className="px-3.5 py-1.5 text-[11px] font-semibold text-slate-500 border-b border-slate-100">
+                    Opsi Input Barang & Master
                   </div>
 
                   <button
@@ -1199,9 +1469,46 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                       </div>
                     </button>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsInputDropdownOpen(false);
+                      setIsMasterSupplierModalOpen(true);
+                    }}
+                    className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer border-t border-slate-100"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                      <Building2 className="w-4 h-4 text-emerald-700" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900">Master Data Supplier</div>
+                      <div className="text-[10px] text-slate-500">Kelola, tambah & edit supplier rekanan</div>
+                    </div>
+                  </button>
                 </div>
               )}
             </div>
+
+            {/* Tombol Pool Cetak Nota */}
+            <button
+              type="button"
+              onClick={() => setIsBatchPrintModalOpen(true)}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl border shadow-2xs transition-all cursor-pointer relative ${
+                poolNotaIds.length > 0
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100 hover:scale-102'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
+              title="Buka Pool Antrean Cetak: Kumpulkan nota kecil untuk dicetak gabung 2 nota per lembar A4"
+            >
+              <Layers className="w-4 h-4 text-emerald-600" />
+              <span>Pool Cetak</span>
+              {poolNotaIds.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-emerald-600 text-white text-[10px] font-bold">
+                  {poolNotaIds.length}
+                </span>
+              )}
+            </button>
 
             {/* Ekspor Excel */}
             <button
@@ -1771,13 +2078,14 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                   <th className="py-3 px-3 w-32 text-right">Estimasi Biaya</th>
                   <th className="py-3 px-3 min-w-[140px]">Toko / Supplier</th>
                   <th className="py-3 px-3 w-32">PIC Petugas</th>
+                  <th className="py-3 px-2 w-20 text-center" title="Status Nota Pesanan / Purchase Order (PO)">Nota PO</th>
                   <th className="py-3 px-2 text-center w-14">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-10 text-center text-slate-400 italic">
+                    <td colSpan={10} className="py-10 text-center text-slate-400 italic">
                       Belum ada data barang atau pengeluaran yang sesuai filter saat ini.
                     </td>
                   </tr>
@@ -1793,6 +2101,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                     else if (isKering) badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
                     else if (isAtk) badgeColor = 'bg-blue-50 text-blue-800 border-blue-200';
                     else if (isBersih) badgeColor = 'bg-cyan-50 text-cyan-800 border-cyan-200';
+
+                    const matchingNota = getMatchingNotaForRecord(r);
 
                     return (
                       <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
@@ -1844,6 +2154,83 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                         </td>
                         <td className="py-3 px-3 text-slate-700">
                           <div className="font-semibold truncate max-w-[120px]">{r.picOrUser}</div>
+                        </td>
+                        <td className="py-2.5 px-2 text-center">
+                          {matchingNota ? (
+                            <div className="relative inline-flex items-center justify-center group">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenExistingNota(matchingNota)}
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95 relative ${
+                                  poolNotaIds.includes(matchingNota.id) || poolNotaIds.includes(matchingNota.poNumber)
+                                    ? 'bg-emerald-100 text-emerald-800 border-2 border-emerald-500'
+                                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/90'
+                                }`}
+                                title={`Nota PO ${matchingNota.poNumber} (${matchingNota.status}) - Klik untuk lihat / cetak surat`}
+                                aria-label={`Nota PO ${matchingNota.poNumber}`}
+                              >
+                                <FileCheck className="w-4 h-4 text-emerald-600" />
+                                {poolNotaIds.includes(matchingNota.id) || poolNotaIds.includes(matchingNota.poNumber) ? (
+                                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-sky-500 border-2 border-white" title="Dalam Pool Cetak" />
+                                ) : (
+                                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-white" />
+                                )}
+                              </button>
+
+                              {/* Tooltip Hover - Muncul di sebelah kiri */}
+                              <div className="absolute right-full top-1/2 -translate-y-1/2 mr-2.5 hidden group-hover:flex items-center z-50 pointer-events-none transition-all duration-150 animate-in fade-in zoom-in-95">
+                                <div className="bg-slate-900 text-white text-[11px] rounded-lg py-2 px-3 shadow-2xl whitespace-nowrap border border-slate-700/80 flex flex-col items-start gap-1">
+                                  <div className="flex items-center gap-1.5 font-bold text-emerald-400">
+                                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                    <span>Nota PO Diterbitkan</span>
+                                  </div>
+                                  <div className="font-mono text-[10px] text-slate-300">
+                                    {matchingNota.poNumber}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400">
+                                    Status: <span className="font-semibold text-slate-200">{matchingNota.status}</span>
+                                  </div>
+                                  {poolNotaIds.includes(matchingNota.id) || poolNotaIds.includes(matchingNota.poNumber) ? (
+                                    <div className="text-[9.5px] font-semibold text-sky-400 flex items-center gap-1 pt-0.5 border-t border-slate-700/80 w-full">
+                                      <Layers className="w-3 h-3" />
+                                      <span>Sudah di Pool Cetak</span>
+                                    </div>
+                                  ) : (
+                                    <div className="text-[9.5px] text-slate-400 pt-0.5 border-t border-slate-700/80 w-full">
+                                      Klik surat untuk cetak / masukkan pool
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="w-2 h-2 bg-slate-900 rotate-45 -ml-1 border-t border-r border-slate-700/80 shrink-0" />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="relative inline-flex items-center justify-center group">
+                              <button
+                                type="button"
+                                onClick={() => handleCreateNotaFromRecord(r)}
+                                className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-700 border border-dashed border-slate-300 hover:border-emerald-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                                title="Belum ada Nota PO. Klik untuk buat nota & PO resmi"
+                                aria-label="Buat Nota PO"
+                              >
+                                <FilePlus className="w-4 h-4 text-slate-400 group-hover:text-emerald-600" />
+                              </button>
+
+                              {/* Tooltip Hover - Muncul di sebelah kiri */}
+                              <div className="absolute right-full top-1/2 -translate-y-1/2 mr-2.5 hidden group-hover:flex items-center z-50 pointer-events-none transition-all duration-150 animate-in fade-in zoom-in-95">
+                                <div className="bg-slate-900 text-white text-[11px] rounded-lg py-1.5 px-3 shadow-2xl whitespace-nowrap border border-slate-700/80 flex flex-col items-start gap-0.5">
+                                  <div className="flex items-center gap-1.5 font-bold text-slate-200">
+                                    <Receipt className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                    <span>Belum Ada Nota</span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-400">
+                                    Klik untuk langsung buat & cetak nota resmi
+                                  </div>
+                                </div>
+                                <div className="w-2 h-2 bg-slate-900 rotate-45 -ml-1 border-t border-r border-slate-700/80 shrink-0" />
+                              </div>
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 px-2 text-center">
                           {r.source === 'EXPENSE_INPUT' ? (
@@ -2378,6 +2765,124 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: POST-INPUT NOTA PESANAN PROMPT (CTA TAMBAHAN)                     */}
+      {/* ========================================================================= */}
+      {justSavedPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="p-6 text-center">
+              <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3.5 ring-8 ring-emerald-50">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900">
+                {justSavedPrompt.title}
+              </h3>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                {justSavedPrompt.subtitle}
+              </p>
+
+              {/* Summary Card */}
+              <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200 text-left text-xs space-y-2">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200/80">
+                  <span className="text-slate-500 font-medium">Toko / Supplier:</span>
+                  <span className="font-bold text-slate-900 truncate max-w-[200px]">
+                    {justSavedPrompt.supplierName}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200/80">
+                  <span className="text-slate-500 font-medium">Total Item:</span>
+                  <span className="font-semibold text-slate-800">
+                    {justSavedPrompt.items.length} Barang
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Total Nilai Belanja:</span>
+                  <span className="font-mono font-bold text-emerald-700 text-sm">
+                    Rp {justSavedPrompt.items.reduce((s, it) => s + (it.subtotal || it.quantity * it.unitPrice), 0).toLocaleString('id-ID')}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-3.5 p-2.5 rounded-lg bg-emerald-50 border border-emerald-100 text-[11px] text-emerald-800 text-left flex items-start gap-2">
+                <Receipt className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <span>
+                  Ingin langsung membuat dan mencetak <strong>Nota Pesanan / Bukti Pembelian Resmi</strong> ber-Kop Surat untuk supplier ini?
+                </span>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="mt-5 flex flex-col sm:flex-row gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setJustSavedPrompt(null)}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Nanti Saja / Selesai
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStartNotaFromPrompt}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  Buat & Cetak Nota
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: NOTA PESANAN & PO SUPPLIER OFFICIAL BER-KOP SURAT                  */}
+      {/* ========================================================================= */}
+      {isNotaModalOpen && activeNota && (
+        <NotaPesananModal
+          isOpen={isNotaModalOpen}
+          onClose={() => setIsNotaModalOpen(false)}
+          nota={activeNota}
+          onSaveNota={handleSaveNotaFromModal}
+          suppliers={suppliers}
+          currentUser={currentUser}
+          onSupplierAdded={() => refreshAll()}
+          isInPool={poolNotaIds.includes(activeNota.id) || poolNotaIds.includes(activeNota.poNumber)}
+          onTogglePool={(id) => handleTogglePool(id)}
+          onOpenBatchPool={() => {
+            setIsNotaModalOpen(false);
+            setIsBatchPrintModalOpen(true);
+          }}
+          poolCount={poolNotaIds.length}
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: BATCH PRINT POOL (CETAK GABUNGAN 2 NOTA PER LEMBAR A4)              */}
+      {/* ========================================================================= */}
+      <BatchPrintNotaModal
+        isOpen={isBatchPrintModalOpen}
+        onClose={() => setIsBatchPrintModalOpen(false)}
+        poolNotaIds={poolNotaIds}
+        allNotas={purchaseOrders}
+        onRemoveFromPool={handleRemoveFromPool}
+        onClearPool={handleClearPool}
+        onAddToPool={handleAddToPool}
+        onOpenSingleNota={(nota) => {
+          setIsBatchPrintModalOpen(false);
+          handleOpenExistingNota(nota);
+        }}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODAL: MASTER DATA SUPPLIER REKANAN                                       */}
+      {/* ========================================================================= */}
+      <MasterSupplierModal
+        isOpen={isMasterSupplierModalOpen}
+        onClose={() => setIsMasterSupplierModalOpen(false)}
+        onSuppliersUpdated={() => refreshAll()}
+        currentUser={currentUser}
+      />
 
       {/* Autocomplete Datalists */}
       <datalist id="common-catalog-datalist">

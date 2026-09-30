@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { Supplier } from '../types/warehouse';
-import { Building2, Search, Plus, Phone, MapPin, User, CheckCircle2, XCircle, Edit2, X } from 'lucide-react';
+import { Building2, Search, Plus, Phone, MapPin, User, CheckCircle2, XCircle, Edit2, X, Receipt } from 'lucide-react';
 
 interface SuppliersModuleProps {
   onRefreshData?: () => void;
+  onNavigateToExpense?: (supplierId: string) => void;
 }
 
-export const SuppliersModule: React.FC<SuppliersModuleProps> = ({ onRefreshData }) => {
+export const SuppliersModule: React.FC<SuppliersModuleProps> = ({ onRefreshData, onNavigateToExpense }) => {
   const { currentUser, can } = useAuth();
   const [suppliers, setSuppliers] = useState<Supplier[]>(() => warehouseDb.getSuppliers());
   const [searchQuery, setSearchQuery] = useState('');
@@ -198,8 +199,20 @@ export const SuppliersModule: React.FC<SuppliersModuleProps> = ({ onRefreshData 
                 </div>
               </div>
 
-              {can('MANAGE_SUPPLIERS') && (
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end">
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                {onNavigateToExpense ? (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToExpense(sup.id)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer"
+                    title="Cetak Nota Kas Keluar / Bukti Pembayaran dengan Kop Resmi untuk supplier ini"
+                  >
+                    <Receipt className="w-3.5 h-3.5 text-emerald-700" />
+                    Nota Pengeluaran
+                  </button>
+                ) : <div />}
+
+                {can('MANAGE_SUPPLIERS') && (
                   <button
                     onClick={() => handleOpenEdit(sup)}
                     className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 p-1 rounded hover:bg-emerald-50 transition-colors cursor-pointer"
@@ -207,8 +220,8 @@ export const SuppliersModule: React.FC<SuppliersModuleProps> = ({ onRefreshData 
                     <Edit2 className="w-3.5 h-3.5" />
                     Edit Data
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           ))
         )}

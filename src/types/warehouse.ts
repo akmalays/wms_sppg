@@ -464,6 +464,47 @@ export interface EmployeeAttendance {
   createdAt: string;
 }
 
+export interface PurchaseOrderItem {
+  id: string;
+  name: string;
+  category?: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  subtotal: number;
+  notes?: string;
+}
 
+export type PaymentMethod = 'TRANSFER' | 'TUNAI' | 'TEMPO_7' | 'TEMPO_14' | 'TEMPO_30';
+export type PurchaseOrderStatus = 'DRAFT' | 'DISETUJUI' | 'DIBAYAR' | 'SELESAI';
 
-
+export interface PurchaseOrderNota {
+  id: string; // e.g. PO-2026/09/001
+  poNumber: string; // e.g. NO. NP/SPPG/144/IX/2026 (starts from 134, Roman month)
+  date: string; // YYYY-MM-DD
+  deliveryDate?: string;
+  supplierId?: string;
+  supplierName: string;
+  supplierContact?: string;
+  supplierAddress?: string;
+  paymentMethod: PaymentMethod;
+  bankInfo?: string;
+  status: PurchaseOrderStatus;
+  items: PurchaseOrderItem[];
+  subtotal: number;
+  discount: number;
+  tax: number;
+  grandTotal: number;
+  terbilang: string;
+  notes?: string;
+  deliveryTerms?: string;
+  createdBy: string;
+  createdByRole?: string;
+  approvedBy?: string;
+  approvedByRole?: string;
+  supplierPic?: string;
+  relatedExpenseIds?: string[];
+  relatedReceivingId?: string;
+  createdAt: string;
+  updatedAt?: string;
+}

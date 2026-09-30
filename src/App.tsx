@@ -28,6 +28,12 @@ const MainLayout: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [authView, setAuthView] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
   const [dataVersion, setDataVersion] = useState<number>(0);
+  const [selectedExpenseSupplierId, setSelectedExpenseSupplierId] = useState<string | undefined>(undefined);
+
+  const handleNavigateToSupplierExpense = (supplierId: string) => {
+    setSelectedExpenseSupplierId(supplierId);
+    setActiveTab('tools_forms');
+  };
 
   if (!isAuthenticated) {
     if (authView === 'REGISTER') {
@@ -99,7 +105,12 @@ const MainLayout: React.FC = () => {
             <ProfileModule onNavigate={setActiveTab} />
           )}
 
-          {activeTab === 'tools_forms' && <ToolsPrintModule />}
+          {activeTab === 'tools_forms' && (
+            <ToolsPrintModule
+              initialForm={selectedExpenseSupplierId ? 'SUPPLIER_EXPENSE_NOTE' : undefined}
+              initialSupplierId={selectedExpenseSupplierId}
+            />
+          )}
 
           {/* Secondary / Deep Logistics Modules */}
           {activeTab === 'receiving' && (
@@ -121,7 +132,10 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'suppliers' && (
-            <SuppliersModule onRefreshData={handleRefresh} />
+            <SuppliersModule
+              onRefreshData={handleRefresh}
+              onNavigateToExpense={handleNavigateToSupplierExpense}
+            />
           )}
 
           {activeTab === 'menu_print' && (

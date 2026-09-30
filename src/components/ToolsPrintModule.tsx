@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Printer,
   FileText,
@@ -25,14 +25,21 @@ import {
   Warehouse,
   Snowflake,
   Thermometer,
-  ShieldCheck
+  ShieldCheck,
+  Receipt,
+  CreditCard,
+  Plus,
+  Trash2,
+  Banknote,
+  Calculator,
+  ArrowRight
 } from 'lucide-react';
 import { warehouseDb } from '../db/storage';
 import { useAuth } from '../context/AuthContext';
-import { ReceivingDocument, ItemMaster, EquipmentItem, normalizeItemCategory } from '../types/warehouse';
+import { ReceivingDocument, ItemMaster, EquipmentItem, Supplier, normalizeItemCategory } from '../types/warehouse';
 import { SppgLogo } from './SppgLogo';
 
-type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'EQUIPMENT_LABEL' | 'RACK_LABEL';
+type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'SUPPLIER_EXPENSE_NOTE';
 
 interface PrintableLabelItem {
   id: string;
@@ -246,10 +253,176 @@ const BASE_RACKS_CONFIG: Omit<WarehouseRack, 'items'>[] = [
   },
 ];
 
-export const ToolsPrintModule: React.FC = () => {
+// --- NOTA PENGELUARAN SUPPLIER / BUKTI KAS KELUAR (BKK) TYPES & HELPERS ---
+export interface SupplierExpenseLine {
+  id: string;
+  name: string;
+  category: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  totalPrice: number;
+  notes?: string;
+}
+
+/**
+ * Konversi angka rupiah ke kalimat terbilang resmi Bahasa Indonesia
+ */
+export function angkaTerbilang(angka: number): string {
+  const bilangan = [
+    '', 'Satu', 'Dua', 'Tiga', 'Empat', 'Lima',
+    'Enam', 'Tujuh', 'Delapan', 'Sembilan', 'Sepuluh', 'Sebelas'
+  ];
+
+  function toWords(n: number): string {
+    const num = Math.floor(Math.abs(n));
+    if (num < 12) {
+      return bilangan[num];
+    } else if (num < 20) {
+      return toWords(num - 10) + ' Belas';
+    } else if (num < 100) {
+      const sisa = num % 10;
+      return toWords(Math.floor(num / 10)) + ' Puluh' + (sisa > 0 ? ' ' + toWords(sisa) : '');
+    } else if (num < 200) {
+      const sisa = num - 100;
+      return 'Seratus' + (sisa > 0 ? ' ' + toWords(sisa) : '');
+    } else if (num < 1000) {
+      const sisa = num % 100;
+      return toWords(Math.floor(num / 100)) + ' Ratus' + (sisa > 0 ? ' ' + toWords(sisa) : '');
+    } else if (num < 2000) {
+      const sisa = num - 1000;
+      return 'Seribu' + (sisa > 0 ? ' ' + toWords(sisa) : '');
+    } else if (num < 1000000) {
+      const sisa = num % 1000;
+      return toWords(Math.floor(num / 1000)) + ' Ribu' + (sisa > 0 ? ' ' + toWords(sisa) : '');
+    } else if (num < 1000000000) {
+      const sisa = num % 1000000;
+      return toWords(Math.floor(num / 1000000)) + ' Juta' + (sisa > 0 ? ' ' + toWords(sisa) : '');
+    } else if (num < 1000000000000) {
+      const sisa = num % 1000000000;
+      return toWords(Math.floor(num / 1000000000)) + ' Miliar' + (sisa > 0 ? ' ' + toWords(sisa) : '');
+    } else {
+      const sisa = num % 1000000000000;
+      return toWords(Math.floor(num / 1000000000000)) + ' Triliun' + (sisa > 0 ? ' ' + toWords(sisa) : '');
+    }
+  }
+
+  if (!angka || isNaN(angka) || angka === 0) return 'Nol Rupiah';
+  return `${toWords(angka).trim()} Rupiah`;
+}
+
+const DEFAULT_EXPENSE_PRICE_MAP: Record<string, number> = {
+  beras: 14500,
+  minyak: 18000,
+  gula: 17500,
+  tepung: 11000,
+  garam: 4000,
+  kecap: 22000,
+  saus: 18000,
+  bawang: 35000,
+  bumbu: 25000,
+  ayam: 38000,
+  daging: 125000,
+  telur: 28000,
+  ikan: 35000,
+  tahu: 2000,
+  tempe: 2500,
+  bayam: 3500,
+  kangkung: 3500,
+  wortel: 12000,
+  buncis: 14000,
+  labu: 8000,
+  pisang: 16000,
+  semangka: 8500,
+  pepaya: 7500,
+  susu: 15000,
+  kresek: 15000,
+  plastik: 25000,
+  trashbag: 32000,
+  sunlight: 85000,
+  sabun: 18000,
+  masker: 25000,
+  tissue: 12000,
+};
+
+function getEstimatedItemPrice(name: string, category?: string): number {
+  const lower = (name || '').toLowerCase();
+  for (const [k, p] of Object.entries(DEFAULT_EXPENSE_PRICE_MAP)) {
+    if (lower.includes(k)) return p;
+  }
+  const norm = normalizeItemCategory(category);
+  if (norm === 'Bahan Basah') return 25000;
+  if (norm === 'Bahan Kering') return 15000;
+  if (norm === 'Bahan Peralatan') return 20000;
+  return 15000;
+}
+
+const SUPPLIER_BANK_DEFAULTS: Record<string, { bank: string; accountNo: string; holder: string }> = {
+  'SUP-001': { bank: 'Bank Mandiri', accountNo: '132-00-8829102-1', holder: 'PT ABC Pangan Mandiri' },
+  'SUP-002': { bank: 'BCA (Bank Central Asia)', accountNo: '841-092-4411', holder: 'CV Berkah Unggas Segar' },
+  'SUP-003': { bank: 'Bank BRI', accountNo: '0182-01-002931-50-8', holder: 'Koperasi Tani Makmur Subang' },
+  'SUP-004': { bank: 'BCA (Bank Central Asia)', accountNo: '524-118-9902', holder: 'PT Buah Nusantara Segar' },
+  'SUP-005': { bank: 'Bank BNI', accountNo: '082-991-4421', holder: 'PT Higienis Sanitasi Sentosa' },
+};
+
+function getDefaultLinesForSupplier(supplier: Supplier): SupplierExpenseLine[] {
+  const cat = (supplier.supplyCategory || '').toLowerCase();
+  if (cat.includes('beras') || cat.includes('sembako')) {
+    return [
+      { id: 'exp-1', name: 'Beras Premium Pandan Wangi (Karung 50kg)', category: 'Bahan Kering', quantity: 200, unit: 'Kg', unitPrice: 14500, totalPrice: 2900000, notes: 'Mutu beras pulen, putih & bebas kutu' },
+      { id: 'exp-2', name: 'Minyak Goreng Sawit Higienis (Jerigen)', category: 'Bahan Kering', quantity: 60, unit: 'Liter', unitPrice: 18000, totalPrice: 1080000, notes: 'Kemasan jerigen tersegel rapat' },
+      { id: 'exp-3', name: 'Gula Pasir Kristal Putih', category: 'Bahan Kering', quantity: 30, unit: 'Kg', unitPrice: 17500, totalPrice: 525000, notes: 'Gula tebu murni' },
+      { id: 'exp-4', name: 'Garam Halus Beriodium', category: 'Bahan Kering', quantity: 15, unit: 'Pack', unitPrice: 4000, totalPrice: 60000, notes: 'Konsumsi dapur gizi' }
+    ];
+  }
+  if (cat.includes('protein') || cat.includes('unggas') || cat.includes('daging')) {
+    return [
+      { id: 'exp-1', name: 'Daging Ayam Broiler Karkas Bersih', category: 'Bahan Basah', quantity: 50, unit: 'Kg', unitPrice: 38000, totalPrice: 1900000, notes: 'Ayam segar dingin dipotong pagi hari' },
+      { id: 'exp-2', name: 'Telur Ayam Negeri Ras Segar', category: 'Bahan Basah', quantity: 35, unit: 'Kg', unitPrice: 28000, totalPrice: 980000, notes: 'Cangkang bersih utuh tanpa retak' },
+      { id: 'exp-3', name: 'Tahu Kedelai Putih Segar', category: 'Bahan Basah', quantity: 60, unit: 'Pcs', unitPrice: 2000, totalPrice: 120000, notes: 'Tahu higienis non-pengawet' }
+    ];
+  }
+  if (cat.includes('sayur')) {
+    return [
+      { id: 'exp-1', name: 'Sayur Bayam Hijau Segar', category: 'Bahan Basah', quantity: 40, unit: 'Ikat', unitPrice: 3500, totalPrice: 140000, notes: 'Sayur petik pagi' },
+      { id: 'exp-2', name: 'Wortel Segar Brastagi', category: 'Bahan Basah', quantity: 30, unit: 'Kg', unitPrice: 12000, totalPrice: 360000, notes: 'Wortel manis kelas A' },
+      { id: 'exp-3', name: 'Buncis Muda Segar', category: 'Bahan Basah', quantity: 25, unit: 'Kg', unitPrice: 14000, totalPrice: 350000, notes: 'Buncis renyah tanpa serat tua' },
+      { id: 'exp-4', name: 'Labu Siam Manisa', category: 'Bahan Basah', quantity: 20, unit: 'Kg', unitPrice: 8000, totalPrice: 160000, notes: 'Kondisi segar keras' }
+    ];
+  }
+  if (cat.includes('buah')) {
+    return [
+      { id: 'exp-1', name: 'Pisang Cavendish Matang Pas', category: 'Bahan Basah', quantity: 45, unit: 'Kg', unitPrice: 16000, totalPrice: 720000, notes: 'Siap dibagikan ke penerima gizi' },
+      { id: 'exp-2', name: 'Semangka Merah Non-Biji', category: 'Bahan Basah', quantity: 60, unit: 'Kg', unitPrice: 8500, totalPrice: 510000, notes: 'Kadar manis tinggi & segar' },
+      { id: 'exp-3', name: 'Pepaya California Matang Pohon', category: 'Bahan Basah', quantity: 35, unit: 'Kg', unitPrice: 7500, totalPrice: 262500, notes: 'Tekstur daging padat' }
+    ];
+  }
+  if (cat.includes('hygiene') || cat.includes('clean') || cat.includes('alat')) {
+    return [
+      { id: 'exp-1', name: 'Sabun Cuci Piring Food-Grade 4L', category: 'Bahan Peralatan', quantity: 3, unit: 'Jerigen', unitPrice: 85000, totalPrice: 255000, notes: 'Sanitasi peralatan makan SPPG' },
+      { id: 'exp-2', name: 'Kantong Plastik Sampah HD Hitam Roll', category: 'Bahan Peralatan', quantity: 10, unit: 'Roll', unitPrice: 32000, totalPrice: 320000, notes: 'Pengelolaan limbah dapur' },
+      { id: 'exp-3', name: 'Masker Medis Dapur 3-Ply (Box 50 pcs)', category: 'Bahan Peralatan', quantity: 5, unit: 'Dus', unitPrice: 25000, totalPrice: 125000, notes: 'Protokol higienitas penjamah makanan' }
+    ];
+  }
+  return [
+    { id: 'exp-1', name: `Pasokan Bahan ${supplier.supplyCategory}`, category: 'Bahan Kering', quantity: 50, unit: 'Kg', unitPrice: 25000, totalPrice: 1250000, notes: 'Penerimaan bahan operasional' }
+  ];
+}
+
+export interface ToolsPrintModuleProps {
+  initialForm?: FormType;
+  initialSupplierId?: string;
+}
+
+export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
+  initialForm,
+  initialSupplierId
+}) => {
   const { currentUser } = useAuth();
 
-  const [activeForm, setActiveForm] = useState<FormType>('RECEIVING_FORM');
+  const [activeForm, setActiveForm] = useState<FormType>(
+    initialSupplierId ? 'SUPPLIER_EXPENSE_NOTE' : (initialForm || 'RECEIVING_FORM')
+  );
   const [unitName, setUnitName] = useState<string>('SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi');
   const [printDate, setPrintDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
@@ -266,6 +439,166 @@ export const ToolsPrintModule: React.FC = () => {
   const [menuToday, setMenuToday] = useState<string>('Nasi Putih Pulen, Ayam Fillet Semur Kecap, Sup Sayur Buncis & Wortel, Pisang Cavendish');
   const [targetPortions, setTargetPortions] = useState<number>(1200);
   const [kitchenPic, setKitchenPic] = useState<string>('Chef Rahmat (Kepala Dapur)');
+
+  // Supplier Expense Note States
+  const [expenseSupplierId, setExpenseSupplierId] = useState<string>(
+    initialSupplierId || suppliers[0]?.id || 'SUP-001'
+  );
+  const [expenseInvoiceNo, setExpenseInvoiceNo] = useState<string>(() => {
+    const today = new Date();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yyyy = today.getFullYear();
+    return `BKK/SPPG-JT/${yyyy}/${mm}/001`;
+  });
+  const [expenseDate, setExpenseDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [expensePaymentMethod, setExpensePaymentMethod] = useState<string>('Transfer Bank Mandiri');
+  const [expenseBankName, setExpenseBankName] = useState<string>('Bank Mandiri');
+  const [expenseBankAccount, setExpenseBankAccount] = useState<string>('132-00-8829102-1');
+  const [expenseAccountHolder, setExpenseAccountHolder] = useState<string>('PT ABC Pangan Mandiri');
+  const [expenseDeliveryRef, setExpenseDeliveryRef] = useState<string>('SJ-ABC-8842 / GR-2026-0001');
+  const [expensePurpose, setExpensePurpose] = useState<string>(
+    'Pembayaran Belanja Bahan Baku Pangan Dapur Gizi SPPG Jeru Tumpang'
+  );
+  const [expenseStatus, setExpenseStatus] = useState<'LUNAS' | 'DP' | 'TEMPO' | 'PENDING'>('LUNAS');
+  const [expenseDiscount, setExpenseDiscount] = useState<number>(0);
+  const [expenseShippingCost, setExpenseShippingCost] = useState<number>(0);
+  const [expenseNotes, setExpenseNotes] = useState<string>(
+    'Bahan pangan telah diperiksa mutu fisiknya oleh Tim Logistik & Penerimaan Gudang SPPG Jeru Tumpang dalam kondisi segar, lengkap, dan memenuhi standar keamanan pangan.'
+  );
+  const [expensePicTreasurer, setExpensePicTreasurer] = useState<string>('Siti Aisyah (Bendahara)');
+  const [expensePicVerifier, setExpensePicVerifier] = useState<string>('Ahmad Fauzi (Verifikator Gudang)');
+  const [expensePicApprover, setExpensePicApprover] = useState<string>('Dr. Siti Rahma (Kepala SPPG)');
+  const [expenseLines, setExpenseLines] = useState<SupplierExpenseLine[]>(() => {
+    const defaultSup = suppliers.find(s => s.id === (initialSupplierId || suppliers[0]?.id)) || suppliers[0];
+    return defaultSup ? getDefaultLinesForSupplier(defaultSup) : [];
+  });
+
+  const selectedSupplier = useMemo(() => {
+    return suppliers.find(s => s.id === expenseSupplierId) || {
+      id: expenseSupplierId,
+      name: 'Mitra Rekanan SPPG',
+      contactPerson: 'PIC Supplier',
+      phone: '-',
+      address: 'Malang, Jawa Timur',
+      supplyCategory: 'Logistik Pangan',
+      isActive: true,
+    };
+  }, [suppliers, expenseSupplierId]);
+
+  // Synchronize when initialSupplierId or initialForm changes from outside (e.g. from SuppliersModule)
+  useEffect(() => {
+    if (initialSupplierId) {
+      setActiveForm('SUPPLIER_EXPENSE_NOTE');
+      handleSupplierChange(initialSupplierId);
+    } else if (initialForm) {
+      setActiveForm(initialForm);
+    }
+  }, [initialSupplierId, initialForm]);
+
+  const handleSupplierChange = (supId: string) => {
+    setExpenseSupplierId(supId);
+    const sup = suppliers.find(s => s.id === supId);
+    if (!sup) return;
+
+    // Bank defaults
+    const bankDefault = SUPPLIER_BANK_DEFAULTS[sup.id] || {
+      bank: 'Bank BRI / Rekening Mitra',
+      accountNo: '0182-01-098877-50-1',
+      holder: sup.name
+    };
+    setExpenseBankName(bankDefault.bank);
+    setExpenseBankAccount(bankDefault.accountNo);
+    setExpenseAccountHolder(bankDefault.holder);
+
+    // Look for recent receiving doc for this supplier
+    const supReceivings = receivingDocs.filter(
+      r => r.supplierId === sup.id || r.supplierName.toLowerCase() === sup.name.toLowerCase()
+    );
+    if (supReceivings.length > 0) {
+      const latest = supReceivings[0];
+      setExpenseDeliveryRef(latest.deliveryNoteNo ? `${latest.deliveryNoteNo} / ${latest.id}` : latest.id);
+      const convertedLines: SupplierExpenseLine[] = latest.lines.map((l, idx) => {
+        const unitPrice = getEstimatedItemPrice(l.itemName, l.category);
+        return {
+          id: `line-${Date.now()}-${idx}`,
+          name: l.itemName,
+          category: l.category || 'Bahan Pangan',
+          quantity: l.quantity,
+          unit: l.unit,
+          unitPrice,
+          totalPrice: l.quantity * unitPrice,
+          notes: l.conditionNote || 'Kondisi baik & sesuai PO'
+        };
+      });
+      setExpenseLines(convertedLines);
+    } else {
+      setExpenseDeliveryRef(`SJ-${sup.id.replace('SUP-', '')}-${new Date().toISOString().slice(2, 7).replace('-', '')}`);
+      setExpenseLines(getDefaultLinesForSupplier(sup));
+    }
+  };
+
+  const handleLoadReceivingDocToExpense = (docId: string) => {
+    const doc = receivingDocs.find(r => r.id === docId);
+    if (!doc) return;
+    setExpenseDeliveryRef(doc.deliveryNoteNo ? `${doc.deliveryNoteNo} / ${doc.id}` : doc.id);
+    const convertedLines: SupplierExpenseLine[] = doc.lines.map((l, idx) => {
+      const unitPrice = getEstimatedItemPrice(l.itemName, l.category);
+      return {
+        id: `line-${Date.now()}-${idx}`,
+        name: l.itemName,
+        category: l.category || 'Bahan Pangan',
+        quantity: l.quantity,
+        unit: l.unit,
+        unitPrice,
+        totalPrice: l.quantity * unitPrice,
+        notes: l.conditionNote || 'Kondisi baik & sesuai standar mutu gizi'
+      };
+    });
+    setExpenseLines(convertedLines);
+  };
+
+  const handleLoadDefaultTemplate = (sup: Supplier) => {
+    setExpenseLines(getDefaultLinesForSupplier(sup));
+  };
+
+  const handleAddExpenseLine = () => {
+    const newLine: SupplierExpenseLine = {
+      id: `line-${Date.now()}-${Math.random().toString().slice(2, 6)}`,
+      name: '',
+      category: 'Bahan Pangan',
+      quantity: 1,
+      unit: 'Kg',
+      unitPrice: 0,
+      totalPrice: 0,
+      notes: ''
+    };
+    setExpenseLines(prev => [...prev, newLine]);
+  };
+
+  const handleUpdateExpenseLine = (id: string, field: keyof SupplierExpenseLine, val: any) => {
+    setExpenseLines(prev => prev.map(line => {
+      if (line.id !== id) return line;
+      const updated = { ...line, [field]: val };
+      if (field === 'quantity' || field === 'unitPrice') {
+        const q = field === 'quantity' ? Number(val) || 0 : line.quantity;
+        const p = field === 'unitPrice' ? Number(val) || 0 : line.unitPrice;
+        updated.totalPrice = q * p;
+      }
+      return updated;
+    }));
+  };
+
+  const handleRemoveExpenseLine = (id: string) => {
+    setExpenseLines(prev => prev.filter(l => l.id !== id));
+  };
+
+  const expenseSubtotal = useMemo(() => {
+    return expenseLines.reduce((acc, curr) => acc + (curr.totalPrice || (curr.quantity * curr.unitPrice)), 0);
+  }, [expenseLines]);
+
+  const expenseTotalPayable = useMemo(() => {
+    return Math.max(0, expenseSubtotal - (expenseDiscount || 0) + (expenseShippingCost || 0));
+  }, [expenseSubtotal, expenseDiscount, expenseShippingCost]);
 
   // Label & QR feature states
   const [labelWarehouseFilter, setLabelWarehouseFilter] = useState<'ALL' | 'GUDANG_KERING' | 'GUDANG_BASAH' | 'EQUIPMENT'>('ALL');
@@ -1114,7 +1447,7 @@ export const ToolsPrintModule: React.FC = () => {
         </div>
 
         {/* Form Category Selector */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mt-6 pt-5 border-t border-slate-100">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2 mt-6 pt-5 border-t border-slate-100">
           <button
             onClick={() => setActiveForm('RECEIVING_FORM')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
@@ -1204,11 +1537,26 @@ export const ToolsPrintModule: React.FC = () => {
             </div>
             <p className="text-[11px] text-slate-500 line-clamp-1">Plakat rak fisik, daftar isi item & pembeda basah/kering</p>
           </button>
+
+          <button
+            onClick={() => setActiveForm('SUPPLIER_EXPENSE_NOTE')}
+            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+              activeForm === 'SUPPLIER_EXPENSE_NOTE'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-xs'
+                : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100 text-slate-700'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Receipt className="w-4 h-4 text-emerald-700" />
+              <span className="text-xs font-semibold">Nota Kas Keluar</span>
+            </div>
+            <p className="text-[11px] text-slate-500 line-clamp-1">Kop resmi & bukti bayar supplier</p>
+          </button>
         </div>
 
         {/* Contextual Customizer Controls */}
         <div className="mt-5 p-4 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 text-xs">
-          {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' ? (
+          {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' ? (
             <>
               <div>
                 <label className="block text-slate-600 font-medium mb-1">Nama Satuan Layanan (Header)</label>
@@ -1228,6 +1576,101 @@ export const ToolsPrintModule: React.FC = () => {
                   onChange={e => setPrintDate(e.target.value)}
                   className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
+              </div>
+            </>
+          ) : activeForm === 'SUPPLIER_EXPENSE_NOTE' ? (
+            <>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Nama Satuan Layanan (Header)</label>
+                <input
+                  type="text"
+                  value={unitName}
+                  onChange={e => setUnitName(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Pilih Mitra Supplier</label>
+                <select
+                  value={expenseSupplierId}
+                  onChange={e => handleSupplierChange(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-medium text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  {suppliers.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.supplyCategory})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Tarik Dokumen Penerimaan</label>
+                <div className="flex gap-1.5">
+                  <select
+                    id="receivingDocSelect"
+                    defaultValue=""
+                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 truncate"
+                  >
+                    <option value="">-- Pilih Penerimaan Gudang --</option>
+                    {receivingDocs
+                      .filter(r => r.supplierId === expenseSupplierId || r.supplierName.toLowerCase() === selectedSupplier.name.toLowerCase())
+                      .map(r => (
+                        <option key={r.id} value={r.id}>
+                          {r.id} ({r.deliveryNoteNo || 'Tanpa SJ'}) - {r.date}
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sel = (document.getElementById('receivingDocSelect') as HTMLSelectElement)?.value;
+                      if (sel) handleLoadReceivingDocToExpense(sel);
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs whitespace-nowrap cursor-pointer transition-colors"
+                    title="Tarik daftar item dan surat jalan dari penerimaan ini"
+                  >
+                    Tarik
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Tanggal Bayar / Dokumen</label>
+                <input
+                  type="date"
+                  value={expenseDate}
+                  onChange={e => {
+                    setExpenseDate(e.target.value);
+                    setPrintDate(e.target.value);
+                  }}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">No. Bukti Kas Keluar (BKK)</label>
+                <input
+                  type="text"
+                  value={expenseInvoiceNo}
+                  onChange={e => setExpenseInvoiceNo(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Status Pembayaran</label>
+                <select
+                  value={expenseStatus}
+                  onChange={e => setExpenseStatus(e.target.value as any)}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="LUNAS">Lunas / Dibayarkan</option>
+                  <option value="DP">Uang Muka (DP)</option>
+                  <option value="TEMPO">Tempo / Kredit</option>
+                  <option value="PENDING">Menunggu Verifikasi</option>
+                </select>
               </div>
             </>
           ) : activeForm === 'EQUIPMENT_LABEL' ? (
@@ -2522,6 +2965,251 @@ export const ToolsPrintModule: React.FC = () => {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* =========================================================================
+            7. BUKTI KAS KELUAR / NOTA PENGELUARAN SUPPLIER (EXPENSE VOUCHER)
+        ========================================================================= */}
+        {activeForm === 'SUPPLIER_EXPENSE_NOTE' && (
+          <div className="space-y-6">
+            {/* Document Title Banner */}
+            <div className="text-center my-4 pb-3 border-b border-slate-300">
+              <span className="inline-block px-3 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-800 border border-slate-300 mb-1">
+                Bukti Kas Keluar (BKK) / Expense Voucher
+              </span>
+              <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+                Nota Pengeluaran & Pembayaran Mitra Supplier
+              </h2>
+              <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-slate-600 mt-1.5">
+                <span>
+                  No. Bukti Kas: <strong className="font-mono text-slate-900">{expenseInvoiceNo}</strong>
+                </span>
+                <span>•</span>
+                <span>
+                  Tanggal Bayar: <strong className="text-slate-900">{expenseDate}</strong>
+                </span>
+                <span>•</span>
+                <span
+                  className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
+                    expenseStatus === 'LUNAS'
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : expenseStatus === 'DP'
+                      ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                      : expenseStatus === 'TEMPO'
+                      ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                      : 'bg-slate-100 text-slate-700 border border-slate-300'
+                  }`}
+                >
+                  Status:{' '}
+                  {expenseStatus === 'LUNAS'
+                    ? 'Lunas / Dibayarkan'
+                    : expenseStatus === 'DP'
+                    ? 'Uang Muka (DP)'
+                    : expenseStatus === 'TEMPO'
+                    ? 'Tempo / Kredit'
+                    : 'Menunggu Verifikasi'}
+                </span>
+              </div>
+            </div>
+
+            {/* Document Metadata Grid (2-Column) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border border-slate-300 rounded-lg text-xs bg-slate-50/50">
+              {/* Left Column: Supplier / Beneficiary Info */}
+              <div className="space-y-1.5">
+                <div className="font-bold text-slate-800 border-b border-slate-200 pb-1 mb-1.5 flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Penerima Dana (Mitra Supplier / Rekanan)</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium w-32 inline-block">Nama Perusahaan:</span>
+                  <span className="font-bold text-slate-900">{selectedSupplier.name}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium w-32 inline-block">PIC / Kontak:</span>
+                  <span className="text-slate-900 font-medium">
+                    {selectedSupplier.contactPerson} ({selectedSupplier.phone})
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium w-32 inline-block">Alamat Usaha:</span>
+                  <span className="text-slate-800">{selectedSupplier.address}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium w-32 inline-block">Kategori Pasokan:</span>
+                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    {selectedSupplier.supplyCategory}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium w-32 inline-block">Rekening Tujuan:</span>
+                  <span className="font-mono font-semibold text-slate-900">
+                    {expenseBankName} - {expenseBankAccount} (a.n {expenseAccountHolder})
+                  </span>
+                </div>
+              </div>
+
+              {/* Right Column: Transaction & Settlement Details */}
+              <div className="space-y-1.5">
+                <div className="font-bold text-slate-800 border-b border-slate-200 pb-1 mb-1.5 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Informasi Dokumen & Pembayaran</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium w-32 inline-block">No. Surat Jalan / Ref:</span>
+                  <span className="font-mono font-bold text-slate-900">{expenseDeliveryRef || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium w-32 inline-block">Metode Bayar:</span>
+                  <span className="font-semibold text-slate-900">{expensePaymentMethod}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium w-32 inline-block">Sumber Dana / Kas:</span>
+                  <span className="text-slate-900 font-medium">Kas Operasional Pelayanan Gizi (SPPG Jeru Tumpang)</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium w-32 inline-block">Perihal Belanja:</span>
+                  <span className="text-slate-800 font-medium">{expensePurpose}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium w-32 inline-block">Petugas Kasir / PIC:</span>
+                  <span className="text-slate-900">{currentUser.name} ({currentUser.role})</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Table of Itemized Expenses */}
+            <div>
+              <table className="w-full text-xs border-collapse border border-slate-300 table-print">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300">
+                    <th className="border border-slate-300 p-2 text-center w-10">No</th>
+                    <th className="border border-slate-300 p-2 text-left">Uraian Bahan Pangan / Pengadaan Barang</th>
+                    <th className="border border-slate-300 p-2 text-center w-28">Kategori</th>
+                    <th className="border border-slate-300 p-2 text-right w-20">Volume</th>
+                    <th className="border border-slate-300 p-2 text-center w-16">Satuan</th>
+                    <th className="border border-slate-300 p-2 text-right w-28">Harga Satuan (Rp)</th>
+                    <th className="border border-slate-300 p-2 text-right w-32">Total Biaya (Rp)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {expenseLines.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="border border-slate-300 p-6 text-center text-slate-500 italic">
+                        Belum ada item belanja yang ditambahkan. Gunakan formulir di atas untuk memuat rincian bahan.
+                      </td>
+                    </tr>
+                  ) : (
+                    expenseLines.map((line, idx) => (
+                      <tr key={line.id || idx} className="hover:bg-slate-50/50">
+                        <td className="border border-slate-300 p-2 text-center font-medium">{idx + 1}</td>
+                        <td className="border border-slate-300 p-2">
+                          <div className="font-semibold text-slate-900">{line.name}</div>
+                          {line.notes && <div className="text-[10px] text-slate-500 italic mt-0.5">{line.notes}</div>}
+                        </td>
+                        <td className="border border-slate-300 p-2 text-center text-slate-700">{line.category}</td>
+                        <td className="border border-slate-300 p-2 text-right font-medium tabular-nums">{line.quantity}</td>
+                        <td className="border border-slate-300 p-2 text-center text-slate-600">{line.unit}</td>
+                        <td className="border border-slate-300 p-2 text-right tabular-nums text-slate-800">
+                          Rp {line.unitPrice.toLocaleString('id-ID')}
+                        </td>
+                        <td className="border border-slate-300 p-2 text-right tabular-nums font-semibold text-slate-900">
+                          Rp {(line.totalPrice || line.quantity * line.unitPrice).toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-slate-50 font-semibold text-slate-800">
+                    <td colSpan={5} className="border border-slate-300 p-2 text-right">Subtotal Belanja Bahan:</td>
+                    <td colSpan={2} className="border border-slate-300 p-2 text-right tabular-nums text-slate-900 font-bold">
+                      Rp {expenseSubtotal.toLocaleString('id-ID')}
+                    </td>
+                  </tr>
+                  {expenseDiscount > 0 && (
+                    <tr className="bg-slate-50 text-slate-700">
+                      <td colSpan={5} className="border border-slate-300 p-1.5 text-right">Potongan / Diskon Supplier:</td>
+                      <td colSpan={2} className="border border-slate-300 p-1.5 text-right tabular-nums text-rose-700 font-semibold">
+                        - Rp {expenseDiscount.toLocaleString('id-ID')}
+                      </td>
+                    </tr>
+                  )}
+                  {expenseShippingCost > 0 && (
+                    <tr className="bg-slate-50 text-slate-700">
+                      <td colSpan={5} className="border border-slate-300 p-1.5 text-right">Ongkos Kirim & Penanganan:</td>
+                      <td colSpan={2} className="border border-slate-300 p-1.5 text-right tabular-nums text-slate-800 font-semibold">
+                        + Rp {expenseShippingCost.toLocaleString('id-ID')}
+                      </td>
+                    </tr>
+                  )}
+                  <tr className="bg-emerald-50/70 border-t-2 border-slate-400 font-bold text-slate-900 text-sm">
+                    <td colSpan={5} className="border border-slate-300 p-2.5 text-right">
+                      TOTAL DIBAYARKAN (KAS KELUAR):
+                    </td>
+                    <td colSpan={2} className="border border-slate-300 p-2.5 text-right tabular-nums text-emerald-950 text-base font-extrabold">
+                      Rp {expenseTotalPayable.toLocaleString('id-ID')}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* Terbilang Box */}
+            <div className="p-3 border-2 border-slate-300 rounded-lg bg-slate-50/70 text-xs">
+              <div className="flex items-start gap-2">
+                <span className="font-bold text-slate-700 shrink-0">Terbilang:</span>
+                <span className="italic font-semibold text-slate-900">
+                  # {angkaTerbilang(expenseTotalPayable)} #
+                </span>
+              </div>
+            </div>
+
+            {/* Catatan / Pernyataan Serah Terima */}
+            <div className="p-3 border border-slate-200 rounded-lg text-[11px] text-slate-600 bg-white space-y-1">
+              <div className="font-bold text-slate-700">Catatan & Pernyataan Serah Terima:</div>
+              <p>{expenseNotes}</p>
+            </div>
+
+            {/* 4-Signatory Signature Matrix */}
+            <div className="grid grid-cols-4 gap-4 text-center text-xs pt-4 border-t border-slate-200">
+              <div>
+                <p className="text-slate-600 font-medium">Penerima Dana (Rekanan)</p>
+                <div className="h-20 flex items-end justify-center">
+                  <div className="border-t border-slate-400 w-36 pt-1 font-semibold text-slate-800">
+                    {selectedSupplier.contactPerson || selectedSupplier.name}
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5">Cap / Tanda Tangan Mitra</p>
+              </div>
+              <div>
+                <p className="text-slate-600 font-medium">Bendahara Pengeluaran</p>
+                <div className="h-20 flex items-end justify-center">
+                  <div className="border-t border-slate-400 w-36 pt-1 font-semibold text-slate-800">
+                    {expensePicTreasurer}
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5">Staf Kasir SPPG</p>
+              </div>
+              <div>
+                <p className="text-slate-600 font-medium">Verifikator Logistik</p>
+                <div className="h-20 flex items-end justify-center">
+                  <div className="border-t border-slate-400 w-36 pt-1 font-semibold text-slate-800">
+                    {expensePicVerifier}
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5">Pemeriksa Fisik Bahan</p>
+              </div>
+              <div>
+                <p className="text-slate-600 font-medium">Menyetujui (Kepala SPPG)</p>
+                <div className="h-20 flex items-end justify-center">
+                  <div className="border-t border-slate-400 w-36 pt-1 font-semibold text-slate-800">
+                    {expensePicApprover}
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5">Kepala SPPG Jeru Tumpang</p>
+              </div>
+            </div>
           </div>
         )}
       </div>

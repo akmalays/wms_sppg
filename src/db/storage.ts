@@ -22,6 +22,10 @@ import {
   SchoolBeneficiaryAllocation,
   Employee,
   EmployeeAttendance,
+  PurchaseOrderNota,
+  PurchaseOrderItem,
+  PaymentMethod,
+  PurchaseOrderStatus,
 } from '../types/warehouse';
 import {
   REAL_NONFOOD_EXPENSES,
@@ -32,22 +36,24 @@ import {
   REAL_EMPLOYEES,
   REAL_ATTENDANCE_LOGS,
 } from './realSeedData';
+import { getRomanMonth, getYearFromDate } from '../utils/poNumberGenerator';
 
 const STORAGE_KEYS = {
   ITEMS: 'sppg_items_v1',
   SUPPLIERS: 'sppg_suppliers_v1',
-  RECEIVINGS: 'sppg_receivings_v1',
+  RECEIVINGS: 'sppg_receivings_v2',
   TRANSACTIONS: 'sppg_transactions_v1',
   OPNAMES: 'sppg_opnames_v1',
   EQUIPMENT: 'sppg_equipment_v1',
   AUDIT_LOGS: 'sppg_audit_logs_v1',
-  NONFOOD_EXPENSES: 'sppg_nonfood_expenses_v1',
+  NONFOOD_EXPENSES: 'sppg_nonfood_expenses_v2',
   MENU_ORDERS: 'sppg_menu_orders_v1',
   WASTE_LOGS: 'sppg_waste_logs_v1',
   TODOS: 'sppg_todos_v1',
   EMPLOYEES: 'sppg_employees_v1',
   ATTENDANCE: 'sppg_attendance_v1',
   USERS: 'sppg_users_v1',
+  PURCHASE_ORDERS: 'sppg_purchase_orders_v1',
 };
 
 // Initial realistic users for SPPG role-based testing
@@ -700,6 +706,166 @@ export const INITIAL_RECEIVINGS: ReceivingDocument[] = [
     receiverSignature: 'VERIFIED: Ahmad Fauzi (QC Officer)',
     createdAt: '2026-09-20T06:55:00Z',
   },
+  {
+    id: 'GR-2026-0003',
+    date: '2026-09-28',
+    arrivalTime: '08:10',
+    supplierId: 'SUP-001',
+    supplierName: 'PT ABC Pangan Mandiri',
+    deliveryNoteNo: 'SJ-ABC-8901',
+    receiverId: 'USR-003',
+    receiverName: 'Siti Rahma',
+    receiverRole: 'ASLAP',
+    status: 'VERIFIED_POSTED',
+    notes: 'Pengiriman beras premium & gula pasir persiapan menu gizi pekan ke-5.',
+    lines: [
+      {
+        id: 'GRL-005',
+        itemId: 'ITM-SMB-001',
+        itemName: 'Beras Pandan Wangi Premium',
+        category: 'Sembako',
+        quantity: 150,
+        unit: 'Kg',
+        conditionNote: 'Karung rapi, kadar air < 14%, mutu super',
+        batchNumber: 'BCH-202609-08',
+        expiryDate: '2027-03-28',
+      },
+      {
+        id: 'GRL-006',
+        itemId: 'ITM-SMB-003',
+        itemName: 'Gula Pasir Kristal Putih',
+        category: 'Sembako',
+        quantity: 40,
+        unit: 'Kg',
+        conditionNote: 'Bersih & kering tanpa gumpalan',
+        batchNumber: 'GLA-202609-02',
+        expiryDate: '2027-09-28',
+      },
+    ],
+    supplierSignature: 'CONFIRMED: Suryanto (PT ABC Pangan)',
+    receiverSignature: 'VERIFIED: Siti Rahma (PIC Gudang)',
+    createdAt: '2026-09-28T08:20:00Z',
+  },
+  {
+    id: 'GR-2026-0004',
+    date: '2026-09-29',
+    arrivalTime: '06:50',
+    supplierId: 'SUP-002',
+    supplierName: 'CV Berkah Unggas Segar',
+    deliveryNoteNo: 'SJ-BKS-0929',
+    receiverId: 'USR-004',
+    receiverName: 'Ahmad Fauzi',
+    receiverRole: 'ASLAP',
+    status: 'VERIFIED_POSTED',
+    notes: 'Pasokan ayam potong segar pagi hari & telur ayam negeri.',
+    lines: [
+      {
+        id: 'GRL-007',
+        itemId: 'ITM-PRO-001',
+        itemName: 'Daging Ayam Broiler Karkas Bersih',
+        category: 'Protein',
+        quantity: 60,
+        unit: 'Kg',
+        conditionNote: 'Suhu 3.0°C, segar, bersih tanpa lendir',
+        batchNumber: 'AYM-20260929',
+        expiryDate: '2026-09-30',
+      },
+      {
+        id: 'GRL-008',
+        itemId: 'ITM-PRO-002',
+        itemName: 'Telur Ayam Ras Segar',
+        category: 'Protein',
+        quantity: 35,
+        unit: 'Kg',
+        conditionNote: 'Cangkang bersih dan utuh',
+        batchNumber: 'TLR-20260929',
+        expiryDate: '2026-10-14',
+      },
+    ],
+    supplierSignature: 'CONFIRMED: Joko M. (CV Berkah Unggas)',
+    receiverSignature: 'VERIFIED: Ahmad Fauzi (QC Officer)',
+    createdAt: '2026-09-29T07:05:00Z',
+  },
+  {
+    id: 'GR-2026-0005',
+    date: '2026-09-30',
+    arrivalTime: '07:00',
+    supplierId: 'SUP-003',
+    supplierName: 'Koperasi Tani Makmur Subang',
+    deliveryNoteNo: 'SJ-KTM-0930',
+    receiverId: 'USR-003',
+    receiverName: 'Siti Rahma',
+    receiverRole: 'ASLAP',
+    status: 'VERIFIED_POSTED',
+    notes: 'Sayuran segar panen pagi langsung dari petani mitra gizi.',
+    lines: [
+      {
+        id: 'GRL-009',
+        itemId: 'ITM-VEG-001',
+        itemName: 'Sayur Bayam Hijau Segar',
+        category: 'Sayuran',
+        quantity: 50,
+        unit: 'Ikat',
+        conditionNote: 'Segar renyah, daun hijau bebas hama',
+        batchNumber: 'BYM-20260930',
+        expiryDate: '2026-10-02',
+      },
+      {
+        id: 'GRL-010',
+        itemId: 'ITM-VEG-002',
+        itemName: 'Wortel Segar Brastagi',
+        category: 'Sayuran',
+        quantity: 30,
+        unit: 'Kg',
+        conditionNote: 'Kelas A, keras & warna jingga cerah',
+        batchNumber: 'WRT-20260930',
+        expiryDate: '2026-10-07',
+      },
+    ],
+    supplierSignature: 'CONFIRMED: Ratna (Koperasi Tani)',
+    receiverSignature: 'VERIFIED: Siti Rahma (PIC Gudang)',
+    createdAt: '2026-09-30T07:15:00Z',
+  },
+  {
+    id: 'GR-2026-0006',
+    date: '2026-09-30',
+    arrivalTime: '08:30',
+    supplierId: 'SUP-004',
+    supplierName: 'PT Buah Nusantara Segar',
+    deliveryNoteNo: 'SJ-BNS-0930',
+    receiverId: 'USR-004',
+    receiverName: 'Ahmad Fauzi',
+    receiverRole: 'ASLAP',
+    status: 'VERIFIED_POSTED',
+    notes: 'Pengiriman buah pelengkap makan siang sekolah anak.',
+    lines: [
+      {
+        id: 'GRL-011',
+        itemId: 'ITM-FRU-001',
+        itemName: 'Pisang Cavendish Matang Pas',
+        category: 'Buah',
+        quantity: 40,
+        unit: 'Kg',
+        conditionNote: 'Kulit kuning mulus, siap dikonsumsi',
+        batchNumber: 'PSG-20260930',
+        expiryDate: '2026-10-03',
+      },
+      {
+        id: 'GRL-012',
+        itemId: 'ITM-FRU-002',
+        itemName: 'Semangka Merah Non-Biji',
+        category: 'Buah',
+        quantity: 50,
+        unit: 'Kg',
+        conditionNote: 'Kondisi segar utuh',
+        batchNumber: 'SMK-20260930',
+        expiryDate: '2026-10-06',
+      },
+    ],
+    supplierSignature: 'CONFIRMED: Dani P. (PT Buah Nusantara)',
+    receiverSignature: 'VERIFIED: Ahmad Fauzi (QC Officer)',
+    createdAt: '2026-09-30T08:45:00Z',
+  },
 ];
 
 export const INITIAL_TRANSACTIONS: InventoryTransaction[] = [
@@ -1033,12 +1199,283 @@ export const INITIAL_OPNAMES: StockOpnameSession[] = [
   },
 ];
 
-export const INITIAL_NONFOOD_EXPENSES: NonFoodExpense[] = REAL_NONFOOD_EXPENSES;
+export const INITIAL_NONFOOD_EXPENSES: NonFoodExpense[] = [
+  {
+    id: "PRL-EXP-NEW-01",
+    date: "2026-09-28",
+    itemName: "Minyak Goreng Sawit Higienis",
+    quantity: "40 Liter",
+    unit: "Liter",
+    time: "08.15",
+    volunteer: "Siti Rahma",
+    pic: "Siti Rahma",
+    category: "Bahan Kering",
+    department: "Dapur Pengolahan Utama",
+    recipient: "Siti Rahma",
+    recordedBy: "Siti Rahma",
+    unitPrice: 18000,
+    totalCost: 720000,
+    notes: "[Toko/Supplier: Toko Sembako Berkah Jaya] Pasokan minyak goreng stok pekan berjalan",
+    createdAt: "2026-09-28T08:15:00Z"
+  },
+  {
+    id: "PRL-EXP-NEW-02",
+    date: "2026-09-29",
+    itemName: "Sabun Cuci Piring Sunlight 4L",
+    quantity: "2 jerigen",
+    unit: "Jerigen",
+    time: "09.40",
+    volunteer: "Roni",
+    pic: "Ahmad Fauzi",
+    category: "Bahan Peralatan",
+    department: "Area Cuci & Sanitasi",
+    recipient: "Roni",
+    recordedBy: "Ahmad Fauzi",
+    unitPrice: 85000,
+    totalCost: 170000,
+    notes: "[Toko/Supplier: PT Higienis Sanitasi Sentosa] Keperluan sanitasi dapur dan tray makan",
+    createdAt: "2026-09-29T09:40:00Z"
+  },
+  {
+    id: "PRL-EXP-NEW-03",
+    date: "2026-09-30",
+    itemName: "Telur Ayam Ras Segar",
+    quantity: "40 Kg",
+    unit: "Kg",
+    time: "07.30",
+    volunteer: "Pak Joko",
+    pic: "Ahmad Fauzi",
+    category: "Bahan Basah",
+    department: "Dapur Pengolahan Utama",
+    recipient: "Pak Joko",
+    recordedBy: "Ahmad Fauzi",
+    unitPrice: 28000,
+    totalCost: 1120000,
+    notes: "[Toko/Supplier: CV Berkah Unggas Segar] Belanja protein menu telur balado anak",
+    createdAt: "2026-09-30T07:30:00Z"
+  },
+  ...REAL_NONFOOD_EXPENSES
+];
 
 export const INITIAL_MENU_ORDERS: MenuOrder[] = REAL_MENU_ORDERS;
 export const INITIAL_SCHOOL_BENEFICIARIES: SchoolBeneficiaryAllocation[] = DEFAULT_SCHOOL_BENEFICIARIES;
 
 export const INITIAL_WASTE_LOGS: WasteLog[] = REAL_WASTE_LOGS;
+
+export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
+  {
+    id: 'PO-2026-09-001',
+    poNumber: 'NO. NP/SPPG/134/IX/2026',
+    date: '2026-09-28',
+    deliveryDate: '2026-09-28',
+    supplierId: 'SUP-001',
+    supplierName: 'PT ABC Pangan Mandiri',
+    supplierContact: '0812-3456-7890 (Ibu Linda)',
+    supplierAddress: 'Kawasan Pergudangan Muara Karang Blok C-14, Jakarta Utara',
+    paymentMethod: 'TRANSFER',
+    bankInfo: 'BCA: 14000-8899-221 a.n PT ABC Pangan Mandiri',
+    status: 'DISETUJUI',
+    items: [
+      {
+        id: 'POI-001',
+        name: 'Beras Pandan Wangi Premium',
+        category: 'Bahan Kering',
+        quantity: 100,
+        unit: 'Kg',
+        unitPrice: 14500,
+        subtotal: 1450000,
+        notes: 'Kemasan karung 25kg berlabel Halal',
+      },
+      {
+        id: 'POI-002',
+        name: 'Minyak Goreng Sawit Higienis',
+        category: 'Bahan Kering',
+        quantity: 40,
+        unit: 'Liter',
+        unitPrice: 18000,
+        subtotal: 720000,
+        notes: 'Kemasan jerigen/pouch higienis',
+      },
+      {
+        id: 'POI-003',
+        name: 'Gula Pasir Kristal Putih',
+        category: 'Bahan Kering',
+        quantity: 25,
+        unit: 'Kg',
+        unitPrice: 17500,
+        subtotal: 437500,
+        notes: 'Gula kristal putih kemasan food grade',
+      },
+    ],
+    subtotal: 2607500,
+    discount: 0,
+    tax: 0,
+    grandTotal: 2607500,
+    terbilang: 'Dua Juta Enam Ratus Tujuh Ribu Lima Ratus Rupiah',
+    notes: 'Mohon barang dikirim dalam kondisi tersegel baik dan lampirkan faktur pengiriman.',
+    deliveryTerms: 'Pengiriman langsung ke Gudang Utama SPPG Jeru Tumpang sebelum jam 10:00 WIB.',
+    createdBy: 'Hendra Wijaya',
+    createdByRole: 'Admin Logistik',
+    approvedBy: 'Dr. Siti Rahma',
+    approvedByRole: 'Kepala SPPG Jeru Tumpang',
+    supplierPic: 'Ibu Linda (Logistik PT ABC)',
+    relatedReceivingId: 'GR-2026-0003',
+    createdAt: '2026-09-28T08:30:00.000Z',
+  },
+  {
+    id: 'PO-2026-09-002',
+    poNumber: 'NO. NP/SPPG/135/IX/2026',
+    date: '2026-09-29',
+    deliveryDate: '2026-09-29',
+    supplierId: 'SUP-002',
+    supplierName: 'CV Berkah Unggas Segar',
+    supplierContact: '0813-8877-2211 (Pak Joko)',
+    supplierAddress: 'Jl. Raya Parung No. 45, Bogor',
+    paymentMethod: 'TEMPO_7',
+    bankInfo: 'Mandiri: 132-00-998877 a.n CV Berkah Unggas Segar',
+    status: 'DISETUJUI',
+    items: [
+      {
+        id: 'POI-004',
+        name: 'Daging Ayam Broiler Karkas Bersih',
+        category: 'Bahan Basah',
+        quantity: 60,
+        unit: 'Kg',
+        unitPrice: 38000,
+        subtotal: 2280000,
+        notes: 'Karkas segar dingin suhu 2-4°C, bebas formalin',
+      },
+      {
+        id: 'POI-005',
+        name: 'Telur Ayam Ras Segar',
+        category: 'Bahan Basah',
+        quantity: 35,
+        unit: 'Kg',
+        unitPrice: 28000,
+        subtotal: 980000,
+        notes: 'Telur bersih, utuh tidak retak, grade A',
+      },
+    ],
+    subtotal: 3260000,
+    discount: 0,
+    tax: 0,
+    grandTotal: 3260000,
+    terbilang: 'Tiga Juta Dua Ratus Enam Puluh Ribu Rupiah',
+    notes: 'Suhu pengiriman wajib terjaga dingin menggunakan coolbox berinsulasi.',
+    deliveryTerms: 'Tiba di SPPG maksimal pukul 07:00 WIB untuk persiapan masak pagi.',
+    createdBy: 'Hendra Wijaya',
+    createdByRole: 'Admin Logistik',
+    approvedBy: 'Dr. Siti Rahma',
+    approvedByRole: 'Kepala SPPG Jeru Tumpang',
+    supplierPic: 'Pak Joko (CV Berkah)',
+    relatedReceivingId: 'GR-2026-0004',
+    createdAt: '2026-09-29T06:15:00.000Z',
+  },
+  {
+    id: 'PO-2026-09-003',
+    poNumber: 'NO. NP/SPPG/136/IX/2026',
+    date: '2026-09-29',
+    deliveryDate: '2026-09-29',
+    supplierId: 'SUP-003',
+    supplierName: 'Koperasi Tani Makmur Subang',
+    supplierContact: '0857-1122-3344 (Ibu Ratna)',
+    supplierAddress: 'Kec. Ciater, Kab. Subang',
+    paymentMethod: 'TUNAI',
+    status: 'DISETUJUI',
+    items: [
+      {
+        id: 'POI-006',
+        name: 'Sayur Bayam Hijau Segar',
+        category: 'Bahan Basah',
+        quantity: 40,
+        unit: 'Ikat',
+        unitPrice: 3500,
+        subtotal: 140000,
+        notes: 'Sayur segar panen subuh, daun hijau tanpa hama',
+      },
+      {
+        id: 'POI-007',
+        name: 'Wortel Segar Brastagi',
+        category: 'Bahan Basah',
+        quantity: 25,
+        unit: 'Kg',
+        unitPrice: 12000,
+        subtotal: 300000,
+        notes: 'Wortel mulus, sudah dicuci bersih',
+      },
+      {
+        id: 'POI-008',
+        name: 'Labu Siam Segar',
+        category: 'Bahan Basah',
+        quantity: 20,
+        unit: 'Kg',
+        unitPrice: 9000,
+        subtotal: 180000,
+        notes: 'Ukuran sedang, kulit mulus',
+      },
+    ],
+    subtotal: 620000,
+    discount: 0,
+    tax: 0,
+    grandTotal: 620000,
+    terbilang: 'Enam Ratus Dua Puluh Ribu Rupiah',
+    notes: 'Kuitansi pembayaran tunai ditandatangani saat serah terima barang.',
+    deliveryTerms: 'Diantar ke Gudang Sayur SPPG.',
+    createdBy: 'Hendra Wijaya',
+    createdByRole: 'Admin Logistik',
+    approvedBy: 'Dr. Siti Rahma',
+    approvedByRole: 'Kepala SPPG Jeru Tumpang',
+    supplierPic: 'Ibu Ratna (Mitra Tani)',
+    relatedReceivingId: 'GR-2026-0005',
+    createdAt: '2026-09-29T06:45:00.000Z',
+  },
+  {
+    id: 'PO-2026-09-004',
+    poNumber: 'NO. NP/SPPG/137/IX/2026',
+    date: '2026-09-29',
+    deliveryDate: '2026-09-29',
+    supplierName: 'Toko Barokah Jaya (Pak Syamsul)',
+    supplierContact: '0852-9988-1122',
+    supplierAddress: 'Pasar Tumpang Kios No. 12',
+    paymentMethod: 'TUNAI',
+    status: 'DIBAYAR',
+    items: [
+      {
+        id: 'POI-009',
+        name: 'Kertas HVS A4 70gr (PaperOne)',
+        category: 'ATK & Administrasi',
+        quantity: 3,
+        unit: 'Rim',
+        unitPrice: 48000,
+        subtotal: 144000,
+        notes: 'Untuk arsip form penerimaan gudang',
+      },
+      {
+        id: 'POI-010',
+        name: 'Sabun Cuci Piring Sunlight Jeruk Nipis 750ml',
+        category: 'Alat Kebersihan',
+        quantity: 5,
+        unit: 'Pouch',
+        unitPrice: 18500,
+        subtotal: 92500,
+        notes: 'Kebutuhan sanitasi cuci ompreng',
+      },
+    ],
+    subtotal: 236500,
+    discount: 0,
+    tax: 0,
+    grandTotal: 236500,
+    terbilang: 'Dua Ratus Tiga Puluh Enam Ribu Lima Ratus Rupiah',
+    notes: 'Pembelian langsung operasional SPPG dengan kas bon.',
+    createdBy: 'Hendra Wijaya',
+    createdByRole: 'Admin Logistik',
+    approvedBy: 'Dr. Siti Rahma',
+    approvedByRole: 'Kepala SPPG Jeru Tumpang',
+    supplierPic: 'Pak Syamsul (Toko Barokah)',
+    relatedExpenseIds: ['NFE-2026-003', 'NFE-2026-004'],
+    createdAt: '2026-09-29T10:00:00.000Z',
+  },
+];
 
 // Helper to safe parse JSON
 function getStored<T>(key: string, fallback: T): T {
@@ -1074,6 +1511,7 @@ class WarehouseDatabase {
   private employees: Employee[];
   private attendanceLogs: EmployeeAttendance[];
   private users: User[];
+  private purchaseOrders: PurchaseOrderNota[];
 
   constructor() {
     this.users = getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
@@ -1094,6 +1532,25 @@ class WarehouseDatabase {
     this.equipment = getStored<EquipmentItem[]>(STORAGE_KEYS.EQUIPMENT, INITIAL_EQUIPMENT);
     this.auditLogs = getStored<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
     this.nonFoodExpenses = getStored<NonFoodExpense[]>(STORAGE_KEYS.NONFOOD_EXPENSES, INITIAL_NONFOOD_EXPENSES);
+    this.purchaseOrders = getStored<PurchaseOrderNota[]>(STORAGE_KEYS.PURCHASE_ORDERS, INITIAL_PURCHASE_ORDERS);
+    // Auto-migrate legacy PO numbers (PO/SPPG-JT/...) to official BGN format (NO. NP/SPPG/134/IX/2026 dst)
+    let poNeedsMigration = false;
+    this.purchaseOrders = this.purchaseOrders.map((po, idx) => {
+      if (!po.poNumber || po.poNumber.startsWith('PO/SPPG-JT/') || !po.poNumber.includes('NP/SPPG')) {
+        poNeedsMigration = true;
+        const seq = 134 + idx;
+        const roman = getRomanMonth(po.date || '2026-09-28');
+        const yr = getYearFromDate(po.date || '2026-09-28');
+        return {
+          ...po,
+          poNumber: `NO. NP/SPPG/${seq}/${roman}/${yr}`,
+        };
+      }
+      return po;
+    });
+    if (poNeedsMigration) {
+      setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
+    }
     this.menuOrders = getStored<MenuOrder[]>(STORAGE_KEYS.MENU_ORDERS, INITIAL_MENU_ORDERS);
     if (!this.menuOrders.some(m => m.id === 'ORD-2026-006') || (this.menuOrders.find(m => m.id === 'ORD-2026-005')?.poArrivalItems?.length || 0) < 20) {
       this.menuOrders = INITIAL_MENU_ORDERS;
@@ -1649,6 +2106,15 @@ class WarehouseDatabase {
     return supplier;
   }
 
+  public deleteSupplier(supplierId: string, user: User): void {
+    const idx = this.suppliers.findIndex(s => s.id === supplierId);
+    if (idx < 0) throw new Error('Supplier tidak ditemukan.');
+    const deletedName = this.suppliers[idx].name;
+    this.suppliers.splice(idx, 1);
+    setStored(STORAGE_KEYS.SUPPLIERS, this.suppliers);
+    this.logAudit(user, 'SUPPLIER_DELETED', 'SUPPLIER', supplierId, `Menghapus data supplier: ${deletedName}.`);
+  }
+
   // --- EQUIPMENT MANAGEMENT ---
   public updateEquipmentCondition(
     equipmentId: string,
@@ -1776,6 +2242,47 @@ class WarehouseDatabase {
       `Mencatat masal ${created.length} barang pengeluaran harian sekaligus`
     );
     return created;
+  }
+
+  // --- PURCHASE ORDERS / NOTA PESANAN ---
+  public getPurchaseOrders(): PurchaseOrderNota[] {
+    return [...this.purchaseOrders].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }
+
+  public getPurchaseOrderById(id: string): PurchaseOrderNota | undefined {
+    return this.purchaseOrders.find(po => po.id === id || po.poNumber === id);
+  }
+
+  public savePurchaseOrder(order: PurchaseOrderNota, user?: User): PurchaseOrderNota {
+    const idx = this.purchaseOrders.findIndex(p => p.id === order.id);
+    if (idx >= 0) {
+      this.purchaseOrders[idx] = { ...order, updatedAt: new Date().toISOString() };
+    } else {
+      this.purchaseOrders.unshift({ ...order, createdAt: order.createdAt || new Date().toISOString() });
+    }
+    setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
+
+    if (user) {
+      this.logAudit(
+        user,
+        idx >= 0 ? 'PO_UPDATED' : 'PO_CREATED',
+        'RECEIVING',
+        order.id,
+        `Nota Pesanan / PO ${order.poNumber} untuk ${order.supplierName} total Rp ${order.grandTotal.toLocaleString('id-ID')}`
+      );
+    }
+    return order;
+  }
+
+  public deletePurchaseOrder(id: string, user?: User): boolean {
+    const idx = this.purchaseOrders.findIndex(p => p.id === id);
+    if (idx < 0) return false;
+    const deleted = this.purchaseOrders.splice(idx, 1)[0];
+    setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
+    if (user) {
+      this.logAudit(user, 'PO_DELETED', 'RECEIVING', id, `Menghapus Nota Pesanan ${deleted.poNumber}`);
+    }
+    return true;
   }
 
   // --- MENU ORDERS ---
