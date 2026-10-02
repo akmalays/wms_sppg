@@ -46,9 +46,20 @@ const MainLayout: React.FC = () => {
     setDataVersion(v => v + 1);
   };
 
+  const handleClearTransactions = () => {
+    const confirmClear = window.confirm(
+      'Bersihkan seluruh data transaksi belanja, penerimaan, nota pesanan (PO), dan reset stok barang ke 0?\n\n(Catatan: Master Barang, Master Supplier, dan Akun Pengguna akan tetap aman tersimpan).'
+    );
+    if (confirmClear) {
+      warehouseDb.clearTransactionsOnly();
+      setDataVersion(v => v + 1);
+      alert('Data transaksi berhasil dibersihkan! Stok barang kini bernilai 0 dan siap untuk testing/seeding data baru.');
+    }
+  };
+
   const handleResetData = () => {
     const confirmReset = window.confirm(
-      'Reset data ke kondisi awal demo SPPG? Seluruh data transaksi simulasi akan dikembalikan ke data awal.'
+      'Reset data ke kondisi awal demo SPPG? Seluruh data transaksi simulasi bawaan akan dimuat ulang.'
     );
     if (confirmReset) {
       warehouseDb.resetToSeedData();
@@ -64,6 +75,7 @@ const MainLayout: React.FC = () => {
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         onResetData={handleResetData}
+        onClearTransactions={handleClearTransactions}
       />
 
       {/* Main Content Area */}

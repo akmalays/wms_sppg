@@ -72,8 +72,8 @@ export const INITIAL_USERS: User[] = [
   },
   {
     id: 'USR-003',
-    name: 'Hendra Wijaya',
-    email: 'hendra.admin@sppg.id',
+    name: 'Akmal',
+    email: 'akmal@sppg.id',
     role: 'ADMIN',
   },
   {
@@ -539,10 +539,10 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
     targetTime: '07:00',
     isCompleted: true,
     completedAt: '07:10',
-    completedBy: 'Hendra Wijaya (ADMIN)',
+    completedBy: 'Akmal (ADMIN)',
     assignedRole: 'ADMIN',
     assignedUserId: 'USR-003',
-    assignedUserName: 'Hendra Wijaya',
+    assignedUserName: 'Akmal',
     notes: 'Disortir bersih, daun layu dipisahkan masuk limbah organik.',
     createdAt: new Date().toISOString(),
   },
@@ -574,7 +574,7 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
     isCompleted: false,
     assignedRole: 'ADMIN',
     assignedUserId: 'USR-003',
-    assignedUserName: 'Hendra Wijaya',
+    assignedUserName: 'Akmal',
     notes: 'Pastikan safety stock mencukupi jadwal menu hingga akhir pekan.',
     createdAt: new Date().toISOString(),
   },
@@ -1314,7 +1314,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     terbilang: 'Dua Juta Enam Ratus Tujuh Ribu Lima Ratus Rupiah',
     notes: 'Mohon barang dikirim dalam kondisi tersegel baik dan lampirkan faktur pengiriman.',
     deliveryTerms: 'Pengiriman langsung ke Gudang Utama SPPG Jeru Tumpang sebelum jam 10:00 WIB.',
-    createdBy: 'Hendra Wijaya',
+    createdBy: 'Akmal',
     createdByRole: 'Admin Logistik',
     approvedBy: 'Dr. Siti Rahma',
     approvedByRole: 'Kepala SPPG Jeru Tumpang',
@@ -1363,7 +1363,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     terbilang: 'Tiga Juta Dua Ratus Enam Puluh Ribu Rupiah',
     notes: 'Suhu pengiriman wajib terjaga dingin menggunakan coolbox berinsulasi.',
     deliveryTerms: 'Tiba di SPPG maksimal pukul 07:00 WIB untuk persiapan masak pagi.',
-    createdBy: 'Hendra Wijaya',
+    createdBy: 'Akmal',
     createdByRole: 'Admin Logistik',
     approvedBy: 'Dr. Siti Rahma',
     approvedByRole: 'Kepala SPPG Jeru Tumpang',
@@ -1421,7 +1421,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     terbilang: 'Enam Ratus Dua Puluh Ribu Rupiah',
     notes: 'Kuitansi pembayaran tunai ditandatangani saat serah terima barang.',
     deliveryTerms: 'Diantar ke Gudang Sayur SPPG.',
-    createdBy: 'Hendra Wijaya',
+    createdBy: 'Akmal',
     createdByRole: 'Admin Logistik',
     approvedBy: 'Dr. Siti Rahma',
     approvedByRole: 'Kepala SPPG Jeru Tumpang',
@@ -1467,7 +1467,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     grandTotal: 236500,
     terbilang: 'Dua Ratus Tiga Puluh Enam Ribu Lima Ratus Rupiah',
     notes: 'Pembelian langsung operasional SPPG dengan kas bon.',
-    createdBy: 'Hendra Wijaya',
+    createdBy: 'Akmal',
     createdByRole: 'Admin Logistik',
     approvedBy: 'Dr. Siti Rahma',
     approvedByRole: 'Kepala SPPG Jeru Tumpang',
@@ -1514,25 +1514,55 @@ class WarehouseDatabase {
   private purchaseOrders: PurchaseOrderNota[];
 
   constructor() {
+    const isTransactionsCleared = localStorage.getItem('sppg_transactions_cleared_v1') === 'true';
+
     this.users = getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    // Auto-migrate admin user to Akmal (akmal@sppg.id)
+    let usersUpdated = false;
+    this.users = this.users.map(u => {
+      if (u.role === 'ADMIN' || u.id === 'USR-003' || u.name === 'Hendra Wijaya' || u.email === 'hendra.admin@sppg.id') {
+        usersUpdated = true;
+        return {
+          ...u,
+          name: 'Akmal',
+          email: 'akmal@sppg.id',
+        };
+      }
+      return u;
+    });
+    if (usersUpdated) {
+      setStored(STORAGE_KEYS.USERS, this.users);
+      const passwords = getStored<Record<string, string>>('sppg_user_passwords_v1', {});
+      passwords['akmal@sppg.id'] = passwords['akmal@sppg.id'] || 'sppg123';
+      passwords['akmal'] = passwords['akmal'] || 'sppg123';
+      setStored('sppg_user_passwords_v1', passwords);
+      if (localStorage.getItem('sppg_active_user_name') === 'Hendra Wijaya') {
+        localStorage.setItem('sppg_active_user_name', 'Akmal');
+      }
+    }
     this.items = getStored<ItemMaster[]>(STORAGE_KEYS.ITEMS, INITIAL_ITEMS);
     this.suppliers = getStored<Supplier[]>(STORAGE_KEYS.SUPPLIERS, INITIAL_SUPPLIERS);
-    this.receivings = getStored<ReceivingDocument[]>(STORAGE_KEYS.RECEIVINGS, INITIAL_RECEIVINGS);
-    this.transactions = getStored<InventoryTransaction[]>(STORAGE_KEYS.TRANSACTIONS, INITIAL_TRANSACTIONS);
-    // Ensure rich default consumption transactions are present even if storage was cached
-    const hasSembakoConsumption = this.transactions.some(
-      t => t.transactionType === 'ISSUE_CONSUMPTION' && (t.category === 'Sembako' || t.itemName.toLowerCase().includes('beras'))
-    );
-    if (!hasSembakoConsumption) {
-      const extraTxs = INITIAL_TRANSACTIONS.filter(t => t.id > 'TX-2026-0004');
-      this.transactions = [...this.transactions, ...extraTxs];
-      setStored(STORAGE_KEYS.TRANSACTIONS, this.transactions);
+    this.receivings = getStored<ReceivingDocument[]>(STORAGE_KEYS.RECEIVINGS, isTransactionsCleared ? [] : INITIAL_RECEIVINGS);
+    this.transactions = getStored<InventoryTransaction[]>(STORAGE_KEYS.TRANSACTIONS, isTransactionsCleared ? [] : INITIAL_TRANSACTIONS);
+    
+    // Ensure rich default consumption transactions are present only if not deliberately cleared
+    if (!isTransactionsCleared) {
+      const hasSembakoConsumption = this.transactions.some(
+        t => t.transactionType === 'ISSUE_CONSUMPTION' && (t.category === 'Sembako' || t.itemName.toLowerCase().includes('beras'))
+      );
+      if (!hasSembakoConsumption && this.transactions.length > 0) {
+        const extraTxs = INITIAL_TRANSACTIONS.filter(t => t.id > 'TX-2026-0004');
+        this.transactions = [...this.transactions, ...extraTxs];
+        setStored(STORAGE_KEYS.TRANSACTIONS, this.transactions);
+      }
     }
-    this.opnames = getStored<StockOpnameSession[]>(STORAGE_KEYS.OPNAMES, INITIAL_OPNAMES);
+
+    this.opnames = getStored<StockOpnameSession[]>(STORAGE_KEYS.OPNAMES, isTransactionsCleared ? [] : INITIAL_OPNAMES);
     this.equipment = getStored<EquipmentItem[]>(STORAGE_KEYS.EQUIPMENT, INITIAL_EQUIPMENT);
     this.auditLogs = getStored<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
-    this.nonFoodExpenses = getStored<NonFoodExpense[]>(STORAGE_KEYS.NONFOOD_EXPENSES, INITIAL_NONFOOD_EXPENSES);
-    this.purchaseOrders = getStored<PurchaseOrderNota[]>(STORAGE_KEYS.PURCHASE_ORDERS, INITIAL_PURCHASE_ORDERS);
+    this.nonFoodExpenses = getStored<NonFoodExpense[]>(STORAGE_KEYS.NONFOOD_EXPENSES, isTransactionsCleared ? [] : INITIAL_NONFOOD_EXPENSES);
+    this.purchaseOrders = getStored<PurchaseOrderNota[]>(STORAGE_KEYS.PURCHASE_ORDERS, isTransactionsCleared ? [] : INITIAL_PURCHASE_ORDERS);
+    
     // Auto-migrate legacy PO numbers (PO/SPPG-JT/...) to official BGN format (NO. NP/SPPG/134/IX/2026 dst)
     let poNeedsMigration = false;
     this.purchaseOrders = this.purchaseOrders.map((po, idx) => {
@@ -1551,19 +1581,28 @@ class WarehouseDatabase {
     if (poNeedsMigration) {
       setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
     }
-    this.menuOrders = getStored<MenuOrder[]>(STORAGE_KEYS.MENU_ORDERS, INITIAL_MENU_ORDERS);
-    if (!this.menuOrders.some(m => m.id === 'ORD-2026-006') || (this.menuOrders.find(m => m.id === 'ORD-2026-005')?.poArrivalItems?.length || 0) < 20) {
+
+    this.menuOrders = getStored<MenuOrder[]>(STORAGE_KEYS.MENU_ORDERS, isTransactionsCleared ? [] : INITIAL_MENU_ORDERS);
+    if (!isTransactionsCleared && (!this.menuOrders.some(m => m.id === 'ORD-2026-006') || (this.menuOrders.find(m => m.id === 'ORD-2026-005')?.poArrivalItems?.length || 0) < 20)) {
       this.menuOrders = INITIAL_MENU_ORDERS;
       setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
     }
-    this.wasteLogs = getStored<WasteLog[]>(STORAGE_KEYS.WASTE_LOGS, INITIAL_WASTE_LOGS);
-    if (!this.wasteLogs.some(w => w.id === 'WST-025')) {
+    
+    this.wasteLogs = getStored<WasteLog[]>(STORAGE_KEYS.WASTE_LOGS, isTransactionsCleared ? [] : INITIAL_WASTE_LOGS);
+    if (!isTransactionsCleared && !this.wasteLogs.some(w => w.id === 'WST-025')) {
       const existingIds = new Set(this.wasteLogs.map(w => w.id));
       const missing = INITIAL_WASTE_LOGS.filter(w => !existingIds.has(w.id));
       if (missing.length > 0) {
         this.wasteLogs = [...this.wasteLogs, ...missing];
         setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
       }
+    }
+
+    // Auto-trigger clean transactions if requested for fresh testing
+    const autoCleanKey = 'sppg_auto_clean_transactions_20261001';
+    if (localStorage.getItem(autoCleanKey) !== 'done') {
+      this.clearTransactionsOnly();
+      localStorage.setItem(autoCleanKey, 'done');
     }
     this.todos = getStored<DailyTodoItem[]>(STORAGE_KEYS.TODOS, INITIAL_TODOS);
     if (this.todos.some(t => !t.targetTime)) {
@@ -2712,7 +2751,54 @@ class WarehouseDatabase {
     this.resetToDefault();
   }
 
+  // Clear all transaction data (Receiving, PO, Transactions, Non-Food Expenses, Stock Opname, Menu, Waste)
+  // and set stock of all item master to 0, but preserve Users, Suppliers, and Master Item Catalog
+  public clearTransactionsOnly(): void {
+    localStorage.setItem('sppg_transactions_cleared_v1', 'true');
+
+    this.receivings = [];
+    this.transactions = [];
+    this.nonFoodExpenses = [];
+    this.purchaseOrders = [];
+    this.opnames = [];
+    this.menuOrders = [];
+    this.wasteLogs = [];
+
+    // Reset currentStock of all items to 0
+    this.items = this.items.map(item => ({
+      ...item,
+      currentStock: 0,
+    }));
+
+    setStored(STORAGE_KEYS.RECEIVINGS, []);
+    setStored(STORAGE_KEYS.TRANSACTIONS, []);
+    setStored(STORAGE_KEYS.NONFOOD_EXPENSES, []);
+    setStored(STORAGE_KEYS.PURCHASE_ORDERS, []);
+    setStored(STORAGE_KEYS.OPNAMES, []);
+    setStored(STORAGE_KEYS.MENU_ORDERS, []);
+    setStored(STORAGE_KEYS.WASTE_LOGS, []);
+    setStored(STORAGE_KEYS.ITEMS, this.items);
+
+    // Clear PO print pool and PO sequence counter so fresh testing starts cleanly at 134
+    try {
+      localStorage.removeItem('sppg_po_print_pool');
+      localStorage.removeItem('sppg_po_last_number_state');
+    } catch (e) {
+      console.warn('Could not clear PO pool / state:', e);
+    }
+
+    this.logAudit(
+      { id: 'SYS-001', name: 'System Admin', email: 'admin@sppg.id', role: 'SUPERADMIN' },
+      'UPDATE',
+      'SETTINGS',
+      'CLEARED_TRANSACTIONS',
+      'Data transaksi berhasil dibersihkan dan stok di-reset ke 0 untuk pengujian data baru.'
+    );
+  }
+
   public resetToDefault(): void {
+    localStorage.removeItem('sppg_transactions_cleared_v1');
+    localStorage.removeItem('sppg_auto_clean_transactions_20261001');
     localStorage.removeItem(STORAGE_KEYS.ITEMS);
     localStorage.removeItem(STORAGE_KEYS.SUPPLIERS);
     localStorage.removeItem(STORAGE_KEYS.RECEIVINGS);
@@ -2726,6 +2812,9 @@ class WarehouseDatabase {
     localStorage.removeItem(STORAGE_KEYS.TODOS);
     localStorage.removeItem(STORAGE_KEYS.EMPLOYEES);
     localStorage.removeItem(STORAGE_KEYS.ATTENDANCE);
+    localStorage.removeItem(STORAGE_KEYS.PURCHASE_ORDERS);
+    localStorage.removeItem('sppg_po_print_pool');
+    localStorage.removeItem('sppg_po_last_number_state');
 
     this.items = [...INITIAL_ITEMS];
     this.suppliers = [...INITIAL_SUPPLIERS];
@@ -2735,6 +2824,7 @@ class WarehouseDatabase {
     this.equipment = [...INITIAL_EQUIPMENT];
     this.auditLogs = [...INITIAL_AUDIT_LOGS];
     this.nonFoodExpenses = [...INITIAL_NONFOOD_EXPENSES];
+    this.purchaseOrders = [...INITIAL_PURCHASE_ORDERS];
     this.menuOrders = [...INITIAL_MENU_ORDERS];
     this.wasteLogs = [...INITIAL_WASTE_LOGS];
     this.todos = [...INITIAL_TODOS];
@@ -2749,6 +2839,7 @@ class WarehouseDatabase {
     setStored(STORAGE_KEYS.EQUIPMENT, this.equipment);
     setStored(STORAGE_KEYS.AUDIT_LOGS, this.auditLogs);
     setStored(STORAGE_KEYS.NONFOOD_EXPENSES, this.nonFoodExpenses);
+    setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
     setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
     setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
     setStored(STORAGE_KEYS.TODOS, this.todos);

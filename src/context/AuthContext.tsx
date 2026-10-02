@@ -84,9 +84,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [currentUser, setCurrentUser] = useState<User>(() => {
     const allUsers = warehouseDb.getUsers();
-    const saved = localStorage.getItem('sppg_active_user_id');
-    const savedName = localStorage.getItem('sppg_active_user_name');
-    const savedRole = localStorage.getItem('sppg_active_user_role') as UserRole;
+    let saved = localStorage.getItem('sppg_active_user_id');
+    let savedName = localStorage.getItem('sppg_active_user_name');
+    let savedRole = localStorage.getItem('sppg_active_user_role') as UserRole;
+
+    if (savedName === 'Hendra Wijaya') {
+      savedName = 'Akmal';
+      localStorage.setItem('sppg_active_user_name', 'Akmal');
+    }
+
     if (saved) {
       const found = allUsers.find(u => u.id === saved);
       if (found) {
@@ -97,7 +103,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
       }
     }
-    // Default fallback to Admin or Ka SPPG
+    // Default fallback to Admin (Akmal) or Ka SPPG
     const def = allUsers.find(u => u.role === 'ADMIN') || allUsers[0] || INITIAL_USERS[0];
     return {
       ...def,
@@ -150,7 +156,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // 2. Stored / local users validation
     const matchedUser = availableUsers.find(
-      u => u.email.toLowerCase() === cleanEmail
+      u => u.email.toLowerCase() === cleanEmail ||
+           (u.role === 'ADMIN' && (cleanEmail === 'akmal' || cleanEmail === 'akmal@sppg.id' || cleanEmail === 'akmal.admin@sppg.id' || cleanEmail === 'hendra.admin@sppg.id'))
     );
 
     if (matchedUser) {
@@ -259,8 +266,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('sppg_is_authenticated');
   };
 
-  const switchUser = (userId: string) => {
-    const user = availableUsers.find(u => u.id === userId);
+  const switchUser = (roleOrUserId: string) => {
+    const user = availableUsers.find(u => u.id === roleOrUserId || u.role === roleOrUserId);
     if (user) {
       setCurrentUser(user);
       setIsAuthenticated(true);

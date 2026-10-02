@@ -43,6 +43,12 @@ import {
 import { exportToExcel, downloadExcelTemplate } from '../lib/excelExport';
 import { SppgLogo } from './SppgLogo';
 
+import {
+  STANDARD_CATEGORIES,
+  StandardCategory,
+  normalizeToStandardCategory,
+} from '../utils/categoryStandards';
+
 interface InventoryModuleProps {
   onRefreshData?: () => void;
   initialTab?: 'stock' | 'opname';
@@ -50,79 +56,14 @@ interface InventoryModuleProps {
 
 export const SPPG_STOCK_CATEGORIES = [
   'Semua Kategori',
-  'Bahan Basah',
-  'Bahan Kering',
-  'ATK & Administrasi',
-  'Alat Kebersihan',
-  'Perlengkapan & APD',
-  'Operasional & Keperluan Lain',
+  ...STANDARD_CATEGORIES,
 ] as const;
 
 export type SppgCategory = typeof SPPG_STOCK_CATEGORIES[number];
 
-// Helper to categorize items cleanly
-export function getDetailedItemCategory(item: { name: string; category?: string; subcategory?: string }): SppgCategory {
-  const cat = (item.category || '').toLowerCase();
-  const sub = (item.subcategory || '').toLowerCase();
-  const name = (item.name || '').toLowerCase();
-
-  if (
-    cat.includes('protein') || cat.includes('unggas') || cat.includes('telur') || cat.includes('ikan') ||
-    cat.includes('sayur') || cat.includes('buah') || cat.includes('basah') ||
-    name.includes('ayam') || name.includes('daging') || name.includes('telur') || name.includes('ikan') ||
-    name.includes('sayur') || name.includes('bayam') || name.includes('kangkung') || name.includes('wortel') ||
-    name.includes('buah') || name.includes('pisang') || name.includes('semangka') || name.includes('pepaya') ||
-    name.includes('tahu') || name.includes('tempe') || name.includes('melon') || name.includes('labu')
-  ) {
-    return 'Bahan Basah';
-  }
-
-  if (
-    cat.includes('sembako') || cat.includes('beras') || cat.includes('minyak') || cat.includes('pemanis') ||
-    cat.includes('tepung') || cat.includes('bumbu') || cat.includes('rempah') || cat.includes('kering') ||
-    name.includes('beras') || name.includes('minyak') || name.includes('gula') || name.includes('tepung') ||
-    name.includes('garam') || name.includes('kecap') || name.includes('saus') || name.includes('bawang') ||
-    name.includes('merica') || name.includes('racik') || name.includes('mie') || name.includes('bihun')
-  ) {
-    return 'Bahan Kering';
-  }
-
-  if (
-    cat.includes('atk') || cat.includes('kantor') || cat.includes('administrasi') ||
-    name.includes('hvs') || name.includes('kertas') || name.includes('pulpen') || name.includes('spidol') ||
-    name.includes('buku') || name.includes('ordner') || name.includes('map') || name.includes('printer') ||
-    name.includes('tinta') || name.includes('staples') || name.includes('lakban')
-  ) {
-    return 'ATK & Administrasi';
-  }
-
-  if (
-    cat.includes('cleaning') || cat.includes('deterjen') || cat.includes('kebersihan') || cat.includes('sanitasi') ||
-    name.includes('sunlight') || name.includes('karbol') || name.includes('wipol') || name.includes('sabun') ||
-    name.includes('spons') || name.includes('lap') || name.includes('kanebo') || name.includes('trash') ||
-    name.includes('sampah') || name.includes('sapu') || name.includes('pel') || name.includes('mop')
-  ) {
-    return 'Alat Kebersihan';
-  }
-
-  if (
-    cat.includes('packaging') || cat.includes('hygiene') || cat.includes('ppe') || cat.includes('pelindung') ||
-    name.includes('sarung tangan') || name.includes('masker') || name.includes('nurse cap') || name.includes('celemek') ||
-    name.includes('apron') || name.includes('mika') || name.includes('thinwall') || name.includes('kresek') ||
-    name.includes('plastik') || name.includes('pisau') || name.includes('spatula')
-  ) {
-    return 'Perlengkapan & APD';
-  }
-
-  if (
-    cat.includes('operational') || cat.includes('utilitas') ||
-    name.includes('gas') || name.includes('elpiji') || name.includes('galon') || name.includes('es batu') ||
-    name.includes('listrik') || name.includes('token') || name.includes('air')
-  ) {
-    return 'Operasional & Keperluan Lain';
-  }
-
-  return 'Bahan Kering';
+// Helper to categorize items cleanly using standardized SPPG category logic
+export function getDetailedItemCategory(item: { name: string; category?: string; subcategory?: string }): StandardCategory {
+  return normalizeToStandardCategory(item.category || item.subcategory, item.name);
 }
 
 // Realistic unit price reference for inventory asset value

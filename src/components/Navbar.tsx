@@ -34,18 +34,24 @@ interface NavbarProps {
   activeTab: string;
   onSelectTab: (tab: string) => void;
   onResetData: () => void;
+  onClearTransactions?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetData }) => {
+export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetData, onClearTransactions }) => {
   const { currentUser, switchUser, logout } = useAuth();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [isResetMenuOpen, setIsResetMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const resetMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsMoreOpen(false);
+      }
+      if (resetMenuRef.current && !resetMenuRef.current.contains(event.target as Node)) {
+        setIsResetMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -175,14 +181,73 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
               </select>
             </div>
 
-            {/* Reset Button */}
-            <button
-              onClick={onResetData}
-              title="Reset data demo ke kondisi default"
-              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
+            {/* Database Management / Reset Menu */}
+            <div className="relative" ref={resetMenuRef}>
+              <button
+                type="button"
+                onClick={() => setIsResetMenuOpen(!isResetMenuOpen)}
+                title="Kelola Database (Bersihkan transaksi / Reset demo)"
+                className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                  isResetMenuOpen
+                    ? 'bg-slate-200 text-slate-800'
+                    : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+
+              {isResetMenuOpen && (
+                <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <div className="px-3 py-1 text-[10px] font-semibold text-slate-400">
+                    Pembersihan & Reset Database
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsResetMenuOpen(false);
+                      if (onClearTransactions) onClearTransactions();
+                    }}
+                    className="w-full text-left px-3 py-2.5 text-xs hover:bg-amber-50/80 transition-colors flex items-start gap-2.5 cursor-pointer group"
+                  >
+                    <div className="p-1.5 rounded-lg bg-amber-100 text-amber-700 group-hover:bg-amber-200 shrink-0 mt-0.5">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900 group-hover:text-amber-900">
+                        Bersihkan Data Transaksi
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">
+                        Kosongkan riwayat belanja, PO, pengeluaran & nolkan stok. Master barang & akun tetap aman.
+                      </div>
+                    </div>
+                  </button>
+
+                  <div className="my-1 border-t border-slate-100" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsResetMenuOpen(false);
+                      onResetData();
+                    }}
+                    className="w-full text-left px-3 py-2.5 text-xs hover:bg-rose-50/80 transition-colors flex items-start gap-2.5 cursor-pointer group"
+                  >
+                    <div className="p-1.5 rounded-lg bg-rose-100 text-rose-700 group-hover:bg-rose-200 shrink-0 mt-0.5">
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900 group-hover:text-rose-900">
+                        Reset ke Data Demo Bawaan
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">
+                        Muat ulang seluruh data sampel simulasi demo SPPG dari awal.
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Logout Button */}
             <button

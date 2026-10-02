@@ -21,7 +21,7 @@ export interface LoginPageProps {
 export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) => {
   const { login } = useAuth();
 
-  const [email, setEmail] = useState<string>('hendra.admin@sppg.id');
+  const [email, setEmail] = useState<string>('akmal@sppg.id');
   const [password, setPassword] = useState<string>('sppg123');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(true);

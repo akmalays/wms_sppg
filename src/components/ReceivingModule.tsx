@@ -62,6 +62,11 @@ import {
   removeFromPrintPool,
   clearPrintPool,
 } from '../utils/poPrintPool';
+import {
+  STANDARD_CATEGORIES,
+  StandardCategory,
+  normalizeToStandardCategory,
+} from '../utils/categoryStandards';
 
 interface ReceivingModuleProps {
   onRefreshData?: () => void;
@@ -71,38 +76,38 @@ interface ReceivingModuleProps {
 // Master Catalog for Quick Autocomplete & Auto-Pricing
 // ----------------------------------------------------
 export const COMMON_GOODS_CATALOG = [
-  // Barang Basah
-  { name: 'Daging Ayam Broiler Karkas Bersih', category: 'Barang Basah', unit: 'Kg', price: 38000 },
-  { name: 'Daging Sapi Segar Rendang', category: 'Barang Basah', unit: 'Kg', price: 120000 },
-  { name: 'Telur Ayam Ras Segar', category: 'Barang Basah', unit: 'Kg', price: 28000 },
-  { name: 'Ikan Kembung Segar', category: 'Barang Basah', unit: 'Kg', price: 35000 },
-  { name: 'Ikan Lele Segar', category: 'Barang Basah', unit: 'Kg', price: 26000 },
-  { name: 'Sayur Bayam Hijau Segar', category: 'Barang Basah', unit: 'Ikat', price: 3500 },
-  { name: 'Sayur Kangkung Segar', category: 'Barang Basah', unit: 'Ikat', price: 3000 },
-  { name: 'Wortel Segar Brastagi', category: 'Barang Basah', unit: 'Kg', price: 12000 },
-  { name: 'Labu Siam Segar', category: 'Barang Basah', unit: 'Kg', price: 9000 },
-  { name: 'Kacang Panjang Segar', category: 'Barang Basah', unit: 'Kg', price: 14000 },
-  { name: 'Buncis Segar', category: 'Barang Basah', unit: 'Kg', price: 16000 },
-  { name: 'Tahu Putih Segar', category: 'Barang Basah', unit: 'Pcs', price: 1000 },
-  { name: 'Tempe Segar Kedelai', category: 'Barang Basah', unit: 'Pcs', price: 4000 },
-  { name: 'Buah Pisang Cavendish / Ambon', category: 'Barang Basah', unit: 'Kg', price: 16000 },
-  { name: 'Buah Semangka Merah Non Biji', category: 'Barang Basah', unit: 'Kg', price: 8500 },
-  { name: 'Buah Pepaya California', category: 'Barang Basah', unit: 'Kg', price: 7500 },
-  { name: 'Buah Melon Segar', category: 'Barang Basah', unit: 'Kg', price: 14000 },
+  // Bahan Basah
+  { name: 'Daging Ayam Broiler Karkas Bersih', category: 'Bahan Basah', unit: 'Kg', price: 38000 },
+  { name: 'Daging Sapi Segar Rendang', category: 'Bahan Basah', unit: 'Kg', price: 120000 },
+  { name: 'Telur Ayam Ras Segar', category: 'Bahan Basah', unit: 'Kg', price: 28000 },
+  { name: 'Ikan Kembung Segar', category: 'Bahan Basah', unit: 'Kg', price: 35000 },
+  { name: 'Ikan Lele Segar', category: 'Bahan Basah', unit: 'Kg', price: 26000 },
+  { name: 'Sayur Bayam Hijau Segar', category: 'Bahan Basah', unit: 'Ikat', price: 3500 },
+  { name: 'Sayur Kangkung Segar', category: 'Bahan Basah', unit: 'Ikat', price: 3000 },
+  { name: 'Wortel Segar Brastagi', category: 'Bahan Basah', unit: 'Kg', price: 12000 },
+  { name: 'Labu Siam Segar', category: 'Bahan Basah', unit: 'Kg', price: 9000 },
+  { name: 'Kacang Panjang Segar', category: 'Bahan Basah', unit: 'Kg', price: 14000 },
+  { name: 'Buncis Segar', category: 'Bahan Basah', unit: 'Kg', price: 16000 },
+  { name: 'Tahu Putih Segar', category: 'Bahan Basah', unit: 'Pcs', price: 1000 },
+  { name: 'Tempe Segar Kedelai', category: 'Bahan Basah', unit: 'Pcs', price: 4000 },
+  { name: 'Buah Pisang Cavendish / Ambon', category: 'Bahan Basah', unit: 'Kg', price: 16000 },
+  { name: 'Buah Semangka Merah Non Biji', category: 'Bahan Basah', unit: 'Kg', price: 8500 },
+  { name: 'Buah Pepaya California', category: 'Bahan Basah', unit: 'Kg', price: 7500 },
+  { name: 'Buah Melon Segar', category: 'Bahan Basah', unit: 'Kg', price: 14000 },
 
-  // Barang Kering
-  { name: 'Beras Ramos Premium SPPG', category: 'Barang Kering', unit: 'Kg', price: 14500 },
-  { name: 'Minyak Goreng Sawit 2L', category: 'Barang Kering', unit: 'Pouch', price: 36000 },
-  { name: 'Gula Pasir Kristal Putih', category: 'Barang Kering', unit: 'Kg', price: 17500 },
-  { name: 'Tepung Terigu Segitiga Biru', category: 'Barang Kering', unit: 'Kg', price: 12000 },
-  { name: 'Tepung Tapioka / Kanji', category: 'Barang Kering', unit: 'Kg', price: 11000 },
-  { name: 'Garam Dapur Beryodium', category: 'Barang Kering', unit: 'Bungkus', price: 4000 },
-  { name: 'Kecap Manis Bango 520ml', category: 'Barang Kering', unit: 'Pouch', price: 24000 },
-  { name: 'Saus Tomat / Sambal 1kg', category: 'Barang Kering', unit: 'Pouch', price: 18000 },
-  { name: 'Bawang Merah Brebes', category: 'Barang Kering', unit: 'Kg', price: 38000 },
-  { name: 'Bawang Putih Kating', category: 'Barang Kering', unit: 'Kg', price: 36000 },
-  { name: 'Bumbu Racik Gule / Opor', category: 'Barang Kering', unit: 'Sachet', price: 3000 },
-  { name: 'Merica Bubuk Ladaku', category: 'Barang Kering', unit: 'Sachet', price: 1500 },
+  // Bahan Kering
+  { name: 'Beras Ramos Premium SPPG', category: 'Bahan Kering', unit: 'Kg', price: 14500 },
+  { name: 'Minyak Goreng Sawit 2L', category: 'Bahan Kering', unit: 'Pouch', price: 36000 },
+  { name: 'Gula Pasir Kristal Putih', category: 'Bahan Kering', unit: 'Kg', price: 17500 },
+  { name: 'Tepung Terigu Segitiga Biru', category: 'Bahan Kering', unit: 'Kg', price: 12000 },
+  { name: 'Tepung Tapioka / Kanji', category: 'Bahan Kering', unit: 'Kg', price: 11000 },
+  { name: 'Garam Dapur Beryodium', category: 'Bahan Kering', unit: 'Bungkus', price: 4000 },
+  { name: 'Kecap Manis Bango 520ml', category: 'Bahan Kering', unit: 'Pouch', price: 24000 },
+  { name: 'Saus Tomat / Sambal 1kg', category: 'Bahan Kering', unit: 'Pouch', price: 18000 },
+  { name: 'Bawang Merah Brebes', category: 'Bahan Kering', unit: 'Kg', price: 38000 },
+  { name: 'Bawang Putih Kating', category: 'Bahan Kering', unit: 'Kg', price: 36000 },
+  { name: 'Bumbu Racik Gule / Opor', category: 'Bahan Kering', unit: 'Sachet', price: 3000 },
+  { name: 'Merica Bubuk Ladaku', category: 'Bahan Kering', unit: 'Sachet', price: 1500 },
 
   // ATK & Administrasi
   { name: 'Kertas HVS A4 70/80gr (PaperOne)', category: 'ATK & Administrasi', unit: 'Rim', price: 48000 },
@@ -145,121 +150,12 @@ export const COMMON_GOODS_CATALOG = [
   { name: 'Token Listrik PLN Dapur Operasional', category: 'Operasional & Keperluan Lain', unit: 'Voucher', price: 200000 },
 ];
 
-export const INPUT_CATEGORIES = [
-  'Barang Basah',
-  'Barang Kering',
-  'ATK & Administrasi',
-  'Alat Kebersihan',
-  'Perlengkapan & APD',
-  'Operasional & Keperluan Lain',
-] as const;
+export const INPUT_CATEGORIES = STANDARD_CATEGORIES;
 
-export type InputCategoryType = typeof INPUT_CATEGORIES[number];
+export type InputCategoryType = StandardCategory;
 
 function autoDetectCategory(itemName: string): InputCategoryType {
-  const n = itemName.toLowerCase();
-  if (
-    n.includes('ayam') ||
-    n.includes('daging') ||
-    n.includes('telur') ||
-    n.includes('ikan') ||
-    n.includes('sayur') ||
-    n.includes('bayam') ||
-    n.includes('kangkung') ||
-    n.includes('wortel') ||
-    n.includes('tahu') ||
-    n.includes('tempe') ||
-    n.includes('buah') ||
-    n.includes('pisang') ||
-    n.includes('semangka') ||
-    n.includes('pepaya') ||
-    n.includes('melon') ||
-    n.includes('buncis') ||
-    n.includes('labu')
-  ) {
-    return 'Barang Basah';
-  }
-  if (
-    n.includes('beras') ||
-    n.includes('minyak') ||
-    n.includes('gula') ||
-    n.includes('tepung') ||
-    n.includes('garam') ||
-    n.includes('kecap') ||
-    n.includes('saus') ||
-    n.includes('bawang') ||
-    n.includes('merica') ||
-    n.includes('racik') ||
-    n.includes('kering') ||
-    n.includes('mie') ||
-    n.includes('bihun')
-  ) {
-    return 'Barang Kering';
-  }
-  if (
-    n.includes('hvs') ||
-    n.includes('kertas') ||
-    n.includes('pulpen') ||
-    n.includes('spidol') ||
-    n.includes('buku') ||
-    n.includes('ordner') ||
-    n.includes('map') ||
-    n.includes('printer') ||
-    n.includes('tinta') ||
-    n.includes('staples') ||
-    n.includes('lakban') ||
-    n.includes('atk') ||
-    n.includes('stempel')
-  ) {
-    return 'ATK & Administrasi';
-  }
-  if (
-    n.includes('sunlight') ||
-    n.includes('karbol') ||
-    n.includes('wipol') ||
-    n.includes('sabun') ||
-    n.includes('spons') ||
-    n.includes('lap') ||
-    n.includes('kanebo') ||
-    n.includes('trash') ||
-    n.includes('sampah') ||
-    n.includes('sapu') ||
-    n.includes('pel') ||
-    n.includes('mop') ||
-    n.includes('bersih') ||
-    n.includes('deterjen')
-  ) {
-    return 'Alat Kebersihan';
-  }
-  if (
-    n.includes('sarung tangan') ||
-    n.includes('masker') ||
-    n.includes('nurse cap') ||
-    n.includes('celemek') ||
-    n.includes('apron') ||
-    n.includes('mika') ||
-    n.includes('thinwall') ||
-    n.includes('kresek') ||
-    n.includes('plastik') ||
-    n.includes('pisau') ||
-    n.includes('spatula') ||
-    n.includes('apd')
-  ) {
-    return 'Perlengkapan & APD';
-  }
-  if (
-    n.includes('gas') ||
-    n.includes('elpiji') ||
-    n.includes('galon') ||
-    n.includes('es batu') ||
-    n.includes('listrik') ||
-    n.includes('token') ||
-    n.includes('air') ||
-    n.includes('operasional')
-  ) {
-    return 'Operasional & Keperluan Lain';
-  }
-  return 'Barang Kering';
+  return normalizeToStandardCategory(undefined, itemName);
 }
 
 function getItemCatalogInfo(name: string) {
@@ -527,7 +423,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   // ----------------------------------------------------
   const [singleDate, setSingleDate] = useState(today);
   const [singleTime, setSingleTime] = useState(defaultCurrentTime);
-  const [singleCategory, setSingleCategory] = useState<InputCategoryType>('Barang Basah');
+  const [singleCategory, setSingleCategory] = useState<InputCategoryType>('Bahan Basah');
   const [singleItemName, setSingleItemName] = useState('');
   const [singleQty, setSingleQty] = useState('1');
   const [singleUnit, setSingleUnit] = useState('Kg');
@@ -546,9 +442,9 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   const [batchInputMode, setBatchInputMode] = useState<'GRID' | 'PASTE'>('GRID');
   const [batchRawPaste, setBatchRawPaste] = useState('');
   const [batchRows, setBatchRows] = useState<BatchInputRow[]>([
-    { id: '1', itemName: '', category: 'Barang Basah', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
-    { id: '2', itemName: '', category: 'Barang Basah', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
-    { id: '3', itemName: '', category: 'Barang Kering', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
+    { id: '1', itemName: '', category: 'Bahan Basah', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
+    { id: '2', itemName: '', category: 'Bahan Basah', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
+    { id: '3', itemName: '', category: 'Bahan Kering', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
     { id: '4', itemName: '', category: 'ATK & Administrasi', qty: '1', unit: 'Pack', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
     { id: '5', itemName: '', category: 'Alat Kebersihan', qty: '1', unit: 'Pouch', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
   ]);
@@ -594,7 +490,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     setSingleTime(
       new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(':', '.')
     );
-    setSingleCategory('Barang Basah');
+    setSingleCategory('Bahan Basah');
     setSingleItemName('');
     setSingleQty('1');
     setSingleUnit('Kg');
@@ -694,7 +590,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       newRows.push({
         id: String(Date.now() + Math.random()),
         itemName: '',
-        category: 'Barang Basah',
+        category: 'Bahan Basah',
         qty: '1',
         unit: 'Kg',
         unitPrice: 0,
@@ -2301,8 +2197,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                   onChange={e => setSingleCategory(e.target.value as InputCategoryType)}
                   className="w-full border border-slate-300 rounded-lg p-2.5 bg-white text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
                 >
-                  <option value="Barang Basah">Barang Basah (Ayam, Daging, Ikan, Telur, Sayur, Buah, Tahu/Tempe)</option>
-                  <option value="Barang Kering">Barang Kering (Beras, Minyak, Gula, Tepung, Garam, Bumbu, Saus)</option>
+                  <option value="Bahan Basah">Bahan Basah (Ayam, Daging, Ikan, Telur, Sayur, Buah, Tahu/Tempe)</option>
+                  <option value="Bahan Kering">Bahan Kering (Beras, Minyak, Gula, Tepung, Garam, Bumbu, Saus)</option>
                   <option value="ATK & Administrasi">ATK & Administrasi (Kertas HVS, Buku, Pulpen, Spidol, Map, Tinta)</option>
                   <option value="Alat Kebersihan">Alat Kebersihan (Sunlight, Karbol, Spons, Kain Lap, Sapu, Trash Bag)</option>
                   <option value="Perlengkapan & APD">Perlengkapan & APD (Kresek, Kotak Mika, Sarung Tangan, Masker, Nurse Cap)</option>

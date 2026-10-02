@@ -26,7 +26,25 @@ export type ItemType =
   | 'OPERATIONAL_CONSUMABLE'
   | 'EQUIPMENT';
 
-export type MainItemCategory = 'Bahan Kering' | 'Bahan Basah' | 'Bahan Peralatan';
+import {
+  MAIN_CATEGORIES,
+  STANDARD_CATEGORIES,
+  MainCategory,
+  StandardCategory,
+  normalizeToMainCategory,
+  normalizeToStandardCategory,
+} from '../utils/categoryStandards';
+
+export {
+  MAIN_CATEGORIES,
+  STANDARD_CATEGORIES,
+  type MainCategory,
+  type StandardCategory,
+  normalizeToMainCategory,
+  normalizeToStandardCategory,
+};
+
+export type MainItemCategory = MainCategory;
 
 export type FoodCategory = 'Sembako' | 'Protein' | 'Sayuran' | 'Buah';
 
@@ -42,20 +60,10 @@ export type EquipmentCategory =
   | 'Warehouse Equipment'
   | 'Electronic Equipment';
 
-export type ItemCategory = MainItemCategory | FoodCategory | OperationalCategory | EquipmentCategory | string;
+export type ItemCategory = MainItemCategory | StandardCategory | FoodCategory | OperationalCategory | EquipmentCategory | string;
 
-export function normalizeItemCategory(category?: string): MainItemCategory {
-  const c = (category || '').toLowerCase();
-  if (c.includes('kering') || c.includes('sembako') || c.includes('beras') || c.includes('minyak') || c.includes('gula') || c.includes('tepung') || c.includes('bumbu') || c.includes('garam') || c.includes('kecap') || c.includes('saus')) {
-    return 'Bahan Kering';
-  }
-  if (c.includes('basah') || c.includes('protein') || c.includes('sayur') || c.includes('buah') || c.includes('ayam') || c.includes('daging') || c.includes('telur') || c.includes('ikan') || c.includes('tahu') || c.includes('tempe')) {
-    return 'Bahan Basah';
-  }
-  if (c.includes('alat') || c.includes('clean') || c.includes('pack') || c.includes('hygiene') || c.includes('kemasan') || c.includes('operasional') || c.includes('atk') || c.includes('kebersihan') || c.includes('sanitasi') || c.includes('kantor') || c.includes('keperluan') || c.includes('utilitas') || c.includes('gas') || c.includes('galon')) {
-    return 'Bahan Peralatan';
-  }
-  return 'Bahan Kering';
+export function normalizeItemCategory(category?: string, itemName?: string): MainItemCategory {
+  return normalizeToMainCategory(category, itemName);
 }
 
 export type BaseUnit =
