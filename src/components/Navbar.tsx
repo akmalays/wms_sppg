@@ -27,7 +27,9 @@ import {
   PackagePlus,
   Calendar,
   Clock,
-  UserPlus
+  UserPlus,
+  Menu,
+  X
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -41,6 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
   const { currentUser, switchUser, logout } = useAuth();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isResetMenuOpen, setIsResetMenuOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const resetMenuRef = useRef<HTMLDivElement>(null);
 
@@ -163,7 +166,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
                   {currentUser.name.charAt(0)}
                 </div>
                 <div className="hidden xl:block">
-                  <div className="text-[10px] font-medium text-slate-400 group-hover:text-emerald-600 leading-none">Profil Saya</div>
+                  <div className="text-[10px] font-medium text-slate-500 group-hover:text-emerald-700 leading-none">Profil Saya</div>
                   <div className="text-xs font-semibold text-slate-800 group-hover:text-emerald-800 leading-tight truncate max-w-[120px]">{currentUser.name}</div>
                 </div>
               </button>
@@ -187,10 +190,10 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
                 type="button"
                 onClick={() => setIsResetMenuOpen(!isResetMenuOpen)}
                 title="Kelola Database (Bersihkan transaksi / Reset demo)"
-                className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                className={`p-2 rounded-lg transition-colors cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center ${
                   isResetMenuOpen
                     ? 'bg-slate-200 text-slate-800'
-                    : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
                 }`}
               >
                 <RotateCcw className="w-4 h-4" />
@@ -198,7 +201,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
 
               {isResetMenuOpen && (
                 <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
-                  <div className="px-3 py-1 text-[10px] font-semibold text-slate-400">
+                  <div className="px-3 py-1 text-[11px] font-bold text-slate-600">
                     Pembersihan & Reset Database
                   </div>
 
@@ -253,17 +256,27 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
             <button
               onClick={logout}
               title="Keluar dari sistem"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-rose-700 hover:bg-rose-50 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-rose-700 hover:bg-rose-50 border border-slate-200 rounded-lg transition-colors cursor-pointer min-h-[36px]"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Keluar</span>
+            </button>
+
+            {/* Mobile Navigation Drawer Toggle (min tap target 44px) */}
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="lg:hidden p-2 rounded-lg text-slate-700 hover:bg-slate-100 border border-slate-200 cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-emerald-600"
+              aria-label={isMobileMenuOpen ? 'Tutup navigasi menu' : 'Buka navigasi menu'}
+            >
+              {isMobileMenuOpen ? <X className="w-5 h-5 text-slate-800" /> : <Menu className="w-5 h-5 text-slate-800" />}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Navigation Tabs Bar */}
-      <div className="border-t border-slate-100 bg-slate-50/70 overflow-x-visible">
+      {/* Navigation Tabs Bar for Desktop */}
+      <div className="hidden lg:block border-t border-slate-100 bg-slate-50/70 overflow-x-visible">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between py-1">
           <div className="flex items-center space-x-1 overflow-x-auto scrollbar-none py-0.5">
             {primaryNavItems.map(item => {
@@ -273,35 +286,35 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
                 <button
                   key={item.id}
                   onClick={() => onSelectTab(item.id)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-600 ${
                     isActive
                       ? 'bg-white text-emerald-800 shadow-2xs border border-slate-200 font-bold'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-700' : 'text-slate-400'}`} />
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-700' : 'text-slate-500'}`} />
                   <span>{item.label}</span>
                 </button>
               );
             })}
 
-            {/* Dropdown for Secondary / Legacy Modules */}
+            {/* Dropdown for Secondary / Deep Modules */}
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setIsMoreOpen(!isMoreOpen)}
-                className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+                className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-600 ${
                   isSecondaryActive
                     ? 'bg-white text-emerald-800 shadow-2xs border border-slate-200 font-bold'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
                 <span>Modul Lainnya</span>
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isMoreOpen ? 'rotate-180 text-emerald-700' : 'text-slate-400'}`} />
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isMoreOpen ? 'rotate-180 text-emerald-700' : 'text-slate-500'}`} />
               </button>
 
               {isMoreOpen && (
                 <div className="absolute left-0 mt-1.5 w-60 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
-                  <div className="px-3 py-1 text-[10px] font-semibold text-slate-400">
+                  <div className="px-3 py-1 text-[11px] font-bold text-slate-600">
                     Operasional & Inventaris
                   </div>
                   {secondaryNavItems.map(item => {
@@ -320,7 +333,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
                             : 'text-slate-700 hover:bg-slate-50'
                         }`}
                       >
-                        <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-700' : 'text-slate-400'}`} />
+                        <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-700' : 'text-slate-500'}`} />
                         <span>{item.label}</span>
                       </button>
                     );
@@ -331,6 +344,71 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
           </div>
         </div>
       </div>
+
+      {/* Mobile Responsive Navigation Drawer */}
+      {isMobileMenuOpen && (
+        <div className="lg:hidden border-t border-slate-200 bg-white shadow-xl animate-in fade-in slide-in-from-top-2 duration-150 max-h-[calc(100vh-4rem)] overflow-y-auto">
+          <div className="p-4 space-y-4">
+            <div>
+              <div className="text-[11px] font-bold text-slate-600 mb-2 px-1">
+                Modul Utama Operasional
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {primaryNavItems.map(item => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        onSelectTab(item.id);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer min-h-[44px] transition-colors ${
+                        isActive
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold'
+                          : 'text-slate-700 hover:bg-slate-50 border border-transparent'
+                      }`}
+                    >
+                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-emerald-700' : 'text-slate-500'}`} />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-3">
+              <div className="text-[11px] font-bold text-slate-600 mb-2 px-1">
+                Operasional & Inventaris Mendalam
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {secondaryNavItems.map(item => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        onSelectTab(item.id);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer min-h-[44px] transition-colors ${
+                        isActive
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold'
+                          : 'text-slate-700 hover:bg-slate-50 border border-transparent'
+                      }`}
+                    >
+                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-emerald-700' : 'text-slate-500'}`} />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

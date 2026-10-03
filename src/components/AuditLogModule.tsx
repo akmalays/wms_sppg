@@ -28,7 +28,7 @@ export const AuditLogModule: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-bold text-slate-900 tracking-tight">Log Audit Aktivitas (Audit Trail)</h2>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+            <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
               Read-Only • Unalterable
             </span>
           </div>

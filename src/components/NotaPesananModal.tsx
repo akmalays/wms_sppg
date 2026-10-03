@@ -109,6 +109,19 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
   const [signerRole1, setSignerRole1] = useState('Kepala Satuan Pelayanan');
   const [signerRole2, setSignerRole2] = useState('Pemenuhan Gizi');
 
+  // Keyboard Accessibility: Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   // Sync state when incoming nota changes
   useEffect(() => {
     setFormData(nota);

@@ -1875,7 +1875,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
             <div className="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-slate-800">
-                  Daftar Presensi Karyawan — {new Date(selectedDate).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  Daftar Presensi Karyawan - {new Date(selectedDate).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                 </h3>
                 <p className="text-[11px] text-slate-500">
                   Menampilkan {filteredAttendanceRows.length} dari {activeEmployees.length} karyawan aktif SPPG Jeru Tumpang.
@@ -2294,7 +2294,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">
-                    Presensi Cepat 1-Klik — SPPG Jeru Tumpang
+                    Presensi Cepat 1-Klik - SPPG Jeru Tumpang
                   </h3>
                   <p className="text-xs text-slate-500">
                     Tanggal Operasional: <strong className="text-slate-700 font-semibold">{selectedDate}</strong> • Total {quickRows.length} staf aktif
@@ -2496,7 +2496,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                   >
                     {activeEmployees.map(emp => (
                       <option key={emp.id} value={emp.id}>
-                        {emp.name} ({emp.nip}) — {emp.position} [{emp.department}]
+                        {emp.name} ({emp.nip}) - {emp.position} [{emp.department}]
                       </option>
                     ))}
                   </select>

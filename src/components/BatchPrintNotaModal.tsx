@@ -83,6 +83,18 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
   const [activeTab, setActiveTab] = useState<'PREVIEW' | 'LIST'>('PREVIEW');
   const [selectedToAdd, setSelectedToAdd] = useState<string>('');
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   // Filter nota-nota yang ada di pool
@@ -478,7 +490,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
               <select
                 value={selectedToAdd}
                 onChange={e => setSelectedToAdd(e.target.value)}
-                className="text-[11px] bg-white border border-slate-300 rounded-lg px-2 py-1 focus:outline-none cursor-pointer max-w-[240px]"
+                className="text-[11px] bg-white border border-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-emerald-500/60 cursor-pointer max-w-[240px]"
               >
                 <option value="">-- Pilih Nota Tambahan --</option>
                 {availableToAdd.map(n => (

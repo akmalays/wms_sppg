@@ -448,7 +448,7 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
                         {isCurrentHour && !todo.isCompleted && ' (Jam Ini)'}
                       </span>
                     ) : (
-                      <span className="text-[11px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                      <span className="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                         Shift {todo.session || 'Harian'}
                       </span>
                     )}
@@ -574,7 +574,7 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
                     onChange={e => setNewTargetTime(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-slate-800 font-semibold"
                   />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  <span className="text-[10px] text-slate-500 font-medium mt-0.5 block">
                     Pengingat jam akan menyorot tugas pada jam ini
                   </span>
                 </div>

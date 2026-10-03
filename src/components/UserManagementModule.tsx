@@ -848,11 +848,11 @@ export const UserManagementModule: React.FC = () => {
                   onChange={e => setEditRole(e.target.value as UserRole)}
                   className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 bg-white text-slate-800 cursor-pointer"
                 >
-                  <option value="SUPERADMIN">Superadmin — Akses Penuh Sistem & Audit</option>
-                  <option value="KA_SPPG">Ka SPPG — Kepala Unit Pelayanan</option>
-                  <option value="ADMIN">Admin Gudang — Stok & Operasional</option>
-                  <option value="ASLAP">Aslap — Penerimaan & QC Dapur</option>
-                  <option value="AKUNTAN">Akuntan — Mutasi & Keuangan</option>
+                  <option value="SUPERADMIN">Superadmin - Akses Penuh Sistem & Audit</option>
+                  <option value="KA_SPPG">Ka SPPG - Kepala Unit Pelayanan</option>
+                  <option value="ADMIN">Admin Gudang - Stok & Operasional</option>
+                  <option value="ASLAP">Aslap - Penerimaan & QC Dapur</option>
+                  <option value="AKUNTAN">Akuntan - Mutasi & Keuangan</option>
                 </select>
               </div>
 

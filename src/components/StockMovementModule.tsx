@@ -41,25 +41,25 @@ export const StockMovementModule: React.FC = () => {
     switch (type) {
       case 'RECEIVING':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
             <ArrowDownLeft className="w-3 h-3" /> Penerimaan
           </span>
         );
       case 'ISSUE_CONSUMPTION':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
             <ArrowUpRight className="w-3 h-3" /> Pengeluaran
           </span>
         );
       case 'STOCK_OPNAME_ADJUSTMENT':
       case 'ADJUSTMENT':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-purple-50 text-purple-800 border border-purple-200">
             <SlidersHorizontal className="w-3 h-3" /> Opname Adj.
           </span>
         );
       default:
-        return <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px]">{type}</span>;
+        return <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-medium border border-slate-200">{type}</span>;
     }
   };
 
@@ -76,7 +76,7 @@ export const StockMovementModule: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-bold text-slate-900 tracking-tight">Buku Besar Mutasi Stok (Inventory Ledger)</h2>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+            <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
               Traceable & Immutable
             </span>
           </div>

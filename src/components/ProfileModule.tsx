@@ -413,11 +413,11 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
                   onChange={e => setRole(e.target.value as UserRole)}
                   className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-slate-800 cursor-pointer font-medium"
                 >
-                  <option value="SUPERADMIN">Superadmin — Akses Penuh Konfigurasi & Audit</option>
-                  <option value="KA_SPPG">Ka SPPG — Kepala Satuan Pelayanan & Otorisasi</option>
-                  <option value="ADMIN">Admin — Operasional Gudang & Order Menu</option>
-                  <option value="ASLAP">Aslap — Asisten Lapangan & QC Pemeriksaan Dapur</option>
-                  <option value="AKUNTAN">Akuntan — Validasi Biaya, Buku Mutasi & Keuangan</option>
+                  <option value="SUPERADMIN">Superadmin - Akses Penuh Konfigurasi & Audit</option>
+                  <option value="KA_SPPG">Ka SPPG - Kepala Satuan Pelayanan & Otorisasi</option>
+                  <option value="ADMIN">Admin - Operasional Gudang & Order Menu</option>
+                  <option value="ASLAP">Aslap - Asisten Lapangan & QC Pemeriksaan Dapur</option>
+                  <option value="AKUNTAN">Akuntan - Validasi Biaya, Buku Mutasi & Keuangan</option>
                 </select>
                 <div className="mt-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-600">
                   <strong className="text-slate-800">{roleDescriptions[role]?.title}:</strong>{' '}

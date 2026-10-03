@@ -627,7 +627,7 @@ export const DailyExpensesModule: React.FC = () => {
                   type="date"
                   value={selectedDailyDate}
                   onChange={e => setSelectedDailyDate(e.target.value)}
-                  className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                  className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                 />
               </div>
             )}
@@ -640,7 +640,7 @@ export const DailyExpensesModule: React.FC = () => {
                     type="date"
                     value={startDate}
                     onChange={e => setStartDate(e.target.value)}
-                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                   />
                 </div>
                 <span className="text-slate-400 font-medium">s/d</span>
@@ -650,7 +650,7 @@ export const DailyExpensesModule: React.FC = () => {
                     type="date"
                     value={endDate}
                     onChange={e => setEndDate(e.target.value)}
-                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                   />
                 </div>
 
@@ -682,7 +682,7 @@ export const DailyExpensesModule: React.FC = () => {
                   type="month"
                   value={selectedMonth}
                   onChange={e => setSelectedMonth(e.target.value)}
-                  className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                  className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                 />
               </div>
             )}
@@ -774,7 +774,7 @@ export const DailyExpensesModule: React.FC = () => {
         <div className="p-4 rounded-xl bg-white border border-emerald-200 shadow-2xs bg-gradient-to-b from-white to-emerald-50/20">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-emerald-800">Bahan Basah</span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-100/80 text-emerald-800 border border-emerald-200">
               {grandTotalNominal > 0 ? Math.round((categoryBreakdowns['Bahan Basah'].totalNominal / grandTotalNominal) * 100) : 0}%
             </span>
           </div>
@@ -790,7 +790,7 @@ export const DailyExpensesModule: React.FC = () => {
         <div className="p-4 rounded-xl bg-white border border-amber-200 shadow-2xs bg-gradient-to-b from-white to-amber-50/20">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-amber-800">Bahan Kering</span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-100/80 text-amber-800 border border-amber-200">
               {grandTotalNominal > 0 ? Math.round((categoryBreakdowns['Bahan Kering'].totalNominal / grandTotalNominal) * 100) : 0}%
             </span>
           </div>
@@ -806,7 +806,7 @@ export const DailyExpensesModule: React.FC = () => {
         <div className="p-4 rounded-xl bg-white border border-blue-200 shadow-2xs bg-gradient-to-b from-white to-blue-50/20">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-blue-800">Bahan Peralatan</span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-100/80 text-blue-800 border border-blue-200">
               {grandTotalNominal > 0 ? Math.round((categoryBreakdowns['Bahan Peralatan'].totalNominal / grandTotalNominal) * 100) : 0}%
             </span>
           </div>
@@ -890,7 +890,7 @@ export const DailyExpensesModule: React.FC = () => {
                 {/* Category Header */}
                 <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5">
-                    <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${badgeClass}`}>
+                    <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-md border ${badgeClass}`}>
                       {cat}
                     </span>
                     <h2 className="text-xs font-semibold text-slate-700">

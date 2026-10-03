@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ReceivingDocument } from '../types/warehouse';
 import { X, Printer, CheckCircle2, Building2, UserCheck, Calendar, Clock, Camera, ZoomIn } from 'lucide-react';
 
@@ -8,6 +8,18 @@ interface ReceivingDetailModalProps {
 }
 
 export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ document, onClose }) => {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (document) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [document, onClose]);
+
   if (!document) return null;
 
   const handlePrint = () => {
@@ -15,7 +27,12 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+      onClick={e => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/80">
@@ -26,7 +43,7 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-slate-800">{document.id}</h3>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
                   <CheckCircle2 className="w-3 h-3" />
                   {document.status}
                 </span>

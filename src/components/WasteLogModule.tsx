@@ -1527,7 +1527,7 @@ export const WasteLogModule: React.FC = () => {
                       setSelectedWeekDate(e.target.value);
                       if (filterMode === 'PRESET_SAMPLE') setFilterMode('WEEK');
                     }}
-                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                   />
                 </div>
                 <button
@@ -1560,7 +1560,7 @@ export const WasteLogModule: React.FC = () => {
                     type="month"
                     value={selectedMonth}
                     onChange={e => setSelectedMonth(e.target.value)}
-                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                   />
                 </div>
                 <button
@@ -1582,7 +1582,7 @@ export const WasteLogModule: React.FC = () => {
                     type="date"
                     value={customStartDate}
                     onChange={e => setCustomStartDate(e.target.value)}
-                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                   />
                 </div>
                 <span className="text-slate-400 font-medium">s/d</span>
@@ -1592,7 +1592,7 @@ export const WasteLogModule: React.FC = () => {
                     type="date"
                     value={customEndDate}
                     onChange={e => setCustomEndDate(e.target.value)}
-                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                   />
                 </div>
               </div>

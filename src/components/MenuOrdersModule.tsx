@@ -1266,7 +1266,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       setSelectedDailyDate(e.target.value);
                       setPeriodType('DAILY');
                     }}
-                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                   />
                 </div>
 
@@ -1299,7 +1299,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                     type="date"
                     value={startDate}
                     onChange={e => setStartDate(e.target.value)}
-                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                   />
                 </div>
                 <span className="text-slate-400 font-medium">s/d</span>
@@ -1309,7 +1309,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                     type="date"
                     value={endDate}
                     onChange={e => setEndDate(e.target.value)}
-                    className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                    className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                   />
                 </div>
                 <div className="flex items-center gap-1">
@@ -1338,7 +1338,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                   type="month"
                   value={selectedMonth}
                   onChange={e => setSelectedMonth(e.target.value)}
-                  className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                  className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                 />
               </div>
             )}
@@ -2226,7 +2226,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 >
                   {orders.map(ord => (
                     <option key={ord.id} value={ord.id}>
-                      {ord.date} ({ord.mealSession}) — {ord.menuTitle.slice(0, 45)}... ({ord.targetPortions} porsi)
+                      {ord.date} ({ord.mealSession}) - {ord.menuTitle.slice(0, 45)}... ({ord.targetPortions} porsi)
                     </option>
                   ))}
                 </select>
