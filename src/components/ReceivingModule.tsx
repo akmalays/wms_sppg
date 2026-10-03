@@ -46,6 +46,11 @@ import {
   FileCheck,
   FilePlus,
   Layers,
+  CheckSquare,
+  Square,
+  LayoutGrid,
+  Check,
+  RotateCcw,
 } from 'lucide-react';
 import { SignaturePad } from './SignaturePad';
 import { ReceivingDetailModal } from './ReceivingDetailModal';
@@ -54,6 +59,10 @@ import { exportToExcel } from '../lib/excelExport';
 import { NotaPesananModal } from './NotaPesananModal';
 import { MasterSupplierModal } from './MasterSupplierModal';
 import { BatchPrintNotaModal } from './BatchPrintNotaModal';
+import { useToast } from '../context/ToastContext';
+import { ConfirmationModal, ConfirmationItemSummary } from './common/ConfirmationModal';
+import { LoadingOverlay } from './common/LoadingOverlay';
+import { ActionDropdown } from './common/ActionDropdown';
 import { angkaTerbilang } from './ToolsPrintModule';
 import { generateNextPoNumber } from '../utils/poNumberGenerator';
 import {
@@ -205,6 +214,31 @@ export interface UnifiedRecord {
 
 type PeriodType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
 
+function formatIndonesianDateWithDay(dateStr?: string): string {
+  if (!dateStr || dateStr === 'Tanpa Tanggal') return 'Tanpa Tanggal';
+  const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const months = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+  ];
+  try {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const monthIdx = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const d = new Date(year, monthIdx, day);
+      const dayName = days[d.getDay()];
+      if (monthIdx >= 0 && monthIdx < 12 && dayName) {
+        return `${dayName}, ${day} ${months[monthIdx]} ${year}`;
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return dateStr;
+}
+
 function parseExpenseDate(dateStr: string): Date | null {
   if (!dateStr) return null;
   const clean = dateStr.toLowerCase().trim();
@@ -251,6 +285,33 @@ function parseExpenseDate(dateStr: string): Date | null {
 
 export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData }) => {
   const { currentUser, can } = useAuth();
+  const toast = useToast();
+
+  // Confirmation Modal & Action Loading states
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string | React.ReactNode;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: 'primary' | 'danger' | 'warning' | 'info';
+    icon?: React.ReactNode;
+    itemsSummary?: ConfirmationItemSummary;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const [actionLoading, setActionLoading] = useState<{
+    isLoading: boolean;
+    message?: string;
+    submessage?: string;
+  }>({
+    isLoading: false,
+  });
 
   // Data states
   const [dataVersion, setDataVersion] = useState(0);
@@ -274,6 +335,17 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     supplierId?: string;
     items: PurchaseOrderItem[];
     refId?: string;
+    refIds?: string[];
+  } | null>(null);
+
+  // Supplier filter, View Mode, and Multi-select states
+  const [selectedSupplierFilter, setSelectedSupplierFilter] = useState<string>('ALL');
+  const [viewMode, setViewMode] = useState<'TABLE' | 'SUPPLIER_GROUPS'>('TABLE');
+  const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
+  const [supplierNotaPrompt, setSupplierNotaPrompt] = useState<{
+    supplierName: string;
+    clickedRecord: UnifiedRecord;
+    siblingRecords: UnifiedRecord[];
   } | null>(null);
 
   // Nota Pesanan Modal state
@@ -348,20 +420,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Dropdown state for compact input action menu
-  const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
-  const inputDropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (inputDropdownRef.current && !inputDropdownRef.current.contains(event.target as Node)) {
-        setIsInputDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   // Quick weekly helpers
   const handleSetThisWeek = () => {
     const end = new Date();
@@ -429,16 +487,52 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   const [singleUnit, setSingleUnit] = useState('Kg');
   const [singleUnitPrice, setSingleUnitPrice] = useState<number>(0);
   const [singleSupplier, setSingleSupplier] = useState('');
-  const [singlePic, setSinglePic] = useState(currentUser.name);
+  const [singlePic, setSinglePic] = useState('Akmal');
   const [singleVolunteer, setSingleVolunteer] = useState('');
   const [singleNotes, setSingleNotes] = useState('');
   const [singleReceiptRef, setSingleReceiptRef] = useState('');
+
+  // Interactive supplier dropdown states for Single & Batch Input Modals
+  const [isSingleSupplierDropdownOpen, setIsSingleSupplierDropdownOpen] = useState(false);
+  const singleSupplierDropdownRef = useRef<HTMLDivElement>(null);
+  const [isBatchSupplierDropdownOpen, setIsBatchSupplierDropdownOpen] = useState(false);
+  const batchSupplierDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        singleSupplierDropdownRef.current &&
+        !singleSupplierDropdownRef.current.contains(e.target as Node)
+      ) {
+        setIsSingleSupplierDropdownOpen(false);
+      }
+      if (
+        batchSupplierDropdownRef.current &&
+        !batchSupplierDropdownRef.current.contains(e.target as Node)
+      ) {
+        setIsBatchSupplierDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredSingleSuppliers = useMemo(() => {
+    const q = singleSupplier.trim().toLowerCase();
+    if (!q) return suppliers;
+    return suppliers.filter(
+      s =>
+        s.name.toLowerCase().includes(q) ||
+        (s.supplyCategory && s.supplyCategory.toLowerCase().includes(q)) ||
+        (s.address && s.address.toLowerCase().includes(q))
+    );
+  }, [suppliers, singleSupplier]);
 
   // ----------------------------------------------------
   // Batch Input Form State
   // ----------------------------------------------------
   const [batchDate, setBatchDate] = useState(today);
-  const [batchPic, setBatchPic] = useState(currentUser.name);
+  const [batchPic, setBatchPic] = useState('Akmal');
   const [batchInputMode, setBatchInputMode] = useState<'GRID' | 'PASTE'>('GRID');
   const [batchRawPaste, setBatchRawPaste] = useState('');
   const [batchRows, setBatchRows] = useState<BatchInputRow[]>([
@@ -448,6 +542,25 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     { id: '4', itemName: '', category: 'ATK & Administrasi', qty: '1', unit: 'Pack', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
     { id: '5', itemName: '', category: 'Alat Kebersihan', qty: '1', unit: 'Pouch', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
   ]);
+  // Daftar supplier sesi input masal (wajib diisi sebelum input barang)
+  const [batchSuppliers, setBatchSuppliers] = useState<string[]>([]);
+  const [batchSupplierDraft, setBatchSupplierDraft] = useState('');
+  const batchGridRef = useRef<HTMLTableSectionElement>(null);
+  const pendingBatchFocus = useRef<{ row: number; col: number } | null>(null);
+
+  const availableBatchMasterSuppliers = useMemo(() => {
+    const q = batchSupplierDraft.trim().toLowerCase();
+    const remaining = suppliers.filter(
+      s => !batchSuppliers.some(b => b.toLowerCase() === s.name.toLowerCase())
+    );
+    if (!q) return remaining;
+    return remaining.filter(
+      s =>
+        s.name.toLowerCase().includes(q) ||
+        (s.supplyCategory && s.supplyCategory.toLowerCase().includes(q)) ||
+        (s.address && s.address.toLowerCase().includes(q))
+    );
+  }, [suppliers, batchSuppliers, batchSupplierDraft]);
 
   // ----------------------------------------------------
   // Delivery Order / Surat Jalan Form State
@@ -477,7 +590,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     if (onRefreshData) onRefreshData();
   };
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, type: 'success' | 'error' | 'warning' | 'info' = 'success') => {
+    toast.showToast(msg, type);
     setSuccessMessage(msg);
     setTimeout(() => setSuccessMessage(''), 4500);
   };
@@ -496,10 +610,11 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     setSingleUnit('Kg');
     setSingleUnitPrice(0);
     setSingleSupplier('');
-    setSinglePic(currentUser.name);
+    setSinglePic('Akmal');
     setSingleVolunteer('');
     setSingleNotes('');
     setSingleReceiptRef('');
+    setIsSingleSupplierDropdownOpen(false);
     setIsSingleInputModalOpen(true);
   };
 
@@ -526,6 +641,11 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     const finalPrice = singleUnitPrice > 0 ? singleUnitPrice : (getItemCatalogInfo(singleItemName)?.price || 0);
     const totalCost = numQty * finalPrice;
 
+    const matchedSupplier = suppliers.find(
+      s => s.name.trim().toLowerCase() === singleSupplier.trim().toLowerCase()
+    );
+    const finalSupplierName = matchedSupplier ? matchedSupplier.name : singleSupplier.trim();
+
     const newRecord = warehouseDb.recordNonFoodExpense(
       {
         date: singleDate,
@@ -536,14 +656,14 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
         unit: singleUnit.trim() || 'Pcs',
         unitPrice: finalPrice,
         totalCost: totalCost,
-        pic: singlePic.trim() || currentUser.name,
+        pic: singlePic.trim() || 'Akmal',
         volunteer: singleVolunteer.trim() || undefined,
         department: singleCategory.includes('ATK')
           ? 'Administrasi & Kantor'
           : singleCategory.includes('Kebersihan')
           ? 'Area Cuci & Sanitasi'
           : 'Dapur Pengolahan Utama',
-        notes: `${singleSupplier ? `[Toko/Supplier: ${singleSupplier}] ` : ''}${singleNotes.trim()}`.trim() || undefined,
+        notes: `${finalSupplierName ? `[Toko/Supplier: ${finalSupplierName}] ` : ''}${singleNotes.trim()}`.trim() || undefined,
         receiptRef: singleReceiptRef.trim() || undefined,
       },
       currentUser
@@ -567,9 +687,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     setJustSavedPrompt({
       title: 'Input Barang Berhasil Disimpan!',
       subtitle: `Catatan belanja "${singleItemName.trim()}" (${singleQty} ${singleUnit}) telah tersimpan ke sistem.`,
-      supplierName: singleSupplier.trim() || 'Toko / Pasar Belanja Rutin',
+      supplierName: finalSupplierName || 'Toko / Pasar Belanja Rutin',
       items: [item],
       refId: newRecord.id,
+      refIds: [newRecord.id],
     });
   };
 
@@ -578,29 +699,230 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   // ----------------------------------------------------
   const handleOpenBatchModal = () => {
     setBatchDate(new Date().toISOString().slice(0, 10));
-    setBatchPic(currentUser.name);
+    setBatchPic('Akmal');
     setBatchInputMode('GRID');
     setBatchRawPaste('');
+    // Pertahankan supplier yang masih dipakai baris yang belum tersimpan
+    const existing = Array.from(
+      new Set(batchRows.map(r => r.supplier.trim()).filter(Boolean))
+    );
+    setBatchSuppliers(existing);
+    setBatchSupplierDraft('');
+    setIsBatchSupplierDropdownOpen(false);
     setIsBatchInputModalOpen(true);
   };
 
-  const handleAddBatchRows = (count: number = 1) => {
-    const newRows: BatchInputRow[] = [];
-    for (let i = 0; i < count; i++) {
-      newRows.push({
-        id: String(Date.now() + Math.random()),
-        itemName: '',
-        category: 'Bahan Basah',
-        qty: '1',
-        unit: 'Kg',
-        unitPrice: 0,
-        time: defaultCurrentTime,
-        supplier: '',
-        volunteer: '',
-        notes: '',
+  const handleAddBatchSupplier = (raw?: string) => {
+    const typed = (raw ?? batchSupplierDraft).trim();
+    if (!typed) return;
+    const masterMatch = suppliers.find(s => s.name.trim().toLowerCase() === typed.toLowerCase());
+    const name = masterMatch ? masterMatch.name : typed;
+    setBatchSuppliers(prev => {
+      if (prev.some(s => s.toLowerCase() === name.toLowerCase())) return prev;
+      // Supplier pertama: langsung arahkan kursor ke nama barang baris 1
+      if (prev.length === 0) pendingBatchFocus.current = { row: 0, col: 0 };
+      return [...prev, name];
+    });
+    setBatchSupplierDraft('');
+  };
+
+  const handleRemoveBatchSupplier = (name: string) => {
+    setBatchSuppliers(prev => prev.filter(s => s !== name));
+    setBatchRows(prev => prev.map(r => (r.supplier === name ? { ...r, supplier: '' } : r)));
+  };
+
+  const handleRemoveBatchSupplierWithConfirm = (name: string) => {
+    const isUsedInRows = batchRows.some(r => r.supplier === name && r.itemName.trim() !== '');
+    if (isUsedInRows) {
+      setConfirmDialog({
+        isOpen: true,
+        title: 'Hapus Supplier dari Sesi?',
+        message: `Supplier "${name}" saat ini dipilih pada beberapa baris barang. Jika dihapus, pilihan supplier pada baris tersebut akan dikosongkan.`,
+        confirmText: 'Ya, Hapus Supplier',
+        cancelText: 'Batal',
+        variant: 'warning',
+        onConfirm: () => {
+          handleRemoveBatchSupplier(name);
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+          toast.info(`Supplier "${name}" dihapus dari daftar pilihan.`);
+        },
       });
+    } else {
+      handleRemoveBatchSupplier(name);
     }
-    setBatchRows(prev => [...prev, ...newRows]);
+  };
+
+  const isInSupplierMaster = (name: string) =>
+    suppliers.some(s => s.name.trim().toLowerCase() === name.trim().toLowerCase());
+
+  const handleSaveBatchSupplierToMaster = (name: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Daftarkan ke Master Supplier?',
+      message: `Daftarkan "${name}" sebagai mitra supplier resmi ke database master?`,
+      confirmText: 'Daftarkan',
+      cancelText: 'Batal',
+      variant: 'primary',
+      onConfirm: () => {
+        try {
+          const saved = warehouseDb.quickAddSupplier(name, currentUser);
+          setDataVersion(v => v + 1);
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+          toast.success(`"${saved.name}" berhasil terdaftar di master supplier!`, 'Mitra Terdaftar');
+        } catch (err: any) {
+          toast.error(err.message || 'Gagal menyimpan supplier.');
+        }
+      },
+    });
+  };
+
+  const handleResetBatchRows = () => {
+    const hasData = batchRows.some(r => r.itemName.trim() !== '' || r.unitPrice > 0);
+    const defaultSupplier = batchSuppliers[0] || '';
+    if (!hasData) {
+      setBatchRows([
+        { id: '1', itemName: '', category: 'Bahan Basah', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
+        { id: '2', itemName: '', category: 'Bahan Basah', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
+        { id: '3', itemName: '', category: 'Bahan Kering', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
+        { id: '4', itemName: '', category: 'ATK & Administrasi', qty: '1', unit: 'Pack', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
+        { id: '5', itemName: '', category: 'Alat Kebersihan', qty: '1', unit: 'Pouch', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
+      ]);
+      toast.info('Tabel input telah dibersihkan.');
+      return;
+    }
+
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Kosongkan Seluruh Tabel?',
+      message: 'Seluruh data baris yang telah Anda ketik akan dibersihkan kembali ke baris kosong.',
+      confirmText: 'Ya, Kosongkan',
+      cancelText: 'Batal',
+      variant: 'danger',
+      onConfirm: () => {
+        setBatchRows([
+          { id: '1', itemName: '', category: 'Bahan Basah', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
+          { id: '2', itemName: '', category: 'Bahan Basah', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
+          { id: '3', itemName: '', category: 'Bahan Kering', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
+          { id: '4', itemName: '', category: 'ATK & Administrasi', qty: '1', unit: 'Pack', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
+          { id: '5', itemName: '', category: 'Alat Kebersihan', qty: '1', unit: 'Pouch', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
+        ]);
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        toast.info('Tabel input masal berhasil dikosongkan.');
+      },
+    });
+  };
+
+  const handleRemoveBatchRowWithConfirm = (row: BatchInputRow) => {
+    if (batchRows.length <= 1) {
+      toast.warning('Tabel harus menyisakan minimal 1 baris.');
+      return;
+    }
+
+    if (row.itemName.trim() !== '') {
+      setConfirmDialog({
+        isOpen: true,
+        title: 'Hapus Baris Barang?',
+        message: `Hapus baris "${row.itemName}" dari tabel input masal?`,
+        confirmText: 'Hapus',
+        cancelText: 'Batal',
+        variant: 'danger',
+        onConfirm: () => {
+          setBatchRows(prev => prev.filter(r => r.id !== row.id));
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+          toast.info(`Baris "${row.itemName}" telah dihapus.`);
+        },
+      });
+    } else {
+      setBatchRows(prev => prev.filter(r => r.id !== row.id));
+    }
+  };
+
+  const handleAddBatchRows = (count: number = 1) => {
+    setBatchRows(prev => {
+      // Baris baru mewarisi supplier baris terakhir agar tidak perlu memilih ulang
+      const lastSupplier = prev[prev.length - 1]?.supplier || '';
+      const newRows: BatchInputRow[] = [];
+      for (let i = 0; i < count; i++) {
+        newRows.push({
+          id: String(Date.now() + Math.random()),
+          itemName: '',
+          category: 'Bahan Basah',
+          qty: '1',
+          unit: 'Kg',
+          unitPrice: 0,
+          time: defaultCurrentTime,
+          supplier: lastSupplier,
+          volunteer: '',
+          notes: '',
+        });
+      }
+      return [...prev, ...newRows];
+    });
+  };
+
+  // Navigasi keyboard ala spreadsheet di tabel input masal.
+  // Kolom: 0 nama, 1 kategori, 2 jumlah, 3 satuan, 4 harga, 5 supplier, 6 keterangan
+  const BATCH_LAST_COL = 6;
+
+  const focusBatchCell = (row: number, col: number) => {
+    const el = batchGridRef.current?.querySelector<HTMLElement>(`[data-cell="${row}-${col}"]`);
+    if (!el) return;
+    el.focus();
+    if (el instanceof HTMLInputElement) el.select();
+  };
+
+  useEffect(() => {
+    if (!pendingBatchFocus.current) return;
+    const { row, col } = pendingBatchFocus.current;
+    pendingBatchFocus.current = null;
+    focusBatchCell(row, col);
+  }, [batchRows, batchSuppliers]);
+
+  const handleBatchGridKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
+    row: number,
+    col: number
+  ) => {
+    // Alt/Ctrl/Cmd + panah tetap dipakai untuk membuka dropdown / saran bawaan browser
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+
+    const el = e.currentTarget;
+    const isText = el instanceof HTMLInputElement;
+    const atStart = !isText || (el.selectionStart ?? 0) === 0;
+    const atEnd = !isText || (el.selectionEnd ?? 0) === el.value.length;
+
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'Enter': {
+        e.preventDefault();
+        if (row >= batchRows.length - 1) {
+          pendingBatchFocus.current = { row: row + 1, col };
+          handleAddBatchRows(1);
+        } else {
+          focusBatchCell(row + 1, col);
+        }
+        break;
+      }
+      case 'ArrowUp': {
+        e.preventDefault();
+        if (row > 0) focusBatchCell(row - 1, col);
+        break;
+      }
+      case 'ArrowLeft': {
+        if (e.shiftKey || !atStart) return;
+        e.preventDefault();
+        if (col > 0) focusBatchCell(row, col - 1);
+        else if (row > 0) focusBatchCell(row - 1, BATCH_LAST_COL);
+        break;
+      }
+      case 'ArrowRight': {
+        if (e.shiftKey || !atEnd) return;
+        e.preventDefault();
+        if (col < BATCH_LAST_COL) focusBatchCell(row, col + 1);
+        else if (row < batchRows.length - 1) focusBatchCell(row + 1, 0);
+        break;
+      }
+    }
   };
 
   const handleUpdateBatchRow = (id: string, field: keyof BatchInputRow, value: any) => {
@@ -626,6 +948,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   };
 
   const handleParsePastedExcel = () => {
+    if (batchSuppliers.length === 0) {
+      alert('Isi daftar supplier terlebih dahulu sebelum menempel data barang.');
+      return;
+    }
     if (!batchRawPaste.trim()) {
       alert('Tempelkan teks data dari Excel / Google Sheet terlebih dahulu.');
       return;
@@ -691,73 +1017,143 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     });
 
     if (parsedRows.length > 0) {
+      // Supplier dari Excel yang belum ada di daftar ikut ditambahkan
+      const pastedSuppliers = parsedRows.map(r => r.supplier.trim()).filter(Boolean);
+      setBatchSuppliers(prev => {
+        const next = [...prev];
+        pastedSuppliers.forEach(s => {
+          if (!next.some(x => x.toLowerCase() === s.toLowerCase())) next.push(s);
+        });
+        return next;
+      });
       setBatchRows(parsedRows);
       setBatchInputMode('GRID');
       setBatchRawPaste('');
-      alert(`Berhasil mengekstrak ${parsedRows.length} baris barang dari Excel! Periksa dan simpan.`);
+      toast.success(
+        `Berhasil mengekstrak ${parsedRows.length} baris barang dari Excel! Periksa dan simpan.`,
+        'Ekstrak Excel Berhasil'
+      );
     } else {
-      alert('Tidak ada baris barang yang terdeteksi dari teks yang ditempel.');
+      toast.warning('Tidak ada baris barang yang terdeteksi dari teks yang ditempel.', 'Data Tidak Ditemukan');
     }
   };
 
-  const handleSaveBatchRows = (e: React.FormEvent) => {
-    e.preventDefault();
-    const validRows = batchRows.filter(r => r.itemName.trim() !== '');
+  const handleSaveBatchRows = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (batchSuppliers.length === 0) {
+      toast.warning('Isi daftar supplier terlebih dahulu sebelum menyimpan data belanja.');
+      return;
+    }
+    const defaultSupplier = batchSuppliers[0];
+    const validRows = batchRows
+      .filter(r => r.itemName.trim() !== '')
+      .map(r => ({ ...r, supplier: r.supplier.trim() || defaultSupplier }));
     if (validRows.length === 0) {
-      alert('Isi minimal 1 nama barang pada tabel sebelum menyimpan.');
+      toast.warning('Isi minimal 1 nama barang pada tabel sebelum menyimpan.');
       return;
     }
 
-    const payload = validRows.map(r => {
+    const totalBatchNominal = validRows.reduce((sum, r) => {
       const numQty = parseFloat(r.qty) || 1;
       const price = r.unitPrice > 0 ? r.unitPrice : (getItemCatalogInfo(r.itemName)?.price || 0);
-      return {
-        date: batchDate,
-        time: r.time.trim() || defaultCurrentTime,
-        itemName: r.itemName.trim(),
-        category: r.category,
-        quantity: r.qty.trim() || '1',
-        unit: r.unit.trim() || 'Pcs',
-        unitPrice: price,
-        totalCost: numQty * price,
-        pic: batchPic.trim() || currentUser.name,
-        volunteer: r.volunteer.trim() || undefined,
-        department: r.category.includes('ATK')
-          ? 'Administrasi & Kantor'
-          : r.category.includes('Kebersihan')
-          ? 'Area Cuci & Sanitasi'
-          : 'Dapur Pengolahan Utama',
-        notes: `${r.supplier ? `[Toko: ${r.supplier}] ` : ''}${r.notes.trim()}`.trim() || undefined,
-      };
-    });
+      return sum + numQty * price;
+    }, 0);
 
-    const createdExpenses = warehouseDb.recordNonFoodExpensesBatch(payload, currentUser);
-    showToast(`Berhasil menyimpan ${validRows.length} barang belanja & pengeluaran sekaligus!`);
-    setIsBatchInputModalOpen(false);
-    refreshAll();
+    // Standard Confirmation Modal
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Simpan Pengeluaran Masal?',
+      message: `Simpan ${validRows.length} macam barang belanja operasional senilai Rp ${totalBatchNominal.toLocaleString('id-ID')} ke sistem gudang?`,
+      confirmText: `Ya, Simpan (${validRows.length} Barang)`,
+      cancelText: 'Periksa Kembali',
+      variant: 'primary',
+      itemsSummary: {
+        count: validRows.length,
+        totalNominal: totalBatchNominal,
+        items: validRows.map(r => {
+          const numQty = parseFloat(r.qty) || 1;
+          const price = r.unitPrice > 0 ? r.unitPrice : (getItemCatalogInfo(r.itemName)?.price || 0);
+          return {
+            name: r.itemName,
+            qty: r.qty,
+            unit: r.unit,
+            subtotal: numQty * price,
+            supplier: r.supplier,
+          };
+        }),
+      },
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        setActionLoading({
+          isLoading: true,
+          message: 'Menyimpan Barang Belanja...',
+          submessage: `Memproses ${validRows.length} catatan pengeluaran & update stok gudang...`,
+        });
 
-    // Trigger post-input prompt for printing Nota Pesanan
-    const batchItems: PurchaseOrderItem[] = validRows.map((r, i) => {
-      const numQty = parseFloat(r.qty) || 1;
-      const price = r.unitPrice > 0 ? r.unitPrice : (getItemCatalogInfo(r.itemName)?.price || 0);
-      return {
-        id: `POI-${Date.now()}-${i}`,
-        name: r.itemName.trim(),
-        category: r.category,
-        quantity: numQty,
-        unit: r.unit.trim() || 'Pcs',
-        unitPrice: price,
-        subtotal: numQty * price,
-        notes: r.notes.trim() || undefined,
-      };
-    });
-    const firstSupplier = validRows.find(r => r.supplier?.trim())?.supplier?.trim() || 'Supplier Belanja Bersama';
-    setJustSavedPrompt({
-      title: 'Input Masal Berhasil Disimpan!',
-      subtitle: `Sebanyak ${validRows.length} barang belanja operasional telah tersimpan ke sistem.`,
-      supplierName: firstSupplier,
-      items: batchItems,
-      refId: createdExpenses[0]?.id,
+        try {
+          await new Promise(r => setTimeout(r, 450));
+
+          const payload = validRows.map(r => {
+            const numQty = parseFloat(r.qty) || 1;
+            const price = r.unitPrice > 0 ? r.unitPrice : (getItemCatalogInfo(r.itemName)?.price || 0);
+            return {
+              date: batchDate,
+              time: r.time.trim() || defaultCurrentTime,
+              itemName: r.itemName.trim(),
+              category: r.category,
+              quantity: r.qty.trim() || '1',
+              unit: r.unit.trim() || 'Pcs',
+              unitPrice: price,
+              totalCost: numQty * price,
+              pic: batchPic.trim() || 'Akmal',
+              volunteer: r.volunteer.trim() || undefined,
+              department: r.category.includes('ATK')
+                ? 'Administrasi & Kantor'
+                : r.category.includes('Kebersihan')
+                ? 'Area Cuci & Sanitasi'
+                : 'Dapur Pengolahan Utama',
+              notes: `${r.supplier ? `[Toko: ${r.supplier}] ` : ''}${r.notes.trim()}`.trim() || undefined,
+            };
+          });
+
+          const createdExpenses = warehouseDb.recordNonFoodExpensesBatch(payload, currentUser);
+          toast.success(
+            `Berhasil menyimpan ${validRows.length} barang belanja senilai Rp ${totalBatchNominal.toLocaleString('id-ID')}!`,
+            'Pencatatan Masal Sukses'
+          );
+          setIsBatchInputModalOpen(false);
+          refreshAll();
+
+          // Trigger post-input prompt for printing Nota Pesanan
+          const batchItems: PurchaseOrderItem[] = validRows.map((r, i) => {
+            const numQty = parseFloat(r.qty) || 1;
+            const price = r.unitPrice > 0 ? r.unitPrice : (getItemCatalogInfo(r.itemName)?.price || 0);
+            return {
+              id: `POI-${Date.now()}-${i}`,
+              name: r.itemName.trim(),
+              category: r.category,
+              quantity: numQty,
+              unit: r.unit.trim() || 'Pcs',
+              unitPrice: price,
+              subtotal: numQty * price,
+              notes: r.notes.trim() || undefined,
+            };
+          });
+          const firstSupplier = validRows.find(r => r.supplier?.trim())?.supplier?.trim() || 'Supplier Belanja Bersama';
+          setJustSavedPrompt({
+            title: 'Input Masal Berhasil Disimpan!',
+            subtitle: `Sebanyak ${validRows.length} barang belanja operasional telah tersimpan ke sistem.`,
+            supplierName: firstSupplier,
+            items: batchItems,
+            refId: createdExpenses[0]?.id,
+            refIds: createdExpenses.map(e => e.id),
+          });
+        } catch (err: any) {
+          toast.error(err.message || 'Gagal menyimpan data barang.', 'Gagal Menyimpan');
+        } finally {
+          setActionLoading({ isLoading: false });
+        }
+      },
     });
   };
 
@@ -886,7 +1282,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
           notes: formNotes || undefined,
           lines: lines as any,
           supplierSignature: formSupplierSign || `TERVERIFIKASI: Staf Pengirim ${selectedSupplier.name}`,
-          receiverSignature: formReceiverSign || `TERVERIFIKASI: ${currentUser.name} (${currentUser.role})`,
+          receiverSignature: formReceiverSign || `TERVERIFIKASI: Akmal (Admin Gudang)`,
           documentationPhotos: formPhotos.length > 0 ? formPhotos : undefined,
         },
         currentUser
@@ -925,11 +1321,26 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   };
 
   const handleDeleteExpense = (id: string, name: string) => {
-    if (window.confirm(`Hapus catatan input barang "${name}"?`)) {
-      warehouseDb.deleteNonFoodExpense(id, currentUser);
-      showToast(`Catatan "${name}" berhasil dihapus.`);
-      refreshAll();
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Hapus Catatan Belanja?',
+      message: `Apakah Anda yakin ingin menghapus catatan barang "${name}"? Data pengeluaran dan catatan terkait akan dihapus dari sistem.`,
+      confirmText: 'Ya, Hapus',
+      cancelText: 'Batal',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        setActionLoading({
+          isLoading: true,
+          message: 'Menghapus catatan barang...',
+        });
+        await new Promise(r => setTimeout(r, 250));
+        warehouseDb.deleteNonFoodExpense(id, currentUser);
+        setActionLoading({ isLoading: false });
+        toast.success(`Catatan "${name}" berhasil dihapus.`, 'Catatan Dihapus');
+        refreshAll();
+      },
+    });
   };
 
   // ----------------------------------------------------
@@ -945,7 +1356,14 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       if (r.source === 'EXPENSE_INPUT' && po.relatedExpenseIds && po.relatedExpenseIds.includes(r.id)) {
         return true;
       }
-      // 3. Fallback match by supplier and item name
+      // 3. Fallback match by supplier, date, and item name
+      // Date MUST match to prevent same items bought on different days from falsely matching an earlier PO!
+      const poDate = po.date ? po.date.slice(0, 10) : '';
+      const poDelivery = po.deliveryDate ? po.deliveryDate.slice(0, 10) : '';
+      const rDate = r.date ? r.date.slice(0, 10) : '';
+      const isDateMatch = !rDate || poDate === rDate || poDelivery === rDate;
+      if (!isDateMatch) return false;
+
       const poSupplier = (po.supplierName || '').toLowerCase().trim();
       const rSupplier = (r.supplierOrStore || '').toLowerCase().trim();
       if (poSupplier && rSupplier && rSupplier !== '-' && (poSupplier.includes(rSupplier) || rSupplier.includes(poSupplier))) {
@@ -962,6 +1380,32 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   };
 
   const handleCreateNotaFromRecord = (r: UnifiedRecord) => {
+    // Check if there are other records from the same supplier ON THE SAME DATE
+    const suppName = r.supplierOrStore && r.supplierOrStore !== '-' ? r.supplierOrStore : '';
+    if (suppName) {
+      const siblings = periodRecords.filter(item => 
+        item.id !== r.id &&
+        item.date === r.date &&
+        item.supplierOrStore &&
+        item.supplierOrStore.toLowerCase().trim() === suppName.toLowerCase().trim()
+      );
+
+      if (siblings.length > 0) {
+        // Offer smart prompt: Combine all items from this supplier on this date vs this item only
+        setSupplierNotaPrompt({
+          supplierName: suppName,
+          clickedRecord: r,
+          siblingRecords: siblings,
+        });
+        return;
+      }
+    }
+
+    // Otherwise, generate single item Nota as normal
+    handleCreateSingleItemNota(r);
+  };
+
+  const handleCreateSingleItemNota = (r: UnifiedRecord) => {
     const targetDate = r.date || new Date().toISOString().slice(0, 10);
     const nextPoNum = generateNextPoNumber(purchaseOrders, targetDate);
     const suppObj = suppliers.find(s => s.name.toLowerCase() === r.supplierOrStore.toLowerCase());
@@ -1011,6 +1455,96 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
 
     setActiveNota(newNota);
     setIsNotaModalOpen(true);
+    setSupplierNotaPrompt(null);
+  };
+
+  const handleCreateCombinedNotaForSupplier = (
+    supplierName: string, 
+    recordsToInclude?: UnifiedRecord[],
+    targetDateOverride?: string
+  ) => {
+    const rawRecords = recordsToInclude && recordsToInclude.length > 0
+      ? recordsToInclude
+      : periodRecords.filter(r => {
+          const suppName = r.supplierOrStore && r.supplierOrStore !== '-' ? r.supplierOrStore : 'Belanja Rutin';
+          return suppName.toLowerCase().trim() === supplierName.toLowerCase().trim();
+        });
+
+    if (rawRecords.length === 0) {
+      alert(`Tidak ada barang ditemukan untuk supplier "${supplierName}".`);
+      return;
+    }
+
+    const suppObj = suppliers.find(s => s.name.toLowerCase().trim() === supplierName.toLowerCase().trim());
+    const targetDate = targetDateOverride || rawRecords[0].date || new Date().toISOString().slice(0, 10);
+    const nextPoNum = generateNextPoNumber(purchaseOrders, targetDate);
+
+    const poItems: PurchaseOrderItem[] = rawRecords.map((r, i) => {
+      const numQty = parseFloat(String(r.quantity)) || 1;
+      const unitPrice = r.unitPrice > 0 ? r.unitPrice : Math.round(r.nominal / numQty);
+      return {
+        id: `POI-${Date.now()}-${i}`,
+        name: r.itemName,
+        category: r.displayCategory || r.category,
+        quantity: numQty,
+        unit: r.unit || 'Pcs',
+        unitPrice: unitPrice,
+        subtotal: r.nominal,
+        notes: r.notes,
+      };
+    });
+
+    const subtotal = poItems.reduce((acc, it) => acc + (it.subtotal || it.quantity * it.unitPrice), 0);
+    const expenseIds = rawRecords
+      .filter(r => r.source === 'EXPENSE_INPUT')
+      .map(r => r.id);
+
+    const receivingDocId = rawRecords.find(r => r.source === 'DELIVERY_ORDER' && r.rawDoc)?.rawDoc?.id;
+
+    const newNota: PurchaseOrderNota = {
+      id: `PO-${Date.now()}`,
+      poNumber: nextPoNum,
+      date: targetDate,
+      deliveryDate: targetDate,
+      supplierId: suppObj?.id,
+      supplierName: supplierName !== 'Belanja Rutin' && supplierName !== '-' ? supplierName : (suppObj?.name || 'Toko / Rekanan'),
+      supplierContact: suppObj?.phone ? `${suppObj.phone} (${suppObj.contactPerson})` : '',
+      supplierAddress: suppObj?.address || '',
+      paymentMethod: 'TRANSFER',
+      bankInfo: suppObj ? `Transfer Bank Rekening Resmi ${suppObj.name}` : '',
+      status: 'DISETUJUI',
+      items: poItems,
+      subtotal: subtotal,
+      discount: 0,
+      tax: 0,
+      grandTotal: subtotal,
+      terbilang: angkaTerbilang(subtotal),
+      notes: 'Barang harus dalam keadaan segar, higienis, dan sesuai standar pemenuhan gizi SPPG.',
+      deliveryTerms: 'Pengiriman langsung ke Satuan Pelayanan Pemenuhan Gizi (SPPG) Jeru Tumpang.',
+      createdBy: currentUser.name,
+      createdByRole: currentUser.role === 'ADMIN' ? 'Admin Logistik' : currentUser.role,
+      approvedBy: 'Dr. Siti Rahma',
+      approvedByRole: 'Kepala SPPG Jeru Tumpang',
+      supplierPic: suppObj?.contactPerson || 'Pihak Rekanan',
+      relatedExpenseIds: expenseIds.length > 0 ? expenseIds : undefined,
+      relatedReceivingId: receivingDocId,
+      createdAt: new Date().toISOString(),
+    };
+
+    setActiveNota(newNota);
+    setIsNotaModalOpen(true);
+    setSupplierNotaPrompt(null);
+  };
+
+  const handleCreateNotaFromSelected = () => {
+    const selectedRecords = periodRecords.filter(r => selectedRecordIds.includes(r.id));
+    if (selectedRecords.length === 0) return;
+
+    // Detect supplier: use the first valid supplier name or 'Supplier Gabungan'
+    const firstSupplier = selectedRecords.find(r => r.supplierOrStore && r.supplierOrStore !== '-')?.supplierOrStore || 'Supplier Gabungan';
+    const firstDate = selectedRecords[0]?.date;
+    handleCreateCombinedNotaForSupplier(firstSupplier, selectedRecords, firstDate);
+    setSelectedRecordIds([]);
   };
 
   const handleStartNotaFromPrompt = () => {
@@ -1020,6 +1554,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     const nextPoNum = generateNextPoNumber(purchaseOrders, targetDate);
     const suppObj = suppliers.find(s => s.name.toLowerCase() === info.supplierName.toLowerCase() || s.id === info.supplierId);
     const subtotal = info.items.reduce((sum, it) => sum + (it.subtotal || it.quantity * it.unitPrice), 0);
+
+    const relatedIds = info.refIds && info.refIds.length > 0
+      ? info.refIds
+      : (info.refId && info.refId.startsWith('NFE') ? [info.refId] : undefined);
 
     const newNota: PurchaseOrderNota = {
       id: `PO-${Date.now()}`,
@@ -1046,7 +1584,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       approvedBy: 'Dr. Siti Rahma',
       approvedByRole: 'Kepala SPPG Jeru Tumpang',
       supplierPic: suppObj?.contactPerson || 'Pihak Rekanan',
-      relatedExpenseIds: info.refId && info.refId.startsWith('NFE') ? [info.refId] : undefined,
+      relatedExpenseIds: relatedIds,
       relatedReceivingId: info.refId && !info.refId.startsWith('NFE') ? info.refId : undefined,
       createdAt: new Date().toISOString(),
     };
@@ -1191,7 +1729,28 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     return { totalItems, totalCost, wetCost, dryCost, opCost };
   }, [periodRecords]);
 
-  // Filtered List based on Category & Search
+  // Derived Unique Suppliers in Period with item count and total cost
+  const uniqueSuppliers = useMemo(() => {
+    const map = new Map<string, {
+      name: string;
+      count: number;
+      totalCost: number;
+      records: UnifiedRecord[];
+    }>();
+
+    periodRecords.forEach(r => {
+      const suppName = r.supplierOrStore && r.supplierOrStore !== '-' ? r.supplierOrStore : 'Belanja Rutin';
+      const existing = map.get(suppName) || { name: suppName, count: 0, totalCost: 0, records: [] };
+      existing.count += 1;
+      existing.totalCost += r.nominal;
+      existing.records.push(r);
+      map.set(suppName, existing);
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  }, [periodRecords]);
+
+  // Filtered List based on Category, Supplier & Search
   const filteredRecords = useMemo(() => {
     return periodRecords.filter(r => {
       // Category filter
@@ -1200,6 +1759,14 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       } else if (selectedCategoryTab !== 'ALL') {
         const norm = normalizeItemCategory(r.displayCategory || r.category);
         if (norm !== selectedCategoryTab) {
+          return false;
+        }
+      }
+
+      // Supplier filter
+      if (selectedSupplierFilter !== 'ALL') {
+        const suppName = r.supplierOrStore && r.supplierOrStore !== '-' ? r.supplierOrStore : 'Belanja Rutin';
+        if (suppName !== selectedSupplierFilter) {
           return false;
         }
       }
@@ -1219,7 +1786,24 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
 
       return true;
     });
-  }, [periodRecords, selectedCategoryTab, searchQuery]);
+  }, [periodRecords, selectedCategoryTab, selectedSupplierFilter, searchQuery]);
+
+  const allFilteredSelected = filteredRecords.length > 0 && filteredRecords.every(r => selectedRecordIds.includes(r.id));
+  const someFilteredSelected = filteredRecords.some(r => selectedRecordIds.includes(r.id));
+
+  const handleToggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedRecordIds([]);
+    } else {
+      setSelectedRecordIds(filteredRecords.map(r => r.id));
+    }
+  };
+
+  const handleToggleSelectRecord = (id: string) => {
+    setSelectedRecordIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
 
   const selectedSupplierObj = suppliers.find(s => s.id === formSupplierId);
 
@@ -1284,107 +1868,63 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
 
         {/* Action Buttons */}
         {!isCreatingDeliveryOrder && (
-          <div className="flex items-center gap-2.5 shrink-0" ref={inputDropdownRef}>
-            {/* Split Button: Primary Input Satuan + Dropdown for Other Input Modes */}
-            <div className="relative inline-flex rounded-xl shadow-2xs">
-              <button
-                type="button"
-                onClick={handleOpenSingleModal}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-l-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer"
-                title="Catat belanja atau penerimaan 1 jenis barang"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Input Satuan</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsInputDropdownOpen(!isInputDropdownOpen)}
-                className="inline-flex items-center px-2.5 py-2 text-xs font-bold rounded-r-xl bg-emerald-700 hover:bg-emerald-800 text-white border-l border-emerald-500/40 transition-colors cursor-pointer"
-                title="Pilihan input lainnya (Masal, Surat Jalan)"
-              >
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isInputDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {/* Dropdown Menu */}
-              {isInputDropdownOpen && (
-                <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
-                  <div className="px-3.5 py-1.5 text-[11px] font-semibold text-slate-500 border-b border-slate-100">
-                    Opsi Input Barang & Master
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsInputDropdownOpen(false);
-                      handleOpenSingleModal();
-                    }}
-                    className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                      <Plus className="w-4 h-4 text-emerald-700" />
-                    </div>
-                    <div>
-                      <div className="font-bold text-slate-900">Input Satuan</div>
-                      <div className="text-[10px] text-slate-500">Catat 1 barang atau belanja cepat</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsInputDropdownOpen(false);
-                      handleOpenBatchModal();
-                    }}
-                    className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                      <TableProperties className="w-4 h-4 text-emerald-700" />
-                    </div>
-                    <div>
-                      <div className="font-bold text-slate-900">Input Masal (Batch)</div>
-                      <div className="text-[10px] text-slate-500">Banyak barang lewat tabel / Excel</div>
-                    </div>
-                  </button>
-
-                  {can('RECEIVE_GOODS') && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsInputDropdownOpen(false);
-                        handleOpenDeliveryOrder();
-                      }}
-                      className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer border-t border-slate-100"
-                    >
-                      <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-                        <FileText className="w-4 h-4 text-slate-600" />
-                      </div>
-                      <div>
-                        <div className="font-bold text-slate-900">Surat Jalan Supplier</div>
-                        <div className="text-[10px] text-slate-500">Penerimaan resmi & tanda tangan</div>
-                      </div>
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsInputDropdownOpen(false);
-                      setIsMasterSupplierModalOpen(true);
-                    }}
-                    className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer border-t border-slate-100"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                      <Building2 className="w-4 h-4 text-emerald-700" />
-                    </div>
-                    <div>
-                      <div className="font-bold text-slate-900">Master Data Supplier</div>
-                      <div className="text-[10px] text-slate-500">Kelola, tambah & edit supplier rekanan</div>
-                    </div>
-                  </button>
-                </div>
-              )}
-            </div>
+          <div className="flex items-center gap-2.5 shrink-0">
+            {/* Standard ActionDropdown: Primary Input Satuan + Dropdown for Other Input Modes */}
+            <ActionDropdown
+              splitAction={{
+                label: 'Input Satuan',
+                icon: Plus,
+                onClick: handleOpenSingleModal,
+                title: 'Catat belanja atau penerimaan 1 jenis barang',
+                variant: 'emerald',
+              }}
+              header="Opsi Input Barang & Master"
+              widthClass="w-72"
+              items={[
+                {
+                  id: 'input-satuan',
+                  label: 'Input Satuan',
+                  description: 'Catat 1 barang atau belanja cepat',
+                  icon: Plus,
+                  iconBgClass: 'bg-emerald-100 text-emerald-800',
+                  iconColorClass: 'text-emerald-700',
+                  onClick: handleOpenSingleModal,
+                },
+                {
+                  id: 'input-batch',
+                  label: 'Input Masal (Batch)',
+                  description: 'Banyak barang lewat tabel / Excel',
+                  icon: TableProperties,
+                  iconBgClass: 'bg-emerald-100 text-emerald-800',
+                  iconColorClass: 'text-emerald-700',
+                  onClick: handleOpenBatchModal,
+                },
+                ...(can('RECEIVE_GOODS')
+                  ? [
+                      {
+                        id: 'surat-jalan',
+                        label: 'Surat Jalan Supplier',
+                        description: 'Penerimaan resmi & tanda tangan',
+                        icon: FileText,
+                        iconBgClass: 'bg-slate-100 text-slate-700',
+                        iconColorClass: 'text-slate-600',
+                        dividerAbove: true,
+                        onClick: handleOpenDeliveryOrder,
+                      },
+                    ]
+                  : []),
+                {
+                  id: 'master-supplier',
+                  label: 'Master Data Supplier',
+                  description: 'Kelola, tambah & edit supplier rekanan',
+                  icon: Building2,
+                  iconBgClass: 'bg-emerald-100 text-emerald-800',
+                  iconColorClass: 'text-emerald-700',
+                  dividerAbove: true,
+                  onClick: () => setIsMasterSupplierModalOpen(true),
+                },
+              ]}
+            />
 
             {/* Tombol Pool Cetak Nota */}
             <button
@@ -1956,208 +2496,614 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                 />
               </div>
             </div>
+
+            {/* Row 3: Supplier Filter & View Mode Toggle */}
+            <div className="pt-2.5 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              {/* Supplier Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-thin">
+                <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1 shrink-0 mr-1">
+                  <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                  Supplier:
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedSupplierFilter('ALL')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                    selectedSupplierFilter === 'ALL'
+                      ? 'bg-slate-800 text-white shadow-2xs'
+                      : 'text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  Semua Supplier ({periodRecords.length})
+                </button>
+
+                {uniqueSuppliers.map(s => {
+                  const isSelected = selectedSupplierFilter === s.name;
+                  return (
+                    <button
+                      key={s.name}
+                      type="button"
+                      onClick={() => setSelectedSupplierFilter(s.name)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 border border-slate-200'
+                      }`}
+                    >
+                      <Store className="w-3 h-3 opacity-70" />
+                      <span>{s.name}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                        isSelected ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {s.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* View Mode Toggle: Tabel Biasa vs Kelompokkan Per Supplier */}
+              <div className="flex items-center gap-1 shrink-0 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('TABLE')}
+                  className={`px-3 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    viewMode === 'TABLE'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="Tampilan tabel biasa daftar semua barang"
+                >
+                  <TableProperties className="w-3.5 h-3.5" />
+                  <span>Tabel Biasa</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('SUPPLIER_GROUPS')}
+                  className={`px-3 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    viewMode === 'SUPPLIER_GROUPS'
+                      ? 'bg-white text-emerald-800 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="Kelompokkan barang per supplier dan cetak nota PO gabungan"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>Per Supplier ({uniqueSuppliers.length})</span>
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Table of Records Card */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          {/* VIEW: Kelompokkan Per Supplier & Per Tanggal */}
+          {viewMode === 'SUPPLIER_GROUPS' ? (
+            uniqueSuppliers.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400">
+                Belum ada data barang atau supplier pada periode ini.
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {uniqueSuppliers
+                  .filter(s => selectedSupplierFilter === 'ALL' || s.name === selectedSupplierFilter)
+                  .map(supplier => {
+                    const matchingRecords = supplier.records.filter(r => {
+                      if (selectedCategoryTab === 'SURAT_JALAN') {
+                        if (r.source !== 'DELIVERY_ORDER') return false;
+                      } else if (selectedCategoryTab !== 'ALL') {
+                        const norm = normalizeItemCategory(r.displayCategory || r.category);
+                        if (norm !== selectedCategoryTab) return false;
+                      }
+                      if (searchQuery.trim()) {
+                        const q = searchQuery.toLowerCase();
+                        const matchName = r.itemName.toLowerCase().includes(q);
+                        const matchPic = r.picOrUser.toLowerCase().includes(q);
+                        const matchNotes = (r.notes || '').toLowerCase().includes(q);
+                        if (!matchName && !matchPic && !matchNotes) return false;
+                      }
+                      return true;
+                    });
 
-          {/* Table of Records */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
-                <tr>
-                  <th className="py-3 px-3 w-10 text-center">#</th>
-                  <th className="py-3 px-3 w-28">Tanggal & Jam</th>
-                  <th className="py-3 px-3 w-36">Kategori</th>
-                  <th className="py-3 px-3 min-w-[200px]">Nama Barang & Keterangan</th>
-                  <th className="py-3 px-3 w-28 text-right">Jumlah & Satuan</th>
-                  <th className="py-3 px-3 w-32 text-right">Estimasi Biaya</th>
-                  <th className="py-3 px-3 min-w-[140px]">Toko / Supplier</th>
-                  <th className="py-3 px-3 w-32">PIC Petugas</th>
-                  <th className="py-3 px-2 w-20 text-center" title="Status Nota Pesanan / Purchase Order (PO)">Nota PO</th>
-                  <th className="py-3 px-2 text-center w-14">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
-                {filteredRecords.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="py-10 text-center text-slate-400 italic">
-                      Belum ada data barang atau pengeluaran yang sesuai filter saat ini.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredRecords.map((r, idx) => {
-                    const isBasah = (r.displayCategory || r.category).includes('Basah');
-                    const isKering = (r.displayCategory || r.category).includes('Kering');
-                    const isAtk = (r.displayCategory || r.category).includes('ATK');
-                    const isBersih = (r.displayCategory || r.category).includes('Kebersihan');
+                    if (matchingRecords.length === 0) return null;
 
-                    let badgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
-                    if (isBasah) badgeColor = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-                    else if (isKering) badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
-                    else if (isAtk) badgeColor = 'bg-blue-50 text-blue-800 border-blue-200';
-                    else if (isBersih) badgeColor = 'bg-cyan-50 text-cyan-800 border-cyan-200';
+                    const groupSubtotal = matchingRecords.reduce((sum, r) => sum + r.nominal, 0);
 
-                    const matchingNota = getMatchingNotaForRecord(r);
+                    // Pisahkan data per tanggal untuk supplier ini
+                    const dateMap = new Map<string, UnifiedRecord[]>();
+                    matchingRecords.forEach(r => {
+                      const d = r.date || 'Tanpa Tanggal';
+                      if (!dateMap.has(d)) dateMap.set(d, []);
+                      dateMap.get(d)!.push(r);
+                    });
+
+                    // Urutkan tanggal dari yang terbaru
+                    const sortedDates = Array.from(dateMap.keys()).sort((a, b) => b.localeCompare(a));
 
                     return (
-                      <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-3 text-center text-slate-400 font-mono text-[11px]">
-                          {idx + 1}
-                        </td>
-                        <td className="py-3 px-3 text-slate-700">
-                          <div className="font-semibold text-slate-900">{r.date}</div>
-                          <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            <span>{r.time} WIB</span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold border ${badgeColor}`}>
-                            {r.displayCategory || r.category}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3">
-                          <div className="font-bold text-slate-900">{r.itemName}</div>
-                          {r.notes && (
-                            <div className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
-                              {r.notes}
+                      <div key={supplier.name} className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden transition-all hover:border-slate-300">
+                        {/* Supplier Card Header */}
+                        <div className="px-5 py-4 bg-gradient-to-r from-slate-50 via-slate-50/50 to-white border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                              <Store className="w-5 h-5" />
                             </div>
-                          )}
-                          {r.volunteer && (
-                            <div className="text-[10px] text-slate-400">
-                              Petugas belanja: <span className="font-medium text-slate-600">{r.volunteer}</span>
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">
-                          {r.quantity} {r.unit}
-                        </td>
-                        <td className="py-3 px-3 text-right">
-                          <div className="font-mono font-bold text-slate-900">
-                            Rp {r.nominal.toLocaleString('id-ID')}
-                          </div>
-                          {r.unitPrice > 0 && (
-                            <div className="text-[10px] text-slate-400 font-mono">
-                              @ Rp {r.unitPrice.toLocaleString('id-ID')}
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-3 px-3 text-slate-700">
-                          <div className="font-semibold truncate max-w-[150px]">
-                            {r.supplierOrStore !== '-' ? r.supplierOrStore : 'Belanja Rutin'}
-                          </div>
-                        </td>
-                        <td className="py-3 px-3 text-slate-700">
-                          <div className="font-semibold truncate max-w-[120px]">{r.picOrUser}</div>
-                        </td>
-                        <td className="py-2.5 px-2 text-center">
-                          {matchingNota ? (
-                            <div className="relative inline-flex items-center justify-center group">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenExistingNota(matchingNota)}
-                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95 relative ${
-                                  poolNotaIds.includes(matchingNota.id) || poolNotaIds.includes(matchingNota.poNumber)
-                                    ? 'bg-emerald-100 text-emerald-800 border-2 border-emerald-500'
-                                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/90'
-                                }`}
-                                title={`Nota PO ${matchingNota.poNumber} (${matchingNota.status}) - Klik untuk lihat / cetak surat`}
-                                aria-label={`Nota PO ${matchingNota.poNumber}`}
-                              >
-                                <FileCheck className="w-4 h-4 text-emerald-600" />
-                                {poolNotaIds.includes(matchingNota.id) || poolNotaIds.includes(matchingNota.poNumber) ? (
-                                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-sky-500 border-2 border-white" title="Dalam Pool Cetak" />
-                                ) : (
-                                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-white" />
-                                )}
-                              </button>
-
-                              {/* Tooltip Hover - Muncul di sebelah kiri */}
-                              <div className="absolute right-full top-1/2 -translate-y-1/2 mr-2.5 hidden group-hover:flex items-center z-50 pointer-events-none transition-all duration-150 animate-in fade-in zoom-in-95">
-                                <div className="bg-slate-900 text-white text-[11px] rounded-lg py-2 px-3 shadow-2xl whitespace-nowrap border border-slate-700/80 flex flex-col items-start gap-1">
-                                  <div className="flex items-center gap-1.5 font-bold text-emerald-400">
-                                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                                    <span>Nota PO Diterbitkan</span>
-                                  </div>
-                                  <div className="font-mono text-[10px] text-slate-300">
-                                    {matchingNota.poNumber}
-                                  </div>
-                                  <div className="text-[10px] text-slate-400">
-                                    Status: <span className="font-semibold text-slate-200">{matchingNota.status}</span>
-                                  </div>
-                                  {poolNotaIds.includes(matchingNota.id) || poolNotaIds.includes(matchingNota.poNumber) ? (
-                                    <div className="text-[9.5px] font-semibold text-sky-400 flex items-center gap-1 pt-0.5 border-t border-slate-700/80 w-full">
-                                      <Layers className="w-3 h-3" />
-                                      <span>Sudah di Pool Cetak</span>
-                                    </div>
-                                  ) : (
-                                    <div className="text-[9.5px] text-slate-400 pt-0.5 border-t border-slate-700/80 w-full">
-                                      Klik surat untuk cetak / masukkan pool
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="w-2 h-2 bg-slate-900 rotate-45 -ml-1 border-t border-r border-slate-700/80 shrink-0" />
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-bold text-slate-900 text-sm">{supplier.name}</h3>
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                                  {matchingRecords.length} Macam Barang
+                                </span>
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  {sortedDates.length} Tanggal Transaksi
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
+                                <span>Total Belanja Periode Ini:</span>
+                                <span className="font-mono font-bold text-slate-900">
+                                  Rp {groupSubtotal.toLocaleString('id-ID')}
+                                </span>
                               </div>
                             </div>
-                          ) : (
-                            <div className="relative inline-flex items-center justify-center group">
-                              <button
-                                type="button"
-                                onClick={() => handleCreateNotaFromRecord(r)}
-                                className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-700 border border-dashed border-slate-300 hover:border-emerald-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-                                title="Belum ada Nota PO. Klik untuk buat nota & PO resmi"
-                                aria-label="Buat Nota PO"
-                              >
-                                <FilePlus className="w-4 h-4 text-slate-400 group-hover:text-emerald-600" />
-                              </button>
+                          </div>
 
-                              {/* Tooltip Hover - Muncul di sebelah kiri */}
-                              <div className="absolute right-full top-1/2 -translate-y-1/2 mr-2.5 hidden group-hover:flex items-center z-50 pointer-events-none transition-all duration-150 animate-in fade-in zoom-in-95">
-                                <div className="bg-slate-900 text-white text-[11px] rounded-lg py-1.5 px-3 shadow-2xl whitespace-nowrap border border-slate-700/80 flex flex-col items-start gap-0.5">
-                                  <div className="flex items-center gap-1.5 font-bold text-slate-200">
-                                    <Receipt className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                                    <span>Belum Ada Nota</span>
+                          <div className="text-xs text-slate-400 font-medium">
+                            Data dipisahkan per tanggal agar penerbitan PO tidak bercampur
+                          </div>
+                        </div>
+
+                        {/* List of Date Sections */}
+                        <div className="divide-y divide-slate-200">
+                          {sortedDates.map(dateKey => {
+                            const dateRecords = dateMap.get(dateKey)!;
+                            const dateSubtotal = dateRecords.reduce((sum, r) => sum + r.nominal, 0);
+
+                            // Cari nota PO yang cocok khusus untuk supplier dan tanggal ini
+                            const dateMatchingNotas: PurchaseOrderNota[] = [];
+                            const seenPoIds = new Set<string>();
+
+                            dateRecords.forEach(r => {
+                              const nota = getMatchingNotaForRecord(r);
+                              if (nota && !seenPoIds.has(nota.id)) {
+                                seenPoIds.add(nota.id);
+                                dateMatchingNotas.push(nota);
+                              }
+                            });
+
+                            const sName = supplier.name.toLowerCase().trim();
+                            purchaseOrders.forEach(po => {
+                              const poDate = po.date ? po.date.slice(0, 10) : '';
+                              const poDelivery = po.deliveryDate ? po.deliveryDate.slice(0, 10) : '';
+                              const isDateMatch = poDate === dateKey || poDelivery === dateKey;
+                              if (isDateMatch && !seenPoIds.has(po.id)) {
+                                const poSupp = (po.supplierName || '').toLowerCase().trim();
+                                if (poSupp && sName && (poSupp.includes(sName) || sName.includes(poSupp))) {
+                                  seenPoIds.add(po.id);
+                                  dateMatchingNotas.push(po);
+                                }
+                              }
+                            });
+
+                            const unassignedRecords = dateRecords.filter(r => !getMatchingNotaForRecord(r));
+
+                            return (
+                              <div key={dateKey} className="bg-white">
+                                {/* Sub-header pertanggal */}
+                                <div className="px-5 py-3 bg-slate-50/80 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/60 flex items-center justify-center shrink-0">
+                                      <Calendar className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-bold text-slate-800 text-xs">
+                                          {formatIndonesianDateWithDay(dateKey)}
+                                        </span>
+                                        <span className="text-[11px] font-medium px-2 py-0.2 rounded-full bg-white text-slate-700 border border-slate-200">
+                                          {dateRecords.length} Barang
+                                        </span>
+                                      </div>
+                                      <div className="text-[11px] text-slate-500 mt-0.5">
+                                        Subtotal: <span className="font-mono font-bold text-slate-800">Rp {dateSubtotal.toLocaleString('id-ID')}</span>
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="text-[10px] text-slate-400">
-                                    Klik untuk langsung buat & cetak nota resmi
+
+                                  {/* Action PO khusus tanggal ini */}
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {dateMatchingNotas.map(nota => (
+                                      <button
+                                        key={nota.id}
+                                        type="button"
+                                        onClick={() => handleOpenExistingNota(nota)}
+                                        className="px-2.5 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                                        title={`Lihat / Cetak Nota PO: ${nota.poNumber}`}
+                                      >
+                                        <FileCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span>PO: {nota.poNumber}</span>
+                                      </button>
+                                    ))}
+
+                                    {dateMatchingNotas.length === 0 ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCreateCombinedNotaForSupplier(supplier.name, dateRecords, dateKey)}
+                                        className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 transition-all cursor-pointer active:scale-95"
+                                      >
+                                        <Receipt className="w-3.5 h-3.5" />
+                                        <span>Cetak 1 Nota PO Gabungan ({dateRecords.length} Barang)</span>
+                                      </button>
+                                    ) : unassignedRecords.length > 0 ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCreateCombinedNotaForSupplier(supplier.name, unassignedRecords, dateKey)}
+                                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
+                                        title="Buat PO untuk barang yang belum masuk nota pada tanggal ini"
+                                      >
+                                        <FilePlus className="w-3.5 h-3.5" />
+                                        <span>Buat PO ({unassignedRecords.length} Barang Belum Masuk)</span>
+                                      </button>
+                                    ) : null}
                                   </div>
                                 </div>
-                                <div className="w-2 h-2 bg-slate-900 rotate-45 -ml-1 border-t border-r border-slate-700/80 shrink-0" />
+
+                                {/* Table of items for this date */}
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left text-xs">
+                                    <thead className="bg-slate-50/40 text-slate-500 font-semibold border-b border-slate-100">
+                                      <tr>
+                                        <th className="py-2.5 px-3 w-10 text-center">#</th>
+                                        <th className="py-2.5 px-3 w-28">Jam</th>
+                                        <th className="py-2.5 px-3 w-32">Kategori</th>
+                                        <th className="py-2.5 px-3 min-w-[200px]">Nama Barang & Keterangan</th>
+                                        <th className="py-2.5 px-3 w-28 text-right">Jumlah & Satuan</th>
+                                        <th className="py-2.5 px-3 w-32 text-right">Estimasi Biaya</th>
+                                        <th className="py-2.5 px-3 w-28">PIC Petugas</th>
+                                        <th className="py-2.5 px-2 w-20 text-center">Nota PO</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 font-medium">
+                                      {dateRecords.map((r, itemIdx) => {
+                                        const isBasah = (r.displayCategory || r.category).includes('Basah');
+                                        const isKering = (r.displayCategory || r.category).includes('Kering');
+                                        const isAtk = (r.displayCategory || r.category).includes('ATK');
+                                        const isBersih = (r.displayCategory || r.category).includes('Kebersihan');
+
+                                        let badgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
+                                        if (isBasah) badgeColor = 'bg-emerald-50 text-emerald-800 border-emerald-200';
+                                        else if (isKering) badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
+                                        else if (isAtk) badgeColor = 'bg-blue-50 text-blue-800 border-blue-200';
+                                        else if (isBersih) badgeColor = 'bg-cyan-50 text-cyan-800 border-cyan-200';
+
+                                        const matchingNota = getMatchingNotaForRecord(r);
+
+                                        return (
+                                          <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
+                                            <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
+                                              {itemIdx + 1}
+                                            </td>
+                                            <td className="py-2.5 px-3 text-slate-700">
+                                              <div className="text-[11px] font-medium text-slate-600 flex items-center gap-1">
+                                                <Clock className="w-3 h-3 text-slate-400" />
+                                                <span>{r.time ? `${r.time} WIB` : '-'}</span>
+                                              </div>
+                                            </td>
+                                            <td className="py-2.5 px-3">
+                                              <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold border ${badgeColor}`}>
+                                                {r.displayCategory || r.category}
+                                              </span>
+                                            </td>
+                                            <td className="py-2.5 px-3">
+                                              <div className="font-bold text-slate-900">{r.itemName}</div>
+                                              {r.notes && (
+                                                <div className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
+                                                  {r.notes}
+                                                </div>
+                                              )}
+                                            </td>
+                                            <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                                              {r.quantity} {r.unit}
+                                            </td>
+                                            <td className="py-2.5 px-3 text-right">
+                                              <div className="font-mono font-bold text-slate-900">
+                                                Rp {r.nominal.toLocaleString('id-ID')}
+                                              </div>
+                                              {r.unitPrice > 0 && (
+                                                <div className="text-[10px] text-slate-400 font-mono">
+                                                  @ Rp {r.unitPrice.toLocaleString('id-ID')}
+                                                </div>
+                                              )}
+                                            </td>
+                                            <td className="py-2.5 px-3 text-slate-700">
+                                              <div className="font-semibold truncate max-w-[120px]">{r.picOrUser}</div>
+                                            </td>
+                                            <td className="py-2 px-2 text-center">
+                                              {matchingNota ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleOpenExistingNota(matchingNota)}
+                                                  className="w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center justify-center transition-all cursor-pointer mx-auto"
+                                                  title={`Nota PO ${matchingNota.poNumber}`}
+                                                >
+                                                  <FileCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                                </button>
+                                              ) : (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleCreateNotaFromRecord(r)}
+                                                  className="w-7 h-7 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-700 border border-dashed border-slate-300 flex items-center justify-center transition-all cursor-pointer mx-auto"
+                                                  title="Buat Nota PO"
+                                                >
+                                                  <FilePlus className="w-3.5 h-3.5" />
+                                                </button>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
                               </div>
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-3 px-2 text-center">
-                          {r.source === 'EXPENSE_INPUT' ? (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteExpense(r.id, r.itemName)}
-                              className="text-slate-300 hover:text-rose-600 p-1.5 rounded transition-colors cursor-pointer"
-                              title="Hapus catatan barang ini"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => r.rawDoc && setSelectedDocForDetail(r.rawDoc)}
-                              className="text-slate-400 hover:text-emerald-700 p-1.5 rounded transition-colors cursor-pointer"
-                              title="Lihat dokumen surat jalan"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )
+          ) : (
+            /* VIEW: Table of Records Card (Tabel Biasa) */
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden relative">
+              {/* Table of Records */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="py-3 px-3 w-12 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={allFilteredSelected}
+                            ref={el => {
+                              if (el) el.indeterminate = someFilteredSelected && !allFilteredSelected;
+                            }}
+                            onChange={handleToggleSelectAll}
+                            className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer w-3.5 h-3.5"
+                            title="Pilih semua baris"
+                          />
+                        </div>
+                      </th>
+                      <th className="py-3 px-3 w-28">Tanggal & Jam</th>
+                      <th className="py-3 px-3 w-36">Kategori</th>
+                      <th className="py-3 px-3 min-w-[200px]">Nama Barang & Keterangan</th>
+                      <th className="py-3 px-3 w-28 text-right">Jumlah & Satuan</th>
+                      <th className="py-3 px-3 w-32 text-right">Estimasi Biaya</th>
+                      <th className="py-3 px-3 min-w-[140px]">Toko / Supplier</th>
+                      <th className="py-3 px-3 w-32">PIC Petugas</th>
+                      <th className="py-3 px-2 w-20 text-center" title="Status Nota Pesanan / Purchase Order (PO)">Nota PO</th>
+                      <th className="py-3 px-2 text-center w-14">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {filteredRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="py-10 text-center text-slate-400 italic">
+                          Belum ada data barang atau pengeluaran yang sesuai filter saat ini.
                         </td>
                       </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                    ) : (
+                      filteredRecords.map((r, idx) => {
+                        const isBasah = (r.displayCategory || r.category).includes('Basah');
+                        const isKering = (r.displayCategory || r.category).includes('Kering');
+                        const isAtk = (r.displayCategory || r.category).includes('ATK');
+                        const isBersih = (r.displayCategory || r.category).includes('Kebersihan');
+
+                        let badgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
+                        if (isBasah) badgeColor = 'bg-emerald-50 text-emerald-800 border-emerald-200';
+                        else if (isKering) badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
+                        else if (isAtk) badgeColor = 'bg-blue-50 text-blue-800 border-blue-200';
+                        else if (isBersih) badgeColor = 'bg-cyan-50 text-cyan-800 border-cyan-200';
+
+                        const matchingNota = getMatchingNotaForRecord(r);
+
+                        return (
+                          <tr key={r.id} className={`hover:bg-slate-50/80 transition-colors ${selectedRecordIds.includes(r.id) ? 'bg-emerald-50/40' : ''}`}>
+                            <td className="py-3 px-3 text-center text-slate-400 font-mono text-[11px]">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedRecordIds.includes(r.id)}
+                                  onChange={() => handleToggleSelectRecord(r.id)}
+                                  className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer w-3.5 h-3.5"
+                                />
+                                <span>{idx + 1}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-slate-700">
+                              <div className="font-semibold text-slate-900">{r.date}</div>
+                              <div className="text-[10px] text-slate-400 flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                <span>{r.time} WIB</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold border ${badgeColor}`}>
+                                {r.displayCategory || r.category}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="font-bold text-slate-900">{r.itemName}</div>
+                              {r.notes && (
+                                <div className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
+                                  {r.notes}
+                                </div>
+                              )}
+                              {r.volunteer && (
+                                <div className="text-[10px] text-slate-400">
+                                  Petugas belanja: <span className="font-medium text-slate-600">{r.volunteer}</span>
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">
+                              {r.quantity} {r.unit}
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <div className="font-mono font-bold text-slate-900">
+                                Rp {r.nominal.toLocaleString('id-ID')}
+                              </div>
+                              {r.unitPrice > 0 && (
+                                <div className="text-[10px] text-slate-400 font-mono">
+                                  @ Rp {r.unitPrice.toLocaleString('id-ID')}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-slate-700">
+                              <div className="font-semibold truncate max-w-[150px]">
+                                {r.supplierOrStore !== '-' ? r.supplierOrStore : 'Belanja Rutin'}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-slate-700">
+                              <div className="font-semibold truncate max-w-[120px]">{r.picOrUser}</div>
+                            </td>
+                            <td className="py-2.5 px-2 text-center">
+                              {matchingNota ? (
+                                <div className="relative inline-flex items-center justify-center group">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenExistingNota(matchingNota)}
+                                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95 relative ${
+                                      poolNotaIds.includes(matchingNota.id) || poolNotaIds.includes(matchingNota.poNumber)
+                                        ? 'bg-emerald-100 text-emerald-800 border-2 border-emerald-500'
+                                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/90'
+                                    }`}
+                                    title={`Nota PO ${matchingNota.poNumber} (${matchingNota.status}) - Klik untuk lihat / cetak surat`}
+                                    aria-label={`Nota PO ${matchingNota.poNumber}`}
+                                  >
+                                    <FileCheck className="w-4 h-4 text-emerald-600" />
+                                    {poolNotaIds.includes(matchingNota.id) || poolNotaIds.includes(matchingNota.poNumber) ? (
+                                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-sky-500 border-2 border-white" title="Dalam Pool Cetak" />
+                                    ) : (
+                                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-white" />
+                                    )}
+                                  </button>
+
+                                  {/* Tooltip Hover - Muncul di sebelah kiri */}
+                                  <div className="absolute right-full top-1/2 -translate-y-1/2 mr-2.5 hidden group-hover:flex items-center z-50 pointer-events-none transition-all duration-150 animate-in fade-in zoom-in-95">
+                                    <div className="bg-slate-900 text-white text-[11px] rounded-lg py-2 px-3 shadow-2xl whitespace-nowrap border border-slate-700/80 flex flex-col items-start gap-1">
+                                      <div className="flex items-center gap-1.5 font-bold text-emerald-400">
+                                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                        <span>Nota PO Diterbitkan</span>
+                                      </div>
+                                      <div className="font-mono text-[10px] text-slate-300">
+                                        {matchingNota.poNumber}
+                                      </div>
+                                      <div className="text-[10px] text-slate-400">
+                                        Status: <span className="font-semibold text-slate-200">{matchingNota.status}</span>
+                                      </div>
+                                      {poolNotaIds.includes(matchingNota.id) || poolNotaIds.includes(matchingNota.poNumber) ? (
+                                        <div className="text-[9.5px] font-semibold text-sky-400 flex items-center gap-1 pt-0.5 border-t border-slate-700/80 w-full">
+                                          <Layers className="w-3 h-3" />
+                                          <span>Sudah di Pool Cetak</span>
+                                        </div>
+                                      ) : (
+                                        <div className="text-[9.5px] text-slate-400 pt-0.5 border-t border-slate-700/80 w-full">
+                                          Klik surat untuk cetak / masukkan pool
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="w-2 h-2 bg-slate-900 rotate-45 -ml-1 border-t border-r border-slate-700/80 shrink-0" />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="relative inline-flex items-center justify-center group">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCreateNotaFromRecord(r)}
+                                    className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-700 border border-dashed border-slate-300 hover:border-emerald-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
+                                    title="Belum ada Nota PO. Klik untuk buat nota & PO resmi"
+                                    aria-label="Buat Nota PO"
+                                  >
+                                    <FilePlus className="w-4 h-4 text-slate-400 group-hover:text-emerald-600" />
+                                  </button>
+
+                                  {/* Tooltip Hover - Muncul di sebelah kiri */}
+                                  <div className="absolute right-full top-1/2 -translate-y-1/2 mr-2.5 hidden group-hover:flex items-center z-50 pointer-events-none transition-all duration-150 animate-in fade-in zoom-in-95">
+                                    <div className="bg-slate-900 text-white text-[11px] rounded-lg py-1.5 px-3 shadow-2xl whitespace-nowrap border border-slate-700/80 flex flex-col items-start gap-0.5">
+                                      <div className="flex items-center gap-1.5 font-bold text-slate-200">
+                                        <Receipt className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                        <span>Belum Ada Nota</span>
+                                      </div>
+                                      <div className="text-[10px] text-slate-400">
+                                        Klik untuk buat / gabungkan nota PO
+                                      </div>
+                                    </div>
+                                    <div className="w-2 h-2 bg-slate-900 rotate-45 -ml-1 border-t border-r border-slate-700/80 shrink-0" />
+                                  </div>
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3 px-2 text-center">
+                              {r.source === 'EXPENSE_INPUT' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteExpense(r.id, r.itemName)}
+                                  className="text-slate-300 hover:text-rose-600 p-1.5 rounded transition-colors cursor-pointer"
+                                  title="Hapus catatan barang ini"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => r.rawDoc && setSelectedDocForDetail(r.rawDoc)}
+                                  className="text-slate-400 hover:text-emerald-700 p-1.5 rounded transition-colors cursor-pointer"
+                                  title="Lihat dokumen surat jalan"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Floating Action Bar for Selected Rows */}
+          {selectedRecordIds.length > 0 && viewMode === 'TABLE' && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
+              <div className="flex items-center gap-2 text-xs">
+                <CheckSquare className="w-4 h-4 text-emerald-400" />
+                <span className="font-semibold">{selectedRecordIds.length} barang dipilih</span>
+                <span className="text-slate-500">|</span>
+                <span className="text-emerald-300 font-mono font-bold">
+                  Rp {periodRecords.filter(r => selectedRecordIds.includes(r.id)).reduce((sum, r) => sum + r.nominal, 0).toLocaleString('id-ID')}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCreateNotaFromSelected}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  <span>Buat 1 Nota PO Gabungan</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRecordIds([])}
+                  className="text-slate-400 hover:text-white text-xs px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
     )}
 
       {/* ========================================================================= */}
@@ -2192,18 +3138,21 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                 <label className="block font-semibold text-slate-700 mb-1">
                   Kategori Barang & Belanja <span className="text-rose-500">*</span>
                 </label>
-                <select
-                  value={singleCategory}
-                  onChange={e => setSingleCategory(e.target.value as InputCategoryType)}
-                  className="w-full border border-slate-300 rounded-lg p-2.5 bg-white text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                >
-                  <option value="Bahan Basah">Bahan Basah (Ayam, Daging, Ikan, Telur, Sayur, Buah, Tahu/Tempe)</option>
-                  <option value="Bahan Kering">Bahan Kering (Beras, Minyak, Gula, Tepung, Garam, Bumbu, Saus)</option>
-                  <option value="ATK & Administrasi">ATK & Administrasi (Kertas HVS, Buku, Pulpen, Spidol, Map, Tinta)</option>
-                  <option value="Alat Kebersihan">Alat Kebersihan (Sunlight, Karbol, Spons, Kain Lap, Sapu, Trash Bag)</option>
-                  <option value="Perlengkapan & APD">Perlengkapan & APD (Kresek, Kotak Mika, Sarung Tangan, Masker, Nurse Cap)</option>
-                  <option value="Operasional & Keperluan Lain">Operasional & Keperluan Lain (Gas Elpiji, Air Galon, Es Batu, Listrik)</option>
-                </select>
+                <div className="relative">
+                  <select
+                    value={singleCategory}
+                    onChange={e => setSingleCategory(e.target.value as InputCategoryType)}
+                    className="w-full appearance-none border border-slate-300 rounded-lg pl-3 pr-9 py-2.5 bg-white text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer shadow-2xs"
+                  >
+                    <option value="Bahan Basah">Bahan Basah (Ayam, Daging, Ikan, Telur, Sayur, Buah, Tahu/Tempe)</option>
+                    <option value="Bahan Kering">Bahan Kering (Beras, Minyak, Gula, Tepung, Garam, Bumbu, Saus)</option>
+                    <option value="ATK & Administrasi">ATK & Administrasi (Kertas HVS, Buku, Pulpen, Spidol, Map, Tinta)</option>
+                    <option value="Alat Kebersihan">Alat Kebersihan (Sunlight, Karbol, Spons, Kain Lap, Sapu, Trash Bag)</option>
+                    <option value="Perlengkapan & APD">Perlengkapan & APD (Kresek, Kotak Mika, Sarung Tangan, Masker, Nurse Cap)</option>
+                    <option value="Operasional & Keperluan Lain">Operasional & Keperluan Lain (Gas Elpiji, Air Galon, Es Batu, Listrik)</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                </div>
               </div>
 
               {/* Nama Barang */}
@@ -2243,15 +3192,44 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                   <label className="block font-semibold text-slate-700 mb-1">
                     Satuan <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    list="unit-datalist"
-                    value={singleUnit}
-                    onChange={e => setSingleUnit(e.target.value)}
-                    placeholder="Kg, Pcs, Pack..."
-                    required
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      list="unit-datalist"
+                      value={singleUnit}
+                      onChange={e => setSingleUnit(e.target.value)}
+                      placeholder="Kg, Pcs, Pack..."
+                      required
+                      className="w-full border border-slate-300 rounded-lg pl-3 pr-8 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <select
+                      onChange={e => {
+                        if (e.target.value) setSingleUnit(e.target.value);
+                      }}
+                      value=""
+                      className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 w-7 h-7 cursor-pointer"
+                      title="Pilih satuan umum"
+                    >
+                      <option value="" disabled>Pilih satuan...</option>
+                      <option value="Kg">Kg</option>
+                      <option value="Liter">Liter</option>
+                      <option value="Pcs">Pcs</option>
+                      <option value="Pack">Pack</option>
+                      <option value="Ikat">Ikat</option>
+                      <option value="Dus">Dus</option>
+                      <option value="Roll">Roll</option>
+                      <option value="Pouch">Pouch</option>
+                      <option value="Gram">Gram</option>
+                      <option value="Botol">Botol</option>
+                      <option value="Bungkus">Bungkus</option>
+                      <option value="Rim">Rim</option>
+                      <option value="Buku">Buku</option>
+                      <option value="Tabung">Tabung</option>
+                      <option value="Galon">Galon</option>
+                      <option value="Karung">Karung</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  </div>
                 </div>
               </div>
 
@@ -2259,15 +3237,23 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    Harga Satuan (Rp)
+                    Harga Satuan
                   </label>
-                  <input
-                    type="number"
-                    value={singleUnitPrice || ''}
-                    onChange={e => setSingleUnitPrice(Number(e.target.value))}
-                    placeholder="Otomatis atau manual..."
-                    className="w-full border border-slate-300 rounded-lg p-2.5 font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">
+                      Rp
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={singleUnitPrice ? singleUnitPrice.toLocaleString('id-ID') : ''}
+                      onChange={e =>
+                        setSingleUnitPrice(Number(e.target.value.replace(/\D/g, '')) || 0)
+                      }
+                      placeholder="0"
+                      className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 font-mono tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
@@ -2281,17 +3267,71 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
 
               {/* Tempat Belanja / Toko & Tanggal */}
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                <div className="relative" ref={singleSupplierDropdownRef}>
+                  <label htmlFor="single-supplier-input" className="block font-semibold text-slate-700 mb-1">
                     Toko / Supplier / Pasar
                   </label>
-                  <input
-                    type="text"
-                    value={singleSupplier}
-                    onChange={e => setSingleSupplier(e.target.value)}
-                    placeholder="Pasar Tumpang, Toko Berkah..."
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
+                  <div className="relative">
+                    <input
+                      id="single-supplier-input"
+                      type="text"
+                      value={singleSupplier}
+                      onChange={e => {
+                        setSingleSupplier(e.target.value);
+                        setIsSingleSupplierDropdownOpen(true);
+                      }}
+                      onFocus={() => setIsSingleSupplierDropdownOpen(true)}
+                      placeholder="Pilih dari master rekanan atau ketik toko..."
+                      className="w-full border border-slate-300 rounded-lg pl-3 pr-8 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsSingleSupplierDropdownOpen(prev => !prev)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      title="Buka daftar supplier master"
+                    >
+                      <ChevronDown className={`w-4 h-4 transition-transform ${isSingleSupplierDropdownOpen ? 'rotate-180 text-emerald-600' : ''}`} />
+                    </button>
+                  </div>
+
+                  {/* Dropdown Popover List for Single Supplier */}
+                  {isSingleSupplierDropdownOpen && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 max-h-56 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
+                      <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                        <span>Pilih Supplier Master Rekanan</span>
+                        <span className="text-[10px] font-normal text-slate-400">{filteredSingleSuppliers.length} toko</span>
+                      </div>
+                      {filteredSingleSuppliers.map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => {
+                            setSingleSupplier(s.name);
+                            setIsSingleSupplierDropdownOpen(false);
+                          }}
+                          className="w-full px-3 py-2 text-left text-xs hover:bg-emerald-50/70 flex items-center justify-between gap-2 transition-colors cursor-pointer border-b border-slate-50 last:border-b-0"
+                        >
+                          <div className="min-w-0">
+                            <div className="font-semibold text-slate-900 truncate flex items-center gap-1.5">
+                              <Store className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>{s.name}</span>
+                            </div>
+                            {s.address && (
+                              <div className="text-[10px] text-slate-500 truncate mt-0.5">{s.address}</div>
+                            )}
+                          </div>
+                          <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                            {s.supplyCategory}
+                          </span>
+                        </button>
+                      ))}
+                      {filteredSingleSuppliers.length === 0 && (
+                        <div className="p-3 text-center text-xs text-slate-500">
+                          Toko <strong>"{singleSupplier}"</strong> belum ada di master. Anda tetap bisa menyimpannya sebagai belanja toko/pasar baru.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
@@ -2314,6 +3354,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                   </label>
                   <input
                     type="text"
+                    placeholder="Akmal"
                     value={singlePic}
                     onChange={e => setSinglePic(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -2440,6 +3481,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                   </label>
                   <input
                     type="text"
+                    placeholder="Akmal"
                     value={batchPic}
                     onChange={e => setBatchPic(e.target.value)}
                     className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -2447,6 +3489,188 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                 </div>
               </div>
 
+              {/* Langkah 1: Daftar supplier (wajib sebelum input barang) */}
+              <div
+                className={`p-3.5 rounded-xl border ${
+                  batchSuppliers.length === 0
+                    ? 'bg-amber-50/60 border-amber-200'
+                    : 'bg-white border-slate-200'
+                }`}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                  <div className="flex-1 relative" ref={batchSupplierDropdownRef}>
+                    <label htmlFor="batch-supplier-input" className="block text-xs font-semibold text-slate-700 mb-1">
+                      Daftar supplier <span className="text-rose-500">*</span>
+                    </label>
+                    <p className="text-[11px] text-slate-500 mb-1.5">
+                      {batchSuppliers.length === 0
+                        ? 'Isi minimal satu supplier dulu. Tabel barang terbuka setelah supplier ditambahkan.'
+                        : 'Supplier pertama dipakai sebagai bawaan untuk baris yang belum dipilih.'}
+                    </p>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          id="batch-supplier-input"
+                          type="text"
+                          value={batchSupplierDraft}
+                          onChange={e => {
+                            setBatchSupplierDraft(e.target.value);
+                            setIsBatchSupplierDropdownOpen(true);
+                          }}
+                          onFocus={() => setIsBatchSupplierDropdownOpen(true)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddBatchSupplier();
+                              setIsBatchSupplierDropdownOpen(false);
+                            }
+                          }}
+                          placeholder="Pilih dari master rekanan atau ketik toko baru..."
+                          className="w-full text-xs border border-slate-300 rounded-lg pl-3 pr-8 py-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          autoFocus={batchSuppliers.length === 0}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setIsBatchSupplierDropdownOpen(prev => !prev)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          title="Buka daftar supplier master"
+                        >
+                          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isBatchSupplierDropdownOpen ? 'rotate-180 text-emerald-600' : ''}`} />
+                        </button>
+
+                        {/* Dropdown Popover for Master Suppliers */}
+                        {isBatchSupplierDropdownOpen && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 max-h-52 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
+                            <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                              <span>Pilih dari Master Rekanan ({availableBatchMasterSuppliers.length})</span>
+                              {batchSupplierDraft.trim() && (
+                                <span className="text-emerald-700 font-medium text-[10px]">Filter aktif</span>
+                              )}
+                            </div>
+                            {availableBatchMasterSuppliers.map(s => (
+                              <button
+                                key={s.id}
+                                type="button"
+                                onClick={() => {
+                                  handleAddBatchSupplier(s.name);
+                                  setIsBatchSupplierDropdownOpen(false);
+                                }}
+                                className="w-full px-3 py-2 text-left text-xs hover:bg-emerald-50/70 flex items-center justify-between gap-2 transition-colors cursor-pointer border-b border-slate-50 last:border-b-0"
+                              >
+                                <div className="min-w-0">
+                                  <div className="font-semibold text-slate-900 truncate flex items-center gap-1.5">
+                                    <Store className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                    <span>{s.name}</span>
+                                  </div>
+                                  {s.address && (
+                                    <div className="text-[10px] text-slate-500 truncate mt-0.5">{s.address}</div>
+                                  )}
+                                </div>
+                                <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                                  {s.supplyCategory}
+                                </span>
+                              </button>
+                            ))}
+                            {availableBatchMasterSuppliers.length === 0 && (
+                              <div className="p-3 text-center text-xs text-slate-500">
+                                {batchSupplierDraft.trim() ? (
+                                  <span>Tekan tombol <strong>"Tambah"</strong> untuk menambahkan "{batchSupplierDraft}" sebagai toko baru.</span>
+                                ) : (
+                                  <span>Semua supplier master sudah masuk ke daftar sesi ini.</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        id="batch-supplier-add-btn"
+                        onClick={() => {
+                          handleAddBatchSupplier();
+                          setIsBatchSupplierDropdownOpen(false);
+                        }}
+                        disabled={!batchSupplierDraft.trim()}
+                        className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white disabled:bg-slate-200 disabled:text-slate-400 transition-colors cursor-pointer disabled:cursor-not-allowed shrink-0"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Tambah</span>
+                      </button>
+                    </div>
+
+                    {/* Quick Add Chips from Master Suppliers */}
+                    {availableBatchMasterSuppliers.length > 0 && batchSuppliers.length < 5 && (
+                      <div className="flex items-center gap-1.5 mt-2 flex-wrap text-[11px] text-slate-500">
+                        <span className="font-medium text-slate-400">Pilih cepat:</span>
+                        {availableBatchMasterSuppliers.slice(0, 4).map(s => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => handleAddBatchSupplier(s.name)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 hover:bg-emerald-100 text-slate-700 hover:text-emerald-900 border border-slate-200/80 transition-colors cursor-pointer"
+                            title={`Tambah ${s.name}`}
+                          >
+                            <Plus className="w-2.5 h-2.5 text-emerald-600" />
+                            <span>{s.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {batchSuppliers.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2.5">
+                    {batchSuppliers.map((s, i) => {
+                      const inMaster = isInSupplierMaster(s);
+                      return (
+                        <span
+                          key={s}
+                          className={`inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md border text-[11px] font-semibold ${
+                            inMaster
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                              : 'bg-amber-50 border-amber-200 text-amber-900'
+                          }`}
+                          title={inMaster ? 'Terdaftar di master supplier' : 'Diketik manual, belum ada di master supplier'}
+                        >
+                          <Store className={`w-3 h-3 ${inMaster ? 'text-emerald-600' : 'text-amber-600'}`} />
+                          {s}
+                          {i === 0 && (
+                            <span className={`text-[10px] font-medium ${inMaster ? 'text-emerald-600' : 'text-amber-700'}`}>
+                              (bawaan)
+                            </span>
+                          )}
+                          {!inMaster && (
+                            <button
+                              type="button"
+                              onClick={() => handleSaveBatchSupplierToMaster(s)}
+                              className="ml-0.5 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-amber-800 hover:bg-amber-100 cursor-pointer"
+                            >
+                              Simpan ke master
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveBatchSupplierWithConfirm(s)}
+                            className={`p-0.5 rounded hover:text-rose-600 hover:bg-white cursor-pointer ${
+                              inMaster ? 'text-emerald-500' : 'text-amber-500'
+                            }`}
+                            title={`Hapus ${s}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <fieldset
+                disabled={batchSuppliers.length === 0}
+                className={`min-w-0 transition-opacity ${batchSuppliers.length === 0 ? 'opacity-40 pointer-events-none select-none' : ''}`}
+              >
               {/* MODE 1: GRID TABLE */}
               {batchInputMode === 'GRID' && (
                 <div className="space-y-3">
@@ -2460,15 +3684,15 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                             <th className="py-2.5 px-2 w-36">Kategori</th>
                             <th className="py-2.5 px-2 w-20 text-right">Jumlah</th>
                             <th className="py-2.5 px-2 w-20">Satuan</th>
-                            <th className="py-2.5 px-2 w-24 text-right">Harga Satuan</th>
+                            <th className="py-2.5 px-2 w-32 text-right">Harga Satuan</th>
                             <th className="py-2.5 px-2 min-w-[120px]">Toko / Supplier</th>
                             <th className="py-2.5 px-2 min-w-[110px]">Keterangan</th>
                             <th className="py-2.5 px-1 text-center w-8"></th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 font-medium">
+                        <tbody ref={batchGridRef} className="divide-y divide-slate-100 font-medium">
                           {batchRows.map((row, index) => (
-                            <tr key={row.id} className="hover:bg-slate-50/80">
+                            <tr key={row.id} className="hover:bg-slate-50/80 focus-within:bg-emerald-50/40">
                               <td className="py-1.5 px-2 text-center text-slate-400 text-[11px]">
                                 {index + 1}
                               </td>
@@ -2476,6 +3700,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                                 <input
                                   type="text"
                                   list="common-catalog-datalist"
+                                  data-cell={`${index}-0`}
+                                  onKeyDown={e => handleBatchGridKeyDown(e, index, 0)}
                                   value={row.itemName}
                                   onChange={e => handleUpdateBatchRow(row.id, 'itemName', e.target.value)}
                                   placeholder="Ketik nama barang..."
@@ -2483,19 +3709,27 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                                 />
                               </td>
                               <td className="py-1.5 px-2">
-                                <select
-                                  value={row.category}
-                                  onChange={e => handleUpdateBatchRow(row.id, 'category', e.target.value as InputCategoryType)}
-                                  className="w-full text-[11px] border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                                >
-                                  {INPUT_CATEGORIES.map(c => (
-                                    <option key={c} value={c}>{c}</option>
-                                  ))}
-                                </select>
+                                <div className="relative">
+                                  <select
+                                    data-cell={`${index}-1`}
+                                    onKeyDown={e => handleBatchGridKeyDown(e, index, 1)}
+                                    value={row.category}
+                                    onChange={e => handleUpdateBatchRow(row.id, 'category', e.target.value as InputCategoryType)}
+                                    className="w-full appearance-none text-[11px] border border-slate-200 rounded pl-1.5 pr-5 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
+                                  >
+                                    {INPUT_CATEGORIES.map(c => (
+                                      <option key={c} value={c}>{c}</option>
+                                    ))}
+                                  </select>
+                                  <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                                </div>
                               </td>
                               <td className="py-1.5 px-2 text-right">
                                 <input
                                   type="text"
+                                  inputMode="decimal"
+                                  data-cell={`${index}-2`}
+                                  onKeyDown={e => handleBatchGridKeyDown(e, index, 2)}
                                   value={row.qty}
                                   onChange={e => handleUpdateBatchRow(row.id, 'qty', e.target.value)}
                                   placeholder="1"
@@ -2506,6 +3740,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                                 <input
                                   type="text"
                                   list="unit-datalist"
+                                  data-cell={`${index}-3`}
+                                  onKeyDown={e => handleBatchGridKeyDown(e, index, 3)}
                                   value={row.unit}
                                   onChange={e => handleUpdateBatchRow(row.id, 'unit', e.target.value)}
                                   placeholder="Kg"
@@ -2513,26 +3749,71 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                                 />
                               </td>
                               <td className="py-1.5 px-2 text-right">
-                                <input
-                                  type="number"
-                                  value={row.unitPrice || ''}
-                                  onChange={e => handleUpdateBatchRow(row.id, 'unitPrice', Number(e.target.value))}
-                                  placeholder="0"
-                                  className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 text-right font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-900"
-                                />
+                                <div className="relative">
+                                  <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[11px] font-medium text-slate-400">
+                                    Rp
+                                  </span>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    data-cell={`${index}-4`}
+                                    onKeyDown={e => handleBatchGridKeyDown(e, index, 4)}
+                                    value={row.unitPrice ? row.unitPrice.toLocaleString('id-ID') : ''}
+                                    onChange={e =>
+                                      handleUpdateBatchRow(
+                                        row.id,
+                                        'unitPrice',
+                                        Number(e.target.value.replace(/\D/g, '')) || 0
+                                      )
+                                    }
+                                    placeholder="0"
+                                    className="w-full text-xs border border-slate-200 rounded pl-7 pr-1.5 py-1 text-right font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-900"
+                                  />
+                                </div>
+                              </td>
+                              <td className="py-1.5 px-2">
+                                <div className="relative">
+                                  <select
+                                    data-cell={`${index}-5`}
+                                    onKeyDown={e => handleBatchGridKeyDown(e, index, 5)}
+                                    value={row.supplier || batchSuppliers[0] || ''}
+                                    onChange={e => {
+                                      const chosen = e.target.value;
+                                      if (chosen && !batchSuppliers.includes(chosen)) {
+                                        setBatchSuppliers(prev => [...prev, chosen]);
+                                      }
+                                      handleUpdateBatchRow(row.id, 'supplier', chosen);
+                                    }}
+                                    className="w-full appearance-none text-[11px] border border-slate-200 rounded pl-1.5 pr-5 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
+                                  >
+                                    {batchSuppliers.length === 0 && <option value="">Pilih supplier...</option>}
+                                    {batchSuppliers.length > 0 && (
+                                      <optgroup label="── Supplier Sesi Ini ──">
+                                        {batchSuppliers.map(s => (
+                                          <option key={s} value={s}>{s}</option>
+                                        ))}
+                                      </optgroup>
+                                    )}
+                                    {suppliers.filter(ms => !batchSuppliers.includes(ms.name)).length > 0 && (
+                                      <optgroup label="── Pilih dari Master Rekanan ──">
+                                        {suppliers
+                                          .filter(ms => !batchSuppliers.includes(ms.name))
+                                          .map(ms => (
+                                            <option key={ms.id} value={ms.name}>
+                                              + {ms.name} ({ms.supplyCategory})
+                                            </option>
+                                          ))}
+                                      </optgroup>
+                                    )}
+                                  </select>
+                                  <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                                </div>
                               </td>
                               <td className="py-1.5 px-2">
                                 <input
                                   type="text"
-                                  value={row.supplier}
-                                  onChange={e => handleUpdateBatchRow(row.id, 'supplier', e.target.value)}
-                                  placeholder="Toko / pasar..."
-                                  className="w-full text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-900"
-                                />
-                              </td>
-                              <td className="py-1.5 px-2">
-                                <input
-                                  type="text"
+                                  data-cell={`${index}-6`}
+                                  onKeyDown={e => handleBatchGridKeyDown(e, index, 6)}
                                   value={row.notes}
                                   onChange={e => handleUpdateBatchRow(row.id, 'notes', e.target.value)}
                                   placeholder="Catatan..."
@@ -2542,7 +3823,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                               <td className="py-1.5 px-1 text-center">
                                 <button
                                   type="button"
-                                  onClick={() => handleRemoveBatchRow(row.id)}
+                                  onClick={() => handleRemoveBatchRowWithConfirm(row)}
                                   disabled={batchRows.length <= 1}
                                   className="text-slate-300 hover:text-rose-500 disabled:opacity-20 cursor-pointer p-1"
                                   title="Hapus baris ini"
@@ -2556,6 +3837,16 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                       </table>
                     </div>
                   </div>
+
+                  <p className="text-[11px] text-slate-500">
+                    Pindah sel pakai tombol panah: <kbd className="px-1 rounded border border-slate-300 bg-slate-50 font-mono">↑</kbd>{' '}
+                    <kbd className="px-1 rounded border border-slate-300 bg-slate-50 font-mono">↓</kbd> antar baris,{' '}
+                    <kbd className="px-1 rounded border border-slate-300 bg-slate-50 font-mono">←</kbd>{' '}
+                    <kbd className="px-1 rounded border border-slate-300 bg-slate-50 font-mono">→</kbd> antar kolom. Tekan{' '}
+                    <kbd className="px-1 rounded border border-slate-300 bg-slate-50 font-mono">↓</kbd> atau{' '}
+                    <kbd className="px-1 rounded border border-slate-300 bg-slate-50 font-mono">Enter</kbd> di baris terakhir untuk menambah baris baru.
+                    Buka pilihan dropdown dengan <kbd className="px-1 rounded border border-slate-300 bg-slate-50 font-mono">Alt + ↓</kbd>.
+                  </p>
 
                   {/* Add Row Controls & Total Summary */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
@@ -2575,6 +3866,15 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                       >
                         <PlusCircle className="w-3.5 h-3.5" />
                         <span>+5 Baris</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResetBatchRows}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 transition-colors cursor-pointer ml-1"
+                        title="Kosongkan seluruh baris input masal"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
+                        <span>Kosongkan Tabel</span>
                       </button>
                     </div>
 
@@ -2634,6 +3934,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                   </div>
                 </div>
               )}
+              </fieldset>
             </div>
 
             {/* Footer */}
@@ -2732,6 +4033,140 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       )}
 
       {/* ========================================================================= */}
+      {/* MODAL: SMART SUPPLIER NOTA PO COMBINE PROMPT                              */}
+      {/* ========================================================================= */}
+      {supplierNotaPrompt && (() => {
+        const allSupplierRecords = [supplierNotaPrompt.clickedRecord, ...supplierNotaPrompt.siblingRecords];
+        const combinedTotal = allSupplierRecords.reduce((sum, r) => sum + r.nominal, 0);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+              {/* Modal Header */}
+              <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <Store className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-sm">
+                      Cetak Nota PO - {supplierNotaPrompt.supplierName} ({supplierNotaPrompt.clickedRecord.date})
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Terdeteksi beberapa barang dari supplier yang sama pada tanggal {supplierNotaPrompt.clickedRecord.date}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSupplierNotaPrompt(null)}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-6 overflow-y-auto space-y-4 text-xs">
+                <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200/80 text-emerald-900 flex items-start gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold">
+                      Terdapat {allSupplierRecords.length} macam barang dari {supplierNotaPrompt.supplierName} (Tanggal {supplierNotaPrompt.clickedRecord.date})
+                    </div>
+                    <div className="text-[11px] text-emerald-800 mt-0.5">
+                      Anda dapat menggabungkan semuanya ke dalam 1 lembar Nota Pesanan (PO) resmi untuk tanggal ini atau membuat nota khusus untuk item yang diklik saja.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items List in this Supplier */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="bg-slate-100 px-3 py-2 font-semibold text-slate-700 text-[11px] flex justify-between items-center">
+                    <span>Daftar Barang ({allSupplierRecords.length} Macam)</span>
+                    <span className="font-mono text-slate-900">Total: Rp {combinedTotal.toLocaleString('id-ID')}</span>
+                  </div>
+                  <div className="divide-y divide-slate-100 max-h-48 overflow-y-auto font-medium">
+                    {allSupplierRecords.map((item, idx) => (
+                      <div key={item.id} className="px-3 py-2 flex items-center justify-between text-xs hover:bg-slate-50">
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-400 font-mono text-[10px] w-4">{idx + 1}.</span>
+                          <div>
+                            <span className="font-semibold text-slate-900">{item.itemName}</span>
+                            <span className="text-[10px] text-slate-400 ml-1.5 font-normal">
+                              ({item.quantity} {item.unit})
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-mono font-bold text-slate-800">
+                            Rp {item.nominal.toLocaleString('id-ID')}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Big Choice Options */}
+                <div className="space-y-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleCreateCombinedNotaForSupplier(supplierNotaPrompt.supplierName, allSupplierRecords, supplierNotaPrompt.clickedRecord.date)}
+                    className="w-full p-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-left transition-all shadow-md shadow-emerald-600/20 cursor-pointer group flex items-start gap-3"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/50 flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
+                      <Receipt className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs flex items-center gap-1.5">
+                        <span>Gabungkan Semua ({allSupplierRecords.length} Barang) ke 1 Nota PO</span>
+                        <span className="text-[10px] bg-white text-emerald-800 font-semibold px-2 py-0.2 rounded-full">
+                          Rekomendasi
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-emerald-100 mt-0.5 leading-snug">
+                        Satu nomor PO resmi memuat semua {allSupplierRecords.length} macam barang dari {supplierNotaPrompt.supplierName} tanggal {supplierNotaPrompt.clickedRecord.date} dengan total Rp {combinedTotal.toLocaleString('id-ID')}.
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleCreateSingleItemNota(supplierNotaPrompt.clickedRecord)}
+                    className="w-full p-3 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-left transition-all cursor-pointer group flex items-start gap-3"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 mt-0.5">
+                      <FilePlus className="w-4 h-4 text-slate-500" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs text-slate-800">
+                        Hanya Buat untuk "{supplierNotaPrompt.clickedRecord.itemName}" Saja
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        Cetak nota PO terpisah khusus 1 barang ini (Rp {supplierNotaPrompt.clickedRecord.nominal.toLocaleString('id-ID')}).
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setSupplierNotaPrompt(null)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ========================================================================= */}
       {/* MODAL: NOTA PESANAN & PO SUPPLIER OFFICIAL BER-KOP SURAT                  */}
       {/* ========================================================================= */}
       {isNotaModalOpen && activeNota && (
@@ -2778,6 +4213,28 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
         onClose={() => setIsMasterSupplierModalOpen(false)}
         onSuppliersUpdated={() => refreshAll()}
         currentUser={currentUser}
+      />
+
+      {/* Standard Reusable Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+        cancelText={confirmDialog.cancelText}
+        variant={confirmDialog.variant}
+        icon={confirmDialog.icon}
+        itemsSummary={confirmDialog.itemsSummary}
+        isLoading={actionLoading.isLoading}
+      />
+
+      {/* Standard Global Action Loading Overlay */}
+      <LoadingOverlay
+        isLoading={actionLoading.isLoading}
+        message={actionLoading.message}
+        submessage={actionLoading.submessage}
       />
 
       {/* Autocomplete Datalists */}

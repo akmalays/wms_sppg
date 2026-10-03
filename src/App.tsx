@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
 import { Navbar } from './components/Navbar';
 import { DashboardView } from './components/DashboardView';
 import { DailyExpensesModule } from './components/DailyExpensesModule';
@@ -90,7 +91,7 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'daily_expenses' && (
-            <DailyExpensesModule />
+            <DailyExpensesModule onNavigate={setActiveTab} />
           )}
 
           {activeTab === 'inventory' && (
@@ -179,7 +180,9 @@ const MainLayout: React.FC = () => {
 export default function App() {
   return (
     <AuthProvider>
-      <MainLayout />
+      <ToastProvider>
+        <MainLayout />
+      </ToastProvider>
     </AuthProvider>
   );
 }

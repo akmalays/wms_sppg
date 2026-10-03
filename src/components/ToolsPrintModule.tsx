@@ -358,11 +358,18 @@ function getEstimatedItemPrice(name: string, category?: string): number {
 }
 
 const SUPPLIER_BANK_DEFAULTS: Record<string, { bank: string; accountNo: string; holder: string }> = {
-  'SUP-001': { bank: 'Bank Mandiri', accountNo: '132-00-8829102-1', holder: 'PT ABC Pangan Mandiri' },
-  'SUP-002': { bank: 'BCA (Bank Central Asia)', accountNo: '841-092-4411', holder: 'CV Berkah Unggas Segar' },
-  'SUP-003': { bank: 'Bank BRI', accountNo: '0182-01-002931-50-8', holder: 'Koperasi Tani Makmur Subang' },
-  'SUP-004': { bank: 'BCA (Bank Central Asia)', accountNo: '524-118-9902', holder: 'PT Buah Nusantara Segar' },
-  'SUP-005': { bank: 'Bank BNI', accountNo: '082-991-4421', holder: 'PT Higienis Sanitasi Sentosa' },
+  'SUP-001': { bank: 'Bank BRI', accountNo: '0182-01-002931-50-8', holder: 'UMKM Sumber Lumintu' },
+  'SUP-002': { bank: 'Bank Mandiri', accountNo: '132-00-8829102-1', holder: "UMKM Luber's Fresh" },
+  'SUP-003': { bank: 'BCA (Bank Central Asia)', accountNo: '841-092-4411', holder: 'UMKM Tumpang Grosir' },
+  'SUP-004': { bank: 'Bank BRI', accountNo: '0182-01-098877-50-1', holder: 'UMKM Tahu Rio' },
+  'SUP-005': { bank: 'Bank Mandiri', accountNo: '132-00-998877', holder: 'UMKM Ayam Segar FJR' },
+  'SUP-006': { bank: 'Bank BNI', accountNo: '082-991-4421', holder: 'UMKM Divarif Plastik' },
+  'SUP-007': { bank: 'Bank BRI', accountNo: '0182-01-077123-50-2', holder: 'Ayam Segar 98' },
+  'SUP-008': { bank: 'Bank Mandiri', accountNo: '132-00-776655', holder: 'Tempe Pak Tro' },
+  'SUP-009': { bank: 'Bank BRI', accountNo: '0182-01-055432-50-3', holder: 'Berkah Tahu Tempe Saidah' },
+  'SUP-010': { bank: 'BCA (Bank Central Asia)', accountNo: '524-118-9902', holder: 'PT Tuan Raja Emas Mulia' },
+  'SUP-011': { bank: 'Bank BRI', accountNo: '0182-01-088765-50-4', holder: 'Plastmart Murni' },
+  'SUP-012': { bank: 'Bank Mandiri', accountNo: '132-00-554433', holder: 'Mbak Pur Daging' },
 };
 
 function getDefaultLinesForSupplier(supplier: Supplier): SupplierExpenseLine[] {
@@ -451,11 +458,24 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     return `BKK/SPPG-JT/${yyyy}/${mm}/001`;
   });
   const [expenseDate, setExpenseDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [expensePaymentMethod, setExpensePaymentMethod] = useState<string>('Transfer Bank Mandiri');
-  const [expenseBankName, setExpenseBankName] = useState<string>('Bank Mandiri');
-  const [expenseBankAccount, setExpenseBankAccount] = useState<string>('132-00-8829102-1');
-  const [expenseAccountHolder, setExpenseAccountHolder] = useState<string>('PT ABC Pangan Mandiri');
-  const [expenseDeliveryRef, setExpenseDeliveryRef] = useState<string>('SJ-ABC-8842 / GR-2026-0001');
+  const [expensePaymentMethod, setExpensePaymentMethod] = useState<string>(() => {
+    const sId = initialSupplierId || suppliers[0]?.id || 'SUP-001';
+    const b = SUPPLIER_BANK_DEFAULTS[sId];
+    return b ? `Transfer ${b.bank}` : 'Transfer Bank';
+  });
+  const [expenseBankName, setExpenseBankName] = useState<string>(() => {
+    const sId = initialSupplierId || suppliers[0]?.id || 'SUP-001';
+    return SUPPLIER_BANK_DEFAULTS[sId]?.bank || 'Bank BRI';
+  });
+  const [expenseBankAccount, setExpenseBankAccount] = useState<string>(() => {
+    const sId = initialSupplierId || suppliers[0]?.id || 'SUP-001';
+    return SUPPLIER_BANK_DEFAULTS[sId]?.accountNo || '0182-01-002931-50-8';
+  });
+  const [expenseAccountHolder, setExpenseAccountHolder] = useState<string>(() => {
+    const sId = initialSupplierId || suppliers[0]?.id || 'SUP-001';
+    return SUPPLIER_BANK_DEFAULTS[sId]?.holder || suppliers[0]?.name || 'UMKM Sumber Lumintu';
+  });
+  const [expenseDeliveryRef, setExpenseDeliveryRef] = useState<string>('SJ-TG-8842 / GR-2026-0001');
   const [expensePurpose, setExpensePurpose] = useState<string>(
     'Pembayaran Belanja Bahan Baku Pangan Dapur Gizi SPPG Jeru Tumpang'
   );
@@ -466,7 +486,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     'Bahan pangan telah diperiksa mutu fisiknya oleh Tim Logistik & Penerimaan Gudang SPPG Jeru Tumpang dalam kondisi segar, lengkap, dan memenuhi standar keamanan pangan.'
   );
   const [expensePicTreasurer, setExpensePicTreasurer] = useState<string>('Siti Aisyah (Bendahara)');
-  const [expensePicVerifier, setExpensePicVerifier] = useState<string>('Ahmad Fauzi (Verifikator Gudang)');
+  const [expensePicVerifier, setExpensePicVerifier] = useState<string>('Akmal (Admin Gudang)');
   const [expensePicApprover, setExpensePicApprover] = useState<string>('Dr. Siti Rahma (Kepala SPPG)');
   const [expenseLines, setExpenseLines] = useState<SupplierExpenseLine[]>(() => {
     const defaultSup = suppliers.find(s => s.id === (initialSupplierId || suppliers[0]?.id)) || suppliers[0];
@@ -506,6 +526,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       accountNo: '0182-01-098877-50-1',
       holder: sup.name
     };
+    setExpensePaymentMethod(`Transfer ${bankDefault.bank}`);
     setExpenseBankName(bankDefault.bank);
     setExpenseBankAccount(bankDefault.accountNo);
     setExpenseAccountHolder(bankDefault.holder);
@@ -690,21 +711,21 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     const cat = (item.category || '').toLowerCase();
     const name = (item.name || '').toLowerCase();
     if (cat.includes('protein') || name.includes('ayam') || name.includes('telur') || name.includes('ikan') || name.includes('daging')) {
-      return 'CV Berkah Unggas Segar';
+      return 'UMKM Ayam Segar FJR';
     }
     if (cat.includes('sayur') || name.includes('sayur') || name.includes('bayam') || name.includes('wortel')) {
-      return 'Koperasi Tani Makmur Subang';
+      return "UMKM Luber's Fresh";
     }
     if (cat.includes('buah') || name.includes('buah') || name.includes('pisang')) {
-      return 'PT Buah Nusantara Segar';
+      return 'UMKM Sumber Lumintu';
     }
     if (cat.includes('clean') || cat.includes('hygiene') || cat.includes('pack')) {
-      return 'PT Higienis Sanitasi Sentosa';
+      return 'UMKM Divarif Plastik';
     }
     if (cat.includes('sembako') || name.includes('beras') || name.includes('minyak') || name.includes('gula') || name.includes('tepung') || name.includes('garam')) {
-      return 'PT Sinar Pangan Abadi';
+      return 'UMKM Tumpang Grosir';
     }
-    return 'PT Sinar Pangan Abadi';
+    return suppliers[0]?.name || 'UMKM Sumber Lumintu';
   };
 
   // Shelf life estimation tailored per ingredient & warehouse storage condition
@@ -1671,6 +1692,36 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                   <option value="TEMPO">Tempo / Kredit</option>
                   <option value="PENDING">Menunggu Verifikasi</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Rekening Tujuan Transfer</label>
+                <div className="space-y-1.5">
+                  <input
+                    type="text"
+                    placeholder="Nama Bank (misal: Bank BRI)"
+                    value={expenseBankName}
+                    onChange={e => {
+                      setExpenseBankName(e.target.value);
+                      setExpensePaymentMethod(`Transfer ${e.target.value}`);
+                    }}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Nomor Rekening"
+                    value={expenseBankAccount}
+                    onChange={e => setExpenseBankAccount(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Nama Pemilik Rekening"
+                    value={expenseAccountHolder}
+                    onChange={e => setExpenseAccountHolder(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
               </div>
             </>
           ) : activeForm === 'EQUIPMENT_LABEL' ? (

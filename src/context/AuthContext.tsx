@@ -90,7 +90,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (savedName === 'Hendra Wijaya') {
       savedName = 'Akmal';
+      savedRole = 'ADMIN';
       localStorage.setItem('sppg_active_user_name', 'Akmal');
+      localStorage.setItem('sppg_active_user_role', 'ADMIN');
+      localStorage.setItem('sppg_active_user_id', 'USR-003');
+    }
+
+    // Akmal is always ADMIN (USR-003)
+    if (savedName === 'Akmal') {
+      savedRole = 'ADMIN';
+      saved = 'USR-003';
+      localStorage.setItem('sppg_active_user_name', 'Akmal');
+      localStorage.setItem('sppg_active_user_role', 'ADMIN');
+      localStorage.setItem('sppg_active_user_id', 'USR-003');
     }
 
     if (saved) {
@@ -99,16 +111,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return {
           ...found,
           name: savedName || found.name,
-          role: savedRole || found.role,
+          role: found.id === 'USR-003' || savedName === 'Akmal' ? 'ADMIN' : (savedRole || found.role),
         };
       }
     }
-    // Default fallback to Admin (Akmal) or Ka SPPG
-    const def = allUsers.find(u => u.role === 'ADMIN') || allUsers[0] || INITIAL_USERS[0];
+    // Default fallback to Admin (Akmal)
+    const def = allUsers.find(u => u.id === 'USR-003' || u.role === 'ADMIN') || allUsers[0] || INITIAL_USERS[2];
     return {
       ...def,
-      name: savedName || def.name,
-      role: savedRole || def.role,
+      id: 'USR-003',
+      name: 'Akmal',
+      role: 'ADMIN',
     };
   });
 

@@ -90,57 +90,44 @@ export const INITIAL_USERS: User[] = [
   },
 ];
 
-export const INITIAL_SUPPLIERS: Supplier[] = [
-  {
-    id: 'SUP-001',
-    name: 'PT ABC Pangan Mandiri',
-    contactPerson: 'H. Suryanto',
-    phone: '0812-3456-7890',
-    address: 'Kawasan Industri Cikarang Blok B4, Bekasi',
-    supplyCategory: 'Sembako & Beras',
-    isActive: true,
-    notes: 'Pemasok resmi beras premium, gula pasir, dan minyak goreng sawit.',
-  },
-  {
-    id: 'SUP-002',
-    name: 'CV Berkah Unggas Segar',
-    contactPerson: 'Pak Joko M.',
-    phone: '0813-8877-2211',
-    address: 'Jl. Raya Parung No. 45, Bogor',
-    supplyCategory: 'Protein & Unggas',
-    isActive: true,
-    notes: 'Supplier ayam karkas segar & telur ayam ras harian kualitas prima.',
-  },
-  {
-    id: 'SUP-003',
-    name: 'Koperasi Tani Makmur Subang',
-    contactPerson: 'Ibu Ratna',
-    phone: '0857-1122-3344',
-    address: 'Kec. Ciater, Kab. Subang',
-    supplyCategory: 'Sayuran Segar',
-    isActive: true,
-    notes: 'Petani mitra sayuran hijau segar, bayam, wortel, kangkung, & labu siam.',
-  },
-  {
-    id: 'SUP-004',
-    name: 'PT Buah Nusantara Segar',
-    contactPerson: 'Dani Pratama',
-    phone: '0821-9988-7766',
-    address: 'Pasar Induk Kramat Jati Kios A-12, Jakarta Timur',
-    supplyCategory: 'Buah Segar',
-    isActive: true,
-    notes: 'Penyedia buah harian pemenuhan gizi (pisang cavendish, semangka, pepaya).',
-  },
-  {
-    id: 'SUP-005',
-    name: 'PT Higienis Sanitasi Sentosa',
-    contactPerson: 'Eko Prasetyo',
-    phone: '0811-5544-3322',
-    address: 'Jl. Daan Mogot KM 12 No. 88, Jakarta Barat',
-    supplyCategory: 'Hygiene & Cleaning',
-    isActive: true,
-    notes: 'Penyedia perlengkapan kebersihan, sabun cuci food-grade, & APD dapur.',
-  },
+// Supplier UMKM & mitra asli SPPG Jeru Tumpang (dari data nota pesanan).
+// Kategori pasokan perlu dicek ulang lewat menu Master Supplier.
+const umkm = (name: string, address: string, supplyCategory: string): Omit<Supplier, 'id'> => ({
+  name,
+  contactPerson: '',
+  phone: '',
+  address,
+  supplyCategory,
+  isActive: true,
+});
+
+export const LOCAL_UMKM_SUPPLIERS: Omit<Supplier, 'id'>[] = [
+  umkm('UMKM Sumber Lumintu', 'Jl. Raya Sukoanyar 49 RT.05/RW.01 Cokro, Kec. Pakis, Kab. Malang', 'Umum'),
+  umkm("UMKM Luber's Fresh", 'Jl. Raya Sukoanyar 49 RT.05/RW.01 Cokro, Kec. Pakis, Kab. Malang', 'Sayur & Buah Segar'),
+  umkm('UMKM Tumpang Grosir', 'Jl. Pahlawan Barat, Kec. Tumpang, Kab. Malang', 'Sembako & Bahan Kering'),
+  umkm('UMKM Tahu Rio', 'Jl. Curahampel, Pakis, Kab. Malang', 'Tahu & Tempe'),
+  umkm('UMKM Ayam Segar FJR', 'Kebonsari, Tumpang, Malang', 'Protein & Unggas'),
+  umkm('UMKM Divarif Plastik', 'Kambingan, Tumpang, Kab. Malang', 'Plastik & Kemasan'),
+  umkm('Ayam Segar 98', 'Jl. Kebonsari-Kidal, Kec. Tumpang, Malang', 'Protein & Unggas'),
+  umkm('Tempe Pak Tro', 'Malangsuko, Kab. Malang', 'Tahu & Tempe'),
+  umkm('Berkah Tahu Tempe Saidah', 'Kec. Pakis, Kab. Malang', 'Tahu & Tempe'),
+  umkm('PT Tuan Raja Emas Mulia', 'Kedungkandang, Kota Malang', 'Umum'),
+  umkm('Plastmart Murni', 'Kec. Tumpang, Kab. Malang', 'Plastik & Kemasan'),
+  umkm('Mbak Pur Daging', 'Pakisjajar, Kec. Pakis, Malang', 'Protein & Daging'),
+];
+
+export const INITIAL_SUPPLIERS: Supplier[] = LOCAL_UMKM_SUPPLIERS.map((s, i) => ({
+  ...s,
+  id: `SUP-${String(i + 1).padStart(3, '0')}`,
+}));
+
+// Supplier dummy bawaan versi lama yang dibersihkan dari penyimpanan lokal browser.
+export const LEGACY_DUMMY_SUPPLIER_NAMES = [
+  'PT ABC Pangan Mandiri',
+  'CV Berkah Unggas Segar',
+  'Koperasi Tani Makmur Subang',
+  'PT Buah Nusantara Segar',
+  'PT Higienis Sanitasi Sentosa',
 ];
 
 export const INITIAL_ITEMS: ItemMaster[] = [
@@ -630,12 +617,12 @@ export const INITIAL_RECEIVINGS: ReceivingDocument[] = [
     id: 'GR-2026-0001',
     date: '2026-09-20',
     arrivalTime: '07:15',
-    supplierId: 'SUP-001',
-    supplierName: 'PT ABC Pangan Mandiri',
-    deliveryNoteNo: 'SJ-ABC-8842',
+    supplierId: 'SUP-003',
+    supplierName: 'UMKM Tumpang Grosir',
+    deliveryNoteNo: 'SJ-TG-8842',
     receiverId: 'USR-003',
-    receiverName: 'Siti Rahma',
-    receiverRole: 'ASLAP',
+    receiverName: 'Akmal',
+    receiverRole: 'ADMIN',
     status: 'VERIFIED_POSTED',
     notes: 'Pengiriman beras dan minyak sesuai PO rutin mingguan, kualitas prima.',
     lines: [
@@ -662,20 +649,20 @@ export const INITIAL_RECEIVINGS: ReceivingDocument[] = [
         expiryDate: '2027-09-15',
       },
     ],
-    supplierSignature: 'CONFIRMED: Suryanto (PT ABC Pangan)',
-    receiverSignature: 'VERIFIED: Siti Rahma (PIC Gudang)',
+    supplierSignature: 'CONFIRMED: PIC UMKM Tumpang Grosir',
+    receiverSignature: 'VERIFIED: Akmal (Admin Gudang)',
     createdAt: '2026-09-20T07:30:00Z',
   },
   {
     id: 'GR-2026-0002',
     date: '2026-09-20',
     arrivalTime: '06:40',
-    supplierId: 'SUP-002',
-    supplierName: 'CV Berkah Unggas Segar',
-    deliveryNoteNo: 'SJ-BKS-0920',
-    receiverId: 'USR-004',
-    receiverName: 'Ahmad Fauzi',
-    receiverRole: 'ASLAP',
+    supplierId: 'SUP-005',
+    supplierName: 'UMKM Ayam Segar FJR',
+    deliveryNoteNo: 'SJ-FJR-0920',
+    receiverId: 'USR-003',
+    receiverName: 'Akmal',
+    receiverRole: 'ADMIN',
     status: 'VERIFIED_POSTED',
     notes: 'Penerimaan protein harian menu gizi seimbang. Suhu mobil boks 3.2°C.',
     lines: [
@@ -702,20 +689,20 @@ export const INITIAL_RECEIVINGS: ReceivingDocument[] = [
         expiryDate: '2026-10-04',
       },
     ],
-    supplierSignature: 'CONFIRMED: Joko M. (CV Berkah Unggas)',
-    receiverSignature: 'VERIFIED: Ahmad Fauzi (QC Officer)',
+    supplierSignature: 'CONFIRMED: PIC Ayam Segar FJR',
+    receiverSignature: 'VERIFIED: Akmal (Admin Gudang)',
     createdAt: '2026-09-20T06:55:00Z',
   },
   {
     id: 'GR-2026-0003',
     date: '2026-09-28',
     arrivalTime: '08:10',
-    supplierId: 'SUP-001',
-    supplierName: 'PT ABC Pangan Mandiri',
-    deliveryNoteNo: 'SJ-ABC-8901',
+    supplierId: 'SUP-003',
+    supplierName: 'UMKM Tumpang Grosir',
+    deliveryNoteNo: 'SJ-TG-8901',
     receiverId: 'USR-003',
-    receiverName: 'Siti Rahma',
-    receiverRole: 'ASLAP',
+    receiverName: 'Akmal',
+    receiverRole: 'ADMIN',
     status: 'VERIFIED_POSTED',
     notes: 'Pengiriman beras premium & gula pasir persiapan menu gizi pekan ke-5.',
     lines: [
@@ -742,20 +729,20 @@ export const INITIAL_RECEIVINGS: ReceivingDocument[] = [
         expiryDate: '2027-09-28',
       },
     ],
-    supplierSignature: 'CONFIRMED: Suryanto (PT ABC Pangan)',
-    receiverSignature: 'VERIFIED: Siti Rahma (PIC Gudang)',
+    supplierSignature: 'CONFIRMED: PIC UMKM Tumpang Grosir',
+    receiverSignature: 'VERIFIED: Akmal (Admin Gudang)',
     createdAt: '2026-09-28T08:20:00Z',
   },
   {
     id: 'GR-2026-0004',
     date: '2026-09-29',
     arrivalTime: '06:50',
-    supplierId: 'SUP-002',
-    supplierName: 'CV Berkah Unggas Segar',
-    deliveryNoteNo: 'SJ-BKS-0929',
-    receiverId: 'USR-004',
-    receiverName: 'Ahmad Fauzi',
-    receiverRole: 'ASLAP',
+    supplierId: 'SUP-007',
+    supplierName: 'Ayam Segar 98',
+    deliveryNoteNo: 'SJ-AS98-0929',
+    receiverId: 'USR-003',
+    receiverName: 'Akmal',
+    receiverRole: 'ADMIN',
     status: 'VERIFIED_POSTED',
     notes: 'Pasokan ayam potong segar pagi hari & telur ayam negeri.',
     lines: [
@@ -782,20 +769,20 @@ export const INITIAL_RECEIVINGS: ReceivingDocument[] = [
         expiryDate: '2026-10-14',
       },
     ],
-    supplierSignature: 'CONFIRMED: Joko M. (CV Berkah Unggas)',
-    receiverSignature: 'VERIFIED: Ahmad Fauzi (QC Officer)',
+    supplierSignature: 'CONFIRMED: PIC Ayam Segar 98',
+    receiverSignature: 'VERIFIED: Akmal (Admin Gudang)',
     createdAt: '2026-09-29T07:05:00Z',
   },
   {
     id: 'GR-2026-0005',
     date: '2026-09-30',
     arrivalTime: '07:00',
-    supplierId: 'SUP-003',
-    supplierName: 'Koperasi Tani Makmur Subang',
-    deliveryNoteNo: 'SJ-KTM-0930',
+    supplierId: 'SUP-002',
+    supplierName: "UMKM Luber's Fresh",
+    deliveryNoteNo: 'SJ-LF-0930',
     receiverId: 'USR-003',
-    receiverName: 'Siti Rahma',
-    receiverRole: 'ASLAP',
+    receiverName: 'Akmal',
+    receiverRole: 'ADMIN',
     status: 'VERIFIED_POSTED',
     notes: 'Sayuran segar panen pagi langsung dari petani mitra gizi.',
     lines: [
@@ -822,20 +809,20 @@ export const INITIAL_RECEIVINGS: ReceivingDocument[] = [
         expiryDate: '2026-10-07',
       },
     ],
-    supplierSignature: 'CONFIRMED: Ratna (Koperasi Tani)',
-    receiverSignature: 'VERIFIED: Siti Rahma (PIC Gudang)',
+    supplierSignature: "CONFIRMED: PIC Luber's Fresh",
+    receiverSignature: 'VERIFIED: Akmal (Admin Gudang)',
     createdAt: '2026-09-30T07:15:00Z',
   },
   {
     id: 'GR-2026-0006',
     date: '2026-09-30',
     arrivalTime: '08:30',
-    supplierId: 'SUP-004',
-    supplierName: 'PT Buah Nusantara Segar',
-    deliveryNoteNo: 'SJ-BNS-0930',
-    receiverId: 'USR-004',
-    receiverName: 'Ahmad Fauzi',
-    receiverRole: 'ASLAP',
+    supplierId: 'SUP-001',
+    supplierName: 'UMKM Sumber Lumintu',
+    deliveryNoteNo: 'SJ-SL-0930',
+    receiverId: 'USR-003',
+    receiverName: 'Akmal',
+    receiverRole: 'ADMIN',
     status: 'VERIFIED_POSTED',
     notes: 'Pengiriman buah pelengkap makan siang sekolah anak.',
     lines: [
@@ -862,8 +849,8 @@ export const INITIAL_RECEIVINGS: ReceivingDocument[] = [
         expiryDate: '2026-10-06',
       },
     ],
-    supplierSignature: 'CONFIRMED: Dani P. (PT Buah Nusantara)',
-    receiverSignature: 'VERIFIED: Ahmad Fauzi (QC Officer)',
+    supplierSignature: 'CONFIRMED: PIC Sumber Lumintu',
+    receiverSignature: 'VERIFIED: Akmal (Admin Gudang)',
     createdAt: '2026-09-30T08:45:00Z',
   },
 ];
@@ -882,9 +869,9 @@ export const INITIAL_TRANSACTIONS: InventoryTransaction[] = [
     transactionType: 'RECEIVING',
     referenceDocument: 'GR-2026-0001',
     userId: 'USR-003',
-    userName: 'Siti Rahma',
-    userRole: 'ASLAP',
-    notes: 'Penerimaan barang dari PT ABC Pangan Mandiri',
+    userName: 'Akmal',
+    userRole: 'ADMIN',
+    notes: 'Penerimaan barang dari UMKM Tumpang Grosir',
     balanceAfter: 450,
   },
   {
@@ -900,9 +887,9 @@ export const INITIAL_TRANSACTIONS: InventoryTransaction[] = [
     transactionType: 'RECEIVING',
     referenceDocument: 'GR-2026-0001',
     userId: 'USR-003',
-    userName: 'Siti Rahma',
-    userRole: 'ASLAP',
-    notes: 'Penerimaan barang dari PT ABC Pangan Mandiri',
+    userName: 'Akmal',
+    userRole: 'ADMIN',
+    notes: 'Penerimaan barang dari UMKM Tumpang Grosir',
     balanceAfter: 140,
   },
   {
@@ -917,10 +904,10 @@ export const INITIAL_TRANSACTIONS: InventoryTransaction[] = [
     unit: 'Kg',
     transactionType: 'RECEIVING',
     referenceDocument: 'GR-2026-0002',
-    userId: 'USR-004',
-    userName: 'Ahmad Fauzi',
-    userRole: 'ASLAP',
-    notes: 'Penerimaan protein dari CV Berkah Unggas Segar',
+    userId: 'USR-003',
+    userName: 'Akmal',
+    userRole: 'ADMIN',
+    notes: 'Penerimaan protein dari UMKM Ayam Segar FJR',
     balanceAfter: 65,
   },
   {
@@ -989,9 +976,9 @@ export const INITIAL_TRANSACTIONS: InventoryTransaction[] = [
     unit: 'Kg',
     transactionType: 'ISSUE_CONSUMPTION',
     referenceDocument: 'ISS-2026-0921-A',
-    userId: 'USR-004',
-    userName: 'Ahmad Fauzi',
-    userRole: 'ASLAP',
+    userId: 'USR-003',
+    userName: 'Akmal',
+    userRole: 'ADMIN',
     notes: 'Menu bubur sarapan gizi anak sekolah',
     balanceAfter: 405,
   },
@@ -1007,9 +994,9 @@ export const INITIAL_TRANSACTIONS: InventoryTransaction[] = [
     unit: 'Kg',
     transactionType: 'ISSUE_CONSUMPTION',
     referenceDocument: 'ISS-2026-0921-B',
-    userId: 'USR-004',
-    userName: 'Ahmad Fauzi',
-    userRole: 'ASLAP',
+    userId: 'USR-003',
+    userName: 'Akmal',
+    userRole: 'ADMIN',
     notes: 'Perebusan telur topping bubur sarapan gizi',
     balanceAfter: 34,
   },
@@ -1025,9 +1012,9 @@ export const INITIAL_TRANSACTIONS: InventoryTransaction[] = [
     unit: 'Kg',
     transactionType: 'ISSUE_CONSUMPTION',
     referenceDocument: 'ISS-2026-0921-C',
-    userId: 'USR-004',
-    userName: 'Ahmad Fauzi',
-    userRole: 'ASLAP',
+    userId: 'USR-003',
+    userName: 'Akmal',
+    userRole: 'ADMIN',
     notes: 'Pengolahan sayur bening bayam jagung',
     balanceAfter: 8,
   },
@@ -1097,9 +1084,9 @@ export const INITIAL_TRANSACTIONS: InventoryTransaction[] = [
     unit: 'Kg',
     transactionType: 'ISSUE_CONSUMPTION',
     referenceDocument: 'ISS-2026-0923-A',
-    userId: 'USR-004',
-    userName: 'Ahmad Fauzi',
-    userRole: 'ASLAP',
+    userId: 'USR-003',
+    userName: 'Akmal',
+    userRole: 'ADMIN',
     notes: 'Penyaluran buah segar pencuci mulut anak',
     balanceAfter: 15,
   },
@@ -1115,9 +1102,9 @@ export const INITIAL_TRANSACTIONS: InventoryTransaction[] = [
     unit: 'Kg',
     transactionType: 'ISSUE_CONSUMPTION',
     referenceDocument: 'ISS-2026-0923-B',
-    userId: 'USR-004',
-    userName: 'Ahmad Fauzi',
-    userRole: 'ASLAP',
+    userId: 'USR-003',
+    userName: 'Akmal',
+    userRole: 'ADMIN',
     notes: 'Bumbu olahan masakan dan minuman teh manis hangat',
     balanceAfter: 77,
   },
@@ -1128,19 +1115,19 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     id: 'AUD-001',
     timestamp: '2026-09-20 07:30',
     userId: 'USR-003',
-    userName: 'Siti Rahma',
-    userRole: 'ASLAP',
+    userName: 'Akmal',
+    userRole: 'ADMIN',
     action: 'RECEIVING_POSTED',
     entity: 'RECEIVING',
     entityId: 'GR-2026-0001',
-    details: 'Berhasil mencatat & memposting penerimaan 2 item dari PT ABC Pangan Mandiri (Total: 150 unit).',
+    details: 'Berhasil mencatat & memposting penerimaan 2 item dari UMKM Tumpang Grosir (Total: 150 unit).',
   },
   {
     id: 'AUD-002',
     timestamp: '2026-09-20 06:55',
-    userId: 'USR-004',
-    userName: 'Ahmad Fauzi',
-    userRole: 'ASLAP',
+    userId: 'USR-003',
+    userName: 'Akmal',
+    userRole: 'ADMIN',
     action: 'RECEIVING_POSTED',
     entity: 'RECEIVING',
     entityId: 'GR-2026-0002',
@@ -1226,14 +1213,14 @@ export const INITIAL_NONFOOD_EXPENSES: NonFoodExpense[] = [
     unit: "Jerigen",
     time: "09.40",
     volunteer: "Roni",
-    pic: "Ahmad Fauzi",
+    pic: "Akmal",
     category: "Bahan Peralatan",
     department: "Area Cuci & Sanitasi",
     recipient: "Roni",
-    recordedBy: "Ahmad Fauzi",
+    recordedBy: "Akmal",
     unitPrice: 85000,
     totalCost: 170000,
-    notes: "[Toko/Supplier: PT Higienis Sanitasi Sentosa] Keperluan sanitasi dapur dan tray makan",
+    notes: "[Toko/Supplier: UMKM Divarif Plastik] Keperluan sanitasi dapur dan tray makan",
     createdAt: "2026-09-29T09:40:00Z"
   },
   {
@@ -1244,14 +1231,14 @@ export const INITIAL_NONFOOD_EXPENSES: NonFoodExpense[] = [
     unit: "Kg",
     time: "07.30",
     volunteer: "Pak Joko",
-    pic: "Ahmad Fauzi",
+    pic: "Akmal",
     category: "Bahan Basah",
     department: "Dapur Pengolahan Utama",
     recipient: "Pak Joko",
-    recordedBy: "Ahmad Fauzi",
+    recordedBy: "Akmal",
     unitPrice: 28000,
     totalCost: 1120000,
-    notes: "[Toko/Supplier: CV Berkah Unggas Segar] Belanja protein menu telur balado anak",
+    notes: "[Toko/Supplier: UMKM Ayam Segar FJR] Belanja protein menu telur balado anak",
     createdAt: "2026-09-30T07:30:00Z"
   },
   ...REAL_NONFOOD_EXPENSES
@@ -1268,12 +1255,12 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     poNumber: 'NO. NP/SPPG/134/IX/2026',
     date: '2026-09-28',
     deliveryDate: '2026-09-28',
-    supplierId: 'SUP-001',
-    supplierName: 'PT ABC Pangan Mandiri',
+    supplierId: 'SUP-003',
+    supplierName: 'UMKM Tumpang Grosir',
     supplierContact: '0812-3456-7890 (Ibu Linda)',
-    supplierAddress: 'Kawasan Pergudangan Muara Karang Blok C-14, Jakarta Utara',
+    supplierAddress: 'Jl. Pahlawan Barat, Kec. Tumpang, Kab. Malang',
     paymentMethod: 'TRANSFER',
-    bankInfo: 'BCA: 14000-8899-221 a.n PT ABC Pangan Mandiri',
+    bankInfo: 'BCA: 14000-8899-221 a.n UMKM Tumpang Grosir',
     status: 'DISETUJUI',
     items: [
       {
@@ -1318,7 +1305,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     createdByRole: 'Admin Logistik',
     approvedBy: 'Dr. Siti Rahma',
     approvedByRole: 'Kepala SPPG Jeru Tumpang',
-    supplierPic: 'Ibu Linda (Logistik PT ABC)',
+    supplierPic: 'Logistik UMKM Tumpang Grosir',
     relatedReceivingId: 'GR-2026-0003',
     createdAt: '2026-09-28T08:30:00.000Z',
   },
@@ -1327,12 +1314,12 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     poNumber: 'NO. NP/SPPG/135/IX/2026',
     date: '2026-09-29',
     deliveryDate: '2026-09-29',
-    supplierId: 'SUP-002',
-    supplierName: 'CV Berkah Unggas Segar',
+    supplierId: 'SUP-005',
+    supplierName: 'UMKM Ayam Segar FJR',
     supplierContact: '0813-8877-2211 (Pak Joko)',
-    supplierAddress: 'Jl. Raya Parung No. 45, Bogor',
+    supplierAddress: 'Kebonsari, Tumpang, Malang',
     paymentMethod: 'TEMPO_7',
-    bankInfo: 'Mandiri: 132-00-998877 a.n CV Berkah Unggas Segar',
+    bankInfo: 'Mandiri: 132-00-998877 a.n UMKM Ayam Segar FJR',
     status: 'DISETUJUI',
     items: [
       {
@@ -1367,7 +1354,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     createdByRole: 'Admin Logistik',
     approvedBy: 'Dr. Siti Rahma',
     approvedByRole: 'Kepala SPPG Jeru Tumpang',
-    supplierPic: 'Pak Joko (CV Berkah)',
+    supplierPic: 'PIC UMKM Ayam Segar FJR',
     relatedReceivingId: 'GR-2026-0004',
     createdAt: '2026-09-29T06:15:00.000Z',
   },
@@ -1376,10 +1363,10 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     poNumber: 'NO. NP/SPPG/136/IX/2026',
     date: '2026-09-29',
     deliveryDate: '2026-09-29',
-    supplierId: 'SUP-003',
-    supplierName: 'Koperasi Tani Makmur Subang',
+    supplierId: 'SUP-002',
+    supplierName: "UMKM Luber's Fresh",
     supplierContact: '0857-1122-3344 (Ibu Ratna)',
-    supplierAddress: 'Kec. Ciater, Kab. Subang',
+    supplierAddress: 'Jl. Raya Sukoanyar 49 RT.05/RW.01 Cokro, Kec. Pakis, Kab. Malang',
     paymentMethod: 'TUNAI',
     status: 'DISETUJUI',
     items: [
@@ -1425,7 +1412,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     createdByRole: 'Admin Logistik',
     approvedBy: 'Dr. Siti Rahma',
     approvedByRole: 'Kepala SPPG Jeru Tumpang',
-    supplierPic: 'Ibu Ratna (Mitra Tani)',
+    supplierPic: "PIC UMKM Luber's Fresh",
     relatedReceivingId: 'GR-2026-0005',
     createdAt: '2026-09-29T06:45:00.000Z',
   },
@@ -1517,15 +1504,26 @@ class WarehouseDatabase {
     const isTransactionsCleared = localStorage.getItem('sppg_transactions_cleared_v1') === 'true';
 
     this.users = getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
-    // Auto-migrate admin user to Akmal (akmal@sppg.id)
+    // Auto-migrate admin user to Akmal (role: ADMIN) and restore ASLAP to Andi Pratama
     let usersUpdated = false;
     this.users = this.users.map(u => {
       if (u.role === 'ADMIN' || u.id === 'USR-003' || u.name === 'Hendra Wijaya' || u.email === 'hendra.admin@sppg.id') {
         usersUpdated = true;
         return {
           ...u,
+          id: 'USR-003',
           name: 'Akmal',
           email: 'akmal@sppg.id',
+          role: 'ADMIN',
+        };
+      }
+      if (u.id === 'USR-004' && (u.name === 'Akmal' || u.email === 'akmal.aslap@sppg.id')) {
+        usersUpdated = true;
+        return {
+          ...u,
+          name: 'Andi Pratama',
+          email: 'andi.aslap@sppg.id',
+          role: 'ASLAP',
         };
       }
       return u;
@@ -1535,16 +1533,63 @@ class WarehouseDatabase {
       const passwords = getStored<Record<string, string>>('sppg_user_passwords_v1', {});
       passwords['akmal@sppg.id'] = passwords['akmal@sppg.id'] || 'sppg123';
       passwords['akmal'] = passwords['akmal'] || 'sppg123';
+      passwords['andi.aslap@sppg.id'] = passwords['andi.aslap@sppg.id'] || 'sppg123';
+      delete passwords['akmal.aslap@sppg.id'];
       setStored('sppg_user_passwords_v1', passwords);
-      if (localStorage.getItem('sppg_active_user_name') === 'Hendra Wijaya') {
-        localStorage.setItem('sppg_active_user_name', 'Akmal');
+      if (localStorage.getItem('sppg_active_user_name') === 'Akmal') {
+        localStorage.setItem('sppg_active_user_id', 'USR-003');
+        localStorage.setItem('sppg_active_user_role', 'ADMIN');
       }
     }
     this.items = getStored<ItemMaster[]>(STORAGE_KEYS.ITEMS, INITIAL_ITEMS);
     this.suppliers = getStored<Supplier[]>(STORAGE_KEYS.SUPPLIERS, INITIAL_SUPPLIERS);
+    this.cleanAndSyncRealSuppliers();
     this.receivings = getStored<ReceivingDocument[]>(STORAGE_KEYS.RECEIVINGS, isTransactionsCleared ? [] : INITIAL_RECEIVINGS);
+    
+    // Auto-migrate delivery order receiving signatures and receiver names to Akmal (Admin Gudang)
+    let receivingsUpdated = false;
+    this.receivings = this.receivings.map(r => {
+      if (
+        r.receiverName === 'Ahmad Fauzi' ||
+        r.receiverName === 'Andi Pratama' ||
+        r.receiverName === 'Siti Rahma' ||
+        r.receiverRole === 'ASLAP' ||
+        (r.receiverSignature && !r.receiverSignature.includes('Admin'))
+      ) {
+        receivingsUpdated = true;
+        return {
+          ...r,
+          receiverId: 'USR-003',
+          receiverName: 'Akmal',
+          receiverRole: 'ADMIN',
+          receiverSignature: 'VERIFIED: Akmal (Admin Gudang)',
+        };
+      }
+      return r;
+    });
+    if (receivingsUpdated) {
+      setStored(STORAGE_KEYS.RECEIVINGS, this.receivings);
+    }
+
     this.transactions = getStored<InventoryTransaction[]>(STORAGE_KEYS.TRANSACTIONS, isTransactionsCleared ? [] : INITIAL_TRANSACTIONS);
     
+    // Auto-migrate transactions recorded by Akmal to ADMIN role
+    let txUpdated = false;
+    this.transactions = this.transactions.map(tx => {
+      if (tx.userName === 'Akmal' && tx.userRole !== 'ADMIN') {
+        txUpdated = true;
+        return {
+          ...tx,
+          userId: 'USR-003',
+          userRole: 'ADMIN',
+        };
+      }
+      return tx;
+    });
+    if (txUpdated) {
+      setStored(STORAGE_KEYS.TRANSACTIONS, this.transactions);
+    }
+
     // Ensure rich default consumption transactions are present only if not deliberately cleared
     if (!isTransactionsCleared) {
       const hasSembakoConsumption = this.transactions.some(
@@ -1561,6 +1606,24 @@ class WarehouseDatabase {
     this.equipment = getStored<EquipmentItem[]>(STORAGE_KEYS.EQUIPMENT, INITIAL_EQUIPMENT);
     this.auditLogs = getStored<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
     this.nonFoodExpenses = getStored<NonFoodExpense[]>(STORAGE_KEYS.NONFOOD_EXPENSES, isTransactionsCleared ? [] : INITIAL_NONFOOD_EXPENSES);
+    
+    // Auto-migrate non-food expenses / daily shopping PIC to Akmal
+    let nonFoodUpdated = false;
+    this.nonFoodExpenses = this.nonFoodExpenses.map(exp => {
+      if (exp.pic === 'Ahmad Fauzi' || exp.pic === 'Andi Pratama' || exp.recordedBy === 'Ahmad Fauzi' || exp.recordedBy === 'Andi Pratama') {
+        nonFoodUpdated = true;
+        return {
+          ...exp,
+          pic: 'Akmal',
+          recordedBy: 'Akmal',
+        };
+      }
+      return exp;
+    });
+    if (nonFoodUpdated) {
+      setStored(STORAGE_KEYS.NONFOOD_EXPENSES, this.nonFoodExpenses);
+    }
+
     this.purchaseOrders = getStored<PurchaseOrderNota[]>(STORAGE_KEYS.PURCHASE_ORDERS, isTransactionsCleared ? [] : INITIAL_PURCHASE_ORDERS);
     
     // Auto-migrate legacy PO numbers (PO/SPPG-JT/...) to official BGN format (NO. NP/SPPG/134/IX/2026 dst)
@@ -1605,16 +1668,44 @@ class WarehouseDatabase {
       localStorage.setItem(autoCleanKey, 'done');
     }
     this.todos = getStored<DailyTodoItem[]>(STORAGE_KEYS.TODOS, INITIAL_TODOS);
-    if (this.todos.some(t => !t.targetTime)) {
-      this.todos = this.todos.map(t => {
-        const initMatch = INITIAL_TODOS.find(it => it.id === t.id);
-        return {
-          ...t,
-          targetTime: t.targetTime || initMatch?.targetTime || (t.session === 'Pagi' ? '07:00' : t.session === 'Siang' ? '11:00' : t.session === 'Sore' ? '15:00' : '08:00'),
-          assignedUserId: t.assignedUserId || initMatch?.assignedUserId,
-          assignedUserName: t.assignedUserName || initMatch?.assignedUserName,
-        };
-      });
+    let todosUpdated = false;
+    this.todos = this.todos.map(t => {
+      const initMatch = INITIAL_TODOS.find(it => it.id === t.id);
+      let targetTime = t.targetTime || initMatch?.targetTime || (t.session === 'Pagi' ? '07:00' : t.session === 'Siang' ? '11:00' : t.session === 'Sore' ? '15:00' : '08:00');
+      let assignedRole = t.assignedRole || initMatch?.assignedRole;
+      let assignedUserName = t.assignedUserName || initMatch?.assignedUserName;
+      let assignedUserId = t.assignedUserId || initMatch?.assignedUserId;
+      let completedBy = t.completedBy;
+
+      // ASLAP tasks belong to Andi Pratama, NOT Akmal
+      if (assignedRole === 'ASLAP' || initMatch?.assignedRole === 'ASLAP') {
+        assignedUserName = 'Andi Pratama';
+        assignedUserId = 'USR-004';
+        if (completedBy && completedBy.includes('Akmal (ASLAP)')) {
+          completedBy = completedBy.replace('Akmal (ASLAP)', 'Andi Pratama (ASLAP)');
+        }
+        todosUpdated = true;
+      }
+
+      // ADMIN tasks belong to Akmal (USR-003)
+      if (assignedRole === 'ADMIN' || initMatch?.assignedRole === 'ADMIN') {
+        if (assignedUserName === 'Hendra Wijaya') {
+          assignedUserName = 'Akmal';
+          assignedUserId = 'USR-003';
+          todosUpdated = true;
+        }
+      }
+
+      return {
+        ...t,
+        targetTime,
+        assignedRole,
+        assignedUserId,
+        assignedUserName,
+        completedBy,
+      };
+    });
+    if (todosUpdated || this.todos.some(t => !t.targetTime)) {
       setStored(STORAGE_KEYS.TODOS, this.todos);
     }
     this.employees = getStored<Employee[]>(STORAGE_KEYS.EMPLOYEES, REAL_EMPLOYEES);
@@ -2122,6 +2213,80 @@ class WarehouseDatabase {
   }
 
   // --- SUPPLIER MANAGEMENT ---
+  /** ID berurutan SUP-001, SUP-002, ... berdasarkan angka terbesar yang sudah ada. */
+  public nextSupplierId(): string {
+    const maxNum = this.suppliers.reduce((max, s) => {
+      const m = /^SUP-(\d+)$/i.exec(s.id);
+      return m ? Math.max(max, Number(m[1])) : max;
+    }, 0);
+    return `SUP-${String(maxNum + 1).padStart(3, '0')}`;
+  }
+
+  /**
+   * Tambah supplier cepat dari form input (cukup nama). Kalau nama sudah ada,
+   * kembalikan data yang lama supaya tidak dobel.
+   */
+  public quickAddSupplier(name: string, user: User, address = ''): Supplier {
+    const clean = name.trim();
+    const existing = this.suppliers.find(s => s.name.trim().toLowerCase() === clean.toLowerCase());
+    if (existing) return existing;
+    return this.saveSupplier(
+      {
+        id: this.nextSupplierId(),
+        name: clean,
+        contactPerson: '',
+        phone: '',
+        address,
+        supplyCategory: 'Umum',
+        isActive: true,
+        notes: 'Ditambahkan dari input belanja. Lengkapi kontak & kategori.',
+      },
+      user,
+      true
+    );
+  }
+
+  /**
+   * Pembersihan supplier dummy bawaan (PT ABC Pangan, CV Berkah Unggas, dll.)
+   * dan sinkronisasi 10 supplier UMKM mitra resmi SPPG Jeru Tumpang ke localStorage.
+   */
+  private cleanAndSyncRealSuppliers(): void {
+    const FLAG = 'sppg_real_suppliers_clean_v6';
+    if (localStorage.getItem(FLAG)) return;
+
+    const DUMMY_NAMES = new Set(
+      LEGACY_DUMMY_SUPPLIER_NAMES.map(n => n.trim().toLowerCase())
+    );
+
+    // 1. Bersihkan supplier dummy lama dari memori dan storage
+    let cleaned = this.suppliers.filter(
+      s => !DUMMY_NAMES.has(s.name.trim().toLowerCase())
+    );
+
+    // 2. Pastikan ke-10 supplier UMKM resmi masuk ke daftar
+    INITIAL_SUPPLIERS.forEach(realSup => {
+      const idx = cleaned.findIndex(
+        s => s.name.trim().toLowerCase() === realSup.name.trim().toLowerCase()
+      );
+      if (idx === -1) {
+        cleaned.push(realSup);
+      } else {
+        cleaned[idx] = {
+          ...cleaned[idx],
+          address: cleaned[idx].address || realSup.address,
+          supplyCategory:
+            cleaned[idx].supplyCategory === 'Umum'
+              ? realSup.supplyCategory
+              : cleaned[idx].supplyCategory,
+        };
+      }
+    });
+
+    this.suppliers = cleaned;
+    setStored(STORAGE_KEYS.SUPPLIERS, this.suppliers);
+    localStorage.setItem(FLAG, '1');
+  }
+
   public saveSupplier(supplier: Supplier, user: User, isNew: boolean): Supplier {
     if (!supplier.name || !supplier.id) {
       throw new Error('ID Supplier dan Nama Supplier wajib diisi.');
@@ -2818,6 +2983,8 @@ class WarehouseDatabase {
 
     this.items = [...INITIAL_ITEMS];
     this.suppliers = [...INITIAL_SUPPLIERS];
+    localStorage.removeItem('sppg_real_suppliers_clean_v6');
+    this.cleanAndSyncRealSuppliers();
     this.receivings = [...INITIAL_RECEIVINGS];
     this.transactions = [...INITIAL_TRANSACTIONS];
     this.opnames = [...INITIAL_OPNAMES];

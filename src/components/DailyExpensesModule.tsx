@@ -7,9 +7,10 @@ import {
   NonFoodExpense,
   InventoryTransaction
 } from '../types/warehouse';
-import { Calendar, Printer, Search, TrendingDown, Clock, CheckCircle2, FileSpreadsheet, Trash2, CalendarRange, DollarSign, ChevronDown, ChevronRight, FileText } from 'lucide-react';
+import { Calendar, Printer, Search, TrendingDown, Clock, CheckCircle2, FileSpreadsheet, Trash2, CalendarRange, DollarSign, ChevronDown, ChevronRight, FileText, Plus } from 'lucide-react';
 import { exportToExcel } from '../lib/excelExport';
 import { SppgLogo } from './SppgLogo';
+import { ActionDropdown } from './common/ActionDropdown';
 
 type PeriodType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
 
@@ -120,7 +121,11 @@ function parseExpenseDate(dateStr: string): Date | null {
   return isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export const DailyExpensesModule: React.FC = () => {
+export interface DailyExpensesModuleProps {
+  onNavigate?: (tab: string) => void;
+}
+
+export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavigate }) => {
   const { currentUser } = useAuth();
 
   // ----------------------------------------------------
@@ -547,20 +552,60 @@ export const DailyExpensesModule: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Export Excel */}
-          <button
-            onClick={handleExportExcel}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 shadow-2xs transition-colors cursor-pointer"
-            title="Unduh rekap pengeluaran dan rincian biaya sebagai Excel"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Ekspor Excel</span>
-          </button>
+          {/* ActionDropdown Standard: Ekspor & Cetak / Input Belanja */}
+          <ActionDropdown
+            splitAction={{
+              label: 'Ekspor Excel',
+              icon: FileSpreadsheet,
+              onClick: handleExportExcel,
+              title: 'Unduh rekap pengeluaran dan rincian biaya sebagai Excel',
+              variant: 'emerald',
+            }}
+            header="Opsi Rekap Belanja & Laporan"
+            widthClass="w-72"
+            items={[
+              {
+                id: 'export-excel',
+                label: 'Ekspor File Excel (.xlsx)',
+                description: 'Unduh seluruh rincian belanja & pengeluaran',
+                icon: FileSpreadsheet,
+                iconBgClass: 'bg-emerald-100 text-emerald-800',
+                iconColorClass: 'text-emerald-700',
+                onClick: handleExportExcel,
+              },
+              {
+                id: 'print-report',
+                label: 'Cetak Laporan Lengkap',
+                description: 'Cetak PDF resmi atau print fisik dokumen',
+                icon: Printer,
+                iconBgClass: 'bg-slate-100 text-slate-700',
+                iconColorClass: 'text-slate-600',
+                dividerAbove: true,
+                onClick: handlePrint,
+              },
+              ...(onNavigate
+                ? [
+                    {
+                      id: 'input-belanja',
+                      label: 'Input Belanja / Barang Baru',
+                      description: 'Buka menu pencatatan belanja & penerimaan',
+                      icon: Plus,
+                      iconBgClass: 'bg-emerald-100 text-emerald-800',
+                      iconColorClass: 'text-emerald-700',
+                      dividerAbove: true,
+                      onClick: () => onNavigate('receiving'),
+                    },
+                  ]
+                : []),
+            ]}
+          />
 
-          {/* Print PDF */}
+          {/* Cetak Langsung */}
           <button
+            type="button"
             onClick={handlePrint}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
+            title="Cetak cepat laporan pengeluaran"
           >
             <Printer className="w-3.5 h-3.5 text-slate-500" />
             <span>Cetak Laporan</span>

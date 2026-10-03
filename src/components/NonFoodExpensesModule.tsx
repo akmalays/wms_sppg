@@ -19,6 +19,7 @@ import {
   Download
 } from 'lucide-react';
 import { exportToExcel, parseExcelFile, downloadExcelTemplate } from '../lib/excelExport';
+import { ActionDropdown } from './common/ActionDropdown';
 
 export const NonFoodExpensesModule: React.FC = () => {
   const { currentUser, can } = useAuth();
@@ -277,7 +278,16 @@ export const NonFoodExpensesModule: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Download Template */}
+          {/* Hidden File Input for Excel Import */}
+          <input
+            id="nonfood-excel-file-input"
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleImportExcel}
+          />
+
+          {/* Format Template Quick Download */}
           <button
             onClick={handleDownloadTemplate}
             className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs transition-colors cursor-pointer"
@@ -287,48 +297,73 @@ export const NonFoodExpensesModule: React.FC = () => {
             <span>Format Excel</span>
           </button>
 
-          {/* Import Excel */}
-          {(currentUser.role === 'ADMIN' || currentUser.role === 'SUPERADMIN' || currentUser.role === 'KA_SPPG') && (
-            <label
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-              title="Lampirkan dan impor data dari file Excel (.xlsx / .csv)"
-            >
-              <Upload className="w-3.5 h-3.5 text-emerald-700" />
-              <span>Impor Excel</span>
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                className="hidden"
-                onChange={handleImportExcel}
-              />
-            </label>
-          )}
-
-          {/* Export Excel */}
-          <button
-            onClick={handleExportExcel}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 shadow-2xs transition-colors cursor-pointer"
-            title="Unduh seluruh rekap non-food sebagai file Excel (.xlsx)"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Ekspor Excel (.xlsx)</span>
-          </button>
-
-          <button
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-          >
-            <Printer className="w-3.5 h-3.5 text-slate-500" />
-            <span>Cetak PDF</span>
-          </button>
-
-          {(currentUser.role === 'ADMIN' || currentUser.role === 'SUPERADMIN' || currentUser.role === 'KA_SPPG' || currentUser.role === 'ASLAP') && (
+          {/* Standard ActionDropdown: Catat Pengeluaran Belanja Non-Food */}
+          {(currentUser.role === 'ADMIN' || currentUser.role === 'SUPERADMIN' || currentUser.role === 'KA_SPPG' || currentUser.role === 'ASLAP') ? (
+            <ActionDropdown
+              splitAction={{
+                label: 'Catat Pengeluaran',
+                icon: Plus,
+                onClick: () => setIsModalOpen(true),
+                title: 'Catat belanja non-food operasional baru',
+                variant: 'emerald',
+              }}
+              header="Opsi Pengeluaran & Dokumen"
+              widthClass="w-72"
+              items={[
+                {
+                  id: 'catat-manual',
+                  label: 'Catat Pengeluaran',
+                  description: 'Input form belanja non-food & APD',
+                  icon: Plus,
+                  iconBgClass: 'bg-emerald-100 text-emerald-800',
+                  iconColorClass: 'text-emerald-700',
+                  onClick: () => setIsModalOpen(true),
+                },
+                ...(currentUser.role === 'ADMIN' || currentUser.role === 'SUPERADMIN' || currentUser.role === 'KA_SPPG'
+                  ? [
+                      {
+                        id: 'import-excel',
+                        label: 'Impor Data Excel',
+                        description: 'Unggah file pengeluaran (.xlsx / .csv)',
+                        icon: Upload,
+                        iconBgClass: 'bg-emerald-100 text-emerald-800',
+                        iconColorClass: 'text-emerald-700',
+                        onClick: () => {
+                          const input = document.getElementById('nonfood-excel-file-input') as HTMLInputElement;
+                          input?.click();
+                        },
+                      },
+                    ]
+                  : []),
+                {
+                  id: 'export-excel',
+                  label: 'Ekspor Data ke Excel',
+                  description: 'Unduh seluruh riwayat belanja non-food',
+                  icon: FileSpreadsheet,
+                  iconBgClass: 'bg-emerald-100 text-emerald-800',
+                  iconColorClass: 'text-emerald-700',
+                  dividerAbove: true,
+                  onClick: handleExportExcel,
+                },
+                {
+                  id: 'print-pdf',
+                  label: 'Cetak Dokumen PDF',
+                  description: 'Format cetak resmi pengeluaran non-food',
+                  icon: Printer,
+                  iconBgClass: 'bg-slate-100 text-slate-700',
+                  iconColorClass: 'text-slate-600',
+                  dividerAbove: true,
+                  onClick: () => window.print(),
+                },
+              ]}
+            />
+          ) : (
             <button
-              onClick={() => setIsModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Catat Pengeluaran</span>
+              <Printer className="w-3.5 h-3.5 text-slate-500" />
+              <span>Cetak PDF</span>
             </button>
           )}
         </div>
