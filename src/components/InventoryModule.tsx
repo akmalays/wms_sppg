@@ -631,7 +631,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
               <div className="font-semibold text-slate-800">Kepala SPPG Jeru Tumpang</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
-                (Dr. Siti Rahma, M.M)
+                (Rizky Iman Ramdhan, S.Pd)
               </div>
             </div>
           </div>
@@ -2104,7 +2104,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                     <div className="text-slate-500">Otorisasi / Persetujuan,</div>
                     <div className="font-semibold text-slate-800">Kepala SPPG Jeru Tumpang</div>
                     <div className="h-16 flex items-end justify-center font-bold text-slate-900">
-                      ({viewingOpname.approvedByName || 'Dr. Siti Rahma, M.M'})
+                      ({viewingOpname.approvedByName && !viewingOpname.approvedByName.includes('Siti Rahma') ? viewingOpname.approvedByName : 'Rizky Iman Ramdhan, S.Pd'})
                     </div>
                   </div>
                 </div>

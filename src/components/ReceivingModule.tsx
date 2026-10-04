@@ -51,6 +51,7 @@ import {
   LayoutGrid,
   Check,
   RotateCcw,
+  Edit3,
 } from 'lucide-react';
 import { SignaturePad } from './SignaturePad';
 import { ReceivingDetailModal } from './ReceivingDetailModal';
@@ -359,6 +360,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   const handleAddToPool = (id: string) => {
     const updated = addToPrintPool(id);
     setPoolNotaIds(updated);
+    refreshAll();
     setSuccessMessage('Nota berhasil dimasukkan ke antrean pool cetak!');
     setTimeout(() => setSuccessMessage(''), 3000);
   };
@@ -366,16 +368,21 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   const handleRemoveFromPool = (id: string) => {
     const updated = removeFromPrintPool(id);
     setPoolNotaIds(updated);
+    refreshAll();
   };
 
   const handleClearPool = () => {
     clearPrintPool();
     setPoolNotaIds([]);
+    refreshAll();
     setSuccessMessage('Antrean pool cetak nota berhasil dikosongkan.');
     setTimeout(() => setSuccessMessage(''), 3000);
   };
 
   const handleTogglePool = (id: string) => {
+    if (activeNota && (activeNota.id === id || activeNota.poNumber === id)) {
+      warehouseDb.savePurchaseOrder(activeNota, currentUser);
+    }
     if (poolNotaIds.includes(id)) {
       handleRemoveFromPool(id);
     } else {
@@ -1445,7 +1452,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       deliveryTerms: 'Pengiriman langsung ke Satuan Pelayanan Pemenuhan Gizi (SPPG) Jeru Tumpang.',
       createdBy: currentUser.name,
       createdByRole: currentUser.role === 'ADMIN' ? 'Admin Logistik' : currentUser.role,
-      approvedBy: 'Dr. Siti Rahma',
+      approvedBy: 'Rizky Iman Ramdhan, S.Pd',
       approvedByRole: 'Kepala SPPG Jeru Tumpang',
       supplierPic: suppObj?.contactPerson || 'Pihak Rekanan',
       relatedExpenseIds: r.source === 'EXPENSE_INPUT' ? [r.id] : undefined,
@@ -1523,7 +1530,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       deliveryTerms: 'Pengiriman langsung ke Satuan Pelayanan Pemenuhan Gizi (SPPG) Jeru Tumpang.',
       createdBy: currentUser.name,
       createdByRole: currentUser.role === 'ADMIN' ? 'Admin Logistik' : currentUser.role,
-      approvedBy: 'Dr. Siti Rahma',
+      approvedBy: 'Rizky Iman Ramdhan, S.Pd',
       approvedByRole: 'Kepala SPPG Jeru Tumpang',
       supplierPic: suppObj?.contactPerson || 'Pihak Rekanan',
       relatedExpenseIds: expenseIds.length > 0 ? expenseIds : undefined,
@@ -1581,7 +1588,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       deliveryTerms: 'Pengiriman langsung ke Satuan Pelayanan Pemenuhan Gizi (SPPG) Jeru Tumpang.',
       createdBy: currentUser.name,
       createdByRole: currentUser.role === 'ADMIN' ? 'Admin Logistik' : currentUser.role,
-      approvedBy: 'Dr. Siti Rahma',
+      approvedBy: 'Rizky Iman Ramdhan, S.Pd',
       approvedByRole: 'Kepala SPPG Jeru Tumpang',
       supplierPic: suppObj?.contactPerson || 'Pihak Rekanan',
       relatedExpenseIds: relatedIds,
@@ -1598,6 +1605,35 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     warehouseDb.savePurchaseOrder(updatedNota, currentUser);
     setActiveNota(updatedNota);
     refreshAll();
+  };
+
+  const handleDeleteNota = (nota: PurchaseOrderNota) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Hapus Nota PO?',
+      message: `Apakah Anda yakin ingin menghapus Nota PO "${nota.poNumber}" (${nota.supplierName})? Dokumen PO akan dihapus dari sistem. Catatan barang tetap tersimpan dan dapat diterbitkan PO kembali kapan saja.`,
+      confirmText: 'Ya, Hapus PO',
+      cancelText: 'Batal',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        setActionLoading({
+          isLoading: true,
+          message: 'Menghapus Nota PO...',
+        });
+        await new Promise(r => setTimeout(r, 200));
+        warehouseDb.deletePurchaseOrder(nota.id, currentUser);
+        handleRemoveFromPool(nota.id);
+        handleRemoveFromPool(nota.poNumber);
+        if (activeNota && (activeNota.id === nota.id || activeNota.poNumber === nota.poNumber)) {
+          setIsNotaModalOpen(false);
+          setActiveNota(null);
+        }
+        setActionLoading({ isLoading: false });
+        toast.success(`Nota PO ${nota.poNumber} berhasil dihapus.`, 'PO Dihapus');
+        refreshAll();
+      },
+    });
   };
 
   // ----------------------------------------------------
@@ -2710,27 +2746,90 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                                   {/* Action PO khusus tanggal ini */}
                                   <div className="flex items-center gap-2 flex-wrap">
                                     {dateMatchingNotas.map(nota => (
-                                      <button
-                                        key={nota.id}
-                                        type="button"
-                                        onClick={() => handleOpenExistingNota(nota)}
-                                        className="px-2.5 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-                                        title={`Lihat / Cetak Nota PO: ${nota.poNumber}`}
-                                      >
-                                        <FileCheck className="w-3.5 h-3.5 text-emerald-600" />
-                                        <span>PO: {nota.poNumber}</span>
-                                      </button>
+                                      <div key={nota.id} className="flex items-center gap-1.5 flex-wrap">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenExistingNota(nota)}
+                                          className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 transition-all cursor-pointer active:scale-95"
+                                          title={`Lihat & Cetak Nota PO: ${nota.poNumber}`}
+                                        >
+                                          <Receipt className="w-3.5 h-3.5" />
+                                          <span>{dateMatchingNotas.length > 1 ? `Cetak PO (${nota.poNumber})` : 'Cetak PO'}</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenExistingNota(nota)}
+                                          className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                          title={`Edit data & rincian barang Nota PO: ${nota.poNumber}`}
+                                        >
+                                          <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+                                          <span>Edit PO</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleTogglePool(nota.id)}
+                                          className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95 ${
+                                            poolNotaIds.includes(nota.id) || poolNotaIds.includes(nota.poNumber)
+                                              ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                                              : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-600'
+                                          }`}
+                                          title={
+                                            poolNotaIds.includes(nota.id) || poolNotaIds.includes(nota.poNumber)
+                                              ? 'Keluarkan nota ini dari pool antrean cetak'
+                                              : 'Tampung nota ini ke pool antrean cetak (gabung 2 nota per lembar A4)'
+                                          }
+                                        >
+                                          <Layers className="w-3.5 h-3.5 text-emerald-600" />
+                                          <span>
+                                            {poolNotaIds.includes(nota.id) || poolNotaIds.includes(nota.poNumber)
+                                              ? 'Di Pool'
+                                              : '+ Pool'}
+                                          </span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteNota(nota)}
+                                          className="px-3 py-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                          title={`Hapus Nota PO: ${nota.poNumber}`}
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                          <span>Hapus PO</span>
+                                        </button>
+                                      </div>
                                     ))}
 
                                     {dateMatchingNotas.length === 0 ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleCreateCombinedNotaForSupplier(supplier.name, dateRecords, dateKey)}
-                                        className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 transition-all cursor-pointer active:scale-95"
-                                      >
-                                        <Receipt className="w-3.5 h-3.5" />
-                                        <span>Cetak 1 Nota PO Gabungan ({dateRecords.length} Barang)</span>
-                                      </button>
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCreateCombinedNotaForSupplier(supplier.name, dateRecords, dateKey)}
+                                          className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 transition-all cursor-pointer active:scale-95"
+                                          title="Cetak Nota PO gabungan untuk barang pada tanggal ini"
+                                        >
+                                          <Receipt className="w-3.5 h-3.5" />
+                                          <span>Cetak PO</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCreateCombinedNotaForSupplier(supplier.name, dateRecords, dateKey)}
+                                          className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                          title="Buka dan edit rincian data PO sebelum disimpan/dicetak"
+                                        >
+                                          <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+                                          <span>Edit PO</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            toast.info('Belum ada Nota PO yang diterbitkan untuk transaksi ini. Silakan klik Cetak PO untuk membuat nota terlebih dahulu.');
+                                          }}
+                                          className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                                          title="Belum ada Nota PO yang dibuat"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5 text-slate-400" />
+                                          <span>Hapus PO</span>
+                                        </button>
+                                      </div>
                                     ) : unassignedRecords.length > 0 ? (
                                       <button
                                         type="button"
@@ -2739,7 +2838,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                                         title="Buat PO untuk barang yang belum masuk nota pada tanggal ini"
                                       >
                                         <FilePlus className="w-3.5 h-3.5" />
-                                        <span>Buat PO ({unassignedRecords.length} Barang Belum Masuk)</span>
+                                        <span>Cetak PO ({unassignedRecords.length} Barang Baru)</span>
                                       </button>
                                     ) : null}
                                   </div>
@@ -2757,7 +2856,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                                         <th className="py-2.5 px-3 w-28 text-right">Jumlah & Satuan</th>
                                         <th className="py-2.5 px-3 w-32 text-right">Estimasi Biaya</th>
                                         <th className="py-2.5 px-3 w-28">PIC Petugas</th>
-                                        <th className="py-2.5 px-2 w-20 text-center">Nota PO</th>
                                       </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 font-medium">
@@ -2772,8 +2870,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                                         else if (isKering) badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
                                         else if (isAtk) badgeColor = 'bg-blue-50 text-blue-800 border-blue-200';
                                         else if (isBersih) badgeColor = 'bg-cyan-50 text-cyan-800 border-cyan-200';
-
-                                        const matchingNota = getMatchingNotaForRecord(r);
 
                                         return (
                                           <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
@@ -2814,27 +2910,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                                             </td>
                                             <td className="py-2.5 px-3 text-slate-700">
                                               <div className="font-semibold truncate max-w-[120px]">{r.picOrUser}</div>
-                                            </td>
-                                            <td className="py-2 px-2 text-center">
-                                              {matchingNota ? (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleOpenExistingNota(matchingNota)}
-                                                  className="w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center justify-center transition-all cursor-pointer mx-auto"
-                                                  title={`Nota PO ${matchingNota.poNumber}`}
-                                                >
-                                                  <FileCheck className="w-3.5 h-3.5 text-emerald-600" />
-                                                </button>
-                                              ) : (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleCreateNotaFromRecord(r)}
-                                                  className="w-7 h-7 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-700 border border-dashed border-slate-300 flex items-center justify-center transition-all cursor-pointer mx-auto"
-                                                  title="Buat Nota PO"
-                                                >
-                                                  <FilePlus className="w-3.5 h-3.5" />
-                                                </button>
-                                              )}
                                             </td>
                                           </tr>
                                         );
@@ -2880,7 +2955,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                       <th className="py-3 px-3 w-32 text-right">Estimasi Biaya</th>
                       <th className="py-3 px-3 min-w-[140px]">Toko / Supplier</th>
                       <th className="py-3 px-3 w-32">PIC Petugas</th>
-                      <th className="py-3 px-2 w-20 text-center" title="Status Nota Pesanan / Purchase Order (PO)">Nota PO</th>
+                      <th className="py-3 px-2 w-28 text-center" title="Status Nota Pesanan / Purchase Order (PO)">Status PO</th>
                       <th className="py-3 px-2 text-center w-14">Aksi</th>
                     </tr>
                   </thead>
@@ -2967,92 +3042,27 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                             </td>
                             <td className="py-2.5 px-2 text-center">
                               {matchingNota ? (
-                                <div className="relative inline-flex items-center justify-center group">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenExistingNota(matchingNota)}
-                                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95 relative ${
-                                      poolNotaIds.includes(matchingNota.id) || poolNotaIds.includes(matchingNota.poNumber)
-                                        ? 'bg-emerald-100 text-emerald-800 border-2 border-emerald-500'
-                                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/90'
-                                    }`}
-                                    title={`Nota PO ${matchingNota.poNumber} (${matchingNota.status}) - Klik untuk lihat / cetak surat`}
-                                    aria-label={`Nota PO ${matchingNota.poNumber}`}
-                                  >
-                                    <FileCheck className="w-4 h-4 text-emerald-600" />
-                                    {poolNotaIds.includes(matchingNota.id) || poolNotaIds.includes(matchingNota.poNumber) ? (
-                                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-sky-500 border-2 border-white" title="Dalam Pool Cetak" />
-                                    ) : (
-                                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-white" />
-                                    )}
-                                  </button>
-
-                                  {/* Tooltip Hover - Muncul di sebelah kiri */}
-                                  <div className="absolute right-full top-1/2 -translate-y-1/2 mr-2.5 hidden group-hover:flex items-center z-50 pointer-events-none transition-all duration-150 animate-in fade-in zoom-in-95">
-                                    <div className="bg-slate-900 text-white text-[11px] rounded-lg py-2 px-3 shadow-2xl whitespace-nowrap border border-slate-700/80 flex flex-col items-start gap-1">
-                                      <div className="flex items-center gap-1.5 font-bold text-emerald-400">
-                                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                                        <span>Nota PO Diterbitkan</span>
-                                      </div>
-                                      <div className="font-mono text-[10px] text-slate-300">
-                                        {matchingNota.poNumber}
-                                      </div>
-                                      <div className="text-[10px] text-slate-400">
-                                        Status: <span className="font-semibold text-slate-200">{matchingNota.status}</span>
-                                      </div>
-                                      {poolNotaIds.includes(matchingNota.id) || poolNotaIds.includes(matchingNota.poNumber) ? (
-                                        <div className="text-[9.5px] font-semibold text-sky-400 flex items-center gap-1 pt-0.5 border-t border-slate-700/80 w-full">
-                                          <Layers className="w-3 h-3" />
-                                          <span>Sudah di Pool Cetak</span>
-                                        </div>
-                                      ) : (
-                                        <div className="text-[9.5px] text-slate-400 pt-0.5 border-t border-slate-700/80 w-full">
-                                          Klik surat untuk cetak / masukkan pool
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="w-2 h-2 bg-slate-900 rotate-45 -ml-1 border-t border-r border-slate-700/80 shrink-0" />
-                                  </div>
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenExistingNota(matchingNota)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer"
+                                  title={`Nota PO: ${matchingNota.poNumber} (${matchingNota.status}) - Klik untuk lihat / cetak`}
+                                >
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  <span>Sudah Dibuat</span>
+                                </button>
                               ) : (
-                                <div className="relative inline-flex items-center justify-center group">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCreateNotaFromRecord(r)}
-                                    className="w-8 h-8 rounded-lg bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-700 border border-dashed border-slate-300 hover:border-emerald-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-                                    title="Belum ada Nota PO. Klik untuk buat nota & PO resmi"
-                                    aria-label="Buat Nota PO"
-                                  >
-                                    <FilePlus className="w-4 h-4 text-slate-400 group-hover:text-emerald-600" />
-                                  </button>
-
-                                  {/* Tooltip Hover - Muncul di sebelah kiri */}
-                                  <div className="absolute right-full top-1/2 -translate-y-1/2 mr-2.5 hidden group-hover:flex items-center z-50 pointer-events-none transition-all duration-150 animate-in fade-in zoom-in-95">
-                                    <div className="bg-slate-900 text-white text-[11px] rounded-lg py-1.5 px-3 shadow-2xl whitespace-nowrap border border-slate-700/80 flex flex-col items-start gap-0.5">
-                                      <div className="flex items-center gap-1.5 font-bold text-slate-200">
-                                        <Receipt className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                                        <span>Belum Ada Nota</span>
-                                      </div>
-                                      <div className="text-[10px] text-slate-400">
-                                        Klik untuk buat / gabungkan nota PO
-                                      </div>
-                                    </div>
-                                    <div className="w-2 h-2 bg-slate-900 rotate-45 -ml-1 border-t border-r border-slate-700/80 shrink-0" />
-                                  </div>
-                                </div>
+                                <span
+                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200"
+                                  title="Belum dibuatkan Nota PO"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+                                  <span>Belum Dibuat</span>
+                                </span>
                               )}
                             </td>
                             <td className="py-3 px-2 text-center">
-                              {r.source === 'EXPENSE_INPUT' ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteExpense(r.id, r.itemName)}
-                                  className="text-slate-300 hover:text-rose-600 p-1.5 rounded transition-colors cursor-pointer"
-                                  title="Hapus catatan barang ini"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              ) : (
+                              {r.source !== 'EXPENSE_INPUT' && r.rawDoc ? (
                                 <button
                                   type="button"
                                   onClick={() => r.rawDoc && setSelectedDocForDetail(r.rawDoc)}
@@ -3061,6 +3071,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                 </button>
+                              ) : (
+                                <span className="text-slate-300">-</span>
                               )}
                             </td>
                           </tr>
@@ -4175,6 +4187,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
           onClose={() => setIsNotaModalOpen(false)}
           nota={activeNota}
           onSaveNota={handleSaveNotaFromModal}
+          onDeleteNota={handleDeleteNota}
           suppliers={suppliers}
           currentUser={currentUser}
           onSupplierAdded={() => refreshAll()}

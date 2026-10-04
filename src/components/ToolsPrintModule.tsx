@@ -487,7 +487,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   );
   const [expensePicTreasurer, setExpensePicTreasurer] = useState<string>('Siti Aisyah (Bendahara)');
   const [expensePicVerifier, setExpensePicVerifier] = useState<string>('Akmal (Admin Gudang)');
-  const [expensePicApprover, setExpensePicApprover] = useState<string>('Dr. Siti Rahma (Kepala SPPG)');
+  const [expensePicApprover, setExpensePicApprover] = useState<string>('Rizky Iman Ramdhan, S.Pd (Kepala SPPG)');
   const [expenseLines, setExpenseLines] = useState<SupplierExpenseLine[]>(() => {
     const defaultSup = suppliers.find(s => s.id === (initialSupplierId || suppliers[0]?.id)) || suppliers[0];
     return defaultSup ? getDefaultLinesForSupplier(defaultSup) : [];
@@ -2474,7 +2474,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 <p className="text-slate-600">Mengetahui (Kepala Unit)</p>
                 <div className="h-20 flex items-end justify-center">
                   <div className="border-t border-slate-400 w-40 pt-1 font-semibold text-slate-800">
-                    Dr. Siti Rahma (Manager)
+                    Rizky Iman Ramdhan, S.Pd (Kepala SPPG)
                   </div>
                 </div>
               </div>

@@ -12,6 +12,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { PurchaseOrderNota } from '../types/warehouse';
+import { warehouseDb } from '../db/storage';
 import logoSppgImg from '../assets/logo sppg.png';
 import ttdRizkyImg from '../assets/ttd rizky.png';
 
@@ -95,15 +96,45 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  // Baca seluruh nota yang tersedia baik dari props maupun database
+  const allAvailableNotas: PurchaseOrderNota[] = React.useMemo(() => {
+    if (!isOpen) return [];
+    try {
+      const dbNotas = warehouseDb.getPurchaseOrders();
+      const map = new Map<string, PurchaseOrderNota>();
+      (allNotas || []).forEach(n => {
+        if (n && n.id) map.set(n.id, n);
+      });
+      (dbNotas || []).forEach(n => {
+        if (n && n.id) map.set(n.id, n);
+      });
+      return Array.from(map.values());
+    } catch {
+      return allNotas || [];
+    }
+  }, [allNotas, isOpen]);
 
   // Filter nota-nota yang ada di pool
-  const poolNotas: PurchaseOrderNota[] = poolNotaIds
-    .map(id => allNotas.find(n => n.id === id || n.poNumber === id))
-    .filter((n): n is PurchaseOrderNota => n !== undefined);
+  const poolNotas: PurchaseOrderNota[] = React.useMemo(() => {
+    return poolNotaIds
+      .map(id => {
+        const found = allAvailableNotas.find(n => n.id === id || n.poNumber === id);
+        if (found) return found;
+        try {
+          const directFromDb = warehouseDb.getPurchaseOrderById(id);
+          if (directFromDb) return directFromDb;
+        } catch {
+          // ignore
+        }
+        return undefined;
+      })
+      .filter((n): n is PurchaseOrderNota => n !== undefined && n !== null);
+  }, [poolNotaIds, allAvailableNotas]);
 
   // Nota-nota yang belum ada di pool untuk opsi penambahan cepat
-  const availableToAdd = allNotas.filter(n => !poolNotaIds.includes(n.id) && !poolNotaIds.includes(n.poNumber));
+  const availableToAdd = allAvailableNotas.filter(
+    n => !poolNotaIds.includes(n.id) && !poolNotaIds.includes(n.poNumber)
+  );
 
   // Kelompokkan nota menjadi pasangan 2 nota per lembar kertas A4
   const pairedPages: [PurchaseOrderNota, PurchaseOrderNota | null][] = [];
@@ -126,8 +157,37 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
 
   // Render 1 kartu nota untuk pratinjau lembar kertas A4 (compact mode)
   const renderNotaCard = (nota: PurchaseOrderNota, positionLabel: string) => {
-    const displayDeliveryDate = formatDateWithDashes(nota.deliveryDate || nota.date);
+    const displayDeliveryDate =
+      formatDateWithDashes(nota.deliveryDate || nota.date) ||
+      formatDateWithDashes(new Date().toISOString().slice(0, 10));
     const displaySignDate = formatDateIndonesian(nota.date || new Date().toISOString().slice(0, 10));
+
+    // Lookup address if empty
+    let displayAddress = nota.supplierAddress;
+    if (!displayAddress || displayAddress.trim() === '') {
+      try {
+        const supp = warehouseDb.getSuppliers().find(
+          s => s.name.toLowerCase() === (nota.supplierName || '').toLowerCase() || s.id === nota.supplierId
+        );
+        if (supp?.address) displayAddress = supp.address;
+      } catch {
+        // ignore
+      }
+    }
+    if (!displayAddress || displayAddress.trim() === '') {
+      displayAddress = 'Malang, Jawa Timur';
+    }
+
+    const calculatedTotal = (nota.items || []).reduce(
+      (acc, it) => acc + (it.subtotal || it.quantity * it.unitPrice || 0),
+      0
+    );
+    const grandTotalValue = nota.grandTotal > 0 ? nota.grandTotal : calculatedTotal;
+
+    const displaySignerName =
+      !nota.approvedBy || nota.approvedBy.includes('Siti Rahma')
+        ? 'Rizky Iman Ramdhan, S.Pd'
+        : nota.approvedBy;
 
     return (
       <div className="nota-compact-card bg-white text-black p-4 sm:p-5 font-sans flex flex-col justify-between rounded-lg border border-slate-200 print:border-none print:p-0">
@@ -205,13 +265,13 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
             <div className="flex items-center">
               <span className="w-20 shrink-0 font-medium">Alamat</span>
               <span className="w-3 text-center">:</span>
-              <span className="text-black truncate">{nota.supplierAddress || 'Kec. Pakis, Kab. Malang'}</span>
+              <span className="text-black truncate">{displayAddress}</span>
             </div>
             <div className="flex items-center">
               <span className="w-20 shrink-0 font-medium">Pengiriman</span>
               <span className="w-3 text-center">:</span>
               <span className="font-medium text-black">
-                {displayDeliveryDate || '27-September-2026'} (Jam 12.00-15.00)
+                {displayDeliveryDate} (Jam 12.00-15.00)
               </span>
             </div>
           </div>
@@ -232,7 +292,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {nota.items.map((it, idx) => {
+                {(nota.items || []).map((it, idx) => {
                   const lineTotal = it.subtotal || it.quantity * it.unitPrice;
                   const hasTotal = lineTotal && lineTotal > 0;
                   return (
@@ -262,7 +322,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
                   <td colSpan={4} className="border border-black py-1 px-2 text-center font-bold">TOTAL</td>
                   <td className="border border-black py-1 px-2 text-left font-bold">Rp</td>
                   <td className="border border-black py-1 px-2 text-right font-bold tabular-nums">
-                    {nota.grandTotal > 0 ? `${nota.grandTotal.toLocaleString('id-ID')} -` : '-'}
+                    {grandTotalValue > 0 ? `${grandTotalValue.toLocaleString('id-ID')} -` : '-'}
                   </td>
                 </tr>
               </tbody>
@@ -300,7 +360,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
                 />
               </div>
               <div className="mt-0.5 font-bold text-black underline underline-offset-2 text-[11px]">
-                {nota.approvedBy || 'Rizky Iman Ramdhan, S.Pd'}
+                {displaySignerName}
               </div>
             </div>
           </div>
@@ -309,6 +369,8 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
     );
   };
 
+  if (!isOpen) return null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
       {/* Print Specific CSS untuk Batch Pool */}
@@ -316,7 +378,14 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
         @media print {
           @page {
             size: A4 portrait;
-            margin: 6mm 8mm;
+            margin: 5mm 8mm;
+          }
+          html, body {
+            overflow: visible !important;
+            height: auto !important;
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
           body * {
             visibility: hidden !important;
@@ -325,9 +394,8 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
             visibility: visible !important;
           }
           #print-batch-pool {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+            position: static !important;
+            display: block !important;
             width: 100% !important;
             max-width: 100% !important;
             padding: 0 !important;
@@ -337,28 +405,58 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
             background: #ffffff !important;
             color: #000000 !important;
           }
+          /* Reset modal overlay wrappers so Chromium print engine doesn't clip multi-page or bottom card */
+          .fixed, .overflow-y-auto, .overflow-hidden {
+            position: static !important;
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
+            width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+          }
           .batch-a4-page {
+            box-sizing: border-box !important;
+            width: 100% !important;
+            height: 285mm !important;
+            max-height: 285mm !important;
             page-break-after: always !important;
             break-after: page !important;
-            min-height: 275mm !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: space-between !important;
-            padding: 2mm 0 !important;
+            padding: 1.5mm 0 !important;
+            margin: 0 auto !important;
+            overflow: hidden !important;
+            border: none !important;
+            box-shadow: none !important;
           }
           .batch-a4-page:last-child {
             page-break-after: auto !important;
             break-after: auto !important;
           }
           .nota-compact-card {
+            box-sizing: border-box !important;
+            max-height: 136mm !important;
+            height: auto !important;
+            overflow: hidden !important;
             page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
             border: none !important;
             box-shadow: none !important;
-            padding: 2mm 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
           }
           .cut-line-print {
-            margin: 4mm 0 !important;
-            padding: 1mm 0 !important;
+            margin: 2mm 0 !important;
+            padding: 0 !important;
+            height: 4mm !important;
           }
           .no-print {
             display: none !important;
@@ -369,6 +467,9 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
           }
           .table-po-print th, .table-po-print td {
             border: 1.5px solid #000000 !important;
+            padding: 1.5px 3px !important;
+            font-size: 8.5px !important;
+            line-height: 1.15 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }

@@ -28,6 +28,7 @@ export interface NotaPesananModalProps {
   onClose: () => void;
   nota: PurchaseOrderNota;
   onSaveNota: (updatedNota: PurchaseOrderNota) => void;
+  onDeleteNota?: (nota: PurchaseOrderNota) => void;
   initialTab?: 'FORM' | 'PREVIEW';
   suppliers: Supplier[];
   currentUser: User;
@@ -87,6 +88,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
   onClose,
   nota,
   onSaveNota,
+  onDeleteNota,
   suppliers,
   currentUser,
   isInPool = false,
@@ -105,7 +107,11 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
   // Field khusus format resmi BGN
   const [deliveryFrom, setDeliveryFrom] = useState('SPPG MALANG TUMPANG JERU');
   const [deliveryTimeNote, setDeliveryTimeNote] = useState('(Jam 12.00-15.00)');
-  const [signerName, setSignerName] = useState(formData.approvedBy || 'Rizky Iman Ramdhan, S.Pd');
+  const [signerName, setSignerName] = useState(
+    formData.approvedBy && !formData.approvedBy.includes('Siti Rahma')
+      ? formData.approvedBy
+      : 'Rizky Iman Ramdhan, S.Pd'
+  );
   const [signerRole1, setSignerRole1] = useState('Kepala Satuan Pelayanan');
   const [signerRole2, setSignerRole2] = useState('Pemenuhan Gizi');
 
@@ -125,8 +131,10 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
   // Sync state when incoming nota changes
   useEffect(() => {
     setFormData(nota);
-    if (nota.approvedBy) {
+    if (nota.approvedBy && !nota.approvedBy.includes('Siti Rahma')) {
       setSignerName(nota.approvedBy);
+    } else {
+      setSignerName('Rizky Iman Ramdhan, S.Pd');
     }
     // Jika jumlah item ringkas (1-5), aktifkan mode hemat kertas (2 rangkap) secara cerdas
     if ((nota.items?.length || 0) <= 5) {
@@ -862,7 +870,16 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
             {onTogglePool && (
               <button
                 type="button"
-                onClick={() => onTogglePool(formData.id)}
+                onClick={() => {
+                  const updated: PurchaseOrderNota = {
+                    ...formData,
+                    approvedBy: signerName,
+                  };
+                  onSaveNota(updated);
+                  onTogglePool(updated.id);
+                  setSaveToast(true);
+                  setTimeout(() => setSaveToast(false), 2000);
+                }}
                 className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                   isInPool
                     ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
@@ -879,7 +896,14 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
             {onOpenBatchPool && poolCount > 0 && (
               <button
                 type="button"
-                onClick={onOpenBatchPool}
+                onClick={() => {
+                  const updated: PurchaseOrderNota = {
+                    ...formData,
+                    approvedBy: signerName,
+                  };
+                  onSaveNota(updated);
+                  onOpenBatchPool();
+                }}
                 className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
                 title="Buka antrean pool cetak gabungan"
               >
@@ -897,6 +921,17 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
               <Save className="w-3.5 h-3.5" />
               <span>Simpan</span>
             </button>
+            {onDeleteNota && (
+              <button
+                type="button"
+                onClick={() => onDeleteNota(formData)}
+                className="px-3 py-1.5 rounded-lg border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-semibold hover:border-rose-300 transition-colors cursor-pointer flex items-center gap-1.5"
+                title="Hapus Nota PO ini dari sistem"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>Hapus PO</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handlePrint}

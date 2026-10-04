@@ -66,8 +66,8 @@ export const INITIAL_USERS: User[] = [
   },
   {
     id: 'USR-002',
-    name: 'Dr. Siti Rahma',
-    email: 'siti.kasppg@sppg.id',
+    name: 'Rizky Iman Ramdhan, S.Pd',
+    email: 'rizky.kasppg@sppg.id',
     role: 'KA_SPPG',
   },
   {
@@ -1303,7 +1303,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     deliveryTerms: 'Pengiriman langsung ke Gudang Utama SPPG Jeru Tumpang sebelum jam 10:00 WIB.',
     createdBy: 'Akmal',
     createdByRole: 'Admin Logistik',
-    approvedBy: 'Dr. Siti Rahma',
+    approvedBy: 'Rizky Iman Ramdhan, S.Pd',
     approvedByRole: 'Kepala SPPG Jeru Tumpang',
     supplierPic: 'Logistik UMKM Tumpang Grosir',
     relatedReceivingId: 'GR-2026-0003',
@@ -1352,7 +1352,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     deliveryTerms: 'Tiba di SPPG maksimal pukul 07:00 WIB untuk persiapan masak pagi.',
     createdBy: 'Akmal',
     createdByRole: 'Admin Logistik',
-    approvedBy: 'Dr. Siti Rahma',
+    approvedBy: 'Rizky Iman Ramdhan, S.Pd',
     approvedByRole: 'Kepala SPPG Jeru Tumpang',
     supplierPic: 'PIC UMKM Ayam Segar FJR',
     relatedReceivingId: 'GR-2026-0004',
@@ -1410,7 +1410,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     deliveryTerms: 'Diantar ke Gudang Sayur SPPG.',
     createdBy: 'Akmal',
     createdByRole: 'Admin Logistik',
-    approvedBy: 'Dr. Siti Rahma',
+    approvedBy: 'Rizky Iman Ramdhan, S.Pd',
     approvedByRole: 'Kepala SPPG Jeru Tumpang',
     supplierPic: "PIC UMKM Luber's Fresh",
     relatedReceivingId: 'GR-2026-0005',
@@ -1456,7 +1456,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     notes: 'Pembelian langsung operasional SPPG dengan kas bon.',
     createdBy: 'Akmal',
     createdByRole: 'Admin Logistik',
-    approvedBy: 'Dr. Siti Rahma',
+    approvedBy: 'Rizky Iman Ramdhan, S.Pd',
     approvedByRole: 'Kepala SPPG Jeru Tumpang',
     supplierPic: 'Pak Syamsul (Toko Barokah)',
     relatedExpenseIds: ['NFE-2026-003', 'NFE-2026-004'],
@@ -1626,20 +1626,22 @@ class WarehouseDatabase {
 
     this.purchaseOrders = getStored<PurchaseOrderNota[]>(STORAGE_KEYS.PURCHASE_ORDERS, isTransactionsCleared ? [] : INITIAL_PURCHASE_ORDERS);
     
-    // Auto-migrate legacy PO numbers (PO/SPPG-JT/...) to official BGN format (NO. NP/SPPG/134/IX/2026 dst)
+    // Auto-migrate legacy PO numbers and ensure Ka SPPG is Rizky
     let poNeedsMigration = false;
     this.purchaseOrders = this.purchaseOrders.map((po, idx) => {
-      if (!po.poNumber || po.poNumber.startsWith('PO/SPPG-JT/') || !po.poNumber.includes('NP/SPPG')) {
+      let updatedPo = { ...po };
+      if (!updatedPo.poNumber || updatedPo.poNumber.startsWith('PO/SPPG-JT/') || !updatedPo.poNumber.includes('NP/SPPG')) {
         poNeedsMigration = true;
         const seq = 134 + idx;
-        const roman = getRomanMonth(po.date || '2026-09-28');
-        const yr = getYearFromDate(po.date || '2026-09-28');
-        return {
-          ...po,
-          poNumber: `NO. NP/SPPG/${seq}/${roman}/${yr}`,
-        };
+        const roman = getRomanMonth(updatedPo.date || '2026-09-28');
+        const yr = getYearFromDate(updatedPo.date || '2026-09-28');
+        updatedPo.poNumber = `NO. NP/SPPG/${seq}/${roman}/${yr}`;
       }
-      return po;
+      if (!updatedPo.approvedBy || updatedPo.approvedBy.includes('Siti Rahma')) {
+        poNeedsMigration = true;
+        updatedPo.approvedBy = 'Rizky Iman Ramdhan, S.Pd';
+      }
+      return updatedPo;
     });
     if (poNeedsMigration) {
       setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
@@ -2450,11 +2452,23 @@ class WarehouseDatabase {
 
   // --- PURCHASE ORDERS / NOTA PESANAN ---
   public getPurchaseOrders(): PurchaseOrderNota[] {
-    return [...this.purchaseOrders].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return [...this.purchaseOrders]
+      .map(po => {
+        if (!po.approvedBy || po.approvedBy.includes('Siti Rahma')) {
+          return { ...po, approvedBy: 'Rizky Iman Ramdhan, S.Pd' };
+        }
+        return po;
+      })
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }
 
   public getPurchaseOrderById(id: string): PurchaseOrderNota | undefined {
-    return this.purchaseOrders.find(po => po.id === id || po.poNumber === id);
+    const po = this.purchaseOrders.find(p => p.id === id || p.poNumber === id);
+    if (!po) return undefined;
+    if (!po.approvedBy || po.approvedBy.includes('Siti Rahma')) {
+      return { ...po, approvedBy: 'Rizky Iman Ramdhan, S.Pd' };
+    }
+    return po;
   }
 
   public savePurchaseOrder(order: PurchaseOrderNota, user?: User): PurchaseOrderNota {

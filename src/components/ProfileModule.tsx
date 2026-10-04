@@ -1048,7 +1048,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
                 <div className="h-16 flex items-end justify-center">
                   <div className="border-b border-slate-400 w-44"></div>
                 </div>
-                <p className="text-xs font-bold text-slate-800 mt-1">Dr. Siti Rahma, M.Gizi</p>
+                <p className="text-xs font-bold text-slate-800 mt-1">Rizky Iman Ramdhan, S.Pd</p>
                 <p className="text-[11px] text-slate-500">NIP / ID: SPPG-KA-2026-001</p>
               </div>
             </div>
