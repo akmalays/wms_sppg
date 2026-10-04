@@ -7,7 +7,11 @@ import {
   MenuIngredientReq,
   MenuPoArrivalItem,
   SchoolBeneficiaryAllocation,
+  PurchaseOrderNota,
+  PurchaseOrderItem,
 } from '../types/warehouse';
+import { generateNextPoNumber } from '../utils/poNumberGenerator';
+import { angkaTerbilang } from './ToolsPrintModule';
 import {
   UtensilsCrossed,
   Plus,
@@ -795,6 +799,150 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     setIsPoModalOpen(true);
   };
 
+  const masterSuppliers = useMemo(() => {
+    try {
+      return warehouseDb.getSuppliers();
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const handleSaveAndGenerateOfficialPo = () => {
+    if (!selectedPoOrderId) {
+      alert('Pilih menu tujuan untuk PO ini.');
+      return;
+    }
+
+    const targetOrder = orders.find(o => o.id === selectedPoOrderId);
+    if (!targetOrder) {
+      alert('Order menu tidak ditemukan.');
+      return;
+    }
+
+    try {
+      const validItems: MenuPoArrivalItem[] = poFormRows
+        .filter(r => r.itemName.trim())
+        .map(r => {
+          const estimatedCost = parseNumericQuantity(r.qtyArrived || r.qtyOrder) * estimatePrice(r.itemName);
+          return {
+            category: r.category.trim(),
+            itemName: r.itemName.trim(),
+            qtyOrder: r.qtyOrder.trim(),
+            qtyArrived: r.qtyArrived.trim(),
+            supplier: r.supplier.trim() || 'Pemasok Rekanan',
+            arrivalTime: r.arrivalTime.trim() || '-',
+            pic: r.pic.trim() || currentUser.name,
+            totalCost: estimatedCost,
+            notes: r.notes || '',
+          };
+        });
+
+      if (validItems.length === 0) {
+        alert('Tambahkan minimal 1 item bahan untuk membuat PO.');
+        return;
+      }
+
+      // 1. Simpan ke data Menu Order lokal
+      const updatedOrder: MenuOrder = {
+        ...targetOrder,
+        poDate: poFormDate.trim() || targetOrder.poDate,
+        poArrivalItems: validItems,
+      };
+
+      warehouseDb.saveMenuOrder(updatedOrder, currentUser, false);
+
+      // 2. Kelompokkan bahan berdasarkan nama Supplier untuk dibuatkan PO resmi
+      const itemsBySupplier = new Map<string, MenuPoArrivalItem[]>();
+      validItems.forEach(item => {
+        const suppName = item.supplier || 'Pemasok Rekanan';
+        if (!itemsBySupplier.has(suppName)) {
+          itemsBySupplier.set(suppName, []);
+        }
+        itemsBySupplier.get(suppName)!.push(item);
+      });
+
+      const existingPOs = warehouseDb.getPurchaseOrders();
+      const generatedPos: PurchaseOrderNota[] = [];
+      const poTargetDate = targetOrder.date || new Date().toISOString().slice(0, 10);
+      let currentSeqList = [...existingPOs];
+
+      itemsBySupplier.forEach((supplierItems, supplierName) => {
+        const suppObj = masterSuppliers.find(
+          s => s.name.toLowerCase() === supplierName.toLowerCase() ||
+               supplierName.toLowerCase().includes(s.name.toLowerCase()) ||
+               s.name.toLowerCase().includes(supplierName.toLowerCase())
+        );
+
+        const nextPoNum = generateNextPoNumber(currentSeqList, poTargetDate);
+
+        const poItems: PurchaseOrderItem[] = supplierItems.map((sItem, sIdx) => {
+          const numQty = parseNumericQuantity(sItem.qtyOrder || sItem.qtyArrived) || 1;
+          const unitPrice = estimatePrice(sItem.itemName);
+          const subtotal = sItem.totalCost && sItem.totalCost > 0 ? sItem.totalCost : Math.round(numQty * unitPrice);
+
+          const unitMatch = (sItem.qtyOrder || sItem.qtyArrived || '').match(/[a-zA-Z]+/g);
+          const unitStr = unitMatch ? unitMatch.join(' ') : 'Kg';
+
+          return {
+            id: `POI-${Date.now()}-${sIdx}`,
+            name: sItem.itemName,
+            category: sItem.category || 'Bahan Makanan',
+            quantity: numQty,
+            unit: unitStr || 'Kg',
+            unitPrice: unitPrice,
+            subtotal: subtotal,
+            notes: sItem.notes || (sItem.arrivalTime ? `Estimasi tiba: ${sItem.arrivalTime}` : undefined),
+          };
+        });
+
+        const grandTotal = poItems.reduce((acc, it) => acc + (it.subtotal || 0), 0);
+
+        const newNota: PurchaseOrderNota = {
+          id: `PO-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          poNumber: nextPoNum,
+          date: poTargetDate,
+          deliveryDate: poTargetDate,
+          supplierId: suppObj?.id,
+          supplierName: suppObj?.name || supplierName,
+          supplierContact: suppObj?.phone ? `${suppObj.phone} (${suppObj.contactPerson || 'PIC'})` : '',
+          supplierAddress: suppObj?.address || 'Malang, Jawa Timur',
+          paymentMethod: 'TRANSFER',
+          bankInfo: suppObj ? `Transfer Bank Rekening Resmi ${suppObj.name}` : '',
+          status: 'DISETUJUI',
+          items: poItems,
+          subtotal: grandTotal,
+          discount: 0,
+          tax: 0,
+          grandTotal: grandTotal,
+          terbilang: angkaTerbilang(grandTotal),
+          notes: `PO dibuat otomatis dari Perencanaan Menu: ${targetOrder.menuTitle} (${targetOrder.targetPortions} porsi).`,
+          deliveryTerms: 'Pengiriman langsung ke Satuan Pelayanan Pemenuhan Gizi (SPPG) Jeru Tumpang (Jam 12.00-15.00).',
+          createdBy: currentUser.name,
+          createdByRole: currentUser.role === 'ADMIN' ? 'Admin Logistik' : currentUser.role,
+          approvedBy: 'Rizky Iman Ramdhan, S.Pd',
+          approvedByRole: 'Kepala SPPG Jeru Tumpang',
+          supplierPic: suppObj?.contactPerson || 'Pihak Rekanan',
+          createdAt: new Date().toISOString(),
+        };
+
+        warehouseDb.savePurchaseOrder(newNota, currentUser);
+        generatedPos.push(newNota);
+        currentSeqList.push(newNota);
+      });
+
+      refreshOrders();
+      setIsPoModalOpen(false);
+
+      const supplierNames = Array.from(itemsBySupplier.keys()).join(', ');
+      setSuccessNotice(
+        `Sukses! Berhasil generate ${generatedPos.length} Draft Nota PO Resmi untuk: ${supplierNames}. Data otomatis tersinkron ke modul "Input Barang & Belanja".`
+      );
+      setTimeout(() => setSuccessNotice(''), 7000);
+    } catch (err: any) {
+      alert(err.message || 'Gagal generate Draft PO.');
+    }
+  };
+
   const handleApplyPoTemplate = () => {
     setPoFormRows(STANDARD_PO_TEMPLATES.map(t => ({ ...t, notes: '' })));
   };
@@ -1560,7 +1708,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                         <button
                           type="button"
                           onClick={() => handleDeleteOrder(order.id, order.menuTitle)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-500 hover:text-rose-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                           title="Hapus order menu & PO ini"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -2264,26 +2412,27 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
               <div className="border border-slate-200 rounded-xl overflow-hidden flex-1 flex flex-col min-h-0">
                 <div className="overflow-x-auto overflow-y-auto flex-1">
                   <table className="w-full text-left">
-                    <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200 sticky top-0 z-10">
+                    <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200 sticky top-0 z-10 text-[11px]">
                       <tr>
-                        <th className="py-2 px-2 w-8 text-center">No</th>
-                        <th className="py-2 px-2.5 w-32">Kategori</th>
-                        <th className="py-2 px-2.5">Nama Bahan / Barang</th>
-                        <th className="py-2 px-2.5 w-24">Qty PO (H-1)</th>
-                        <th className="py-2 px-2.5 w-32 font-bold text-emerald-900">Datang & Timbang</th>
-                        <th className="py-2 px-2.5 w-32">Pemasok / Supplier</th>
-                        <th className="py-2 px-2 w-20 text-center">Jam Tiba</th>
+                        <th className="py-2 px-2 w-7 text-center">No</th>
+                        <th className="py-2 px-2 w-28">Kategori</th>
+                        <th className="py-2 px-2">Nama Bahan / Barang</th>
+                        <th className="py-2 px-2 w-20">Qty PO (H-1)</th>
+                        <th className="py-2 px-2 w-24 font-bold text-emerald-900">Datang & Timbang</th>
+                        <th className="py-2 px-2 w-40">Pemasok / Supplier</th>
+                        <th className="py-2 px-2 w-16 text-center">Jam Tiba</th>
+                        <th className="py-2 px-2 w-36">Catatan Khusus</th>
                         <th className="py-2 px-2 w-20">PIC</th>
-                        <th className="py-2 px-2 w-8 text-center"></th>
+                        <th className="py-2 px-2 w-7 text-center"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {poFormRows.map((row, rIdx) => (
                         <tr key={rIdx} className="hover:bg-slate-50">
-                          <td className="py-2 px-2 text-center text-slate-400 font-mono text-[11px]">
+                          <td className="py-1.5 px-2 text-center text-slate-400 font-mono text-[11px]">
                             {rIdx + 1}
                           </td>
-                          <td className="py-2 px-2.5">
+                          <td className="py-1.5 px-2">
                             <select
                               value={row.category}
                               onChange={e => {
@@ -2303,7 +2452,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                               <option value="Lain-lain">Lain-lain</option>
                             </select>
                           </td>
-                          <td className="py-2 px-2.5">
+                          <td className="py-1.5 px-2">
                             <input
                               type="text"
                               required
@@ -2314,10 +2463,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                                 updated[rIdx].itemName = e.target.value;
                                 setPoFormRows(updated);
                               }}
-                              className="w-full p-1 rounded border border-slate-200 font-semibold"
+                              className="w-full p-1 rounded border border-slate-200 font-semibold text-xs"
                             />
                           </td>
-                          <td className="py-2 px-2.5">
+                          <td className="py-1.5 px-2">
                             <input
                               type="text"
                               placeholder="260 kg"
@@ -2327,10 +2476,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                                 updated[rIdx].qtyOrder = e.target.value;
                                 setPoFormRows(updated);
                               }}
-                              className="w-full p-1 font-mono rounded border border-slate-200 text-right"
+                              className="w-full p-1 font-mono rounded border border-slate-200 text-right text-xs"
                             />
                           </td>
-                          <td className="py-2 px-2.5">
+                          <td className="py-1.5 px-2">
                             <input
                               type="text"
                               placeholder="260 kg"
@@ -2340,23 +2489,26 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                                 updated[rIdx].qtyArrived = e.target.value;
                                 setPoFormRows(updated);
                               }}
-                              className="w-full p-1 font-mono font-bold text-emerald-900 rounded border border-emerald-300 text-right bg-emerald-50/50"
+                              className="w-full p-1 font-mono font-bold text-emerald-900 rounded border border-emerald-300 text-right bg-emerald-50/50 text-xs"
                             />
                           </td>
-                          <td className="py-2 px-2.5">
-                            <input
-                              type="text"
-                              placeholder="Supplier"
-                              value={row.supplier}
-                              onChange={e => {
-                                const updated = [...poFormRows];
-                                updated[rIdx].supplier = e.target.value;
-                                setPoFormRows(updated);
-                              }}
-                              className="w-full p-1 rounded border border-slate-200 text-[11px]"
-                            />
+                          <td className="py-1.5 px-2">
+                            <div className="relative">
+                              <input
+                                type="text"
+                                list="master-supplier-datalist"
+                                placeholder="Pilih / ketik supplier..."
+                                value={row.supplier}
+                                onChange={e => {
+                                  const updated = [...poFormRows];
+                                  updated[rIdx].supplier = e.target.value;
+                                  setPoFormRows(updated);
+                                }}
+                                className="w-full p-1 rounded border border-slate-300 bg-white text-[11px] focus:ring-1 focus:ring-emerald-500"
+                              />
+                            </div>
                           </td>
-                          <td className="py-2 px-2 text-center">
+                          <td className="py-1.5 px-2 text-center">
                             <input
                               type="text"
                               placeholder="08.30"
@@ -2369,7 +2521,20 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                               className="w-full p-1 font-mono rounded border border-slate-200 text-center text-[11px]"
                             />
                           </td>
-                          <td className="py-2 px-2">
+                          <td className="py-1.5 px-2">
+                            <input
+                              type="text"
+                              placeholder="Catatan / kondisi bahan..."
+                              value={row.notes || ''}
+                              onChange={e => {
+                                const updated = [...poFormRows];
+                                updated[rIdx].notes = e.target.value;
+                                setPoFormRows(updated);
+                              }}
+                              className="w-full p-1 rounded border border-slate-200 text-[11px] text-slate-700 placeholder-slate-400"
+                            />
+                          </td>
+                          <td className="py-1.5 px-2">
                             <input
                               type="text"
                               placeholder="Akmal"
@@ -2382,7 +2547,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                               className="w-full p-1 rounded border border-slate-200 text-[11px]"
                             />
                           </td>
-                          <td className="py-2 px-2 text-center">
+                          <td className="py-1.5 px-2 text-center">
                             <button
                               type="button"
                               disabled={poFormRows.length === 1}
@@ -2400,6 +2565,13 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       ))}
                     </tbody>
                   </table>
+                  <datalist id="master-supplier-datalist">
+                    {masterSuppliers.map(s => (
+                      <option key={s.id} value={s.name}>
+                        {s.name} ({s.supplyCategory || 'Pemasok Rekanan'})
+                      </option>
+                    ))}
+                  </datalist>
                 </div>
 
                 <div className="p-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
@@ -2433,21 +2605,36 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsPoModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold rounded-lg bg-blue-700 hover:bg-blue-800 text-white shadow-xs transition-colors cursor-pointer"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Simpan Data PO & Timbangan</span>
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200 shrink-0">
+                <div className="text-[11px] text-slate-500 max-w-sm">
+                  💡 Gunakan tombol <strong className="text-emerald-700 font-semibold">Generate PO Resmi ke Belanja</strong> agar nota PO BGN otomatis terbit di menu belanja tanpa perlu input ulang.
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsPoModalOpen(false)}
+                    className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs transition-colors cursor-pointer"
+                    title="Hanya simpan di catatan menu harian tanpa membuat PO di belanja"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Simpan di Menu Saja</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveAndGenerateOfficialPo}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-all cursor-pointer active:scale-95"
+                    title="Simpan menu dan otomatis buat draft PO resmi ke menu Input Barang & Belanja"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Generate PO Resmi ke Belanja</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>

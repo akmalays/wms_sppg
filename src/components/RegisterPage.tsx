@@ -133,7 +133,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
               className="w-12 h-12 object-contain shrink-0 rounded-lg p-1 bg-white/5 border border-white/10"
             />
             <div>
-              <div className="text-[11px] font-semibold text-emerald-400 tracking-wide">
+              <div className="text-[11px] font-semibold text-emerald-400">
                 Badan Gizi Nasional RI
               </div>
               <div className="text-sm font-bold text-white tracking-tight">

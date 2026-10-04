@@ -262,7 +262,7 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
         <div className="mt-4 pt-3 border-t border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2.5">
             <div className={`p-1.5 rounded-lg shrink-0 ${overdueTasks.length > 0 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}`}>
-              <Bell className="w-4 h-4 animate-bounce" />
+              <Bell className="w-4 h-4" />
             </div>
             <div>
               <span className="font-semibold text-white">

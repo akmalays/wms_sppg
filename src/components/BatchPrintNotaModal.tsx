@@ -146,7 +146,10 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
   const sheetsSaved = Math.max(0, poolNotas.length - totalSheetsNeeded);
 
   const handlePrintAll = () => {
-    window.print();
+    setActiveTab('PREVIEW');
+    setTimeout(() => {
+      window.print();
+    }, 100);
   };
 
   const handleAddSelected = () => {
@@ -190,10 +193,10 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
         : nota.approvedBy;
 
     return (
-      <div className="nota-compact-card bg-white text-black p-4 sm:p-5 font-sans flex flex-col justify-between rounded-lg border border-slate-200 print:border-none print:p-0">
+      <div className="nota-compact-card bg-white text-black p-3 sm:p-4 font-sans flex flex-col justify-between rounded-lg border border-slate-200 print:border-none print:p-0">
         <div>
-          {/* Header Penanda Posisi */}
-          <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-200 text-[10px] text-slate-500">
+          {/* Header Penanda Posisi (Hanya di Layar, tidak dicetak) */}
+          <div className="no-print flex items-center justify-between pb-1 mb-1.5 border-b border-slate-200 text-[10px] text-slate-500">
             <span className="font-semibold text-slate-700 tracking-tight">
               {positionLabel} • {nota.supplierName}
             </span>
@@ -205,7 +208,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
                 <button
                   type="button"
                   onClick={() => onOpenSingleNota(nota)}
-                  className="no-print text-sky-600 hover:text-sky-800 text-[10px] font-medium flex items-center gap-0.5 cursor-pointer ml-1"
+                  className="text-sky-600 hover:text-sky-800 text-[10px] font-medium flex items-center gap-0.5 cursor-pointer ml-1"
                   title="Lihat / Edit Dokumen Ini Sendiri"
                 >
                   <span>Edit</span>
@@ -216,33 +219,33 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
           </div>
 
           {/* 1. KOP SURAT RESMI BADAN GIZI NASIONAL */}
-          <div className="flex items-center gap-3 pb-1.5 border-b-2 border-black">
+          <div className="flex items-center gap-2.5 pb-1 border-b-2 border-black">
             <div className="shrink-0">
               <img
                 src={logoSppgImg}
                 alt="Logo Badan Gizi Nasional"
-                className="w-11 h-11 sm:w-13 sm:h-13 object-contain"
+                className="w-10 h-10 object-contain"
               />
             </div>
-            <div className="flex-1 text-center pr-8 sm:pr-10">
-              <h1 className="text-xs sm:text-sm font-bold text-black tracking-normal leading-tight">
+            <div className="flex-1 text-center pr-6">
+              <h1 className="text-xs font-bold text-black tracking-normal leading-tight">
                 BADAN GIZI NASIONAL
               </h1>
-              <p className="text-[9.5px] sm:text-[10px] text-black leading-snug mt-0.5">
-                Jl. Kebon Sirih No.1, RT.01/RW.07, Kb. Dirih, Kec. Menteng,
+              <p className="text-[9px] text-black leading-tight mt-0.5">
+                Jl. Kebon Sirih No.1, RT.01/RW.07, Kb. Sirih, Kec. Menteng,
               </p>
-              <p className="text-[9.5px] sm:text-[10px] text-black leading-snug">
+              <p className="text-[9px] text-black leading-tight">
                 Kota Jakarta Pusat, Daerah Khusus Ibukota Jakarta 10340
               </p>
             </div>
           </div>
 
           {/* 2. JUDUL DOKUMEN & NOMOR PO */}
-          <div className="text-center my-2">
-            <h2 className="text-[11px] sm:text-xs font-bold text-black uppercase tracking-normal">
+          <div className="text-center my-1">
+            <h2 className="text-[10.5px] font-bold text-black uppercase tracking-normal">
               NOTA PESANAN BAHAN MAKANAN DAN OPERASIONAL
             </h2>
-            <div className="text-[11px] font-semibold text-black mt-0.5 flex items-center justify-center gap-1">
+            <div className="text-[10px] font-semibold text-black mt-0.5 flex items-center justify-center gap-1">
               {!nota.poNumber?.trim().toUpperCase().startsWith('NO.') && <span>NO.</span>}
               <span className="font-bold text-black font-mono">
                 {nota.poNumber}
@@ -251,25 +254,25 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
           </div>
 
           {/* 3. METADATA HEADER */}
-          <div className="my-2 text-[11px] space-y-0.5 text-black font-normal">
+          <div className="my-1 text-[10px] space-y-0.5 text-black font-normal">
             <div className="flex items-center">
-              <span className="w-20 shrink-0 font-medium">Dari</span>
-              <span className="w-3 text-center">:</span>
+              <span className="w-16 shrink-0 font-medium">Dari</span>
+              <span className="w-2.5 text-center">:</span>
               <span className="font-semibold text-black">SPPG MALANG TUMPANG JERU</span>
             </div>
             <div className="flex items-center">
-              <span className="w-20 shrink-0 font-medium">Kepada</span>
-              <span className="w-3 text-center">:</span>
+              <span className="w-16 shrink-0 font-medium">Kepada</span>
+              <span className="w-2.5 text-center">:</span>
               <span className="font-semibold text-black">{nota.supplierName || 'Pihak Rekanan'}</span>
             </div>
             <div className="flex items-center">
-              <span className="w-20 shrink-0 font-medium">Alamat</span>
-              <span className="w-3 text-center">:</span>
+              <span className="w-16 shrink-0 font-medium">Alamat</span>
+              <span className="w-2.5 text-center">:</span>
               <span className="text-black truncate">{displayAddress}</span>
             </div>
             <div className="flex items-center">
-              <span className="w-20 shrink-0 font-medium">Pengiriman</span>
-              <span className="w-3 text-center">:</span>
+              <span className="w-16 shrink-0 font-medium">Pengiriman</span>
+              <span className="w-2.5 text-center">:</span>
               <span className="font-medium text-black">
                 {displayDeliveryDate} (Jam 12.00-15.00)
               </span>
@@ -277,18 +280,18 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
           </div>
 
           {/* 4. TABEL RINCIAN BARANG */}
-          <div className="my-2">
-            <table className="w-full text-[10.5px] border-collapse border border-black table-po-print">
+          <div className="my-1">
+            <table className="w-full text-[9px] border-collapse border border-black table-po-print">
               <thead>
                 <tr className="bg-[#5b9bd5] text-black font-bold border-b border-black table-header-bgn">
-                  <th className="border border-black py-1 px-1.5 w-8 text-center">No</th>
-                  <th className="border border-black py-1 px-2.5 text-center">Uraian Jenis Bahan Makanan</th>
-                  <th className="border border-black py-1 px-2 w-24 text-center leading-tight">
+                  <th className="border border-black py-0.5 px-1 w-7 text-center">No</th>
+                  <th className="border border-black py-0.5 px-2 text-center">Uraian Jenis Bahan Makanan</th>
+                  <th className="border border-black py-0.5 px-1.5 w-20 text-center leading-tight">
                     Banyaknya<br />(Angka)
                   </th>
-                  <th className="border border-black py-1 px-1.5 w-14 text-center">Satuan</th>
-                  <th className="border border-black py-1 px-2 w-24 text-center">Harga</th>
-                  <th className="border border-black py-1 px-2 w-28 text-center">Jumlah</th>
+                  <th className="border border-black py-0.5 px-1 w-12 text-center">Satuan</th>
+                  <th className="border border-black py-0.5 px-1.5 w-20 text-center">Harga</th>
+                  <th className="border border-black py-0.5 px-1.5 w-24 text-center">Jumlah</th>
                 </tr>
               </thead>
               <tbody>
@@ -297,17 +300,17 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
                   const hasTotal = lineTotal && lineTotal > 0;
                   return (
                     <tr key={it.id || idx}>
-                      <td className="border border-black py-1 px-1.5 text-center font-normal">{idx + 1}</td>
-                      <td className="border border-black py-1 px-2.5 text-left font-normal">{it.name}</td>
-                      <td className="border border-black py-1 px-1.5 text-center font-normal">{it.quantity}</td>
-                      <td className="border border-black py-1 px-1.5 text-center font-normal">{it.unit}</td>
-                      <td className="border border-black py-1 px-2 text-right tabular-nums font-normal">
+                      <td className="border border-black py-0.5 px-1 text-center font-normal">{idx + 1}</td>
+                      <td className="border border-black py-0.5 px-2 text-left font-normal">{it.name}</td>
+                      <td className="border border-black py-0.5 px-1 text-center font-normal">{it.quantity}</td>
+                      <td className="border border-black py-0.5 px-1 text-center font-normal">{it.unit}</td>
+                      <td className="border border-black py-0.5 px-1.5 text-right tabular-nums font-normal">
                         <div className="flex items-center justify-between">
                           <span>Rp</span>
                           <span>{it.unitPrice > 0 ? it.unitPrice.toLocaleString('id-ID') : '-'}</span>
                         </div>
                       </td>
-                      <td className="border border-black py-1 px-2 text-right tabular-nums font-normal">
+                      <td className="border border-black py-0.5 px-1.5 text-right tabular-nums font-normal">
                         <div className="flex items-center justify-between">
                           <span>Rp</span>
                           <span>{hasTotal ? lineTotal.toLocaleString('id-ID') : '-'}</span>
@@ -319,9 +322,9 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
 
                 {/* BARIS TOTAL */}
                 <tr className="border-t border-black font-bold">
-                  <td colSpan={4} className="border border-black py-1 px-2 text-center font-bold">TOTAL</td>
-                  <td className="border border-black py-1 px-2 text-left font-bold">Rp</td>
-                  <td className="border border-black py-1 px-2 text-right font-bold tabular-nums">
+                  <td colSpan={4} className="border border-black py-0.5 px-1.5 text-center font-bold">TOTAL</td>
+                  <td className="border border-black py-0.5 px-1.5 text-left font-bold">Rp</td>
+                  <td className="border border-black py-0.5 px-1.5 text-right font-bold tabular-nums">
                     {grandTotalValue > 0 ? `${grandTotalValue.toLocaleString('id-ID')} -` : '-'}
                   </td>
                 </tr>
@@ -330,8 +333,8 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
           </div>
 
           {/* 5. BAGIAN BAWAH: CATATAN & TTD */}
-          <div className="grid grid-cols-12 gap-3 mt-1 pt-0.5 text-[10px] text-black">
-            <div className="col-span-7 flex items-start gap-1 leading-snug text-[9.5px]">
+          <div className="grid grid-cols-12 gap-2 mt-0.5 text-[9px] text-black">
+            <div className="col-span-7 flex items-start gap-1 leading-tight text-[8.5px]">
               <span className="font-bold shrink-0">Catatan</span>
               <span className="font-bold shrink-0">:</span>
               <div className="space-y-0.5 text-black">
@@ -345,21 +348,21 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
             </div>
 
             <div className="col-span-5 text-center flex flex-col items-center justify-start">
-              <div className="text-[10px] font-medium text-black">
+              <div className="text-[9px] font-medium text-black">
                 Malang, {displaySignDate}
               </div>
-              <div className="font-bold text-black mt-0.5 leading-tight text-[10px]">
+              <div className="font-bold text-black mt-0.5 leading-tight text-[9px]">
                 <div>Kepala Satuan Pelayanan</div>
                 <div>Pemenuhan Gizi</div>
               </div>
-              <div className="my-0.5 h-11 sm:h-12 flex items-center justify-center">
+              <div className="my-0.5 h-9 sm:h-10 flex items-center justify-center">
                 <img
                   src={ttdRizkyImg}
                   alt="Tanda Tangan Rizky"
-                  className="h-11 sm:h-12 w-auto object-contain"
+                  className="h-9 sm:h-10 w-auto object-contain"
                 />
               </div>
-              <div className="mt-0.5 font-bold text-black underline underline-offset-2 text-[11px]">
+              <div className="mt-0.5 font-bold text-black underline underline-offset-2 text-[10px]">
                 {displaySignerName}
               </div>
             </div>
@@ -394,10 +397,11 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
             visibility: visible !important;
           }
           #print-batch-pool {
-            position: static !important;
-            display: block !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
             width: 100% !important;
-            max-width: 100% !important;
+            display: block !important;
             padding: 0 !important;
             margin: 0 !important;
             box-shadow: none !important;
@@ -405,34 +409,24 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
             background: #ffffff !important;
             color: #000000 !important;
           }
-          /* Reset modal overlay wrappers so Chromium print engine doesn't clip multi-page or bottom card */
-          .fixed, .overflow-y-auto, .overflow-hidden {
-            position: static !important;
-            overflow: visible !important;
-            height: auto !important;
-            max-height: none !important;
-            width: 100% !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            border: none !important;
-            box-shadow: none !important;
-            background: transparent !important;
-          }
           .batch-a4-page {
             box-sizing: border-box !important;
             width: 100% !important;
-            height: 285mm !important;
-            max-height: 285mm !important;
+            min-height: 275mm !important;
+            max-height: 282mm !important;
             page-break-after: always !important;
             break-after: page !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
             display: flex !important;
             flex-direction: column !important;
             justify-content: space-between !important;
-            padding: 1.5mm 0 !important;
-            margin: 0 auto !important;
-            overflow: hidden !important;
+            padding: 1mm 0 !important;
+            margin: 0 !important;
             border: none !important;
             box-shadow: none !important;
+            background: #ffffff !important;
+            overflow: hidden !important;
           }
           .batch-a4-page:last-child {
             page-break-after: auto !important;
@@ -440,9 +434,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
           }
           .nota-compact-card {
             box-sizing: border-box !important;
-            max-height: 136mm !important;
-            height: auto !important;
-            overflow: hidden !important;
+            max-height: 137mm !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             display: flex !important;
@@ -452,11 +444,15 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
             box-shadow: none !important;
             padding: 0 !important;
             margin: 0 !important;
+            background: #ffffff !important;
+            overflow: hidden !important;
           }
           .cut-line-print {
-            margin: 2mm 0 !important;
+            margin: 1.5mm 0 !important;
             padding: 0 !important;
             height: 4mm !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
           .no-print {
             display: none !important;
@@ -466,9 +462,9 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
             width: 100% !important;
           }
           .table-po-print th, .table-po-print td {
-            border: 1.5px solid #000000 !important;
+            border: 1px solid #000000 !important;
             padding: 1.5px 3px !important;
-            font-size: 8.5px !important;
+            font-size: 8px !important;
             line-height: 1.15 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -542,7 +538,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
               <button
                 type="button"
                 onClick={onClearPool}
-                className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:text-rose-600 hover:bg-rose-50 text-xs font-medium transition-colors cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:text-rose-700 hover:border-rose-300 hover:bg-slate-100 text-xs font-medium transition-colors cursor-pointer"
                 title="Kosongkan semua nota dari antrean cetak"
               >
                 Kosongkan Pool
@@ -665,144 +661,153 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
                 </p>
               )}
             </div>
-          ) : activeTab === 'LIST' ? (
-            /* Tab Tampilan Daftar Antrean */
-            <div className="max-w-3xl w-full bg-white rounded-2xl p-5 border border-slate-200 shadow-xs h-fit space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-800">
-                    Daftar Nota dalam Antrean ({poolNotas.length} Nota)
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Urutan nota yang akan digabungkan berpasangan saat dicetak ke kertas A4
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('PREVIEW')}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1.5"
-                >
-                  <span>Lihat Pratinjau Kertas</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
+          ) : (
+            <>
+              {/* Tab Tampilan Daftar Antrean */}
+              {activeTab === 'LIST' && (
+                <div className="max-w-3xl w-full bg-white rounded-2xl p-5 border border-slate-200 shadow-xs h-fit space-y-4 no-print">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800">
+                        Daftar Nota dalam Antrean ({poolNotas.length} Nota)
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Urutan nota yang akan digabungkan berpasangan saat dicetak ke kertas A4
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('PREVIEW')}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1.5"
+                    >
+                      <span>Lihat Pratinjau Kertas</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
 
-              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-                {poolNotas.map((n, idx) => {
-                  const sheetNum = Math.floor(idx / 2) + 1;
-                  const posInSheet = idx % 2 === 0 ? 'Bagian Atas' : 'Bagian Bawah';
+                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                    {poolNotas.map((n, idx) => {
+                      const sheetNum = Math.floor(idx / 2) + 1;
+                      const posInSheet = idx % 2 === 0 ? 'Bagian Atas' : 'Bagian Bawah';
+
+                      return (
+                        <div
+                          key={n.id}
+                          className="p-3.5 flex items-center justify-between hover:bg-slate-50/80 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs flex items-center justify-center border border-emerald-200">
+                              {idx + 1}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-900 font-mono text-xs">
+                                  {n.poNumber}
+                                </span>
+                                <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                  Kertas #{sheetNum} ({posInSheet})
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-600 mt-0.5">
+                                <span className="font-semibold text-slate-800">{n.supplierName}</span> •{' '}
+                                <span>{formatDateIndonesian(n.date)}</span> •{' '}
+                                <span className="font-mono font-semibold text-emerald-700">
+                                  Rp {n.grandTotal.toLocaleString('id-ID')}
+                                </span>{' '}
+                                ({n.items.length} item)
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {onOpenSingleNota && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenSingleNota(n)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-sky-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                                title="Buka / Edit Nota"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => onRemoveFromPool(n.id)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                              title="Hapus dari antrean pool"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Tab Tampilan Pratinjau Kertas A4 (Pair Layout) - Always available for print */}
+              <div
+                id="print-batch-pool"
+                className={`max-w-[850px] w-full ${
+                  activeTab === 'PREVIEW' ? 'flex flex-col gap-6' : 'hidden print:flex flex-col gap-6'
+                }`}
+              >
+                {pairedPages.map((pagePair, pageIdx) => {
+                  const [topNota, bottomNota] = pagePair;
+                  const pageNumber = pageIdx + 1;
 
                   return (
                     <div
-                      key={n.id}
-                      className="p-3.5 flex items-center justify-between hover:bg-slate-50/80 transition-colors"
+                      key={`page-${pageIdx}`}
+                      className="batch-a4-page bg-white p-4 sm:p-6 rounded-xl shadow-md border border-slate-300 flex flex-col justify-between"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs flex items-center justify-center border border-emerald-200">
-                          {idx + 1}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900 font-mono text-xs">
-                              {n.poNumber}
-                            </span>
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                              Kertas #{sheetNum} ({posInSheet})
-                            </span>
-                          </div>
-                          <div className="text-xs text-slate-600 mt-0.5">
-                            <span className="font-semibold text-slate-800">{n.supplierName}</span> •{' '}
-                            <span>{formatDateIndonesian(n.date)}</span> •{' '}
-                            <span className="font-mono font-semibold text-emerald-700">
-                              Rp {n.grandTotal.toLocaleString('id-ID')}
-                            </span>{' '}
-                            ({n.items.length} item)
-                          </div>
-                        </div>
+                      {/* Header Penanda Halaman Fisik A4 di Layar */}
+                      <div className="no-print flex items-center justify-between pb-2 mb-2 border-b border-dashed border-slate-300 text-xs text-slate-500">
+                        <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                          <FileText className="w-4 h-4 text-emerald-600" />
+                          Lembar Kertas A4 #{pageNumber} dari {totalSheetsNeeded}
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          Memuat 2 nota berbeda untuk digunting menjadi ukuran A5
+                        </span>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        {onOpenSingleNota && (
-                          <button
-                            type="button"
-                            onClick={() => onOpenSingleNota(n)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-50 transition-colors cursor-pointer"
-                            title="Buka / Edit Nota"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => onRemoveFromPool(n.id)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                          title="Hapus dari antrean pool"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      {/* 1. NOTA BAGIAN ATAS */}
+                      {renderNotaCard(topNota, `Nota 1 (Bagian Atas Kertas #${pageNumber})`)}
+
+                      {/* GARIS POTONG GUNTING DI TENGAH LEMBAR A4 */}
+                      <div className="py-2 flex items-center justify-center gap-2 text-slate-400 select-none cut-line-print">
+                        <Scissors className="w-3.5 h-3.5 rotate-90 shrink-0 text-slate-500" />
+                        <span className="border-b border-dashed border-slate-400 flex-1" />
+                        <span className="px-2.5 py-0.5 rounded bg-slate-100 border border-slate-300 text-slate-700 text-[9px] font-medium tracking-tight">
+                          Potong di sini (Batas Gunting Kertas A5)
+                        </span>
+                        <span className="border-b border-dashed border-slate-400 flex-1" />
+                        <Scissors className="w-3.5 h-3.5 -rotate-90 shrink-0 text-slate-500" />
                       </div>
+
+                      {/* 2. NOTA BAGIAN BAWAH */}
+                      {bottomNota ? (
+                        renderNotaCard(bottomNota, `Nota 2 (Bagian Bawah Kertas #${pageNumber})`)
+                      ) : (
+                        /* Jika jumlah ganjil, bagian bawah berupa area kosong siap potong */
+                        <div className="p-8 border-2 border-dashed border-slate-200 rounded-lg text-center flex flex-col items-center justify-center min-h-[200px] text-slate-400 no-print">
+                          <Scissors className="w-6 h-6 mb-2 text-slate-300" />
+                          <span className="text-xs font-semibold text-slate-500">
+                            Setengah Kertas Bagian Bawah Kosong
+                          </span>
+                          <span className="text-[11px] text-slate-400 mt-0.5">
+                            Jumlah nota ganjil ({poolNotas.length} nota). Anda dapat memotong kertas A4 ini menjadi A5
+                            atau menambahkan 1 nota lagi ke pool.
+                          </span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
-            </div>
-          ) : (
-            /* Tab Tampilan Pratinjau Kertas A4 (Pair Layout) */
-            <div id="print-batch-pool" className="max-w-[850px] w-full flex flex-col gap-6">
-              {pairedPages.map((pagePair, pageIdx) => {
-                const [topNota, bottomNota] = pagePair;
-                const pageNumber = pageIdx + 1;
-
-                return (
-                  <div
-                    key={`page-${pageIdx}`}
-                    className="batch-a4-page bg-white p-5 sm:p-8 rounded-xl shadow-md border border-slate-300 flex flex-col justify-between"
-                  >
-                    {/* Header Penanda Halaman Fisik A4 di Layar */}
-                    <div className="no-print flex items-center justify-between pb-2 mb-2 border-b border-dashed border-slate-300 text-xs text-slate-500">
-                      <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                        <FileText className="w-4 h-4 text-emerald-600" />
-                        Lembar Kertas A4 #{pageNumber} dari {totalSheetsNeeded}
-                      </span>
-                      <span className="text-[11px] text-slate-400">
-                        Memuat 2 nota berbeda untuk digunting menjadi ukuran A5
-                      </span>
-                    </div>
-
-                    {/* 1. NOTA BAGIAN ATAS */}
-                    {renderNotaCard(topNota, `Nota 1 (Bagian Atas Kertas #${pageNumber})`)}
-
-                    {/* GARIS POTONG GUNTING DI TENGAH LEMBAR A4 */}
-                    <div className="py-2.5 flex items-center justify-center gap-2 text-slate-400 select-none cut-line-print">
-                      <Scissors className="w-3.5 h-3.5 rotate-90 shrink-0 text-slate-500" />
-                      <span className="border-b border-dashed border-slate-400 flex-1" />
-                      <span className="px-2.5 py-0.5 rounded bg-slate-100 border border-slate-300 text-slate-700 text-[9.5px] font-medium tracking-tight">
-                        Potong di sini (Batas Gunting Kertas A5)
-                      </span>
-                      <span className="border-b border-dashed border-slate-400 flex-1" />
-                      <Scissors className="w-3.5 h-3.5 -rotate-90 shrink-0 text-slate-500" />
-                    </div>
-
-                    {/* 2. NOTA BAGIAN BAWAH */}
-                    {bottomNota ? (
-                      renderNotaCard(bottomNota, `Nota 2 (Bagian Bawah Kertas #${pageNumber})`)
-                    ) : (
-                      /* Jika jumlah ganjil, bagian bawah berupa area kosong siap potong */
-                      <div className="p-8 border-2 border-dashed border-slate-200 rounded-lg text-center flex flex-col items-center justify-center min-h-[220px] text-slate-400 no-print">
-                        <Scissors className="w-6 h-6 mb-2 text-slate-300" />
-                        <span className="text-xs font-semibold text-slate-500">
-                          Setengah Kertas Bagian Bawah Kosong
-                        </span>
-                        <span className="text-[11px] text-slate-400 mt-0.5">
-                          Jumlah nota ganjil ({poolNotas.length} nota). Anda dapat memotong kertas A4 ini menjadi A5
-                          atau menambahkan 1 nota lagi ke pool.
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            </>
           )}
         </div>
       </div>

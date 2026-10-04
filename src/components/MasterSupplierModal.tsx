@@ -734,7 +734,7 @@ export const MasterSupplierModal: React.FC<MasterSupplierModalProps> = ({
                       <button
                         type="button"
                         onClick={() => handleOpenEdit(sup)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:text-emerald-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                         title="Edit data rekanan ini"
                       >
                         <Edit2 className="w-3.5 h-3.5" />

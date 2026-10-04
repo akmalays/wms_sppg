@@ -100,7 +100,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
     { id: 'receiving', label: 'Input Barang & Belanja', icon: PackagePlus },
     { id: 'daily_expenses', label: 'Laporan Pengeluaran', icon: TrendingDown },
     { id: 'inventory', label: 'Stok Barang', icon: Boxes },
-    { id: 'menu_orders', label: 'Order Menu Gizi', icon: UtensilsCrossed },
+    { id: 'menu_orders', label: 'Menu & Penerima Manfaat', icon: UtensilsCrossed },
     { id: 'waste_logs', label: 'Rekap Limbah', icon: Trash2 },
     { id: 'employees', label: 'Karyawan & Absensi', icon: Users },
     { id: 'profile', label: 'Profil & Checklist', icon: UserCheck },
@@ -256,7 +256,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
             <button
               onClick={logout}
               title="Keluar dari sistem"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-rose-700 hover:bg-rose-50 border border-slate-200 rounded-lg transition-colors cursor-pointer min-h-[36px]"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-rose-700 hover:bg-slate-100 hover:border-rose-200 border border-slate-200 rounded-lg transition-colors cursor-pointer min-h-[36px]"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Keluar</span>

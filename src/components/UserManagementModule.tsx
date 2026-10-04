@@ -741,7 +741,7 @@ export const UserManagementModule: React.FC = () => {
                                 type="button"
                                 onClick={() => handleDeleteUser(user)}
                                 title="Hapus Akun"
-                                className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                className="p-1.5 rounded-md text-slate-500 hover:text-rose-700 hover:bg-slate-100 transition-colors cursor-pointer"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>

@@ -1664,12 +1664,12 @@ export const EmployeeAttendanceModule: React.FC = () => {
               <span className="text-[10px] text-amber-700">Terdapat toleransi & catatan</span>
             </div>
 
-            <div className="bg-purple-50/60 p-3.5 rounded-xl border border-purple-200 shadow-2xs">
-              <span className="text-[11px] font-semibold text-purple-800 flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3 text-purple-600" /> Izin & Sakit
+            <div className="bg-indigo-50/60 p-3.5 rounded-xl border border-indigo-200 shadow-2xs">
+              <span className="text-[11px] font-semibold text-indigo-800 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3 text-indigo-600" /> Izin & Sakit
               </span>
-              <div className="text-2xl font-bold text-purple-900 mt-1 tabular-nums">{metrics.izin + metrics.sakit}</div>
-              <span className="text-[10px] text-purple-700">Izin: {metrics.izin} • Sakit: {metrics.sakit}</span>
+              <div className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">{metrics.izin + metrics.sakit}</div>
+              <span className="text-[10px] text-indigo-700">Izin: {metrics.izin} • Sakit: {metrics.sakit}</span>
             </div>
 
             <div className="bg-rose-50/60 p-3.5 rounded-xl border border-rose-200 shadow-2xs">
@@ -1981,7 +1981,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleOpenSingleAtt(row.employee, row.attendance)}
-                            className="p-1 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors cursor-pointer"
+                            className="p-1 text-slate-500 hover:text-emerald-700 hover:bg-slate-100 rounded transition-colors cursor-pointer"
                             title="Edit presensi staf ini"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
@@ -2254,7 +2254,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleOpenEditEmployee(emp)}
-                              className="p-1 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors cursor-pointer"
+                              className="p-1 text-slate-500 hover:text-emerald-700 hover:bg-slate-100 rounded transition-colors cursor-pointer"
                               title="Ubah data karyawan"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
@@ -2262,7 +2262,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handleDeleteEmployee(emp)}
-                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                              className="p-1 text-slate-500 hover:text-rose-700 hover:bg-slate-100 rounded transition-colors cursor-pointer"
                               title="Hapus data karyawan"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
