@@ -26,7 +26,6 @@ import {
   Edit2,
   Table as TableIcon,
   ListFilter,
-  Sparkles,
   Info,
   FileText
 } from 'lucide-react';
@@ -2207,8 +2206,8 @@ export const WasteLogModule: React.FC = () => {
               <div className="border border-emerald-200 rounded-xl bg-emerald-50/50 p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-emerald-950 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
-                    Bantuan Hitung Otomatis dari Total Bobot (Opsional)
+                    <Calculator className="w-3.5 h-3.5 text-emerald-700" />
+                    Kalkulator Estimasi dari Total Bobot (Opsional)
                   </span>
                   <button
                     type="button"
@@ -3032,10 +3031,10 @@ export const WasteLogModule: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsPrintPreviewOpen(false)}
-                  className="text-slate-400 hover:text-slate-600 text-base font-bold p-1.5 rounded-lg hover:bg-slate-200/60 cursor-pointer"
+                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
                   title="Tutup Pratinjau"
                 >
-                  ✕
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             </div>

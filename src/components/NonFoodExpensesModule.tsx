@@ -9,8 +9,7 @@ import {
   Filter,
   Receipt,
   Wrench,
-  FileText,
-  Sparkles,
+  X,
   ShieldCheck,
   CheckCircle2,
   AlertCircle,
@@ -549,10 +548,12 @@ export const NonFoodExpensesModule: React.FC = () => {
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Tutup"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 

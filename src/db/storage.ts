@@ -26,6 +26,8 @@ import {
   PurchaseOrderItem,
   PaymentMethod,
   PurchaseOrderStatus,
+  WeighedPoItemInput,
+  ReceivePoMetadata,
 } from '../types/warehouse';
 import {
   REAL_NONFOOD_EXPENSES,
@@ -37,6 +39,8 @@ import {
   REAL_ATTENDANCE_LOGS,
 } from './realSeedData';
 import { getRomanMonth, getYearFromDate } from '../utils/poNumberGenerator';
+import { angkaTerbilang } from '../utils/numberToWords';
+import { removeFromPrintPool } from '../utils/poPrintPool';
 
 const STORAGE_KEYS = {
   ITEMS: 'sppg_items_v1',
@@ -54,6 +58,7 @@ const STORAGE_KEYS = {
   ATTENDANCE: 'sppg_attendance_v1',
   USERS: 'sppg_users_v1',
   PURCHASE_ORDERS: 'sppg_purchase_orders_v1',
+  BENEFICIARIES: 'sppg_school_beneficiaries_v1',
 };
 
 // Initial realistic users for SPPG role-based testing
@@ -1499,6 +1504,7 @@ class WarehouseDatabase {
   private attendanceLogs: EmployeeAttendance[];
   private users: User[];
   private purchaseOrders: PurchaseOrderNota[];
+  private schoolBeneficiaries: SchoolBeneficiaryAllocation[];
 
   constructor() {
     const isTransactionsCleared = localStorage.getItem('sppg_transactions_cleared_v1') === 'true';
@@ -1712,10 +1718,56 @@ class WarehouseDatabase {
     }
     this.employees = getStored<Employee[]>(STORAGE_KEYS.EMPLOYEES, REAL_EMPLOYEES);
     this.attendanceLogs = getStored<EmployeeAttendance[]>(STORAGE_KEYS.ATTENDANCE, REAL_ATTENDANCE_LOGS);
+    this.schoolBeneficiaries = getStored<SchoolBeneficiaryAllocation[]>(
+      STORAGE_KEYS.BENEFICIARIES,
+      DEFAULT_SCHOOL_BENEFICIARIES
+    );
   }
 
   public getSchoolBeneficiaries(): SchoolBeneficiaryAllocation[] {
-    return DEFAULT_SCHOOL_BENEFICIARIES;
+    return [...this.schoolBeneficiaries];
+  }
+
+  public saveSchoolBeneficiary(
+    beneficiary: SchoolBeneficiaryAllocation,
+    user?: User
+  ): SchoolBeneficiaryAllocation {
+    const idx = this.schoolBeneficiaries.findIndex(b => b.id === beneficiary.id);
+    if (idx >= 0) {
+      this.schoolBeneficiaries[idx] = beneficiary;
+    } else {
+      this.schoolBeneficiaries.push(beneficiary);
+    }
+    setStored(STORAGE_KEYS.BENEFICIARIES, this.schoolBeneficiaries);
+
+    if (user) {
+      this.logAudit(
+        user,
+        idx >= 0 ? 'BENEFICIARY_UPDATED' : 'BENEFICIARY_CREATED',
+        'OPERATIONAL',
+        beneficiary.id,
+        `${idx >= 0 ? 'Mengubah' : 'Menambah'} Penerima Manfaat: ${beneficiary.schoolName} (${beneficiary.portionCount} porsi, PIC: ${beneficiary.contactPerson || '-'} - ${beneficiary.phone || '-'})`
+      );
+    }
+    return beneficiary;
+  }
+
+  public deleteSchoolBeneficiary(id: string, user?: User): boolean {
+    const idx = this.schoolBeneficiaries.findIndex(b => b.id === id);
+    if (idx < 0) return false;
+    const deleted = this.schoolBeneficiaries.splice(idx, 1)[0];
+    setStored(STORAGE_KEYS.BENEFICIARIES, this.schoolBeneficiaries);
+
+    if (user) {
+      this.logAudit(
+        user,
+        'BENEFICIARY_DELETED',
+        'OPERATIONAL',
+        id,
+        `Menghapus Penerima Manfaat: ${deleted.schoolName}`
+      );
+    }
+    return true;
   }
 
   // --- READERS ---
@@ -2497,11 +2549,257 @@ class WarehouseDatabase {
     if (idx < 0) return false;
     const deleted = this.purchaseOrders.splice(idx, 1)[0];
     setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
+
+    try {
+      removeFromPrintPool(deleted.id);
+      removeFromPrintPool(deleted.poNumber);
+    } catch {}
+
+    // If this PO was linked to a MenuOrder, sync back and remove its arrival items
+    if (deleted.relatedMenuOrderId) {
+      const mOrder = this.menuOrders.find(m => m.id === deleted.relatedMenuOrderId);
+      if (mOrder && mOrder.poArrivalItems) {
+        const poItemNames = deleted.items.map(it => it.name.trim().toLowerCase());
+        mOrder.poArrivalItems = mOrder.poArrivalItems.filter(
+          it => !poItemNames.includes(it.itemName.trim().toLowerCase())
+        );
+        setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+      }
+    }
+
     if (user) {
       this.logAudit(user, 'PO_DELETED', 'RECEIVING', id, `Menghapus Nota Pesanan ${deleted.poNumber}`);
     }
     return true;
   }
+
+  public receiveAndCompletePurchaseOrder(
+    poId: string,
+    weighedItems: WeighedPoItemInput[],
+    metadata: ReceivePoMetadata,
+    user: User
+  ): { success: boolean; message: string; po?: PurchaseOrderNota; receivingId?: string } {
+    const poIndex = this.purchaseOrders.findIndex(p => p.id === poId);
+    if (poIndex < 0) {
+      return { success: false, message: 'Nota Pesanan (PO) tidak ditemukan.' };
+    }
+
+    const po = this.purchaseOrders[poIndex];
+    const nowIso = new Date().toISOString();
+    const todayStr = metadata.date || nowIso.slice(0, 10);
+    const arrivalTime = metadata.arrivalTime || new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+    // 1. Generate ReceivingDocument
+    const receivingId = `GR-${Date.now().toString().slice(-6)}`;
+    const receivingLines = weighedItems.map(item => ({
+      id: `RL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      itemId: item.itemId || `ITM-${Date.now().toString().slice(-4)}`,
+      itemName: item.name,
+      category: item.category as any,
+      quantity: item.actualQty,
+      unit: item.unit as any,
+      conditionNote: item.conditionNote || 'Diterima dalam kondisi baik & segar',
+    }));
+
+    const receivingDoc: ReceivingDocument = {
+      id: receivingId,
+      date: todayStr,
+      arrivalTime: arrivalTime,
+      supplierId: metadata.supplierId || po.supplierId || 'SUP-DIRECT',
+      supplierName: po.supplierName,
+      deliveryNoteNo: metadata.deliveryNoteNo || `SJ-${po.poNumber.replace(/[^\w]/g, '-')}`,
+      receiverId: user.id,
+      receiverName: user.name,
+      receiverRole: user.role,
+      status: 'VERIFIED_POSTED',
+      notes: metadata.notes || `Penerimaan & penimbangan fisik dari PO ${po.poNumber}`,
+      lines: receivingLines,
+      supplierSignature: metadata.supplierSignature,
+      receiverSignature: metadata.receiverSignature,
+      createdAt: nowIso,
+    };
+
+    this.receivings.unshift(receivingDoc);
+    setStored(STORAGE_KEYS.RECEIVINGS, this.receivings);
+
+    // 2. Auto-update Inventory Stock & Transactions if selected
+    if (metadata.autoUpdateStock !== false) {
+      weighedItems.forEach(itemInput => {
+        if (itemInput.actualQty <= 0) return;
+
+        // Check if item exists in this.items
+        let targetItem = this.items.find(
+          i => (itemInput.itemId && i.id === itemInput.itemId) ||
+               i.name.trim().toLowerCase() === itemInput.name.trim().toLowerCase()
+        );
+
+        let itemToUpdate: ItemMaster;
+        if (!targetItem) {
+          // Auto create SKU in master items so stock is safely tracked
+          const newSku = `ITM-${Date.now().toString().slice(-5)}-${Math.floor(Math.random() * 100)}`;
+          itemToUpdate = {
+            id: newSku,
+            name: itemInput.name,
+            category: itemInput.category as any,
+            currentStock: 0,
+            baseUnit: (itemInput.unit as any) || 'Kg',
+            minimumStock: 5,
+            reorderPoint: 10,
+            location: 'Gudang Utama SPPG',
+            itemType: itemInput.category === 'Bahan Basah' ? 'FOOD_DAILY_FLOW' : 'FOOD_CARRYING_STOCK',
+            expiryTrackingEnabled: false,
+            isActive: true,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          };
+          this.items.unshift(itemToUpdate);
+        } else {
+          itemToUpdate = targetItem;
+        }
+
+        // Increment stock
+        const newStock = Math.round((itemToUpdate.currentStock + itemInput.actualQty) * 100) / 100;
+        itemToUpdate.currentStock = newStock;
+        itemToUpdate.updatedAt = nowIso;
+        itemToUpdate.lastMovementDate = todayStr;
+
+        // Record Ledger Transaction
+        const tx: InventoryTransaction = {
+          id: `TX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`,
+          timestamp: `${nowIso.slice(0, 10)} ${arrivalTime}`,
+          itemId: itemToUpdate.id,
+          itemName: itemToUpdate.name,
+          itemType: itemToUpdate.itemType,
+          category: itemToUpdate.category,
+          location: itemToUpdate.location,
+          quantity: itemInput.actualQty,
+          unit: itemToUpdate.baseUnit,
+          transactionType: 'RECEIVING',
+          referenceDocument: po.poNumber,
+          userId: user.id,
+          userName: user.name,
+          userRole: user.role,
+          notes: `Penerimaan resmi PO ${po.poNumber} (${po.supplierName}). ${itemInput.conditionNote || ''}`.trim(),
+          balanceAfter: newStock,
+        };
+        this.transactions.unshift(tx);
+      });
+
+      setStored(STORAGE_KEYS.ITEMS, this.items);
+      setStored(STORAGE_KEYS.TRANSACTIONS, this.transactions);
+    }
+
+    // 3. Auto-record to Non-Food / Food Expense Report (Laporan Pengeluaran)
+    const expenseIds: string[] = [];
+    if (metadata.autoRecordExpense !== false) {
+      weighedItems.forEach((itemInput, idx) => {
+        if (itemInput.actualQty <= 0) return;
+        const expId = `NFE-${(Date.now() + idx).toString().slice(-6)}`;
+        const newExpense: NonFoodExpense = {
+          id: expId,
+          date: todayStr,
+          time: arrivalTime,
+          itemName: itemInput.name,
+          category: itemInput.category,
+          quantity: itemInput.actualQty,
+          unit: itemInput.unit,
+          unitPrice: itemInput.unitPrice,
+          totalCost: itemInput.subtotal || Math.round(itemInput.actualQty * itemInput.unitPrice),
+          department: 'Dapur Pengolahan Utama',
+          volunteer: user.name,
+          pic: user.name,
+          recipient: po.supplierName,
+          receiptRef: po.poNumber,
+          notes: `Belanja bahan PO ${po.poNumber} (${po.supplierName}). ${itemInput.notes || ''}`.trim(),
+          createdAt: nowIso,
+        };
+        expenseIds.push(expId);
+        this.nonFoodExpenses.unshift(newExpense);
+      });
+
+      setStored(STORAGE_KEYS.NONFOOD_EXPENSES, this.nonFoodExpenses);
+    }
+
+    // 4. Update the Purchase Order itself: mark as SELESAI and store real weighed figures
+    const updatedPoItems: PurchaseOrderItem[] = weighedItems.map(w => ({
+      id: w.poiId,
+      name: w.name,
+      category: w.category,
+      quantity: w.actualQty,
+      unit: w.unit,
+      unitPrice: w.unitPrice,
+      subtotal: w.subtotal,
+      notes: w.conditionNote ? `${w.conditionNote}${w.notes ? ' | ' + w.notes : ''}` : w.notes,
+    }));
+
+    const newGrandTotal = updatedPoItems.reduce((acc, it) => acc + (it.subtotal || 0), 0);
+
+    const updatedPo: PurchaseOrderNota = {
+      ...po,
+      items: updatedPoItems,
+      subtotal: newGrandTotal,
+      grandTotal: newGrandTotal,
+      terbilang: angkaTerbilang(newGrandTotal),
+      status: 'SELESAI',
+      relatedReceivingId: receivingId,
+      relatedExpenseIds: expenseIds.length > 0 ? expenseIds : po.relatedExpenseIds,
+      updatedAt: nowIso,
+    };
+
+    this.purchaseOrders[poIndex] = updatedPo;
+    setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
+
+    // 5. Sync back to Menu Orders poArrivalItems if applicable
+    const targetMenuOrderId = po.relatedMenuOrderId;
+    this.menuOrders.forEach((mOrder, mIdx) => {
+      let orderChanged = false;
+      const shouldSync = targetMenuOrderId ? mOrder.id === targetMenuOrderId : mOrder.date === po.date;
+      if (shouldSync && mOrder.poArrivalItems && mOrder.poArrivalItems.length > 0) {
+        const updatedArrivals = mOrder.poArrivalItems.map(arrItem => {
+          const matchedWeighed = weighedItems.find(
+            w => w.name.trim().toLowerCase() === arrItem.itemName.trim().toLowerCase()
+          );
+          if (matchedWeighed) {
+            orderChanged = true;
+            return {
+              ...arrItem,
+              qtyArrived: `${matchedWeighed.actualQty} ${matchedWeighed.unit}`,
+              arrivalTime: arrivalTime,
+              unitPrice: matchedWeighed.unitPrice,
+              totalCost: matchedWeighed.subtotal,
+              notes: matchedWeighed.conditionNote || arrItem.notes,
+            };
+          }
+          return arrItem;
+        });
+
+        if (orderChanged) {
+          this.menuOrders[mIdx] = {
+            ...mOrder,
+            poArrivalItems: updatedArrivals,
+          };
+        }
+      }
+    });
+    setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+
+    // 6. Audit Trail
+    this.logAudit(
+      user,
+      'PO_RECEIVED_COMPLETED',
+      'RECEIVING',
+      po.id,
+      `Penerimaan & penimbangan fisik PO ${po.poNumber} dari ${po.supplierName}. Total Rp ${newGrandTotal.toLocaleString('id-ID')}, ${weighedItems.length} bahan diterima & stok otomatis diupdate.`
+    );
+
+    return {
+      success: true,
+      message: `Penerimaan PO ${po.poNumber} berhasil diselesaikan. Stok gudang dan laporan pengeluaran telah diperbarui!`,
+      po: updatedPo,
+      receivingId,
+    };
+  }
+
 
   // --- MENU ORDERS ---
   public getMenuOrders(): MenuOrder[] {
@@ -2555,10 +2853,53 @@ class WarehouseDatabase {
     return updated;
   }
 
+  public deletePurchaseOrdersByMenuOrderId(menuOrderId: string, user?: User): number {
+    const targetOrder = this.menuOrders.find(o => o.id === menuOrderId);
+    const removedPos: PurchaseOrderNota[] = [];
+
+    this.purchaseOrders = this.purchaseOrders.filter(po => {
+      const isMatch =
+        po.relatedMenuOrderId === menuOrderId ||
+        (targetOrder && po.notes && po.notes.includes(targetOrder.menuTitle)) ||
+        (targetOrder && po.date === targetOrder.date && po.notes?.includes('Perencanaan Menu'));
+      if (isMatch) {
+        removedPos.push(po);
+        try {
+          removeFromPrintPool(po.id);
+          removeFromPrintPool(po.poNumber);
+        } catch {}
+        return false;
+      }
+      return true;
+    });
+
+    if (removedPos.length > 0) {
+      setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
+      if (targetOrder) {
+        targetOrder.poArrivalItems = [];
+        setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+      }
+      if (user) {
+        this.logAudit(
+          user,
+          'PO_DELETED_BY_MENU',
+          'RECEIVING',
+          menuOrderId,
+          `Menghapus ${removedPos.length} Nota PO resmi terkait menu order ${targetOrder?.menuTitle || menuOrderId}`
+        );
+      }
+    }
+    return removedPos.length;
+  }
+
   public deleteMenuOrder(orderId: string, user: User): boolean {
     const idx = this.menuOrders.findIndex(o => o.id === orderId);
     if (idx < 0) return false;
     const removed = this.menuOrders[idx];
+
+    // Cascade delete any purchase orders linked to this menu order
+    this.deletePurchaseOrdersByMenuOrderId(orderId, user);
+
     this.menuOrders.splice(idx, 1);
     setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
     this.logAudit(

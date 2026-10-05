@@ -474,6 +474,7 @@ export interface EmployeeAttendance {
 
 export interface PurchaseOrderItem {
   id: string;
+  itemId?: string;
   name: string;
   category?: string;
   quantity: number;
@@ -513,6 +514,36 @@ export interface PurchaseOrderNota {
   supplierPic?: string;
   relatedExpenseIds?: string[];
   relatedReceivingId?: string;
+  relatedMenuOrderId?: string;
   createdAt: string;
   updatedAt?: string;
 }
+
+export interface WeighedPoItemInput {
+  poiId: string;
+  itemId?: string;
+  name: string;
+  category: string;
+  unit: string;
+  targetQty: number;
+  actualQty: number;
+  unitPrice: number;
+  subtotal: number;
+  notes?: string;
+  conditionNote?: string;
+}
+
+export interface ReceivePoMetadata {
+  poId: string;
+  supplierId?: string;
+  supplierName: string;
+  deliveryNoteNo?: string;
+  arrivalTime?: string;
+  date?: string;
+  notes?: string;
+  receiverSignature?: string;
+  supplierSignature?: string;
+  autoUpdateStock?: boolean;
+  autoRecordExpense?: boolean;
+}
+

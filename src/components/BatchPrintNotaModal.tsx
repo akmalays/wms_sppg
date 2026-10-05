@@ -8,7 +8,6 @@ import {
   FileText,
   Plus,
   ArrowRight,
-  Sparkles,
   ExternalLink,
 } from 'lucide-react';
 import { PurchaseOrderNota } from '../types/warehouse';
@@ -568,14 +567,14 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
         </div>
 
         {/* Toolbar Hemat Kertas Banner & Quick Add */}
-        <div className="bg-emerald-50/90 border-b border-emerald-100 px-5 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs no-print">
-          <div className="flex items-center gap-2 text-emerald-900">
-            <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div className="bg-slate-50 border-b border-slate-200 px-5 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs no-print">
+          <div className="flex items-center gap-2 text-slate-700">
+            <Layers className="w-4 h-4 text-slate-500 shrink-0" />
             <span>
-              <strong>Efisiensi Kertas:</strong> {poolNotas.length} nota akan dicetak pada{' '}
-              <span className="font-bold underline">{totalSheetsNeeded} lembar A4</span>{' '}
+              <strong className="font-semibold text-slate-900">Format Cetak:</strong> {poolNotas.length} nota akan dicetak pada{' '}
+              <span className="font-semibold text-slate-900">{totalSheetsNeeded} lembar A4</span>{' '}
               {sheetsSaved > 0 && (
-                <span className="text-emerald-700 font-semibold">(Menghemat {sheetsSaved} lembar kertas fisik!)</span>
+                <span className="text-slate-500 font-medium">({sheetsSaved} lembar kertas dihemat)</span>
               )}
             </span>
           </div>

@@ -19,7 +19,7 @@ import {
   ListTodo,
   FileCheck2,
   AlertCircle,
-  Sparkles,
+  X,
   Info,
   CheckSquare2,
   RefreshCw,
@@ -855,7 +855,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
             <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl p-5 shadow-sm flex items-center justify-between gap-4">
               <div className="flex items-center gap-3.5">
                 <div className="p-3 bg-white/10 rounded-xl">
-                  <Sparkles className="w-6 h-6 text-yellow-300" />
+                  <Award className="w-6 h-6 text-white" />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold leading-tight">
@@ -1068,10 +1068,12 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
                 Tambah Butir Tugas Ceklis Harian
               </h3>
               <button
+                type="button"
                 onClick={() => setIsAddModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
+                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 

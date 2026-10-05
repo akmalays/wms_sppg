@@ -1713,9 +1713,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               <button
                 type="button"
                 onClick={() => setIsCreateOpnameModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer"
+                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -1982,9 +1983,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               <button
                 type="button"
                 onClick={() => setViewingOpname(null)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer"
+                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -2159,9 +2161,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               <button
                 type="button"
                 onClick={() => setAdjustingItem(null)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer"
+                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -2271,9 +2274,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               <button
                 type="button"
                 onClick={() => setIsSingleModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer"
+                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -2440,9 +2444,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 <button
                   type="button"
                   onClick={() => setIsBatchModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer ml-2"
+                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer ml-2"
+                  title="Tutup dialog"
                 >
-                  ✕
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             </div>

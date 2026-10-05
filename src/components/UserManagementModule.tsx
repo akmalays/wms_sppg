@@ -20,7 +20,6 @@ import {
   EyeOff,
   UserCheck,
   KeyRound,
-  Sparkles,
   Building2,
   Calendar
 } from 'lucide-react';

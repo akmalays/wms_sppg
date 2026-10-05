@@ -15,7 +15,6 @@ import {
   ArrowRight,
   Flame,
   Calendar,
-  Sparkles,
   ChevronDown,
   X,
 } from 'lucide-react';
@@ -297,7 +296,7 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
         <div>
           <div className="flex items-center justify-between text-xs mb-1.5 font-medium">
             <span className="text-slate-700 flex items-center gap-1.5 font-semibold">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
               Progres Ceklis Hari Ini:
               <strong className="text-emerald-700 font-bold ml-1">
                 {completedCount} dari {totalCount} Tugas Selesai ({progressPercent}%)

@@ -41,7 +41,6 @@ import {
   Check,
   Eye,
   X,
-  Sparkles,
   Edit2,
   Trash2,
   Scale,
@@ -49,15 +48,16 @@ import {
   Filter,
   ShoppingBag,
   PackagePlus,
-  Sparkle,
   ArrowRight,
   Store,
-  CheckSquare
+  CheckSquare,
+  Phone,
+  MoreHorizontal
 } from 'lucide-react';
 import { exportMultiSheetExcel, exportToExcel } from '../lib/excelExport';
 
 type PeriodType = 'WEEKLY' | 'MONTHLY' | 'DAILY' | 'ALL' | 'PRESET_SAMPLE';
-type SubTabType = 'MENU_ORDERS' | 'WEEKLY_MATERIAL_MATRIX' | 'BENEFICIARIES' | 'MONTHLY_USAGE';
+type SubTabType = 'MENU_ORDERS' | 'BENEFICIARIES' | 'MASTER_BENEFICIARIES';
 
 const DEFAULT_MENU_PRICE_MAP: Record<string, number> = {
   beras: 14500,
@@ -167,8 +167,6 @@ const formatIndonesianDate = (dateStr: string): string => {
 interface ParsedDish {
   name: string;
   category: string;
-  icon: string;
-  colorClass: string;
 }
 
 function parseDishItems(menuStr: string): ParsedDish[] {
@@ -180,37 +178,23 @@ function parseDishItems(menuStr: string): ParsedDish[] {
 
   return rawList.map(name => {
     const lower = name.toLowerCase();
-    let category = 'Lauk / Pelengkap';
-    let icon = '🍲';
-    let colorClass = 'bg-slate-100 text-slate-800 border-slate-200';
+    let category = 'Pelengkap';
 
     if (lower.includes('nasi') || lower.includes('karbo') || lower.includes('lontong') || lower.includes('mie') || lower.includes('bihun')) {
       category = 'Karbohidrat Pokok';
-      icon = '🍚';
-      colorClass = 'bg-amber-50 text-amber-900 border-amber-200';
     } else if (lower.includes('ayam') || lower.includes('daging') || lower.includes('sapi') || lower.includes('ikan') || lower.includes('telur') || lower.includes('rolade') || lower.includes('nugget') || lower.includes('katsu') || lower.includes('semur') || lower.includes('woku')) {
       category = 'Lauk Protein Hewani';
-      icon = '🍗';
-      colorClass = 'bg-orange-50 text-orange-900 border-orange-200';
     } else if (lower.includes('tahu') || lower.includes('tempe') || lower.includes('kacang') || lower.includes('mendoan')) {
       category = 'Lauk Protein Nabati';
-      icon = '🧈';
-      colorClass = 'bg-yellow-50 text-yellow-900 border-yellow-200';
     } else if (lower.includes('sayur') || lower.includes('sop') || lower.includes('sup') || lower.includes('tumis') || lower.includes('buncis') || lower.includes('wortel') || lower.includes('pokcoy') || lower.includes('pakcoy') || lower.includes('bayam') || lower.includes('lodeh') || lower.includes('steam') || lower.includes('jagung') || lower.includes('capcay')) {
       category = 'Sayuran Berserat';
-      icon = '🥦';
-      colorClass = 'bg-emerald-50 text-emerald-900 border-emerald-200';
     } else if (lower.includes('semangka') || lower.includes('melon') || lower.includes('pisang') || lower.includes('jeruk') || lower.includes('buah') || lower.includes('kelengkeng') || lower.includes('anggur') || lower.includes('pepaya') || lower.includes('apel')) {
-      category = 'Buah Segar Pencuci Mulut';
-      icon = '🍉';
-      colorClass = 'bg-rose-50 text-rose-900 border-rose-200';
+      category = 'Buah Segar';
     } else if (lower.includes('susu') || lower.includes('puding') || lower.includes('snack')) {
       category = 'Susu & Minuman Gizi';
-      icon = '🥛';
-      colorClass = 'bg-blue-50 text-blue-900 border-blue-200';
     }
 
-    return { name, category, icon, colorClass };
+    return { name, category };
   });
 }
 
@@ -258,9 +242,32 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filters for Tab 2 & 3
+  // Filters for Tab 2 (Penerima Manfaat)
   const [selectedBeneficiaryCategory, setSelectedBeneficiaryCategory] = useState<string>('ALL');
+  const [beneficiaryStatusFilter, setBeneficiaryStatusFilter] = useState<string>('ALL');
   const [schoolSearchQuery, setSchoolSearchQuery] = useState('');
+
+  // Master beneficiaries state (persisted via storage.ts)
+  const [beneficiaries, setBeneficiaries] = useState<SchoolBeneficiaryAllocation[]>(() =>
+    warehouseDb.getSchoolBeneficiaries()
+  );
+
+  // Beneficiary Modal State (Edit & Create)
+  const [isBeneficiaryModalOpen, setIsBeneficiaryModalOpen] = useState(false);
+  const [editingBeneficiary, setEditingBeneficiary] = useState<SchoolBeneficiaryAllocation | null>(null);
+  const [beneficiaryFormId, setBeneficiaryFormId] = useState('');
+  const [beneficiaryFormName, setBeneficiaryFormName] = useState('');
+  const [beneficiaryFormCategory, setBeneficiaryFormCategory] = useState<string>('SD / MI');
+  const [beneficiaryFormPortions, setBeneficiaryFormPortions] = useState<number>(300);
+  const [beneficiaryFormDeliveryTime, setBeneficiaryFormDeliveryTime] = useState('09.45 WIB');
+  const [beneficiaryFormContactPerson, setBeneficiaryFormContactPerson] = useState('');
+  const [beneficiaryFormPhone, setBeneficiaryFormPhone] = useState('');
+  const [beneficiaryFormStatus, setBeneficiaryFormStatus] = useState<'TERKIRIM' | 'DALAM_PERJALANAN' | 'SIAP_KIRIM' | 'DIJADWALKAN'>('DIJADWALKAN');
+  const [beneficiaryFormNotes, setBeneficiaryFormNotes] = useState('');
+
+  // Filters for Tab 3 (Master Data Penerima Manfaat)
+  const [masterCategoryFilter, setMasterCategoryFilter] = useState<string>('ALL');
+  const [masterSearchQuery, setMasterSearchQuery] = useState<string>('');
 
   // Expandable cards state for Menu Order items
   const [expandedOrderIds, setExpandedOrderIds] = useState<Record<string, boolean>>({
@@ -278,6 +285,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
   // Action Dropdowns
   const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
   const [isPrintDropdownOpen, setIsPrintDropdownOpen] = useState(false);
+  const [openOrderMenuId, setOpenOrderMenuId] = useState<string | null>(null);
   const actionDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -285,6 +293,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       if (actionDropdownRef.current && !actionDropdownRef.current.contains(event.target as Node)) {
         setIsInputDropdownOpen(false);
         setIsPrintDropdownOpen(false);
+      }
+      const target = event.target as HTMLElement;
+      if (!target.closest('.order-action-menu-container')) {
+        setOpenOrderMenuId(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -507,31 +519,48 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     };
   }, [filteredOrders]);
 
-  // Master schools & beneficiary categories list
-  const masterSchools = useMemo<SchoolBeneficiaryAllocation[]>(() => {
-    const foundOrder = orders.find(o => o.beneficiaryAllocations && o.beneficiaryAllocations.length > 0);
-    if (foundOrder && foundOrder.beneficiaryAllocations) {
-      return foundOrder.beneficiaryAllocations;
-    }
-    return warehouseDb.getSchoolBeneficiaries();
-  }, [orders]);
+  // Master schools & beneficiary categories list (sourced from reactive beneficiaries state)
+  const masterSchools = beneficiaries;
 
-  // Filtered schools based on category and search
+  // Filtered schools based on category, status and search for Tab 2
   const filteredSchools = useMemo(() => {
     return masterSchools.filter(school => {
       if (selectedBeneficiaryCategory !== 'ALL' && school.category !== selectedBeneficiaryCategory) {
+        return false;
+      }
+      if (beneficiaryStatusFilter !== 'ALL' && (school.status || 'DIJADWALKAN') !== beneficiaryStatusFilter) {
         return false;
       }
       if (schoolSearchQuery.trim()) {
         const q = schoolSearchQuery.toLowerCase();
         const matchName = school.schoolName.toLowerCase().includes(q);
         const matchPic = (school.contactPerson || '').toLowerCase().includes(q);
+        const matchPhone = (school.phone || '').toLowerCase().includes(q);
         const matchNotes = (school.notes || '').toLowerCase().includes(q);
-        if (!matchName && !matchPic && !matchNotes) return false;
+        if (!matchName && !matchPic && !matchPhone && !matchNotes) return false;
       }
       return true;
     });
-  }, [masterSchools, selectedBeneficiaryCategory, schoolSearchQuery]);
+  }, [masterSchools, selectedBeneficiaryCategory, beneficiaryStatusFilter, schoolSearchQuery]);
+
+  // Filtered master beneficiaries for Tab 3 (Master Data)
+  const filteredMasterBeneficiaries = useMemo(() => {
+    return masterSchools.filter(school => {
+      if (masterCategoryFilter !== 'ALL' && school.category !== masterCategoryFilter) {
+        return false;
+      }
+      if (masterSearchQuery.trim()) {
+        const q = masterSearchQuery.toLowerCase();
+        const matchId = (school.id || '').toLowerCase().includes(q);
+        const matchName = school.schoolName.toLowerCase().includes(q);
+        const matchPic = (school.contactPerson || '').toLowerCase().includes(q);
+        const matchPhone = (school.phone || '').toLowerCase().includes(q);
+        const matchNotes = (school.notes || '').toLowerCase().includes(q);
+        if (!matchId && !matchName && !matchPic && !matchPhone && !matchNotes) return false;
+      }
+      return true;
+    });
+  }, [masterSchools, masterCategoryFilter, masterSearchQuery]);
 
   // Beneficiary category summary breakdown
   const beneficiaryCategoryStats = useMemo(() => {
@@ -560,6 +589,105 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       totalSchools: masterSchools.length,
     };
   }, [masterSchools]);
+
+  // Beneficiary Actions Handlers
+  const handleOpenAddBeneficiary = () => {
+    setEditingBeneficiary(null);
+    const nextNum = beneficiaries.length + 1;
+    setBeneficiaryFormId(`SCH-${String(nextNum).padStart(3, '0')}`);
+    setBeneficiaryFormName('');
+    setBeneficiaryFormCategory('SD / MI');
+    setBeneficiaryFormPortions(250);
+    setBeneficiaryFormDeliveryTime('09.45 WIB');
+    setBeneficiaryFormContactPerson('');
+    setBeneficiaryFormPhone('');
+    setBeneficiaryFormStatus('DIJADWALKAN');
+    setBeneficiaryFormNotes('');
+    setIsBeneficiaryModalOpen(true);
+  };
+
+  const handleOpenEditBeneficiary = (b: SchoolBeneficiaryAllocation) => {
+    setEditingBeneficiary(b);
+    setBeneficiaryFormId(b.id);
+    setBeneficiaryFormName(b.schoolName);
+    setBeneficiaryFormCategory(b.category);
+    setBeneficiaryFormPortions(b.portionCount || 0);
+    setBeneficiaryFormDeliveryTime(b.deliveryTime || '09.45 WIB');
+    setBeneficiaryFormContactPerson(b.contactPerson || '');
+    setBeneficiaryFormPhone(b.phone || '');
+    setBeneficiaryFormStatus(b.status || 'DIJADWALKAN');
+    setBeneficiaryFormNotes(b.notes || '');
+    setIsBeneficiaryModalOpen(true);
+  };
+
+  const handleSaveBeneficiary = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!beneficiaryFormName.trim()) {
+      alert('Nama sekolah atau lembaga penerima manfaat wajib diisi.');
+      return;
+    }
+    if (Number(beneficiaryFormPortions) <= 0) {
+      alert('Jumlah porsi penerima manfaat harus lebih dari 0.');
+      return;
+    }
+
+    const itemToSave: SchoolBeneficiaryAllocation = {
+      id: beneficiaryFormId || `SCH-${Date.now().toString().slice(-4)}`,
+      schoolName: beneficiaryFormName.trim(),
+      category: beneficiaryFormCategory,
+      portionCount: Number(beneficiaryFormPortions),
+      deliveryTime: beneficiaryFormDeliveryTime.trim() || undefined,
+      contactPerson: beneficiaryFormContactPerson.trim() || undefined,
+      phone: beneficiaryFormPhone.trim() || undefined,
+      status: beneficiaryFormStatus,
+      notes: beneficiaryFormNotes.trim() || undefined,
+    };
+
+    warehouseDb.saveSchoolBeneficiary(itemToSave, currentUser || undefined);
+    setBeneficiaries(warehouseDb.getSchoolBeneficiaries());
+    setIsBeneficiaryModalOpen(false);
+    setSuccessNotice(
+      editingBeneficiary
+        ? `Data penerima manfaat "${itemToSave.schoolName}" berhasil diperbarui: ${itemToSave.portionCount.toLocaleString('id-ID')} porsi, PIC: ${itemToSave.contactPerson || '-'} (${itemToSave.phone || '-'}).`
+        : `Lembaga penerima manfaat baru "${itemToSave.schoolName}" berhasil ditambahkan.`
+    );
+    setTimeout(() => setSuccessNotice(''), 6000);
+  };
+
+  const handleDeleteBeneficiary = (b: SchoolBeneficiaryAllocation) => {
+    if (window.confirm(`Yakin ingin menghapus data penerima manfaat "${b.schoolName}"? Data yang terhapus tidak dapat dikembalikan.`)) {
+      warehouseDb.deleteSchoolBeneficiary(b.id, currentUser || undefined);
+      setBeneficiaries(warehouseDb.getSchoolBeneficiaries());
+      setSuccessNotice(`Data penerima manfaat "${b.schoolName}" berhasil dihapus.`);
+      setTimeout(() => setSuccessNotice(''), 5000);
+    }
+  };
+
+  const handleQuickUpdateBeneficiaryStatus = (b: SchoolBeneficiaryAllocation, newStatus: SchoolBeneficiaryAllocation['status']) => {
+    const updated = { ...b, status: newStatus };
+    warehouseDb.saveSchoolBeneficiary(updated, currentUser || undefined);
+    setBeneficiaries(warehouseDb.getSchoolBeneficiaries());
+  };
+
+  const handleExportMasterBeneficiariesExcel = () => {
+    const rows = beneficiaries.map((b, idx) => ({
+      No: idx + 1,
+      'ID Lembaga': b.id,
+      'Nama Sekolah / Lembaga': b.schoolName,
+      'Kategori Sasaran': b.category,
+      'Jumlah Alokasi Porsi': b.portionCount,
+      'Jadwal Kirim': b.deliveryTime || '-',
+      'Nama Kontak PIC': b.contactPerson || '-',
+      'Nomor HP / WA PIC': b.phone || '-',
+      'Status Operasional': b.status || 'DIJADWALKAN',
+      'Catatan / Titik Serah': b.notes || '-',
+    }));
+    exportToExcel(
+      rows,
+      `Master_Data_Penerima_Manfaat_SPPG_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      'Master Penerima Manfaat'
+    );
+  };
 
   // =========================================================================
   // MATRIKS PENGELUARAN BAHAN MINGGUAN (PERSIS KOLOM KANAN EXCEL USER)
@@ -711,9 +839,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       const orderId = editingMenuOrderId || `ORD-${Date.now().toString().slice(-6)}`;
       const existing = editingMenuOrderId ? orders.find(o => o.id === editingMenuOrderId) : null;
 
+      const totalBasePortions = masterSchools.reduce((sum, s) => sum + (s.portionCount || 0), 0) || 3044;
       const updatedAllocations = masterSchools.map(s => ({
         ...s,
-        portionCount: Math.round(s.portionCount * (menuFormPortions / 3044)),
+        portionCount: Math.round(s.portionCount * (menuFormPortions / totalBasePortions)),
       }));
 
       const orderToSave: MenuOrder = {
@@ -807,6 +936,67 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     }
   }, []);
 
+  const resolveSupplierForItem = (
+    category: string,
+    itemName: string,
+    existingSupplier?: string,
+    suppliers: Array<{ id: string; name: string; supplyCategory?: string }> = []
+  ): string => {
+    if (existingSupplier && existingSupplier.trim() && existingSupplier !== 'Pemasok Rekanan' && existingSupplier !== 'Pemasok Lokal') {
+      return existingSupplier.trim();
+    }
+    const cat = (category || '').toLowerCase();
+    const name = (itemName || '').toLowerCase();
+
+    if (suppliers && suppliers.length > 0) {
+      if (cat.includes('tahu') || cat.includes('tempe') || name.includes('tahu') || name.includes('tempe')) {
+        const match = suppliers.find(s => {
+          const full = `${s.name} ${s.supplyCategory || ''}`.toLowerCase();
+          return full.includes('tahu') || full.includes('tempe') || full.includes('rio');
+        });
+        if (match) return match.name;
+      }
+
+      if (cat.includes('protein') || name.includes('ayam') || name.includes('daging') || name.includes('telur') || name.includes('unggas')) {
+        if (name.includes('daging') || name.includes('sapi')) {
+          const dagingMatch = suppliers.find(s => `${s.name} ${s.supplyCategory || ''}`.toLowerCase().includes('daging'));
+          if (dagingMatch) return dagingMatch.name;
+        }
+        const ayamMatch = suppliers.find(s => {
+          const full = `${s.name} ${s.supplyCategory || ''}`.toLowerCase();
+          return full.includes('ayam') || full.includes('fjr') || full.includes('fajar') || full.includes('protein');
+        });
+        if (ayamMatch) return ayamMatch.name;
+      }
+
+      if (cat.includes('sembako') || name.includes('beras') || name.includes('minyak') || name.includes('gula') || name.includes('tepung')) {
+        const sembakoMatch = suppliers.find(s => {
+          const full = `${s.name} ${s.supplyCategory || ''}`.toLowerCase();
+          return full.includes('tumpang') || full.includes('grosir') || full.includes('sembako');
+        });
+        if (sembakoMatch) return sembakoMatch.name;
+      }
+
+      if (cat.includes('sayur') || cat.includes('buah') || name.includes('sayur') || name.includes('buncis') || name.includes('wortel') || name.includes('semangka') || name.includes('buah')) {
+        const sayurMatch = suppliers.find(s => {
+          const full = `${s.name} ${s.supplyCategory || ''}`.toLowerCase();
+          return full.includes('fresh') || full.includes('sayur') || full.includes('buah') || full.includes('luber');
+        });
+        if (sayurMatch) return sayurMatch.name;
+      }
+
+      const directMatch = suppliers.find(s => {
+        const sCat = (s.supplyCategory || '').toLowerCase();
+        return sCat.includes(cat) || (cat && cat.includes(sCat));
+      });
+      if (directMatch) return directMatch.name;
+
+      return suppliers[0].name;
+    }
+
+    return 'Pemasok Rekanan';
+  };
+
   const handleSaveAndGenerateOfficialPo = () => {
     if (!selectedPoOrderId) {
       alert('Pilih menu tujuan untuk PO ini.');
@@ -823,15 +1013,16 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       const validItems: MenuPoArrivalItem[] = poFormRows
         .filter(r => r.itemName.trim())
         .map(r => {
-          const estimatedCost = parseNumericQuantity(r.qtyArrived || r.qtyOrder) * estimatePrice(r.itemName);
+          const estimatedCost = parseNumericQuantity(r.qtyOrder || r.qtyArrived) * estimatePrice(r.itemName);
+          const autoSupplier = resolveSupplierForItem(r.category, r.itemName, r.supplier, masterSuppliers);
           return {
             category: r.category.trim(),
             itemName: r.itemName.trim(),
             qtyOrder: r.qtyOrder.trim(),
-            qtyArrived: r.qtyArrived.trim(),
-            supplier: r.supplier.trim() || 'Pemasok Rekanan',
-            arrivalTime: r.arrivalTime.trim() || '-',
-            pic: r.pic.trim() || currentUser.name,
+            qtyArrived: (r.qtyArrived && r.qtyArrived.trim()) || r.qtyOrder.trim(),
+            supplier: autoSupplier,
+            arrivalTime: (r.arrivalTime && r.arrivalTime.trim()) || '08.00',
+            pic: (r.pic && r.pic.trim()) || currentUser.name,
             totalCost: estimatedCost,
             notes: r.notes || '',
           };
@@ -851,7 +1042,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
       warehouseDb.saveMenuOrder(updatedOrder, currentUser, false);
 
-      // 2. Kelompokkan bahan berdasarkan nama Supplier untuk dibuatkan PO resmi
+      // 2. Bersihkan draft PO resmi lama untuk menu ini agar tidak ada duplikasi / PO usang
+      warehouseDb.deletePurchaseOrdersByMenuOrderId(selectedPoOrderId, currentUser);
+
+      // 3. Kelompokkan bahan berdasarkan nama Supplier untuk dibuatkan PO resmi
       const itemsBySupplier = new Map<string, MenuPoArrivalItem[]>();
       validItems.forEach(item => {
         const suppName = item.supplier || 'Pemasok Rekanan';
@@ -922,6 +1116,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
           approvedBy: 'Rizky Iman Ramdhan, S.Pd',
           approvedByRole: 'Kepala SPPG Jeru Tumpang',
           supplierPic: suppObj?.contactPerson || 'Pihak Rekanan',
+          relatedMenuOrderId: targetOrder.id,
           createdAt: new Date().toISOString(),
         };
 
@@ -947,6 +1142,34 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     setPoFormRows(STANDARD_PO_TEMPLATES.map(t => ({ ...t, notes: '' })));
   };
 
+  const handleDeletePoForOrder = (orderId?: string) => {
+    const targetId = orderId || selectedPoOrderId;
+    if (!targetId) return;
+
+    const targetOrder = orders.find(o => o.id === targetId);
+    const orderTitle = targetOrder ? targetOrder.menuTitle : 'menu ini';
+
+    const confirmDelete = window.confirm(
+      `Apakah Anda yakin ingin membatalkan & menghapus seluruh PO resmi untuk menu "${orderTitle}"?\n\nPO ini akan otomatis terhapus dari sistem, modul Input Barang & Belanja, dan Ringkasan.`
+    );
+
+    if (confirmDelete) {
+      const deletedCount = warehouseDb.deletePurchaseOrdersByMenuOrderId(targetId, currentUser);
+      if (targetOrder) {
+        const updatedOrder: MenuOrder = {
+          ...targetOrder,
+          poArrivalItems: [],
+        };
+        warehouseDb.saveMenuOrder(updatedOrder, currentUser, false);
+      }
+      setPoFormRows([]);
+      refreshOrders();
+      setIsPoModalOpen(false);
+      setSuccessNotice(`Berhasil membatalkan & menghapus ${deletedCount} PO resmi untuk "${orderTitle}".`);
+      setTimeout(() => setSuccessNotice(''), 4000);
+    }
+  };
+
   const handleSavePoForm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPoOrderId) {
@@ -964,19 +1187,36 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       const validItems: MenuPoArrivalItem[] = poFormRows
         .filter(r => r.itemName.trim())
         .map(r => {
-          const estimatedCost = parseNumericQuantity(r.qtyArrived || r.qtyOrder) * estimatePrice(r.itemName);
+          const estimatedCost = parseNumericQuantity(r.qtyOrder || r.qtyArrived) * estimatePrice(r.itemName);
+          const autoSupplier = resolveSupplierForItem(r.category, r.itemName, r.supplier, masterSuppliers);
           return {
             category: r.category.trim(),
             itemName: r.itemName.trim(),
             qtyOrder: r.qtyOrder.trim(),
-            qtyArrived: r.qtyArrived.trim(),
-            supplier: r.supplier.trim() || 'Pemasok Lokal',
-            arrivalTime: r.arrivalTime.trim() || '-',
-            pic: r.pic.trim() || currentUser.name,
+            qtyArrived: (r.qtyArrived && r.qtyArrived.trim()) || r.qtyOrder.trim(),
+            supplier: autoSupplier,
+            arrivalTime: (r.arrivalTime && r.arrivalTime.trim()) || '08.00',
+            pic: (r.pic && r.pic.trim()) || currentUser.name,
             totalCost: estimatedCost,
             notes: r.notes || '',
           };
         });
+
+      if (validItems.length === 0) {
+        // Jika user mengosongkan seluruh baris, hapus seluruh PO terkait
+        warehouseDb.deletePurchaseOrdersByMenuOrderId(selectedPoOrderId, currentUser);
+        const updatedOrder: MenuOrder = {
+          ...targetOrder,
+          poDate: poFormDate.trim() || targetOrder.poDate,
+          poArrivalItems: [],
+        };
+        warehouseDb.saveMenuOrder(updatedOrder, currentUser, false);
+        refreshOrders();
+        setIsPoModalOpen(false);
+        setSuccessNotice(`Seluruh rincian PO untuk menu ${updatedOrder.menuTitle} telah dihapus.`);
+        setTimeout(() => setSuccessNotice(''), 4000);
+        return;
+      }
 
       const updatedOrder: MenuOrder = {
         ...targetOrder,
@@ -1285,25 +1525,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             onClick={() => setActiveSubTab('MENU_ORDERS')}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md transition-all cursor-pointer ${
               activeSubTab === 'MENU_ORDERS'
-                ? 'bg-white text-emerald-900 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white text-emerald-900 shadow-2xs font-bold'
+                : 'text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
             <UtensilsCrossed className="w-3.5 h-3.5 text-emerald-600" />
-            <span>1. Rekap Harian Menu & Kedatangan PO</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSubTab('WEEKLY_MATERIAL_MATRIX')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md transition-all cursor-pointer ${
-              activeSubTab === 'WEEKLY_MATERIAL_MATRIX'
-                ? 'bg-white text-teal-900 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <TableIcon className="w-3.5 h-3.5 text-teal-600" />
-            <span>2. Matriks Pengeluaran Bahan Mingguan</span>
+            <span>1. Input Menu & Buat PO</span>
           </button>
 
           <button
@@ -1311,25 +1538,25 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             onClick={() => setActiveSubTab('BENEFICIARIES')}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md transition-all cursor-pointer ${
               activeSubTab === 'BENEFICIARIES'
-                ? 'bg-white text-blue-900 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white text-blue-900 shadow-2xs font-bold'
+                : 'text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
             <GraduationCap className="w-3.5 h-3.5 text-blue-600" />
-            <span>3. Penerima Manfaat & Sekolah</span>
+            <span>2. Penerima Manfaat</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveSubTab('MONTHLY_USAGE')}
+            onClick={() => setActiveSubTab('MASTER_BENEFICIARIES')}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md transition-all cursor-pointer ${
-              activeSubTab === 'MONTHLY_USAGE'
-                ? 'bg-white text-amber-900 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
+              activeSubTab === 'MASTER_BENEFICIARIES'
+                ? 'bg-white text-indigo-900 shadow-2xs font-bold'
+                : 'text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
-            <DollarSign className="w-3.5 h-3.5 text-amber-600" />
-            <span>4. Estimasi Biaya Bulanan</span>
+            <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+            <span>3. Master Data Penerima Manfaat</span>
           </button>
         </div>
 
@@ -1543,17 +1770,6 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-3 shadow-2xs">
             <div className="flex flex-wrap items-center gap-2">
               <select
-                value={selectedSession}
-                onChange={e => setSelectedSession(e.target.value)}
-                className="px-2.5 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg text-slate-700 bg-white"
-              >
-                <option value="ALL">Semua Sesi Makan</option>
-                <option value="Siang">Makan Siang</option>
-                <option value="Pagi">Sarapan (Pagi)</option>
-                <option value="Snack">Snack Bergizi</option>
-              </select>
-
-              <select
                 value={selectedStatus}
                 onChange={e => setSelectedStatus(e.target.value)}
                 className="px-2.5 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg text-slate-700 bg-white"
@@ -1627,98 +1843,119 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                   >
                     {/* Header Kartu Harian */}
                     <div className="p-4 bg-slate-50/90 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                      <div className="flex items-start sm:items-center gap-3">
-                        <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-900 flex flex-col items-center justify-center font-bold shrink-0 border border-emerald-200/60 shadow-2xs">
-                          <span className="text-[10px] font-medium leading-none text-emerald-700">Hari</span>
-                          <span className="text-base leading-tight font-extrabold">{oIdx + 1}</span>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-200/80 text-slate-700">
+                            Hari {oIdx + 1}
+                          </span>
+                          <h3 className="text-sm font-bold text-slate-900">
+                            {formatIndonesianDate(order.date)}
+                          </h3>
+                          <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-md bg-white text-slate-700 border border-slate-200">
+                            PO: {order.poDate || 'H-1'}
+                          </span>
+                          <div className="relative inline-flex items-center">
+                            <select
+                              value={order.status}
+                              onChange={e => handleQuickStatusChange(order.id, e.target.value as MenuOrderStatus)}
+                              className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border cursor-pointer focus:outline-none appearance-none pr-5 transition-colors ${statusMeta.class}`}
+                              title="Klik untuk ubah status pengerjaan menu"
+                            >
+                              <option value="PLANNED">Direncanakan</option>
+                              <option value="PREPPING">Persiapan Bahan</option>
+                              <option value="COOKING">Sedang Dimasak</option>
+                              <option value="DISTRIBUTED">Terdistribusi Selesai</option>
+                              <option value="CANCELLED">Dibatalkan</option>
+                            </select>
+                            <ChevronDown className="w-3 h-3 absolute right-1.5 pointer-events-none opacity-60" />
+                          </div>
                         </div>
 
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-sm font-bold text-slate-900">
-                              {formatIndonesianDate(order.date)}
-                            </h3>
-                            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100/70 text-emerald-800 font-semibold border border-emerald-200">
-                              {order.mealSession}
-                            </span>
-                            <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-800 font-semibold border border-blue-200">
-                              PO: {order.poDate || 'H-1'}
-                            </span>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusMeta.class}`}>
-                              {statusMeta.label}
-                            </span>
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 mt-1">
-                            <span className="flex items-center gap-1 font-semibold text-emerald-900">
-                              <Users className="w-3.5 h-3.5 text-emerald-700" />
-                              <strong className="font-bold">
-                                {order.totalBeneficiaries?.toLocaleString('id-ID') || order.targetPortions.toLocaleString('id-ID')}
-                              </strong>{' '}
-                              Porsi Penerima Manfaat
-                            </span>
-                            <span className="text-slate-300">•</span>
-                            <span className="flex items-center gap-1 text-slate-600">
-                              <ChefHat className="w-3.5 h-3.5 text-slate-400" />
-                              {order.chefInCharge || 'Chef Joko Santoso & Tim SPPG'}
-                            </span>
-                          </div>
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 mt-1.5">
+                          <span>
+                            Target: <strong className="font-bold text-slate-900">{order.totalBeneficiaries?.toLocaleString('id-ID') || order.targetPortions.toLocaleString('id-ID')} porsi</strong>
+                          </span>
+                          <span className="text-slate-300">•</span>
+                          <span>
+                            Penanggung Jawab: <span className="font-medium text-slate-800">{order.chefInCharge || 'Chef Joko Santoso & Tim Dapur SPPG Jeru Tumpang'}</span>
+                          </span>
                         </div>
                       </div>
 
-                      {/* Tombol Aksi Langsung pada Kartu */}
-                      <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+                      {/* Tombol Aksi Langsung pada Kartu (Ringkas & Bersih) */}
+                      <div className="flex items-center gap-1.5 self-start lg:self-auto">
                         {/* Edit Menu */}
                         <button
                           type="button"
                           onClick={() => handleOpenEditMenuModal(order)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-white hover:bg-emerald-50 rounded-lg border border-emerald-300 shadow-2xs transition-colors cursor-pointer"
-                          title="Edit nama menu, porsi, atau diet khusus"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 shadow-2xs transition-colors cursor-pointer"
+                          title="Edit susunan menu & target porsi"
                         >
-                          <Edit2 className="w-3.5 h-3.5 text-emerald-700" />
+                          <Edit2 className="w-3.5 h-3.5 text-slate-500" />
                           <span>Edit Menu</span>
                         </button>
 
-                        {/* Input & Edit PO Bahan */}
+                        {/* Kelola PO Bahan */}
                         <button
                           type="button"
                           onClick={() => handleOpenPoModal(order.id)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-800 bg-white hover:bg-blue-50 rounded-lg border border-blue-300 shadow-2xs transition-colors cursor-pointer"
-                          title="Kelola daftar bahan PO & timbangan barang datang"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                          title="Kelola daftar bahan PO & supplier"
                         >
-                          <PackagePlus className="w-3.5 h-3.5 text-blue-700" />
-                          <span>Kelola PO ({poItems.length} Item)</span>
+                          <PackagePlus className="w-3.5 h-3.5 text-slate-300" />
+                          <span>{poItems.length > 0 ? `Kelola PO (${poItems.length})` : 'Buat PO'}</span>
                         </button>
 
-                        {/* Quick Status Dropdown */}
-                        <select
-                          value={order.status}
-                          onChange={e => handleQuickStatusChange(order.id, e.target.value as MenuOrderStatus)}
-                          className="px-2 py-1 text-[11px] font-semibold rounded-lg border border-slate-200 bg-white text-slate-700 cursor-pointer"
-                          title="Ubah status pengerjaan menu"
-                        >
-                          <option value="PLANNED">Direncanakan</option>
-                          <option value="PREPPING">Persiapan Bahan</option>
-                          <option value="COOKING">Sedang Dimasak</option>
-                          <option value="DISTRIBUTED">Terdistribusi Selesai</option>
-                          <option value="CANCELLED">Dibatalkan</option>
-                        </select>
+                        {/* Menu Tindakan Lainnya (...) */}
+                        <div className="relative order-action-menu-container">
+                          <button
+                            type="button"
+                            onClick={() => setOpenOrderMenuId(openOrderMenuId === order.id ? null : order.id)}
+                            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                              openOrderMenuId === order.id
+                                ? 'bg-slate-100 text-slate-800 border-slate-300'
+                                : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100 border-transparent'
+                            }`}
+                            title="Tindakan lainnya"
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </button>
 
-                        {/* Hapus */}
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteOrder(order.id, order.menuTitle)}
-                          className="p-1.5 text-slate-500 hover:text-rose-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                          title="Hapus order menu & PO ini"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                          {openOrderMenuId === order.id && (
+                            <div className="absolute right-0 top-full mt-1.5 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-30 animate-in fade-in zoom-in-95 duration-100 text-xs">
+                              {poItems.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenOrderMenuId(null);
+                                    handleDeletePoForOrder(order.id);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                                  <span>Hapus Draft PO</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenOrderMenuId(null);
+                                  handleDeleteOrder(order.id, order.menuTitle);
+                                }}
+                                className="w-full text-left px-3 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                                <span>Hapus Menu Order</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
 
                         {/* Expand / Collapse */}
                         <button
                           type="button"
                           onClick={() => toggleExpandOrder(order.id)}
-                          className="p-1.5 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer ml-1"
                           title={isExpanded ? 'Tutup Rincian' : 'Buka Rincian'}
                         >
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -1726,167 +1963,122 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       </div>
                     </div>
 
-                    {/* Konten Kartu (Visual & Mudah Dibaca) */}
+                    {/* Konten Kartu */}
                     {isExpanded && (
                       <div className="p-4 sm:p-5 space-y-4">
-                        {/* SEKSI 1: MACAM OLAHAN MENU (Visual Chips / Tags) */}
+                        {/* SEKSI 1: KOMPOSISI OLAHAN MENU */}
                         <div className="bg-slate-50/70 rounded-xl p-4 border border-slate-200/80 space-y-3">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                              <UtensilsCrossed className="w-4 h-4 text-emerald-700" />
-                              Macam Menu Reguler (Siswa SD & SMP):
+                            <span className="text-xs font-bold text-slate-900">
+                              Komposisi Menu Reguler (Siswa SD & SMP)
                             </span>
                             <button
                               type="button"
                               onClick={() => handleOpenEditMenuModal(order)}
-                              className="text-[11px] font-semibold text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer"
+                              className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
                             >
-                              <Edit2 className="w-3 h-3" />
+                              <Edit2 className="w-3 h-3 text-slate-500" />
                               <span>Ubah Menu</span>
                             </button>
                           </div>
 
-                          {/* Chips Macam Menu Reguler */}
-                          <div className="flex flex-wrap gap-2">
-                            {regularDishes.length > 0 ? (
-                              regularDishes.map((dish, dIdx) => (
+                          {/* Komposisi Menu Reguler Cards */}
+                          {regularDishes.length > 0 ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                              {regularDishes.map((dish, dIdx) => (
                                 <div
                                   key={dIdx}
-                                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-2xs ${dish.colorClass}`}
+                                  className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between"
                                 >
-                                  <span className="text-sm">{dish.icon}</span>
-                                  <span>{dish.name}</span>
-                                  <span className="text-[10px] opacity-75 font-normal ml-0.5">
-                                    ({dish.category})
+                                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tight">
+                                    {dish.category}
+                                  </span>
+                                  <span className="text-xs font-bold text-slate-900 mt-1 capitalize">
+                                    {dish.name}
                                   </span>
                                 </div>
-                              ))
-                            ) : (
-                              <div className="text-xs text-slate-400 italic">Belum ada menu reguler diinput.</div>
-                            )}
-                          </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-slate-400 italic">Belum ada menu reguler diinput.</div>
+                          )}
 
                           {/* Menu Diet Khusus Balita & Bumil (B3) */}
-                          <div className="pt-2 border-t border-slate-200/80">
-                            <div className="text-[11px] font-bold text-amber-900 mb-1.5 flex items-center gap-1">
-                              <span>👶 Menu Khusus Diet Balita 3T & Ibu Hamil (B3):</span>
+                          <div className="pt-3 border-t border-slate-200/80">
+                            <div className="text-xs font-semibold text-slate-700 mb-2">
+                              Penyesuaian Menu Khusus Balita 3T & Ibu Hamil (B3):
                             </div>
                             {order.specialDietB3 ? (
-                              <div className="flex flex-wrap gap-2">
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                                 {b3Dishes.map((dish, bIdx) => (
                                   <div
                                     key={bIdx}
-                                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-amber-200 bg-amber-50/80 text-amber-950 text-xs font-semibold"
+                                    className="p-2.5 bg-white rounded-lg border border-slate-200 text-xs text-slate-800 font-medium capitalize"
                                   >
-                                    <span>{dish.icon}</span>
-                                    <span>{dish.name}</span>
+                                    {dish.name}
                                   </div>
                                 ))}
                               </div>
                             ) : (
-                              <div className="text-xs text-slate-500 italic bg-white p-2 rounded-lg border border-slate-200">
-                                Mengikuti menu reguler dengan penyesuaian porsi balita & bumil.
+                              <div className="text-xs text-slate-500 italic">
+                                Mengikuti menu reguler dengan penyesuaian porsi balita & ibu hamil.
                               </div>
                             )}
                           </div>
 
                           {order.notes && (
-                            <div className="text-[11px] text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200 flex items-start gap-1.5">
-                              <Info className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
-                              <span>Catatan: {order.notes}</span>
+                            <div className="text-xs text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200">
+                              <span className="font-semibold text-slate-700">Catatan Khusus:</span> {order.notes}
                             </div>
                           )}
                         </div>
 
-                        {/* SEKSI 2: DAFTAR BAHAN PO & KEDATANGAN BARANG */}
+                        {/* SEKSI 2: RINCIAN BAHAN PO */}
                         <div className="space-y-2.5">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                                <Truck className="w-4 h-4 text-blue-700" />
-                                Rincian Bahan PO & Kedatangan Barang
-                              </span>
-                              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                                {poItems.length} Bahan
-                              </span>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => handleOpenPoModal(order.id)}
-                              className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded-lg border border-blue-200 transition-colors cursor-pointer self-start sm:self-auto"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>+ Tambah / Edit Bahan PO</span>
-                            </button>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-900">
+                              Rincian Bahan PO
+                            </span>
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
+                              {poItems.length} Bahan
+                            </span>
                           </div>
 
-                          {/* List Bahan yang Mudah Dibaca (Bukan Tabel Padat) */}
+                          {/* List Bahan Table (Clean & Focused) */}
                           {poItems.length === 0 ? (
-                            <div className="p-5 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                              <Package className="w-7 h-7 text-slate-300 mx-auto mb-1.5" />
-                              Belum ada rincian bahan PO untuk tanggal ini. Klik{' '}
-                              <strong className="text-blue-700 cursor-pointer" onClick={() => handleOpenPoModal(order.id)}>
-                                + Tambah / Edit Bahan PO
-                              </strong>{' '}
-                              untuk memasukkan daftar pesanan bahan.
+                            <div className="py-5 px-4 text-center rounded-xl bg-slate-50 border border-slate-200/80">
+                              <p className="text-xs text-slate-500">
+                                Belum ada rincian bahan PO yang tercatat untuk menu ini.
+                              </p>
                             </div>
                           ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                              {poItems.map((item, pIdx) => {
-                                const isMatched =
-                                  item.qtyOrder &&
-                                  item.qtyArrived &&
-                                  item.qtyOrder.trim() === item.qtyArrived.trim();
-
-                                return (
-                                  <div
-                                    key={pIdx}
-                                    className="p-3 bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-all shadow-2xs flex flex-col justify-between gap-2"
-                                  >
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div>
-                                        <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200/80 mb-1">
-                                          {item.category}
-                                        </span>
-                                        <h4 className="text-xs font-bold text-slate-900 leading-snug">
-                                          {item.itemName}
-                                        </h4>
-                                      </div>
-                                      <span className="text-[10px] text-slate-400 font-mono">#{pIdx + 1}</span>
-                                    </div>
-
-                                    {/* Perbandingan Qty PO vs Datang & Timbang */}
-                                    <div className="bg-slate-50 p-2 rounded-lg border border-slate-100 text-xs space-y-1">
-                                      <div className="flex items-center justify-between text-slate-600">
-                                        <span className="text-[11px]">Qty PO (H-1):</span>
-                                        <span className="font-mono font-semibold text-slate-800">
-                                          {item.qtyOrder || '-'}
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center justify-between font-bold text-emerald-900 pt-1 border-t border-slate-200/60">
-                                        <span className="text-[11px] flex items-center gap-1">
-                                          <Scale className="w-3 h-3 text-emerald-700" />
-                                          Datang & Timbang:
-                                        </span>
-                                        <span className="font-mono bg-emerald-100/70 text-emerald-950 px-1.5 py-0.5 rounded text-[11px]">
-                                          {item.qtyArrived || '-'}
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    {/* Info Supplier & Jam Tiba */}
-                                    <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-100">
-                                      <span className="truncate max-w-[130px]" title={item.supplier}>
-                                        🚚 {item.supplier || 'Pemasok Lokal'}
-                                      </span>
-                                      <span className="font-mono text-slate-600">
-                                        🕒 {item.arrivalTime || '-'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs">
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead>
+                                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold">
+                                    <th className="py-2.5 px-3 w-12 text-center">No</th>
+                                    <th className="py-2.5 px-3 w-36">Kategori</th>
+                                    <th className="py-2.5 px-4">Nama Bahan</th>
+                                    <th className="py-2.5 px-4 w-52">Supplier / Rekanan</th>
+                                    <th className="py-2.5 px-4 w-32 text-right">Qty PO</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {poItems.map((item, pIdx) => (
+                                    <tr key={pIdx} className="hover:bg-slate-50/70 transition-colors">
+                                      <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{pIdx + 1}</td>
+                                      <td className="py-2.5 px-3 text-slate-600 font-medium">{item.category}</td>
+                                      <td className="py-2.5 px-4 font-semibold text-slate-900">{item.itemName}</td>
+                                      <td className="py-2.5 px-4 text-slate-700 font-medium">
+                                        {item.supplier || 'Pemasok Rekanan'}
+                                      </td>
+                                      <td className="py-2.5 px-4 text-right font-mono font-semibold text-slate-900 tabular-nums">
+                                        {item.qtyOrder || item.qtyArrived || '-'}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             </div>
                           )}
                         </div>
@@ -1901,93 +2093,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: MATRIKS PENGELUARAN BAHAN MINGGUAN (PERSIS KOLOM KANAN EXCEL)      */}
-      {/* ========================================================================= */}
-      {activeSubTab === 'WEEKLY_MATERIAL_MATRIX' && (
-        <div className="bg-white rounded-2xl border border-slate-300 shadow-xs p-5 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">
-                Total Pengeluaran Bahan Permingguan & Sisa Bahan Gudang
-              </h3>
-              <p className="text-xs text-slate-500">
-                Matriks akumulasi pemakaian bahan horizontal per tanggal dan pemantauan sisa stok gudang SPPG Jeru Tumpang
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-600 font-semibold bg-slate-100 px-3 py-1.5 rounded-lg">
-                Total <strong>{weeklyMaterialMatrix.rows.length}</strong> jenis bahan terpakai
-              </span>
-            </div>
-          </div>
-
-          {weeklyMaterialMatrix.rows.length === 0 ? (
-            <div className="p-12 text-center text-slate-400 text-xs">
-              <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              Tidak ada data bahan untuk periode aktif ini.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 border border-slate-300 text-slate-900 font-bold">
-                    <th className="py-2.5 px-2.5 w-10 border border-slate-300 text-center">No</th>
-                    <th className="py-2.5 px-3 w-32 border border-slate-300">Kategori</th>
-                    <th className="py-2.5 px-4 w-48 border border-slate-300">Nama Barang</th>
-                    {weeklyMaterialMatrix.dates.map(dStr => (
-                      <th
-                        key={dStr}
-                        className="py-2.5 px-3 border border-slate-300 text-center whitespace-nowrap min-w-[75px]"
-                      >
-                        {formatShortDate(dStr)}
-                      </th>
-                    ))}
-                    <th className="py-2.5 px-3 w-24 border border-slate-300 text-right font-bold bg-slate-200/70">Total</th>
-                    <th className="py-2.5 px-3 w-20 border border-slate-300 text-center">Satuan</th>
-                    <th className="py-2.5 px-4 w-36 border border-slate-300 text-emerald-950 font-bold">Sisa Bahan Gudang</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {weeklyMaterialMatrix.rows.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50 border-b border-slate-300">
-                      <td className="py-2 px-2.5 border border-slate-300 text-center font-mono font-bold text-slate-700">
-                        {row.no || ''}
-                      </td>
-                      <td className="py-2 px-3 border border-slate-300 font-semibold text-slate-700 capitalize">
-                        {row.no ? row.categoryGroup : ''}
-                      </td>
-                      <td className="py-2 px-4 border border-slate-300 font-bold text-slate-900">
-                        {row.itemName}
-                      </td>
-                      {weeklyMaterialMatrix.dates.map(dStr => (
-                        <td
-                          key={dStr}
-                          className="py-2 px-3 border border-slate-300 text-right font-mono text-slate-900 tabular-nums"
-                        >
-                          {row.dateValues[dStr] ? row.dateValues[dStr] : ''}
-                        </td>
-                      ))}
-                      <td className="py-2 px-3 border border-slate-300 text-right font-mono font-bold text-slate-950 tabular-nums bg-slate-50">
-                        {row.totalPeriod || 0}
-                      </td>
-                      <td className="py-2 px-3 border border-slate-300 text-center text-slate-700">
-                        {row.unit}
-                      </td>
-                      <td className="py-2 px-4 border border-slate-300 text-emerald-800 font-semibold text-[11px]">
-                        {row.warehouseStock}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 3: PENERIMA MANFAAT & SEKOLAH                                         */}
+      {/* TAB 2: PENERIMA MANFAAT & DISTRIBUSI HARIAN                               */}
       {/* ========================================================================= */}
       {activeSubTab === 'BENEFICIARIES' && (
         <div className="space-y-4">
@@ -2004,7 +2110,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={selectedBeneficiaryCategory}
                 onChange={e => setSelectedBeneficiaryCategory(e.target.value)}
@@ -2016,16 +2122,28 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 <option value="PAUD / TK">PAUD / TK</option>
                 <option value="Ibu Hamil & Balita (B3)">Balita 3T & Ibu Hamil (B3)</option>
               </select>
+
+              <select
+                value={beneficiaryStatusFilter}
+                onChange={e => setBeneficiaryStatusFilter(e.target.value)}
+                className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white"
+              >
+                <option value="ALL">Semua Status Distribusi</option>
+                <option value="DIJADWALKAN">Dijadwalkan</option>
+                <option value="SIAP_KIRIM">Siap Kirim</option>
+                <option value="DALAM_PERJALANAN">Dalam Perjalanan</option>
+                <option value="TERKIRIM">Terkirim</option>
+              </select>
             </div>
 
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Cari sekolah, kontak..."
+                placeholder="Cari nama sekolah, kontak, PIC..."
                 value={schoolSearchQuery}
                 onChange={e => setSchoolSearchQuery(e.target.value)}
-                className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1.5 w-60 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1.5 w-60 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -2037,35 +2155,75 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold">
                   <th className="py-2.5 px-3 w-10 text-center">No</th>
                   <th className="py-2.5 px-4">Nama Sekolah / Lembaga</th>
-                  <th className="py-2.5 px-3 w-36">Kategori</th>
+                  <th className="py-2.5 px-3 w-32">Kategori</th>
                   <th className="py-2.5 px-3 w-28 text-right">Alokasi Porsi</th>
-                  <th className="py-2.5 px-3 w-32">Jadwal Kirim</th>
-                  <th className="py-2.5 px-4 w-44">PIC & Kontak</th>
-                  <th className="py-2.5 px-3 w-28 text-center">Status</th>
+                  <th className="py-2.5 px-3 w-28">Jadwal Kirim</th>
+                  <th className="py-2.5 px-4 w-48">PIC & Kontak</th>
+                  <th className="py-2.5 px-3 w-32 text-center">Status</th>
+                  <th className="py-2.5 px-3 w-24 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredSchools.map((s, idx) => (
-                  <tr key={s.id || idx} className="hover:bg-slate-50/70">
+                  <tr key={s.id || idx} className="hover:bg-slate-50/70 transition-colors">
                     <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{idx + 1}</td>
-                    <td className="py-2.5 px-4 font-bold text-slate-900">{s.schoolName}</td>
+                    <td className="py-2.5 px-4">
+                      <div className="font-bold text-slate-900">{s.schoolName}</div>
+                      {s.notes && (
+                        <div className="text-[10px] text-slate-400 truncate max-w-xs">{s.notes}</div>
+                      )}
+                    </td>
                     <td className="py-2.5 px-3">
                       <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
                         {s.category}
                       </span>
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800 tabular-nums">
-                      {s.portionCount.toLocaleString('id-ID')}
+                      {s.portionCount.toLocaleString('id-ID')} <span className="text-[10px] font-normal text-slate-500">porsi</span>
                     </td>
-                    <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">{s.deliveryTime || '10:00 - 10:30'}</td>
+                    <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        <span>{s.deliveryTime || '10:00 - 10:30'}</span>
+                      </div>
+                    </td>
                     <td className="py-2.5 px-4 text-slate-700 text-[11px]">
-                      <div>{s.contactPerson || '-'}</div>
-                      <div className="text-slate-400 font-mono">{s.phone || '-'}</div>
+                      <div className="font-semibold text-slate-900">{s.contactPerson || '-'}</div>
+                      <div className="text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                        <Phone className="w-2.5 h-2.5 text-slate-400" />
+                        <span>{s.phone || '-'}</span>
+                      </div>
                     </td>
                     <td className="py-2.5 px-3 text-center">
-                      <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                        {s.status || 'TERKIRIM'}
-                      </span>
+                      <select
+                        value={s.status || 'DIJADWALKAN'}
+                        onChange={e => handleQuickUpdateBeneficiaryStatus(s, e.target.value as any)}
+                        className={`text-[11px] font-bold px-2 py-1 rounded border cursor-pointer ${
+                          s.status === 'TERKIRIM'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                            : s.status === 'DALAM_PERJALANAN'
+                            ? 'bg-amber-50 text-amber-800 border-amber-300'
+                            : s.status === 'SIAP_KIRIM'
+                            ? 'bg-blue-50 text-blue-800 border-blue-300'
+                            : 'bg-slate-100 text-slate-700 border-slate-300'
+                        }`}
+                      >
+                        <option value="DIJADWALKAN">Dijadwalkan</option>
+                        <option value="SIAP_KIRIM">Siap Kirim</option>
+                        <option value="DALAM_PERJALANAN">Dalam Perjalanan</option>
+                        <option value="TERKIRIM">Terkirim</option>
+                      </select>
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditBeneficiary(s)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer"
+                        title="Edit data penerima manfaat, jumlah porsi, dan kontak PIC"
+                      >
+                        <Edit2 className="w-3 h-3 text-blue-600" />
+                        <span>Edit</span>
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -2076,54 +2234,191 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 4: ESTIMASI BIAYA & PEMAKAIAN BULANAN                                  */}
+      {/* TAB 3: MASTER DATA PENERIMA MANFAAT                                       */}
       {/* ========================================================================= */}
-      {activeSubTab === 'MONTHLY_USAGE' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">
-                Laporan Estimasi Biaya & Pemakaian Bahan Baku
-              </h3>
-              <p className="text-xs text-slate-500">
-                Kalkulasi belanja bahan berdasarkan harga referensi pasar SPPG Jeru Tumpang
-              </p>
+      {activeSubTab === 'MASTER_BENEFICIARIES' && (
+        <div className="space-y-4">
+          {/* Header Box: Actions & Stats */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-800 flex items-center justify-center">
+                    <Building2 className="w-4 h-4 text-indigo-700" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Master Data Penerima Manfaat
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Database induk lembaga, sekolah sasaran, penetapan target porsi harian, dan kontak penanggung jawab (PIC).
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleExportMasterBeneficiariesExcel}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
+                  title="Unduh database master penerima manfaat ke file Excel"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Ekspor Excel</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenAddBeneficiary}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Tambah Penerima Manfaat</span>
+                </button>
+              </div>
             </div>
-            <div className="font-mono font-bold text-sm text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
-              Total Biaya: Rp {stats.totalEstimatedCost.toLocaleString('id-ID')}
+
+            {/* KPI Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="text-[11px] font-semibold text-slate-500">Total Lembaga Terdaftar</div>
+                <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
+                  {beneficiaries.length} <span className="text-xs font-normal text-slate-500">titik lembaga</span>
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5">Sekolah, Madrasah, PAUD & Posyandu</div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="text-[11px] font-semibold text-slate-500">Total Target Porsi Harian</div>
+                <div className="text-xl font-bold text-emerald-800 mt-1 tabular-nums">
+                  {beneficiaryCategoryStats.totalAllPortions.toLocaleString('id-ID')}{' '}
+                  <span className="text-xs font-normal text-slate-500">porsi / hari</span>
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5">Kapasitas makan bergizi SPPG</div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="text-[11px] font-semibold text-slate-500">Kontak PIC Terverifikasi</div>
+                <div className="text-xl font-bold text-indigo-900 mt-1 tabular-nums">
+                  {beneficiaries.filter(b => b.contactPerson && b.phone).length}{' '}
+                  <span className="text-xs font-normal text-slate-500">penanggung jawab</span>
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5">Nomor HP/WA aktif terhubung</div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="text-[11px] font-semibold text-slate-500">Rata-rata Porsi per Sekolah</div>
+                <div className="text-xl font-bold text-blue-900 mt-1 tabular-nums">
+                  {Math.round(beneficiaryCategoryStats.totalAllPortions / (beneficiaries.length || 1)).toLocaleString('id-ID')}{' '}
+                  <span className="text-xs font-normal text-slate-500">porsi/titik</span>
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5">Rata-rata distribusi per lembaga</div>
+              </div>
+            </div>
+
+            {/* Filter and Search */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+              <div className="flex items-center gap-2">
+                <select
+                  value={masterCategoryFilter}
+                  onChange={e => setMasterCategoryFilter(e.target.value)}
+                  className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white"
+                >
+                  <option value="ALL">Semua Kategori Sasaran</option>
+                  <option value="SD / MI">Sekolah Dasar (SD / MI)</option>
+                  <option value="SMP / MTs">Sekolah Menengah (SMP / MTs)</option>
+                  <option value="PAUD / TK">PAUD / TK</option>
+                  <option value="Ibu Hamil & Balita (B3)">Balita 3T & Ibu Hamil (B3)</option>
+                </select>
+              </div>
+
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Cari ID, sekolah, PIC, kontak..."
+                  value={masterSearchQuery}
+                  onChange={e => setMasterSearchQuery(e.target.value)}
+                  className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1.5 w-64 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Master Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold">
                   <th className="py-2.5 px-3 w-10 text-center">No</th>
-                  <th className="py-2.5 px-3 w-32">Kategori</th>
-                  <th className="py-2.5 px-4">Nama Bahan</th>
-                  <th className="py-2.5 px-3 w-28 text-right">Harga Satuan (Rp)</th>
-                  <th className="py-2.5 px-3 w-32 text-right">Subtotal Biaya (Rp)</th>
+                  <th className="py-2.5 px-3 w-20">ID</th>
+                  <th className="py-2.5 px-4">Nama Lembaga / Sekolah</th>
+                  <th className="py-2.5 px-3 w-32">Kategori Sasaran</th>
+                  <th className="py-2.5 px-3 w-28 text-right">Target Porsi</th>
+                  <th className="py-2.5 px-4 w-48">Kontak PIC</th>
+                  <th className="py-2.5 px-3 w-28">Jadwal Kirim</th>
+                  <th className="py-2.5 px-4">Catatan Titik Serah</th>
+                  <th className="py-2.5 px-3 w-28 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {weeklyMaterialMatrix.rows.map((row, idx) => {
-                  const unitPrice = estimatePrice(row.itemName);
-                  const cost = row.totalPeriod * unitPrice;
-
-                  return (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-2 px-3 text-center text-slate-400 font-mono">{idx + 1}</td>
-                      <td className="py-2 px-3 text-slate-600 capitalize">{row.categoryGroup}</td>
-                      <td className="py-2 px-4 font-bold text-slate-900">{row.itemName}</td>
-                      <td className="py-2 px-3 text-right font-mono text-slate-700">
-                        Rp {unitPrice.toLocaleString('id-ID')}
-                      </td>
-                      <td className="py-2 px-3 text-right font-mono font-bold text-emerald-800 tabular-nums">
-                        Rp {cost.toLocaleString('id-ID')}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {filteredMasterBeneficiaries.map((s, idx) => (
+                  <tr key={s.id || idx} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{idx + 1}</td>
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500 font-semibold">{s.id}</td>
+                    <td className="py-2.5 px-4 font-bold text-slate-900">{s.schoolName}</td>
+                    <td className="py-2.5 px-3">
+                      <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200">
+                        {s.category}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800 tabular-nums">
+                      {s.portionCount.toLocaleString('id-ID')} <span className="text-[10px] font-normal text-slate-500">porsi</span>
+                    </td>
+                    <td className="py-2.5 px-4 text-slate-700 text-[11px]">
+                      <div className="font-semibold text-slate-900">{s.contactPerson || '-'}</div>
+                      <div className="text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                        <Phone className="w-2.5 h-2.5 text-slate-400" />
+                        <span>{s.phone || '-'}</span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        <span>{s.deliveryTime || '09.45 WIB'}</span>
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-4 text-slate-500 text-[11px]">
+                      {s.notes || '-'}
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditBeneficiary(s)}
+                          className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                          title="Edit data penerima manfaat"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteBeneficiary(s)}
+                          className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="Hapus lembaga ini dari master data"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filteredMasterBeneficiaries.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="py-8 text-center text-slate-400 text-xs">
+                      Tidak ada data lembaga penerima manfaat yang sesuai dengan filter atau kata kunci.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -2160,7 +2455,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             </div>
 
             <form onSubmit={handleSaveMenuForm} className="flex-1 flex flex-col min-h-0 text-xs space-y-4 overflow-y-auto pr-1">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Tanggal Distribusi Menu</label>
                   <input
@@ -2187,19 +2482,6 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                     onChange={e => setMenuFormPoDate(e.target.value)}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-800 bg-white"
                   />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Sesi Makan</label>
-                  <select
-                    value={menuFormSession}
-                    onChange={e => setMenuFormSession(e.target.value as any)}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800"
-                  >
-                    <option value="Siang">Makan Siang</option>
-                    <option value="Pagi">Sarapan (Pagi)</option>
-                    <option value="Snack">Snack Bergizi</option>
-                  </select>
                 </div>
               </div>
 
@@ -2315,39 +2597,36 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 2: INPUT & EDIT PO HARI INI & KEDATANGAN BARANG                     */}
+      {/* MODAL 2: INPUT & BUAT PO HARI INI                                         */}
       {/* ========================================================================= */}
       {isPoModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-4xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] flex flex-col">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-3 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center">
-                  <PackagePlus className="w-5 h-5 text-blue-700" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900">
-                    Input & Edit PO Hari Ini (Bahan Dipesan & Timbang Datang)
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Pencatatan daftar pesanan bahan PO (H-1), supplier, jam tiba, dan hasil penimbangan riil
-                  </p>
-                </div>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-4xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-200 mb-4 shrink-0">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900">
+                  Input & Buat Purchase Order (PO)
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Pencatatan daftar kebutuhan bahan baku (H-1) untuk menu harian
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsPoModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Pilihan Order Menu & Tanggal PO */}
-            <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-200/80 mb-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs shrink-0">
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs shrink-0">
               <div className="sm:col-span-2">
-                <label className="block font-bold text-slate-800 mb-1">
-                  Menu Tujuan untuk PO ini:
+                <label className="block font-medium text-slate-700 mb-1">
+                  Menu Tujuan untuk PO:
                 </label>
                 <select
                   value={selectedPoOrderId}
@@ -2364,24 +2643,24 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                           qtyArrived: p.qtyArrived || '',
                           supplier: p.supplier || '',
                           arrivalTime: p.arrivalTime || '',
-                          pic: p.pic || 'Akmal',
+                          pic: p.pic || currentUser.name,
                           notes: p.notes || '',
                         }))
                       );
                     }
                   }}
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-semibold text-slate-900 bg-white"
+                  className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 font-medium text-slate-800 bg-white focus:outline-none focus:border-slate-400"
                 >
                   {orders.map(ord => (
                     <option key={ord.id} value={ord.id}>
-                      {ord.date} ({ord.mealSession}) - {ord.menuTitle.slice(0, 45)}... ({ord.targetPortions} porsi)
+                      {ord.date} - {ord.menuTitle.slice(0, 45)}... ({ord.targetPortions} porsi)
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block font-bold text-slate-800 mb-1">
+                <label className="block font-medium text-slate-700 mb-1">
                   Tanggal PO (H-1):
                 </label>
                 <input
@@ -2389,7 +2668,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                   placeholder="Contoh: 2026-09-19"
                   value={poFormDate}
                   onChange={e => setPoFormDate(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-800 bg-white"
+                  className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-slate-800 bg-white font-mono focus:outline-none focus:border-slate-400"
                 />
               </div>
             </div>
@@ -2397,50 +2676,53 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             {/* Form Tabel Bahan PO */}
             <form onSubmit={handleSavePoForm} className="flex-1 flex flex-col min-h-0 text-xs space-y-3 overflow-hidden">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-800 text-xs">
-                  Daftar Bahan PO ({poFormRows.length} Baris Bahan):
+                <span className="font-medium text-slate-700 text-xs">
+                  Daftar Bahan PO ({poFormRows.length} item bahan):
                 </span>
                 <button
                   type="button"
                   onClick={handleApplyPoTemplate}
-                  className="text-[11px] font-semibold text-blue-700 hover:text-blue-900 underline cursor-pointer"
+                  className="text-xs font-medium text-slate-600 hover:text-slate-900 underline underline-offset-2 cursor-pointer transition-colors"
                 >
-                  + Gunakan Template Standar SPPG (Ayam, Beras, Tahu, Sayur, Buah)
+                  Gunakan Template Standar SPPG (Ayam, Beras, Tahu, Sayur, Buah)
                 </button>
               </div>
 
-              <div className="border border-slate-200 rounded-xl overflow-hidden flex-1 flex flex-col min-h-0">
-                <div className="overflow-x-auto overflow-y-auto flex-1">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200 sticky top-0 z-10 text-[11px]">
+              <div className="border border-slate-200 rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
+                <div className="overflow-y-auto flex-1">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-slate-50 text-slate-600 font-medium border-b border-slate-200 sticky top-0 z-10 text-xs">
                       <tr>
-                        <th className="py-2 px-2 w-7 text-center">No</th>
-                        <th className="py-2 px-2 w-28">Kategori</th>
-                        <th className="py-2 px-2">Nama Bahan / Barang</th>
-                        <th className="py-2 px-2 w-20">Qty PO (H-1)</th>
-                        <th className="py-2 px-2 w-24 font-bold text-emerald-900">Datang & Timbang</th>
-                        <th className="py-2 px-2 w-40">Pemasok / Supplier</th>
-                        <th className="py-2 px-2 w-16 text-center">Jam Tiba</th>
-                        <th className="py-2 px-2 w-36">Catatan Khusus</th>
-                        <th className="py-2 px-2 w-20">PIC</th>
-                        <th className="py-2 px-2 w-7 text-center"></th>
+                        <th className="py-2.5 px-3 w-10 text-center font-medium text-slate-400">No</th>
+                        <th className="py-2.5 px-3 w-36 font-medium text-slate-700">Kategori</th>
+                        <th className="py-2.5 px-3 font-medium text-slate-700">Nama Barang</th>
+                        <th className="py-2.5 px-3 w-48 font-medium text-slate-700">Supplier / Rekanan</th>
+                        <th className="py-2.5 px-3 w-32 font-medium text-slate-700">Qty PO</th>
+                        <th className="py-2.5 px-2 w-10 text-center"></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-slate-100 bg-white">
                       {poFormRows.map((row, rIdx) => (
-                        <tr key={rIdx} className="hover:bg-slate-50">
-                          <td className="py-1.5 px-2 text-center text-slate-400 font-mono text-[11px]">
+                        <tr key={rIdx} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-2 px-3 text-center text-slate-400 font-mono text-xs">
                             {rIdx + 1}
                           </td>
-                          <td className="py-1.5 px-2">
+                          <td className="py-2 px-3">
                             <select
                               value={row.category}
                               onChange={e => {
+                                const newCat = e.target.value;
                                 const updated = [...poFormRows];
-                                updated[rIdx].category = e.target.value;
+                                updated[rIdx].category = newCat;
+                                if (!updated[rIdx].supplier || updated[rIdx].supplier === 'Pemasok Rekanan') {
+                                  const suggested = resolveSupplierForItem(newCat, updated[rIdx].itemName, '', masterSuppliers);
+                                  if (suggested && suggested !== 'Pemasok Rekanan') {
+                                    updated[rIdx].supplier = suggested;
+                                  }
+                                }
                                 setPoFormRows(updated);
                               }}
-                              className="w-full p-1 rounded border border-slate-200 bg-white text-[11px]"
+                              className="w-full px-2 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:border-slate-400"
                             >
                               <option value="Protein">Protein</option>
                               <option value="Sembako">Sembako</option>
@@ -2452,102 +2734,56 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                               <option value="Lain-lain">Lain-lain</option>
                             </select>
                           </td>
-                          <td className="py-1.5 px-2">
+                          <td className="py-2 px-3">
                             <input
                               type="text"
                               required
-                              placeholder="Misal: Ayam Potong, Beras 25kg"
+                              placeholder="Misal: Ayam Potong / Telur Ayam"
                               value={row.itemName}
                               onChange={e => {
+                                const newName = e.target.value;
                                 const updated = [...poFormRows];
-                                updated[rIdx].itemName = e.target.value;
+                                updated[rIdx].itemName = newName;
+                                if (!updated[rIdx].supplier || updated[rIdx].supplier === 'Pemasok Rekanan') {
+                                  const suggested = resolveSupplierForItem(updated[rIdx].category, newName, '', masterSuppliers);
+                                  if (suggested && suggested !== 'Pemasok Rekanan') {
+                                    updated[rIdx].supplier = suggested;
+                                  }
+                                }
                                 setPoFormRows(updated);
                               }}
-                              className="w-full p-1 rounded border border-slate-200 font-semibold text-xs"
+                              className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 font-medium"
                             />
                           </td>
-                          <td className="py-1.5 px-2">
+                          <td className="py-2 px-3">
                             <input
                               type="text"
-                              placeholder="260 kg"
+                              list="po-supplier-options"
+                              placeholder="Pilih / ketik supplier..."
+                              value={row.supplier}
+                              onChange={e => {
+                                const updated = [...poFormRows];
+                                updated[rIdx].supplier = e.target.value;
+                                setPoFormRows(updated);
+                              }}
+                              className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 font-medium bg-white"
+                            />
+                          </td>
+                          <td className="py-2 px-3">
+                            <input
+                              type="text"
+                              required
+                              placeholder="Misal: 260 kg / 7 sak"
                               value={row.qtyOrder}
                               onChange={e => {
                                 const updated = [...poFormRows];
                                 updated[rIdx].qtyOrder = e.target.value;
                                 setPoFormRows(updated);
                               }}
-                              className="w-full p-1 font-mono rounded border border-slate-200 text-right text-xs"
+                              className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs text-slate-800 font-mono placeholder-slate-400 focus:outline-none focus:border-slate-400"
                             />
                           </td>
-                          <td className="py-1.5 px-2">
-                            <input
-                              type="text"
-                              placeholder="260 kg"
-                              value={row.qtyArrived}
-                              onChange={e => {
-                                const updated = [...poFormRows];
-                                updated[rIdx].qtyArrived = e.target.value;
-                                setPoFormRows(updated);
-                              }}
-                              className="w-full p-1 font-mono font-bold text-emerald-900 rounded border border-emerald-300 text-right bg-emerald-50/50 text-xs"
-                            />
-                          </td>
-                          <td className="py-1.5 px-2">
-                            <div className="relative">
-                              <input
-                                type="text"
-                                list="master-supplier-datalist"
-                                placeholder="Pilih / ketik supplier..."
-                                value={row.supplier}
-                                onChange={e => {
-                                  const updated = [...poFormRows];
-                                  updated[rIdx].supplier = e.target.value;
-                                  setPoFormRows(updated);
-                                }}
-                                className="w-full p-1 rounded border border-slate-300 bg-white text-[11px] focus:ring-1 focus:ring-emerald-500"
-                              />
-                            </div>
-                          </td>
-                          <td className="py-1.5 px-2 text-center">
-                            <input
-                              type="text"
-                              placeholder="08.30"
-                              value={row.arrivalTime}
-                              onChange={e => {
-                                const updated = [...poFormRows];
-                                updated[rIdx].arrivalTime = e.target.value;
-                                setPoFormRows(updated);
-                              }}
-                              className="w-full p-1 font-mono rounded border border-slate-200 text-center text-[11px]"
-                            />
-                          </td>
-                          <td className="py-1.5 px-2">
-                            <input
-                              type="text"
-                              placeholder="Catatan / kondisi bahan..."
-                              value={row.notes || ''}
-                              onChange={e => {
-                                const updated = [...poFormRows];
-                                updated[rIdx].notes = e.target.value;
-                                setPoFormRows(updated);
-                              }}
-                              className="w-full p-1 rounded border border-slate-200 text-[11px] text-slate-700 placeholder-slate-400"
-                            />
-                          </td>
-                          <td className="py-1.5 px-2">
-                            <input
-                              type="text"
-                              placeholder="Akmal"
-                              value={row.pic}
-                              onChange={e => {
-                                const updated = [...poFormRows];
-                                updated[rIdx].pic = e.target.value;
-                                setPoFormRows(updated);
-                              }}
-                              className="w-full p-1 rounded border border-slate-200 text-[11px]"
-                            />
-                          </td>
-                          <td className="py-1.5 px-2 text-center">
+                          <td className="py-2 px-2 text-center">
                             <button
                               type="button"
                               disabled={poFormRows.length === 1}
@@ -2555,8 +2791,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                                 const updated = poFormRows.filter((_, idx) => idx !== rIdx);
                                 setPoFormRows(updated);
                               }}
-                              className="text-slate-400 hover:text-rose-600 disabled:opacity-30 cursor-pointer p-0.5"
-                              title="Hapus baris ini"
+                              className="text-slate-400 hover:text-rose-600 disabled:opacity-20 cursor-pointer p-1 rounded hover:bg-slate-100 transition-colors"
+                              title="Hapus baris"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -2565,12 +2801,20 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       ))}
                     </tbody>
                   </table>
-                  <datalist id="master-supplier-datalist">
+                  <datalist id="po-supplier-options">
                     {masterSuppliers.map(s => (
                       <option key={s.id} value={s.name}>
-                        {s.name} ({s.supplyCategory || 'Pemasok Rekanan'})
+                        {s.supplyCategory ? `${s.name} (${s.supplyCategory})` : s.name}
                       </option>
                     ))}
+                    {masterSuppliers.every(s => s.name !== 'Ayam Segar Fajar') && <option value="Ayam Segar Fajar" />}
+                    {masterSuppliers.every(s => s.name !== 'Tahu Rio') && <option value="Tahu Rio" />}
+                    {masterSuppliers.every(s => s.name !== 'UMKM Tahu Rio') && <option value="UMKM Tahu Rio" />}
+                    {masterSuppliers.every(s => s.name !== 'Tumpang Grosir') && <option value="Tumpang Grosir" />}
+                    {masterSuppliers.every(s => s.name !== 'UMKM Tumpang Grosir') && <option value="UMKM Tumpang Grosir" />}
+                    {masterSuppliers.every(s => s.name !== 'Sayur Segar Malang') && <option value="Sayur Segar Malang" />}
+                    {masterSuppliers.every(s => s.name !== 'Buah Segar Nusantara') && <option value="Buah Segar Nusantara" />}
+                    {masterSuppliers.every(s => s.name !== 'Toko Bumbu Berkah') && <option value="Toko Bumbu Berkah" />}
                   </datalist>
                 </div>
 
@@ -2587,54 +2831,252 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                           qtyArrived: '',
                           supplier: '',
                           arrivalTime: '08.00',
-                          pic: 'Akmal',
+                          pic: currentUser.name,
                           notes: '',
                         },
                       ])
                     }
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-white border border-slate-300 text-slate-800 hover:bg-slate-100 cursor-pointer shadow-2xs"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 cursor-pointer shadow-2xs transition-colors"
                   >
-                    <Plus className="w-3.5 h-3.5 text-blue-700" />
-                    <span>+ Tambah Baris Bahan</span>
+                    <Plus className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Tambah Baris Bahan</span>
                   </button>
 
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-xs text-slate-500">
                     Total {poFormRows.length} item bahan
                   </span>
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200 shrink-0">
-                <div className="text-[11px] text-slate-500 max-w-sm">
-                  💡 Gunakan tombol <strong className="text-emerald-700 font-semibold">Generate PO Resmi ke Belanja</strong> agar nota PO BGN otomatis terbit di menu belanja tanpa perlu input ulang.
+              {/* Action Buttons: Hapus PO (kiri), Batal & Generate PO (kanan) */}
+              <div className="flex items-center justify-between pt-3 border-t border-slate-200 shrink-0">
+                <div>
+                  {selectedPoOrderId && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePoForOrder(selectedPoOrderId)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-rose-700 hover:text-rose-800 hover:bg-rose-50 border border-rose-200 rounded-lg transition-colors cursor-pointer"
+                      title="Batalkan & hapus PO resmi untuk menu ini"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Hapus PO</span>
+                    </button>
+                  )}
                 </div>
+
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setIsPoModalOpen(false)}
-                    className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                    className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer"
                   >
                     Batal
                   </button>
                   <button
-                    type="submit"
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs transition-colors cursor-pointer"
-                    title="Hanya simpan di catatan menu harian tanpa membuat PO di belanja"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Simpan di Menu Saja</span>
-                  </button>
-                  <button
                     type="button"
                     onClick={handleSaveAndGenerateOfficialPo}
-                    className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-all cursor-pointer active:scale-95"
-                    title="Simpan menu dan otomatis buat draft PO resmi ke menu Input Barang & Belanja"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg bg-slate-900 hover:bg-slate-800 text-white shadow-xs transition-colors cursor-pointer active:scale-[0.99]"
+                    title="Generate dan terbitkan PO resmi ke menu Input Barang & Belanja"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Generate PO Resmi ke Belanja</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                    <span>Generate PO</span>
                   </button>
                 </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* ========================================================================= */}
+      {/* MODAL 3: INPUT & EDIT DATA PENERIMA MANFAAT                                */}
+      {/* ========================================================================= */}
+      {isBeneficiaryModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-800 flex items-center justify-center">
+                  <Building2 className="w-5 h-5 text-indigo-700" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">
+                    {editingBeneficiary ? 'Edit Data Penerima Manfaat' : 'Tambah Penerima Manfaat Baru'}
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Atur nama sekolah/lembaga, kuota jumlah porsi, serta kontak penanggung jawab (PIC)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBeneficiaryModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBeneficiary} className="space-y-4 overflow-y-auto pr-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Nama Sekolah / Lembaga <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={beneficiaryFormName}
+                    onChange={e => setBeneficiaryFormName(e.target.value)}
+                    placeholder="Contoh: SDN 1 Jeru atau Posyandu Dahlia"
+                    className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    ID Lembaga
+                  </label>
+                  <input
+                    type="text"
+                    value={beneficiaryFormId}
+                    onChange={e => setBeneficiaryFormId(e.target.value)}
+                    placeholder="SCH-001"
+                    className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 bg-slate-50 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Kategori Sasaran <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={beneficiaryFormCategory}
+                    onChange={e => setBeneficiaryFormCategory(e.target.value)}
+                    className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="SD / MI">Sekolah Dasar (SD / MI)</option>
+                    <option value="SMP / MTs">Sekolah Menengah (SMP / MTs)</option>
+                    <option value="PAUD / TK">PAUD / TK</option>
+                    <option value="Ibu Hamil & Balita (B3)">Balita 3T & Ibu Hamil (B3)</option>
+                    <option value="Lembaga Sasaran Lainnya">Lembaga Sasaran Lainnya</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Target Alokasi Porsi <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      value={beneficiaryFormPortions}
+                      onChange={e => setBeneficiaryFormPortions(Number(e.target.value) || 0)}
+                      className="w-full text-xs border border-slate-300 rounded-lg pl-3 pr-14 py-2 font-mono font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium">
+                      porsi
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Nama Kontak PIC / Penanggung Jawab
+                  </label>
+                  <input
+                    type="text"
+                    value={beneficiaryFormContactPerson}
+                    onChange={e => setBeneficiaryFormContactPerson(e.target.value)}
+                    placeholder="Contoh: Pak Hadi (Kepala Sekolah)"
+                    className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Nomor Kontak / WhatsApp PIC
+                  </label>
+                  <div className="relative">
+                    <Phone className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={beneficiaryFormPhone}
+                      onChange={e => setBeneficiaryFormPhone(e.target.value)}
+                      placeholder="Contoh: 0812-3344-5501"
+                      className="w-full text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-2 font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Jadwal / Waktu Kirim
+                  </label>
+                  <div className="relative">
+                    <Clock className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={beneficiaryFormDeliveryTime}
+                      onChange={e => setBeneficiaryFormDeliveryTime(e.target.value)}
+                      placeholder="Contoh: 09.45 WIB atau 10:00 - 10:30"
+                      className="w-full text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Status Operasional Distribusi
+                  </label>
+                  <select
+                    value={beneficiaryFormStatus}
+                    onChange={e => setBeneficiaryFormStatus(e.target.value as any)}
+                    className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    <option value="DIJADWALKAN">Dijadwalkan</option>
+                    <option value="SIAP_KIRIM">Siap Kirim di Dapur</option>
+                    <option value="DALAM_PERJALANAN">Dalam Perjalanan Kurir</option>
+                    <option value="TERKIRIM">Telah Terkirim & Diterima</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Titik Serah & Catatan Jalur Distribusi
+                </label>
+                <textarea
+                  rows={2}
+                  value={beneficiaryFormNotes}
+                  onChange={e => setBeneficiaryFormNotes(e.target.value)}
+                  placeholder="Contoh: Jalur Distribusi 1 - Area Jeru Timur, serah terima di ruang guru piket"
+                  className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBeneficiaryModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{editingBeneficiary ? 'Simpan Perubahan' : 'Simpan Penerima Manfaat'}</span>
+                </button>
               </div>
             </form>
           </div>

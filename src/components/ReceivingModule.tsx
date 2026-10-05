@@ -52,6 +52,9 @@ import {
   Check,
   RotateCcw,
   Edit3,
+  Scale,
+  PackageSearch,
+  PackageCheck,
 } from 'lucide-react';
 import { SignaturePad } from './SignaturePad';
 import { ReceivingDetailModal } from './ReceivingDetailModal';
@@ -60,6 +63,7 @@ import { exportToExcel } from '../lib/excelExport';
 import { NotaPesananModal } from './NotaPesananModal';
 import { MasterSupplierModal } from './MasterSupplierModal';
 import { BatchPrintNotaModal } from './BatchPrintNotaModal';
+import { PoReceivingWeighingModal } from './PoReceivingWeighingModal';
 import { useToast } from '../context/ToastContext';
 import { ConfirmationModal, ConfirmationItemSummary } from './common/ConfirmationModal';
 import { LoadingOverlay } from './common/LoadingOverlay';
@@ -352,6 +356,21 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   // Nota Pesanan Modal state
   const [isNotaModalOpen, setIsNotaModalOpen] = useState(false);
   const [activeNota, setActiveNota] = useState<PurchaseOrderNota | null>(null);
+
+  // PO Physical Receiving & Weighing state (1-Flow Supply Chain)
+  const [isWeighModalOpen, setIsWeighModalOpen] = useState(false);
+  const [selectedPoForWeighing, setSelectedPoForWeighing] = useState<PurchaseOrderNota | null>(null);
+  const [showAllPoQueue, setShowAllPoQueue] = useState(false);
+
+  const pendingPOs = useMemo(
+    () => purchaseOrders.filter(po => po.status !== 'SELESAI'),
+    [purchaseOrders]
+  );
+
+  const handleOpenWeighModal = (po: PurchaseOrderNota) => {
+    setSelectedPoForWeighing(po);
+    setIsWeighModalOpen(true);
+  };
 
   // Pool Antrean Cetak Nota (Batch Print) state
   const [isBatchPrintModalOpen, setIsBatchPrintModalOpen] = useState(false);
@@ -1997,73 +2016,219 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       </div>
 
       {/* ========================================================================= */}
-      {/* SUMMARY KPI CARDS */}
+      {/* SECTION: ANTREAN PO & PENIMBANGAN BAHAN MASUK (GOLDEN FLOW SUPPLY CHAIN) */}
       {/* ========================================================================= */}
-      {!isCreatingDeliveryOrder && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card 1: Total Transaksi & Belanja */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-            <div className="flex items-center justify-between text-slate-500 mb-1">
-              <span className="text-xs font-semibold">Total Input & Belanja</span>
-              <ShoppingBag className="w-4 h-4 text-emerald-600" />
+      {!isCreatingDeliveryOrder && purchaseOrders.length > 0 && (
+        <section className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+          {/* Header Ribbon */}
+          <div className="px-5 py-3.5 bg-slate-50/90 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200/80">
+                <PackageCheck className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+                    Antrean Penerimaan PO
+                  </h2>
+                  {pendingPOs.length > 0 ? (
+                    <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200/80">
+                      {pendingPOs.length} Menunggu
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/80">
+                      Semua Selesai
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Daftar PO bahan baku yang siap diterima dan diproses masuk ke inventori dapur.
+                </p>
+              </div>
             </div>
-            <div className="text-xl font-bold text-slate-900">
-              Rp {metrics.totalCost.toLocaleString('id-ID')}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAllPoQueue(prev => !prev)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                  showAllPoQueue
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                {showAllPoQueue
+                  ? `Tampilkan Semua PO (${purchaseOrders.length})`
+                  : `Hanya Menunggu (${pendingPOs.length})`}
+              </button>
             </div>
-            <p className="text-[11px] text-slate-500 mt-1">
-              {metrics.totalItems} transaksi / catatan barang
-            </p>
           </div>
 
-          {/* Card 2: Bahan Basah */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-            <div className="flex items-center justify-between text-slate-500 mb-1">
-              <span className="text-xs font-semibold">Bahan Basah</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                Dapur & Lauk
-              </span>
-            </div>
-            <div className="text-xl font-bold text-emerald-700">
-              Rp {metrics.wetCost.toLocaleString('id-ID')}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1">
-              Ayam, daging, telur, ikan, sayuran & buah
-            </p>
-          </div>
+          {/* Cards Grid */}
+          <div className="p-4 sm:p-5">
+            {(() => {
+              const displayedQueue = showAllPoQueue ? purchaseOrders : pendingPOs;
 
-          {/* Card 3: Bahan Kering */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-            <div className="flex items-center justify-between text-slate-500 mb-1">
-              <span className="text-xs font-semibold">Bahan Kering</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                Sembako & Bumbu
-              </span>
-            </div>
-            <div className="text-xl font-bold text-amber-700">
-              Rp {metrics.dryCost.toLocaleString('id-ID')}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1">
-              Beras, minyak, gula, tepung & bumbu
-            </p>
-          </div>
+              if (displayedQueue.length === 0) {
+                return (
+                  <div className="py-8 text-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                    <PackageCheck className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                    <h4 className="text-xs font-semibold text-slate-800">
+                      Tidak Ada PO yang Menunggu Penerimaan
+                    </h4>
+                    <p className="text-[11px] text-slate-500 max-w-md mx-auto mt-1">
+                      Seluruh nota pesanan bahan (PO) telah selesai diterima dan tercatat di inventori gudang.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowAllPoQueue(true)}
+                      className="mt-3 text-xs text-emerald-700 font-semibold hover:underline cursor-pointer"
+                    >
+                      Lihat riwayat seluruh PO ({purchaseOrders.length})
+                    </button>
+                  </div>
+                );
+              }
 
-          {/* Card 4: Pengeluaran Lain (ATK, Kebersihan, APD) */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-            <div className="flex items-center justify-between text-slate-500 mb-1">
-              <span className="text-xs font-semibold">Operasional & Pengeluaran Lain</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                ATK & Sanitasi
-              </span>
-            </div>
-            <div className="text-xl font-bold text-blue-700">
-              Rp {metrics.opCost.toLocaleString('id-ID')}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1">
-              ATK, sabun, karbol, APD, gas & listrik
-            </p>
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {displayedQueue.map(po => {
+                    const isFinished = po.status === 'SELESAI';
+                    const targetDeliveryDate = po.deliveryDate || po.date;
+                    const cleanMenuName = po.notes
+                      ? po.notes.replace(/^PO dibuat otomatis dari Perencanaan Menu:\s*/i, '').trim()
+                      : '';
+
+                    return (
+                      <div
+                        key={po.id}
+                        className={`rounded-xl border p-4 flex flex-col justify-between transition-all shadow-2xs hover:shadow-sm ${
+                          isFinished
+                            ? 'bg-slate-50/60 border-slate-200 opacity-85'
+                            : 'bg-white border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="space-y-3">
+                          {/* Card Top: Supplier + Badge */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="font-bold text-slate-900 text-sm truncate" title={po.supplierName}>
+                                {po.supplierName}
+                              </div>
+                              <div className="text-xs font-mono text-slate-500 font-medium mt-0.5">
+                                {po.poNumber}
+                              </div>
+                            </div>
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium shrink-0 border ${
+                                isFinished
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80'
+                                  : 'bg-amber-50 text-amber-800 border-amber-200/80'
+                              }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${isFinished ? 'bg-emerald-600' : 'bg-amber-500'}`} />
+                              <span>{isFinished ? 'Selesai' : 'Menunggu kedatangan'}</span>
+                            </span>
+                          </div>
+
+                          {/* Info Delivery & Menu */}
+                          <div className="text-xs text-slate-600 space-y-1.5">
+                            <div className="flex items-center gap-1.5 text-slate-600">
+                              <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span>
+                                Jadwal Kirim: <strong className="text-slate-800 font-medium">{formatIndonesianDateWithDay(targetDeliveryDate)}</strong>
+                              </span>
+                            </div>
+                            {cleanMenuName && (
+                              <div className="bg-slate-50 border border-slate-100 rounded-md px-2.5 py-1.5 text-[11px] text-slate-600 truncate leading-normal" title={cleanMenuName}>
+                                <span className="font-semibold text-slate-700">Menu: </span>
+                                <span>{cleanMenuName}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Items Preview List */}
+                          <div className="bg-slate-50/70 rounded-lg p-2.5 border border-slate-100 space-y-1.5">
+                            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600">
+                              <span>Daftar Bahan</span>
+                              <span className="text-[10px] font-medium text-slate-400">
+                                {po.items.length} item
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              {po.items.slice(0, 2).map((it, idx) => (
+                                <div key={idx} className="flex items-center justify-between text-xs gap-2">
+                                  <span className="text-slate-700 truncate font-medium">{it.name}</span>
+                                  <span className="font-mono font-semibold text-slate-900 shrink-0 text-right tabular-nums">
+                                    {it.quantity} {it.unit}
+                                  </span>
+                                </div>
+                              ))}
+                              {po.items.length > 2 && (
+                                <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-200/50">
+                                  +{po.items.length - 2} bahan lainnya dalam nota
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Card Bottom: Total + Action Buttons */}
+                        <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                          <div className="shrink-0">
+                            <div className="text-[10px] text-slate-400 font-medium leading-tight">
+                              Estimasi Nilai PO
+                            </div>
+                            <div className="text-xs font-bold font-mono text-slate-900 tabular-nums whitespace-nowrap mt-0.5">
+                              Rp {po.grandTotal.toLocaleString('id-ID')}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteNota(po)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                              title="Hapus atau batalkan nota PO ini"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenExistingNota(po)}
+                              className="px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors cursor-pointer shadow-2xs inline-flex items-center gap-1"
+                              title="Lihat Nota Pesanan Resmi"
+                            >
+                              <FileText className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Nota</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenWeighModal(po)}
+                              className={`px-3 py-1.5 text-xs font-semibold rounded-lg shadow-2xs transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                                isFinished
+                                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+                                  : 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-emerald-700/20'
+                              }`}
+                            >
+                              <PackageCheck className="w-3.5 h-3.5" />
+                              <span>{isFinished ? 'Selesai' : 'Terima'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
-        </div>
+        </section>
       )}
+
+      {/* ========================================================================= */}
 
       {/* ========================================================================= */}
       {/* FORM MODE: DELIVERY ORDER (SURAT JALAN SUPPLIER RESMI) */}
@@ -2333,20 +2498,20 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
           {/* Filter Control Box: Period (Minggu, Bulan, Hari) & Categories */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3.5">
             {/* Row 1: Period Mode Selector & Date Controls */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <CalendarRange className="w-4 h-4 text-emerald-600" />
-                  Periode Filter:
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5 shrink-0">
+                  <CalendarRange className="w-4 h-4 text-emerald-700" />
+                  Periode:
                 </span>
 
-                {/* Period Pills */}
-                <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
+                {/* Period Tabs */}
+                <div className="inline-flex bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 text-xs">
                   <button
                     type="button"
                     onClick={() => setPeriodType('DAILY')}
                     className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                      periodType === 'DAILY' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                      periodType === 'DAILY' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
                     }`}
                   >
                     Harian
@@ -2356,7 +2521,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                     type="button"
                     onClick={handleSetThisWeek}
                     className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                      periodType === 'WEEKLY' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                      periodType === 'WEEKLY' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
                     }`}
                   >
                     Mingguan
@@ -2366,7 +2531,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                     type="button"
                     onClick={() => setPeriodType('MONTHLY')}
                     className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                      periodType === 'MONTHLY' ? 'bg-white text-blue-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                      periodType === 'MONTHLY' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
                     }`}
                   >
                     Bulanan
@@ -2376,7 +2541,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                     type="button"
                     onClick={() => setPeriodType('CUSTOM')}
                     className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                      periodType === 'CUSTOM' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                      periodType === 'CUSTOM' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
                     }`}
                   >
                     Rentang Kustom
@@ -2385,28 +2550,28 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
               </div>
 
               {/* Date Range Inputs */}
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
                 {periodType === 'DAILY' && (
-                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
+                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
                     <span className="text-slate-500 font-medium">Tanggal:</span>
                     <input
                       type="date"
                       value={selectedDailyDate}
                       onChange={e => setSelectedDailyDate(e.target.value)}
-                      className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                      className="font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
                     />
                   </div>
                 )}
 
                 {(periodType === 'WEEKLY' || periodType === 'CUSTOM') && (
-                  <div className="flex items-center gap-2 text-xs">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
                       <span className="text-slate-500 font-medium">Dari:</span>
                       <input
                         type="date"
                         value={startDate}
                         onChange={e => setStartDate(e.target.value)}
-                        className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                        className="font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
                       />
                     </div>
                     <span className="text-slate-400 font-medium">s/d</span>
@@ -2416,7 +2581,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                         type="date"
                         value={endDate}
                         onChange={e => setEndDate(e.target.value)}
-                        className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                        className="font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
                       />
                     </div>
 
@@ -2425,14 +2590,14 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                         <button
                           type="button"
                           onClick={handleSetThisWeek}
-                          className="px-2 py-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 cursor-pointer"
+                          className="px-2 py-1 text-[11px] font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-md border border-slate-200 cursor-pointer transition-colors"
                         >
                           Minggu Ini
                         </button>
                         <button
                           type="button"
                           onClick={handleSetLastWeek}
-                          className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200 cursor-pointer"
+                          className="px-2 py-1 text-[11px] font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-md border border-slate-200 cursor-pointer transition-colors"
                         >
                           Minggu Lalu
                         </button>
@@ -2442,171 +2607,119 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                 )}
 
                 {periodType === 'MONTHLY' && (
-                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
+                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
                     <span className="text-slate-500 font-medium">Pilih Bulan:</span>
                     <input
                       type="month"
                       value={selectedMonth}
                       onChange={e => setSelectedMonth(e.target.value)}
-                      className="font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                      className="font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
                     />
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Row 2: Category Tabs & Search Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              {/* Category Tabs: Exactly matches user's request & screenshot */}
+            {/* Row 2: Unified Category Tabs, Supplier Select, Search, & View Toggle */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              {/* Unified Category Tabs (No Rainbow AI Slop Borders) */}
               <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategoryTab('ALL')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    selectedCategoryTab === 'ALL'
-                      ? 'bg-slate-900 text-white shadow-2xs'
-                      : 'text-slate-600 hover:bg-slate-100 border border-slate-200'
-                  }`}
-                >
-                  Semua Kategori ({periodRecords.length})
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategoryTab('Bahan Basah')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    selectedCategoryTab === 'Bahan Basah'
-                      ? 'bg-emerald-600 text-white shadow-2xs'
-                      : 'text-emerald-800 hover:bg-emerald-50 border border-emerald-200'
-                  }`}
-                >
-                  Bahan Basah ({categoryCounts['Bahan Basah']})
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategoryTab('Bahan Kering')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    selectedCategoryTab === 'Bahan Kering'
-                      ? 'bg-amber-600 text-white shadow-2xs'
-                      : 'text-amber-800 hover:bg-amber-50 border border-amber-200'
-                  }`}
-                >
-                  Bahan Kering ({categoryCounts['Bahan Kering']})
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategoryTab('Bahan Peralatan')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    selectedCategoryTab === 'Bahan Peralatan'
-                      ? 'bg-blue-600 text-white shadow-2xs'
-                      : 'text-blue-800 hover:bg-blue-50 border border-blue-200'
-                  }`}
-                >
-                  Bahan Peralatan ({categoryCounts['Bahan Peralatan']})
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategoryTab('SURAT_JALAN')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    selectedCategoryTab === 'SURAT_JALAN'
-                      ? 'bg-teal-700 text-white shadow-2xs'
-                      : 'text-teal-800 hover:bg-teal-50 border border-teal-200'
-                  }`}
-                >
-                  Surat Jalan ({categoryCounts['SURAT_JALAN']})
-                </button>
-              </div>
-
-              {/* Search Box */}
-              <div className="relative w-full sm:w-64">
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Cari barang, relawan, PIC..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
-            </div>
-
-            {/* Row 3: Supplier Filter & View Mode Toggle */}
-            <div className="pt-2.5 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
-              {/* Supplier Filter Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-thin">
-                <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1 shrink-0 mr-1">
-                  <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                  Supplier:
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedSupplierFilter('ALL')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                    selectedSupplierFilter === 'ALL'
-                      ? 'bg-slate-800 text-white shadow-2xs'
-                      : 'text-slate-600 hover:bg-slate-100 border border-slate-200'
-                  }`}
-                >
-                  Semua Supplier ({periodRecords.length})
-                </button>
-
-                {uniqueSuppliers.map(s => {
-                  const isSelected = selectedSupplierFilter === s.name;
+                {[
+                  { id: 'ALL', label: 'Semua Kategori', count: periodRecords.length },
+                  { id: 'Bahan Basah', label: 'Bahan Basah', count: categoryCounts['Bahan Basah'] },
+                  { id: 'Bahan Kering', label: 'Bahan Kering', count: categoryCounts['Bahan Kering'] },
+                  { id: 'Bahan Peralatan', label: 'Bahan Peralatan', count: categoryCounts['Bahan Peralatan'] },
+                  { id: 'SURAT_JALAN', label: 'Surat Jalan', count: categoryCounts['SURAT_JALAN'] },
+                ].map(tab => {
+                  const isActive = selectedCategoryTab === tab.id;
                   return (
                     <button
-                      key={s.name}
+                      key={tab.id}
                       type="button"
-                      onClick={() => setSelectedSupplierFilter(s.name)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
-                        isSelected
-                          ? 'bg-emerald-600 text-white shadow-2xs'
-                          : 'text-slate-700 hover:bg-slate-100 hover:text-emerald-800 hover:border-emerald-300 border border-slate-200'
+                      onClick={() => setSelectedCategoryTab(tab.id as any)}
+                      className={`px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1.5 ${
+                        isActive
+                          ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                          : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border border-slate-200 font-medium'
                       }`}
                     >
-                      <Store className="w-3 h-3 opacity-70" />
-                      <span>{s.name}</span>
-                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                        isSelected ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-600'
-                      }`}>
-                        {s.count}
+                      <span>{tab.label}</span>
+                      <span
+                        className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${
+                          isActive ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {tab.count}
                       </span>
                     </button>
                   );
                 })}
               </div>
 
-              {/* View Mode Toggle: Tabel Biasa vs Kelompokkan Per Supplier */}
-              <div className="flex items-center gap-1 shrink-0 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('TABLE')}
-                  className={`px-3 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    viewMode === 'TABLE'
-                      ? 'bg-white text-slate-900 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                  title="Tampilan tabel biasa daftar semua barang"
-                >
-                  <TableProperties className="w-3.5 h-3.5" />
-                  <span>Tabel Biasa</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('SUPPLIER_GROUPS')}
-                  className={`px-3 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    viewMode === 'SUPPLIER_GROUPS'
-                      ? 'bg-white text-emerald-800 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                  title="Kelompokkan barang per supplier dan cetak nota PO gabungan"
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                  <span>Per Supplier ({uniqueSuppliers.length})</span>
-                </button>
+              {/* Right Side: Supplier Select, Search, & View Toggle */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Supplier Filter Dropdown */}
+                <div className="flex items-center gap-1.5">
+                  <div className="relative">
+                    <select
+                      value={selectedSupplierFilter}
+                      onChange={e => setSelectedSupplierFilter(e.target.value)}
+                      className="h-8 pl-8 pr-7 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer appearance-none shadow-2xs"
+                      title="Filter per rekanan / supplier"
+                    >
+                      <option value="ALL">Semua Supplier ({uniqueSuppliers.length})</option>
+                      {uniqueSuppliers.map(s => (
+                        <option key={s.name} value={s.name}>
+                          {s.name} ({s.count} item)
+                        </option>
+                      ))}
+                    </select>
+                    <Building2 className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Search Box */}
+                <div className="relative w-full sm:w-48 lg:w-56">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Cari barang, PIC..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="w-full h-8 pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                {/* View Mode Toggle: Tabel Biasa vs Kelompokkan Per Supplier */}
+                <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('TABLE')}
+                    className={`h-7 px-2.5 rounded-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      viewMode === 'TABLE'
+                        ? 'bg-white text-slate-900 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Tampilan tabel biasa daftar semua barang"
+                  >
+                    <TableProperties className="w-3.5 h-3.5" />
+                    <span>Tabel Biasa</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('SUPPLIER_GROUPS')}
+                    className={`h-7 px-2.5 rounded-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      viewMode === 'SUPPLIER_GROUPS'
+                        ? 'bg-white text-slate-900 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Kelompokkan barang per supplier dan cetak nota PO gabungan"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>Per Supplier ({uniqueSuppliers.length})</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -2614,11 +2727,21 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
           {/* VIEW: Kelompokkan Per Supplier & Per Tanggal */}
           {viewMode === 'SUPPLIER_GROUPS' ? (
             uniqueSuppliers.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400">
-                Belum ada data barang atau supplier pada periode ini.
+              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+                <div className="max-w-sm mx-auto space-y-2">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                    <PackageSearch className="w-5 h-5" />
+                  </div>
+                  <h4 className="text-xs font-semibold text-slate-800">
+                    Tidak Ada Data Supplier pada Periode Ini
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Belum ada catatan transaksi belanja atau penerimaan barang per-supplier pada rentang tanggal yang dipilih.
+                  </p>
+                </div>
               </div>
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-5">
                 {uniqueSuppliers
                   .filter(s => selectedSupplierFilter === 'ALL' || s.name === selectedSupplierFilter)
                   .map(supplier => {
@@ -2655,34 +2778,30 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                     const sortedDates = Array.from(dateMap.keys()).sort((a, b) => b.localeCompare(a));
 
                     return (
-                      <div key={supplier.name} className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden transition-all hover:border-slate-300">
+                      <div key={supplier.name} className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden transition-all hover:border-slate-300">
                         {/* Supplier Card Header */}
-                        <div className="px-5 py-4 bg-gradient-to-r from-slate-50 via-slate-50/50 to-white border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="px-5 py-3.5 bg-slate-50/90 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                              <Store className="w-5 h-5" />
+                            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                              <Store className="w-4 h-4" />
                             </div>
                             <div>
                               <div className="flex items-center gap-2">
                                 <h3 className="font-bold text-slate-900 text-sm">{supplier.name}</h3>
-                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                                <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-white text-slate-700 border border-slate-200">
                                   {matchingRecords.length} Macam Barang
                                 </span>
-                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200/80">
                                   {sortedDates.length} Tanggal Transaksi
                                 </span>
                               </div>
-                              <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
-                                <span>Total Belanja Periode Ini:</span>
+                              <div className="text-xs text-slate-600 mt-0.5 flex items-center gap-2">
+                                <span>Total Belanja:</span>
                                 <span className="font-mono font-bold text-slate-900">
                                   Rp {groupSubtotal.toLocaleString('id-ID')}
                                 </span>
                               </div>
                             </div>
-                          </div>
-
-                          <div className="text-xs text-slate-400 font-medium">
-                            Data dipisahkan per tanggal agar penerbitan PO tidak bercampur
                           </div>
                         </div>
 
@@ -2932,7 +3051,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
               {/* Table of Records */}
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                  <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
                     <tr>
                       <th className="py-3 px-3 w-12 text-center">
                         <div className="flex items-center justify-center gap-1">
@@ -2962,8 +3081,26 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {filteredRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="py-10 text-center text-slate-400 italic">
-                          Belum ada data barang atau pengeluaran yang sesuai filter saat ini.
+                        <td colSpan={10} className="py-12 text-center">
+                          <div className="max-w-sm mx-auto space-y-2">
+                            <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                              <PackageSearch className="w-5 h-5" />
+                            </div>
+                            <h4 className="text-xs font-semibold text-slate-800">
+                              Tidak Ada Data Barang atau Belanja
+                            </h4>
+                            <p className="text-[11px] text-slate-500">
+                              Tidak ditemukan catatan yang sesuai dengan filter periode atau kategori saat ini.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={handleOpenSingleModal}
+                              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Input Belanja Baru</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ) : (
@@ -3045,15 +3182,15 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                                 <button
                                   type="button"
                                   onClick={() => handleOpenExistingNota(matchingNota)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer"
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/80 hover:bg-emerald-100 transition-colors cursor-pointer"
                                   title={`Nota PO: ${matchingNota.poNumber} (${matchingNota.status}) - Klik untuk lihat / cetak`}
                                 >
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                                   <span>Sudah Dibuat</span>
                                 </button>
                               ) : (
                                 <span
-                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200"
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200"
                                   title="Belum dibuatkan Nota PO"
                                 >
                                   <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
@@ -3136,10 +3273,12 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setIsSingleInputModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer"
+                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -3463,10 +3602,12 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => setIsBatchInputModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1 cursor-pointer ml-2"
+                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer ml-2"
+                  title="Tutup dialog"
                 >
-                  ✕
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
@@ -4217,6 +4358,24 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
           handleOpenExistingNota(nota);
         }}
       />
+
+      {/* ========================================================================= */}
+      {/* MODAL: PENERIMAAN & PENIMBANGAN FISIK BAHAN PO (1-FLOW SUPPLY CHAIN)     */}
+      {/* ========================================================================= */}
+      {isWeighModalOpen && selectedPoForWeighing && (
+        <PoReceivingWeighingModal
+          isOpen={isWeighModalOpen}
+          onClose={() => {
+            setIsWeighModalOpen(false);
+            setSelectedPoForWeighing(null);
+          }}
+          po={selectedPoForWeighing}
+          onSuccess={() => {
+            refreshAll();
+            onRefreshData?.();
+          }}
+        />
+      )}
 
       {/* ========================================================================= */}
       {/* MODAL: MASTER DATA SUPPLIER REKANAN                                       */}

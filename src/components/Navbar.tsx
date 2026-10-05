@@ -97,10 +97,10 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
 
   const primaryNavItems = [
     { id: 'dashboard', label: 'Ringkasan', icon: LayoutDashboard },
+    { id: 'menu_orders', label: 'Menu & Penerima Manfaat', icon: UtensilsCrossed },
     { id: 'receiving', label: 'Input Barang & Belanja', icon: PackagePlus },
     { id: 'daily_expenses', label: 'Laporan Pengeluaran', icon: TrendingDown },
     { id: 'inventory', label: 'Stok Barang', icon: Boxes },
-    { id: 'menu_orders', label: 'Menu & Penerima Manfaat', icon: UtensilsCrossed },
     { id: 'waste_logs', label: 'Rekap Limbah', icon: Trash2 },
     { id: 'employees', label: 'Karyawan & Absensi', icon: Users },
     { id: 'profile', label: 'Profil & Checklist', icon: UserCheck },

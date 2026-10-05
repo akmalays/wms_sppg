@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { DailyFlowRecord } from '../types/warehouse';
-import { Utensils, CheckCircle2, ArrowRight, Zap, RefreshCw, Calendar, Sparkles } from 'lucide-react';
+import { Utensils, CheckCircle2, ArrowRight, Zap, RefreshCw, Calendar, X } from 'lucide-react';
 
 interface DailyFlowModuleProps {
   onRefreshData?: () => void;
@@ -252,6 +252,14 @@ export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData 
                   </p>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsBatchModalOpen(false)}
+                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Tutup dialog"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             <form onSubmit={handlePostBatchConsumption} className="mt-4 space-y-4">

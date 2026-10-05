@@ -15,7 +15,8 @@ import {
   Eye,
   Download,
   CheckCircle2,
-  Sparkles,
+  FileText,
+  Activity,
   Maximize2,
   Rows,
   Columns,
@@ -1291,7 +1292,7 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
         <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <FileText className="w-3.5 h-3.5 text-emerald-600" />
               <span>Tempel Format WhatsApp (Ahli Gizi):</span>
             </div>
             <button type="button" onClick={() => setShowWhatsAppPaste((prev) => !prev)} className="text-[11px] text-emerald-700 font-semibold hover:underline cursor-pointer">
@@ -1322,7 +1323,7 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-3.5 h-3.5" />
+                      <FileText className="w-3.5 h-3.5" />
                       <span>Terapkan Otomatis</span>
                     </>
                   )}
@@ -1430,7 +1431,7 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
           <div className="space-y-2 pt-2 border-t border-slate-100">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                <Activity className="w-3.5 h-3.5 text-amber-600" />
                 <span>Kandungan Zat Gizi (Satu per baris):</span>
               </span>
               <span className="text-[10px] text-slate-400">Porsi Besar & Kecil</span>
