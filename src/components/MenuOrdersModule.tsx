@@ -52,9 +52,12 @@ import {
   Store,
   CheckSquare,
   Phone,
-  MoreHorizontal
+  MoreHorizontal,
+  Save,
+  RotateCcw
 } from 'lucide-react';
 import { exportMultiSheetExcel, exportToExcel } from '../lib/excelExport';
+import { SppgLogo } from './SppgLogo';
 
 type PeriodType = 'WEEKLY' | 'MONTHLY' | 'DAILY' | 'ALL' | 'PRESET_SAMPLE';
 type SubTabType = 'MENU_ORDERS' | 'BENEFICIARIES' | 'MASTER_BENEFICIARIES';
@@ -246,6 +249,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
   const [selectedBeneficiaryCategory, setSelectedBeneficiaryCategory] = useState<string>('ALL');
   const [beneficiaryStatusFilter, setBeneficiaryStatusFilter] = useState<string>('ALL');
   const [schoolSearchQuery, setSchoolSearchQuery] = useState('');
+  const [beneficiaryViewMode, setBeneficiaryViewMode] = useState<'REKAP_HARIAN' | 'DETAIL_HARIAN'>('REKAP_HARIAN');
+  const [beneficiaryPeriodPreset, setBeneficiaryPeriodPreset] = useState<'ALL_ORDERS' | 'LAST_7_DAYS' | 'THIS_MONTH' | 'CUSTOM'>('ALL_ORDERS');
+  const [beneficiaryStartDate, setBeneficiaryStartDate] = useState<string>('2026-09-20');
+  const [beneficiaryEndDate, setBeneficiaryEndDate] = useState<string>(todayStr);
+  const [beneficiarySelectedDate, setBeneficiarySelectedDate] = useState<string>(todayStr);
+  const [dailyDraftPortions, setDailyDraftPortions] = useState<Record<string, number>>({});
+  const [isDailyDraftDirty, setIsDailyDraftDirty] = useState(false);
+  const [isBeneficiaryPrintModalOpen, setIsBeneficiaryPrintModalOpen] = useState(false);
 
   // Master beneficiaries state (persisted via storage.ts)
   const [beneficiaries, setBeneficiaries] = useState<SchoolBeneficiaryAllocation[]>(() =>
@@ -686,6 +697,268 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       rows,
       `Master_Data_Penerima_Manfaat_SPPG_${new Date().toISOString().slice(0, 10)}.xlsx`,
       'Master Penerima Manfaat'
+    );
+  };
+
+  // =========================================================================
+  // REKAP DATA HARIAN PENERIMA MANFAAT (ALOKASI PORSI PER HARI TIAP SEKOLAH)
+  // =========================================================================
+  // Sinkronisasi draf porsi saat tanggal terpilih atau orders berubah
+  useEffect(() => {
+    const currentOrder = orders.find(o => o.date === beneficiarySelectedDate);
+    const draft: Record<string, number> = {};
+    masterSchools.forEach(s => {
+      if (currentOrder && currentOrder.beneficiaryAllocations && currentOrder.beneficiaryAllocations.length > 0) {
+        const match = currentOrder.beneficiaryAllocations.find(b => b.id === s.id);
+        draft[s.id] = match ? match.portionCount : s.portionCount;
+      } else if (currentOrder) {
+        const totalMaster = masterSchools.reduce((sum, item) => sum + item.portionCount, 0) || 3044;
+        draft[s.id] = Math.round(s.portionCount * (currentOrder.targetPortions / totalMaster));
+      } else {
+        draft[s.id] = s.portionCount;
+      }
+    });
+    setDailyDraftPortions(draft);
+    setIsDailyDraftDirty(false);
+  }, [beneficiarySelectedDate, orders, masterSchools]);
+
+  // Simpan perubahan porsi harian pada tanggal terpilih
+  const handleSaveDailyAllocations = () => {
+    const currentOrder = orders.find(o => o.date === beneficiarySelectedDate);
+    const updatedAllocations: SchoolBeneficiaryAllocation[] = masterSchools.map(s => ({
+      ...s,
+      portionCount: Number(dailyDraftPortions[s.id] ?? s.portionCount),
+      status: currentOrder?.beneficiaryAllocations?.find(b => b.id === s.id)?.status || 'DIJADWALKAN',
+    }));
+
+    const totalPortions = updatedAllocations.reduce((sum, a) => sum + (Number(a.portionCount) || 0), 0);
+
+    if (currentOrder) {
+      const updatedOrder: MenuOrder = {
+        ...currentOrder,
+        beneficiaryAllocations: updatedAllocations,
+        targetPortions: totalPortions,
+        totalBeneficiaries: totalPortions,
+      };
+      warehouseDb.saveMenuOrder(updatedOrder, currentUser, false);
+    } else {
+      const newOrder: MenuOrder = {
+        id: `ORD-${Date.now().toString().slice(-6)}`,
+        date: beneficiarySelectedDate,
+        mealSession: 'Siang',
+        menuTitle: `Menu Harian - ${formatShortDate(beneficiarySelectedDate)}`,
+        targetPortions: totalPortions,
+        totalBeneficiaries: totalPortions,
+        status: 'PLANNED',
+        beneficiaryAllocations: updatedAllocations,
+        createdAt: new Date().toISOString(),
+      };
+      warehouseDb.saveMenuOrder(newOrder, currentUser, true);
+    }
+
+    setOrders(warehouseDb.getMenuOrders());
+    setIsDailyDraftDirty(false);
+    setSuccessNotice(`Alokasi porsi harian untuk ${formatIndonesianDate(beneficiarySelectedDate)} berhasil disimpan (Total: ${totalPortions.toLocaleString('id-ID')} porsi).`);
+    setTimeout(() => setSuccessNotice(''), 6000);
+  };
+
+  const handleResetDailyAllocationsToMaster = () => {
+    if (window.confirm(`Kembalikan alokasi porsi tanggal ${formatIndonesianDate(beneficiarySelectedDate)} ke standar master default?`)) {
+      const draft: Record<string, number> = {};
+      masterSchools.forEach(s => {
+        draft[s.id] = s.portionCount;
+      });
+      setDailyDraftPortions(draft);
+      setIsDailyDraftDirty(true);
+    }
+  };
+
+  const handleScaleDailyPortionsProportional = () => {
+    const currentTotal = Object.values(dailyDraftPortions).reduce((sum, v) => sum + (Number(v) || 0), 0) || 3044;
+    const targetStr = window.prompt(`Masukkan target total porsi untuk tanggal ${beneficiarySelectedDate}:`, String(currentTotal));
+    if (!targetStr) return;
+    const targetVal = parseInt(targetStr, 10);
+    if (isNaN(targetVal) || targetVal <= 0) {
+      alert('Target porsi harus berupa angka positif.');
+      return;
+    }
+    const ratio = targetVal / currentTotal;
+    const newDraft: Record<string, number> = {};
+    masterSchools.forEach(s => {
+      const cur = dailyDraftPortions[s.id] ?? s.portionCount;
+      newDraft[s.id] = Math.max(0, Math.round(cur * ratio));
+    });
+    setDailyDraftPortions(newDraft);
+    setIsDailyDraftDirty(true);
+  };
+
+  // Matriks rekapitulasi harian per sekolah across tanggal
+  const dailyBeneficiaryMatrix = useMemo(() => {
+    const allOrderDates = Array.from(new Set(orders.map(o => o.date))).sort();
+
+    let distinctDates: string[] = [];
+
+    if (beneficiaryPeriodPreset === 'ALL_ORDERS') {
+      distinctDates = allOrderDates.length > 0 ? allOrderDates : [todayStr];
+    } else if (beneficiaryPeriodPreset === 'LAST_7_DAYS') {
+      const end = parseMenuDate(beneficiaryEndDate) || new Date();
+      const datesArr: string[] = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(end);
+        d.setDate(d.getDate() - i);
+        datesArr.push(d.toISOString().slice(0, 10));
+      }
+      distinctDates = datesArr;
+    } else if (beneficiaryPeriodPreset === 'THIS_MONTH') {
+      const curMonth = (parseMenuDate(beneficiaryEndDate) || new Date()).toISOString().slice(0, 7);
+      distinctDates = allOrderDates.filter(d => d.startsWith(curMonth));
+      if (distinctDates.length === 0) distinctDates = allOrderDates;
+    } else {
+      // CUSTOM
+      distinctDates = allOrderDates.filter(d => d >= beneficiaryStartDate && d <= beneficiaryEndDate);
+      if (distinctDates.length === 0 && beneficiaryStartDate && beneficiaryEndDate) {
+        const s = parseMenuDate(beneficiaryStartDate);
+        const e = parseMenuDate(beneficiaryEndDate);
+        if (s && e) {
+          const diffDays = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays >= 0 && diffDays <= 31) {
+            const list: string[] = [];
+            for (let i = 0; i <= diffDays; i++) {
+              const temp = new Date(s);
+              temp.setDate(temp.getDate() + i);
+              list.push(temp.toISOString().slice(0, 10));
+            }
+            distinctDates = list;
+          }
+        }
+      }
+    }
+
+    const orderMap: Record<string, MenuOrder | undefined> = {};
+    distinctDates.forEach(d => {
+      orderMap[d] = orders.find(o => o.date === d);
+    });
+
+    const visibleSchools = masterSchools.filter(school => {
+      if (selectedBeneficiaryCategory !== 'ALL' && school.category !== selectedBeneficiaryCategory) {
+        return false;
+      }
+      if (schoolSearchQuery.trim()) {
+        const q = schoolSearchQuery.toLowerCase();
+        const matchName = school.schoolName.toLowerCase().includes(q);
+        const matchPic = (school.contactPerson || '').toLowerCase().includes(q);
+        const matchPhone = (school.phone || '').toLowerCase().includes(q);
+        if (!matchName && !matchPic && !matchPhone) return false;
+      }
+      return true;
+    });
+
+    const rows = visibleSchools.map(s => {
+      const datePortions: Record<string, number> = {};
+      let totalPeriod = 0;
+      let activeDays = 0;
+
+      distinctDates.forEach(d => {
+        const order = orderMap[d];
+        let p = 0;
+        if (order && order.beneficiaryAllocations && order.beneficiaryAllocations.length > 0) {
+          const found = order.beneficiaryAllocations.find(b => b.id === s.id);
+          p = found ? Number(found.portionCount) || 0 : 0;
+        } else if (order) {
+          const totalMaster = masterSchools.reduce((sum, item) => sum + item.portionCount, 0) || 3044;
+          p = Math.round(s.portionCount * (order.targetPortions / totalMaster));
+        } else {
+          p = 0;
+        }
+        datePortions[d] = p;
+        totalPeriod += p;
+        if (p > 0) activeDays++;
+      });
+
+      const avgDaily = activeDays > 0 ? totalPeriod / activeDays : 0;
+
+      return {
+        schoolId: s.id,
+        schoolName: s.schoolName,
+        category: s.category,
+        contactPerson: s.contactPerson,
+        phone: s.phone,
+        deliveryTime: s.deliveryTime,
+        masterPortion: s.portionCount,
+        datePortions,
+        totalPeriod,
+        avgDaily,
+      };
+    });
+
+    const dateTotals: Record<string, number> = {};
+    distinctDates.forEach(d => {
+      dateTotals[d] = rows.reduce((sum, r) => sum + (r.datePortions[d] || 0), 0);
+    });
+
+    const grandTotal = rows.reduce((sum, r) => sum + r.totalPeriod, 0);
+    const activeDateCount = distinctDates.filter(d => (dateTotals[d] || 0) > 0).length;
+    const avgDailyTotal = activeDateCount > 0 ? grandTotal / activeDateCount : 0;
+
+    return {
+      dates: distinctDates,
+      orderMap,
+      rows,
+      dateTotals,
+      grandTotal,
+      avgDailyTotal,
+      activeDateCount,
+      schoolCount: rows.length,
+    };
+  }, [
+    orders,
+    masterSchools,
+    beneficiaryPeriodPreset,
+    beneficiaryStartDate,
+    beneficiaryEndDate,
+    selectedBeneficiaryCategory,
+    schoolSearchQuery,
+    todayStr,
+  ]);
+
+  const handleExportBeneficiaryDailyRecap = () => {
+    const exportData = dailyBeneficiaryMatrix.rows.map((r, idx) => {
+      const rowObj: Record<string, any> = {
+        'No': idx + 1,
+        'Nama Sekolah / Lembaga': r.schoolName,
+        'Kategori': r.category,
+      };
+      dailyBeneficiaryMatrix.dates.forEach(d => {
+        rowObj[formatShortDate(d)] = r.datePortions[d] || 0;
+      });
+      rowObj['Total Porsi Periode'] = r.totalPeriod;
+      rowObj['Rata-rata/Hari'] = Math.round(r.avgDaily);
+      rowObj['Jadwal Kirim'] = r.deliveryTime || '-';
+      rowObj['PIC'] = r.contactPerson || '-';
+      rowObj['No. Telepon'] = r.phone || '-';
+      return rowObj;
+    });
+
+    const summaryRow: Record<string, any> = {
+      'No': '',
+      'Nama Sekolah / Lembaga': 'TOTAL PORSI HARIAN SELURUH SEKOLAH',
+      'Kategori': '',
+    };
+    dailyBeneficiaryMatrix.dates.forEach(d => {
+      summaryRow[formatShortDate(d)] = dailyBeneficiaryMatrix.dateTotals[d] || 0;
+    });
+    summaryRow['Total Porsi Periode'] = dailyBeneficiaryMatrix.grandTotal;
+    summaryRow['Rata-rata/Hari'] = Math.round(dailyBeneficiaryMatrix.avgDailyTotal);
+    summaryRow['Jadwal Kirim'] = '';
+    summaryRow['PIC'] = '';
+    summaryRow['No. Telepon'] = '';
+
+    exportData.push(summaryRow);
+
+    exportToExcel(
+      exportData,
+      `Rekap_Porsi_Harian_Sekolah_SPPG_${beneficiaryStartDate}_sd_${beneficiaryEndDate}.xlsx`,
+      'Rekap Porsi Harian'
     );
   };
 
@@ -2097,139 +2370,605 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       {/* ========================================================================= */}
       {activeSubTab === 'BENEFICIARIES' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {beneficiaryCategoryStats.list.map(c => (
-              <div key={c.category} className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
-                <div className="text-[11px] font-semibold text-slate-500">{c.category}</div>
-                <div className="text-xl font-bold text-blue-900 mt-1 tabular-nums">
-                  {c.portions.toLocaleString('id-ID')} <span className="text-xs font-normal text-slate-500">porsi</span>
+          {/* Sub-View Switcher & Top Actions */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setBeneficiaryViewMode('REKAP_HARIAN')}
+                className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                  beneficiaryViewMode === 'REKAP_HARIAN'
+                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <TableIcon className="w-3.5 h-3.5 text-blue-600" />
+                <span>Rekap Matriks Harian</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBeneficiaryViewMode('DETAIL_HARIAN')}
+                className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                  beneficiaryViewMode === 'DETAIL_HARIAN'
+                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Alokasi per Tanggal</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {beneficiaryViewMode === 'REKAP_HARIAN' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleExportBeneficiaryDailyRecap}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                    title="Unduh tabel rekap porsi harian ke format Excel (.xlsx)"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Ekspor Excel</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsBeneficiaryPrintModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                    title="Cetak format cetak resmi ber-Kop Surat SPPG"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Cetak Rekap</span>
+                  </button>
+                </>
+              )}
+              {beneficiaryViewMode === 'DETAIL_HARIAN' && isDailyDraftDirty && (
+                <button
+                  type="button"
+                  onClick={handleSaveDailyAllocations}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer animate-pulse"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Simpan Alokasi Hari Ini</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* MODE 1: REKAP MATRIKS HARIAN */}
+          {beneficiaryViewMode === 'REKAP_HARIAN' && (
+            <div className="space-y-4">
+              {/* Filter Tanggal & Kategori Bar */}
+              <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <CalendarRange className="w-3.5 h-3.5 text-blue-600" />
+                      Filter Tanggal:
+                    </span>
+                    <select
+                      value={beneficiaryPeriodPreset}
+                      onChange={e => {
+                        const val = e.target.value as any;
+                        setBeneficiaryPeriodPreset(val);
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white"
+                    >
+                      <option value="ALL_ORDERS">Semua Jadwal Menu ({orders.length} Hari)</option>
+                      <option value="LAST_7_DAYS">7 Hari Terakhir</option>
+                      <option value="THIS_MONTH">Bulan Berjalan ({todayStr.slice(0, 7)})</option>
+                      <option value="CUSTOM">Rentang Tanggal Kustom...</option>
+                    </select>
+
+                    {beneficiaryPeriodPreset === 'CUSTOM' && (
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <input
+                          type="date"
+                          value={beneficiaryStartDate}
+                          onChange={e => setBeneficiaryStartDate(e.target.value)}
+                          className="px-2.5 py-1 border border-slate-300 rounded-lg text-slate-800 bg-white font-mono"
+                        />
+                        <span className="text-slate-400">s/d</span>
+                        <input
+                          type="date"
+                          value={beneficiaryEndDate}
+                          onChange={e => setBeneficiaryEndDate(e.target.value)}
+                          className="px-2.5 py-1 border border-slate-300 rounded-lg text-slate-800 bg-white font-mono"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="text-xs text-slate-500 font-medium">
+                    Menampilkan <strong className="text-slate-800 font-mono">{dailyBeneficiaryMatrix.dates.length}</strong> tanggal distribusi
+                  </div>
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5">{c.schoolCount} titik lembaga</div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={selectedBeneficiaryCategory}
+                      onChange={e => setSelectedBeneficiaryCategory(e.target.value)}
+                      className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white"
+                    >
+                      <option value="ALL">Semua Kategori Sasaran</option>
+                      <option value="SD / MI">Sekolah Dasar (SD / MI)</option>
+                      <option value="SMP / MTs">Sekolah Menengah (SMP / MTs)</option>
+                      <option value="PAUD / TK">PAUD / TK</option>
+                      <option value="Ibu Hamil & Balita (B3)">Balita 3T & Ibu Hamil (B3)</option>
+                    </select>
+                  </div>
+
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Cari nama sekolah, kontak, PIC..."
+                      value={schoolSearchQuery}
+                      onChange={e => setSchoolSearchQuery(e.target.value)}
+                      className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1.5 w-64 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
               </div>
-            ))}
-          </div>
 
-          <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={selectedBeneficiaryCategory}
-                onChange={e => setSelectedBeneficiaryCategory(e.target.value)}
-                className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white"
-              >
-                <option value="ALL">Semua Kategori Sasaran</option>
-                <option value="SD / MI">Sekolah Dasar (SD / MI)</option>
-                <option value="SMP / MTs">Sekolah Menengah (SMP / MTs)</option>
-                <option value="PAUD / TK">PAUD / TK</option>
-                <option value="Ibu Hamil & Balita (B3)">Balita 3T & Ibu Hamil (B3)</option>
-              </select>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <div className="text-[11px] font-semibold text-slate-500">Total Porsi Periode Ini</div>
+                  <div className="text-xl font-bold text-blue-900 mt-1 font-mono tabular-nums">
+                    {dailyBeneficiaryMatrix.grandTotal.toLocaleString('id-ID')} <span className="text-xs font-normal text-slate-500">porsi</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Akumulasi seluruh sekolah</div>
+                </div>
 
-              <select
-                value={beneficiaryStatusFilter}
-                onChange={e => setBeneficiaryStatusFilter(e.target.value)}
-                className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white"
-              >
-                <option value="ALL">Semua Status Distribusi</option>
-                <option value="DIJADWALKAN">Dijadwalkan</option>
-                <option value="SIAP_KIRIM">Siap Kirim</option>
-                <option value="DALAM_PERJALANAN">Dalam Perjalanan</option>
-                <option value="TERKIRIM">Terkirim</option>
-              </select>
+                <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <div className="text-[11px] font-semibold text-slate-500">Rata-rata Porsi per Hari</div>
+                  <div className="text-xl font-bold text-emerald-800 mt-1 font-mono tabular-nums">
+                    {Math.round(dailyBeneficiaryMatrix.avgDailyTotal).toLocaleString('id-ID')} <span className="text-xs font-normal text-slate-500">porsi/hari</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Rata-rata kebutuhan dapur SPPG</div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <div className="text-[11px] font-semibold text-slate-500">Lembaga Terdaftar</div>
+                  <div className="text-xl font-bold text-slate-800 mt-1 font-mono tabular-nums">
+                    {dailyBeneficiaryMatrix.schoolCount} <span className="text-xs font-normal text-slate-500">titik</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Sekolah dasar, SMP, PAUD, posyandu</div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                  <div className="text-[11px] font-semibold text-slate-500">Hari Distribusi Aktif</div>
+                  <div className="text-xl font-bold text-slate-800 mt-1 font-mono tabular-nums">
+                    {dailyBeneficiaryMatrix.activeDateCount} <span className="text-xs font-normal text-slate-500">hari</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Tersedia jadwal menu operasional</div>
+                </div>
+              </div>
+
+              {/* Matriks Table */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold">
+                        <th className="py-2.5 px-3 w-10 text-center sticky left-0 bg-slate-100 z-10 border-r border-slate-200">No</th>
+                        <th className="py-2.5 px-3 min-w-[200px] sticky left-10 bg-slate-100 z-10 border-r border-slate-200">
+                          Nama Sekolah / Lembaga
+                        </th>
+                        <th className="py-2.5 px-2.5 w-24">Kategori</th>
+                        {dailyBeneficiaryMatrix.dates.map(dateKey => {
+                          const order = dailyBeneficiaryMatrix.orderMap[dateKey];
+                          const totalCol = dailyBeneficiaryMatrix.dateTotals[dateKey] || 0;
+                          return (
+                            <th
+                              key={dateKey}
+                              className="py-2 px-2.5 min-w-[105px] text-center border-l border-slate-200/80 bg-slate-50/50"
+                            >
+                              <div className="font-mono text-[11px] text-slate-900 font-bold whitespace-nowrap">
+                                {formatShortDate(dateKey)}
+                              </div>
+                              <div className="text-[10px] font-mono text-emerald-800 font-semibold mt-0.5">
+                                {totalCol > 0 ? `${totalCol.toLocaleString('id-ID')} p` : '-'}
+                              </div>
+                              {order?.menuTitle && (
+                                <div
+                                  className="text-[9px] text-slate-400 truncate max-w-[95px] mx-auto mt-0.5"
+                                  title={order.menuTitle}
+                                >
+                                  {order.menuTitle.split(',')[0]}
+                                </div>
+                              )}
+                            </th>
+                          );
+                        })}
+                        <th className="py-2.5 px-3 w-28 text-right border-l-2 border-slate-300 bg-slate-100/80">
+                          Total Periode
+                        </th>
+                        <th className="py-2.5 px-3 w-24 text-right border-l border-slate-200 bg-slate-100/80">
+                          Rata-rata
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {dailyBeneficiaryMatrix.rows.map((row, idx) => (
+                        <tr key={row.schoolId} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-2.5 px-3 text-center text-slate-400 font-mono sticky left-0 bg-white group-hover:bg-slate-50 z-10 border-r border-slate-200">
+                            {idx + 1}
+                          </td>
+                          <td className="py-2.5 px-3 sticky left-10 bg-white group-hover:bg-slate-50 z-10 border-r border-slate-200">
+                            <div className="font-semibold text-slate-900">{row.schoolName}</div>
+                            <div className="text-[10px] text-slate-400">
+                              Standar Master: <span className="font-mono">{row.masterPortion} porsi</span>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-2.5">
+                            <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                              {row.category}
+                            </span>
+                          </td>
+                          {dailyBeneficiaryMatrix.dates.map(dateKey => {
+                            const portion = row.datePortions[dateKey] || 0;
+                            const isDiffFromMaster = portion > 0 && portion !== row.masterPortion;
+                            return (
+                              <td
+                                key={dateKey}
+                                className="py-2 px-2 text-center font-mono border-l border-slate-100"
+                              >
+                                {portion > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setBeneficiarySelectedDate(dateKey);
+                                      setBeneficiaryViewMode('DETAIL_HARIAN');
+                                    }}
+                                    className={`px-2 py-0.5 rounded text-xs font-semibold tabular-nums cursor-pointer transition-colors ${
+                                      isDiffFromMaster
+                                        ? 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
+                                        : 'bg-slate-50 text-slate-800 border border-slate-200 hover:bg-slate-100'
+                                    }`}
+                                    title={`Klik untuk lihat/ubah alokasi tanggal ${dateKey}`}
+                                  >
+                                    {portion.toLocaleString('id-ID')}
+                                  </button>
+                                ) : (
+                                  <span className="text-slate-300 font-mono text-xs">-</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-blue-900 border-l-2 border-slate-200 tabular-nums">
+                            {row.totalPeriod.toLocaleString('id-ID')} <span className="text-[10px] font-normal text-slate-400">p</span>
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-700 border-l border-slate-100 tabular-nums">
+                            {Math.round(row.avgDaily).toLocaleString('id-ID')}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-100/90 border-t-2 border-slate-300 font-bold text-slate-900">
+                        <td colSpan={3} className="py-3 px-3 text-right sticky left-0 bg-slate-100/90 z-10 border-r border-slate-200 text-xs">
+                          Total Porsi Harian Seluruh Sekolah:
+                        </td>
+                        {dailyBeneficiaryMatrix.dates.map(dateKey => {
+                          const totalCol = dailyBeneficiaryMatrix.dateTotals[dateKey] || 0;
+                          return (
+                            <td
+                              key={dateKey}
+                              className="py-3 px-2 text-center font-mono font-bold text-emerald-800 border-l border-slate-200 tabular-nums text-xs"
+                            >
+                              {totalCol > 0 ? totalCol.toLocaleString('id-ID') : '-'}
+                            </td>
+                          );
+                        })}
+                        <td className="py-3 px-3 text-right font-mono font-bold text-blue-900 border-l-2 border-slate-300 tabular-nums text-xs">
+                          {dailyBeneficiaryMatrix.grandTotal.toLocaleString('id-ID')}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-slate-800 border-l border-slate-200 tabular-nums text-xs">
+                          {Math.round(dailyBeneficiaryMatrix.avgDailyTotal).toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
             </div>
+          )}
 
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Cari nama sekolah, kontak, PIC..."
-                value={schoolSearchQuery}
-                onChange={e => setSchoolSearchQuery(e.target.value)}
-                className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1.5 w-60 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-          </div>
+          {/* MODE 2: DETAIL ALOKASI PER TANGGAL */}
+          {beneficiaryViewMode === 'DETAIL_HARIAN' && (() => {
+            const currentOrder = orders.find(o => o.date === beneficiarySelectedDate);
+            const totalDraftPortions = Object.values(dailyDraftPortions).reduce((sum, v) => sum + (Number(v) || 0), 0);
+            const distinctDatesWithOrders = Array.from(new Set(orders.map(o => o.date))).sort();
 
-          {/* Table of Schools */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold">
-                  <th className="py-2.5 px-3 w-10 text-center">No</th>
-                  <th className="py-2.5 px-4">Nama Sekolah / Lembaga</th>
-                  <th className="py-2.5 px-3 w-32">Kategori</th>
-                  <th className="py-2.5 px-3 w-28 text-right">Alokasi Porsi</th>
-                  <th className="py-2.5 px-3 w-28">Jadwal Kirim</th>
-                  <th className="py-2.5 px-4 w-48">PIC & Kontak</th>
-                  <th className="py-2.5 px-3 w-32 text-center">Status</th>
-                  <th className="py-2.5 px-3 w-24 text-center">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredSchools.map((s, idx) => (
-                  <tr key={s.id || idx} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{idx + 1}</td>
-                    <td className="py-2.5 px-4">
-                      <div className="font-bold text-slate-900">{s.schoolName}</div>
-                      {s.notes && (
-                        <div className="text-[10px] text-slate-400 truncate max-w-xs">{s.notes}</div>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
-                        {s.category}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800 tabular-nums">
-                      {s.portionCount.toLocaleString('id-ID')} <span className="text-[10px] font-normal text-slate-500">porsi</span>
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-slate-400" />
-                        <span>{s.deliveryTime || '10:00 - 10:30'}</span>
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-4 text-slate-700 text-[11px]">
-                      <div className="font-semibold text-slate-900">{s.contactPerson || '-'}</div>
-                      <div className="text-slate-500 font-mono flex items-center gap-1 mt-0.5">
-                        <Phone className="w-2.5 h-2.5 text-slate-400" />
-                        <span>{s.phone || '-'}</span>
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <select
-                        value={s.status || 'DIJADWALKAN'}
-                        onChange={e => handleQuickUpdateBeneficiaryStatus(s, e.target.value as any)}
-                        className={`text-[11px] font-bold px-2 py-1 rounded border cursor-pointer ${
-                          s.status === 'TERKIRIM'
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                            : s.status === 'DALAM_PERJALANAN'
-                            ? 'bg-amber-50 text-amber-800 border-amber-300'
-                            : s.status === 'SIAP_KIRIM'
-                            ? 'bg-blue-50 text-blue-800 border-blue-300'
-                            : 'bg-slate-100 text-slate-700 border-slate-300'
-                        }`}
-                      >
-                        <option value="DIJADWALKAN">Dijadwalkan</option>
-                        <option value="SIAP_KIRIM">Siap Kirim</option>
-                        <option value="DALAM_PERJALANAN">Dalam Perjalanan</option>
-                        <option value="TERKIRIM">Terkirim</option>
-                      </select>
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
+            return (
+              <div className="space-y-4">
+                {/* Date Navigation & Controls */}
+                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        onClick={() => handleOpenEditBeneficiary(s)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer"
-                        title="Edit data penerima manfaat, jumlah porsi, dan kontak PIC"
+                        onClick={() => {
+                          const d = parseMenuDate(beneficiarySelectedDate) || new Date();
+                          d.setDate(d.getDate() - 1);
+                          setBeneficiarySelectedDate(d.toISOString().slice(0, 10));
+                        }}
+                        className="p-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                        title="H-1 (Kemarin)"
                       >
-                        <Edit2 className="w-3 h-3 text-blue-600" />
-                        <span>Edit</span>
+                        <ChevronLeft className="w-4 h-4" />
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+
+                      <div className="relative">
+                        <input
+                          type="date"
+                          value={beneficiarySelectedDate}
+                          onChange={e => setBeneficiarySelectedDate(e.target.value)}
+                          className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white font-mono"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const d = parseMenuDate(beneficiarySelectedDate) || new Date();
+                          d.setDate(d.getDate() + 1);
+                          setBeneficiarySelectedDate(d.toISOString().slice(0, 10));
+                        }}
+                        className="p-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                        title="H+1 (Besok)"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setBeneficiarySelectedDate(todayStr)}
+                        className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
+                          beneficiarySelectedDate === todayStr
+                            ? 'bg-slate-900 text-white border-slate-900'
+                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        Hari Ini
+                      </button>
+                    </div>
+
+                    {/* Quick jump to date with orders */}
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="text-slate-400">Pilih Order:</span>
+                      <select
+                        value={distinctDatesWithOrders.includes(beneficiarySelectedDate) ? beneficiarySelectedDate : ''}
+                        onChange={e => {
+                          if (e.target.value) setBeneficiarySelectedDate(e.target.value);
+                        }}
+                        className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg text-slate-800 bg-white font-medium"
+                      >
+                        <option value="">-- Pilih Tanggal Menu --</option>
+                        {distinctDatesWithOrders.map(d => (
+                          <option key={d} value={d}>
+                            {formatShortDate(d)} - {orders.find(o => o.date === d)?.menuTitle.slice(0, 30)}...
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleScaleDailyPortionsProportional}
+                      className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-colors cursor-pointer"
+                      title="Sesuaikan seluruh sekolah secara proporsional berdasarkan target baru"
+                    >
+                      Sesuaikan Proporsional
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleResetDailyAllocationsToMaster}
+                      className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                      title="Reset alokasi porsi hari ini ke standar master default"
+                    >
+                      <RotateCcw className="w-3 h-3 text-slate-400" />
+                      <span>Reset ke Master</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveDailyAllocations}
+                      className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Simpan Alokasi Hari Ini</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Day Info Banner */}
+                <div className="p-4 rounded-xl bg-slate-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-bold text-white">
+                        {formatIndonesianDate(beneficiarySelectedDate)}
+                      </span>
+                      {currentOrder ? (
+                        <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          Order Menu: {currentOrder.id} ({currentOrder.mealSession})
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          Belum ada menu order resmi tercatat
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-300">
+                      {currentOrder ? currentOrder.menuTitle : 'Alokasi porsi harian dapat disesuaikan dan akan otomatis membuat draft alokasi untuk tanggal ini.'}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 shrink-0">
+                    <div className="text-right">
+                      <div className="text-[11px] text-slate-400">Total Porsi Hari Ini:</div>
+                      <div className="text-xl font-bold font-mono text-emerald-400 tabular-nums">
+                        {totalDraftPortions.toLocaleString('id-ID')} <span className="text-xs font-normal text-slate-300">porsi</span>
+                      </div>
+                    </div>
+                    {isDailyDraftDirty && (
+                      <span className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-400 text-slate-950 animate-pulse">
+                        Ada Perubahan Belum Disimpan
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Daily School Allocation Table */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                  <div className="p-3 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={selectedBeneficiaryCategory}
+                        onChange={e => setSelectedBeneficiaryCategory(e.target.value)}
+                        className="px-2.5 py-1 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white"
+                      >
+                        <option value="ALL">Semua Kategori ({masterSchools.length})</option>
+                        <option value="SD / MI">SD / MI</option>
+                        <option value="SMP / MTs">SMP / MTs</option>
+                        <option value="PAUD / TK">PAUD / TK</option>
+                        <option value="Ibu Hamil & Balita (B3)">Balita 3T & Ibu Hamil</option>
+                      </select>
+                    </div>
+
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Cari sekolah..."
+                        value={schoolSearchQuery}
+                        onChange={e => setSchoolSearchQuery(e.target.value)}
+                        className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1 w-52 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold">
+                        <th className="py-2.5 px-3 w-10 text-center">No</th>
+                        <th className="py-2.5 px-4 min-w-[200px]">Nama Sekolah / Lembaga</th>
+                        <th className="py-2.5 px-3 w-28">Kategori</th>
+                        <th className="py-2.5 px-3 w-36 text-right">Alokasi Porsi Hari Ini</th>
+                        <th className="py-2.5 px-3 w-24 text-center">Selisih vs Master</th>
+                        <th className="py-2.5 px-3 w-28">Jadwal Kirim</th>
+                        <th className="py-2.5 px-4 w-44">PIC & Kontak</th>
+                        <th className="py-2.5 px-3 w-32 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredSchools.map((s, idx) => {
+                        const curPortion = dailyDraftPortions[s.id] ?? s.portionCount;
+                        const diff = curPortion - s.portionCount;
+                        return (
+                          <tr key={s.id} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{idx + 1}</td>
+                            <td className="py-2.5 px-4">
+                              <div className="font-bold text-slate-900">{s.schoolName}</div>
+                              {s.notes && (
+                                <div className="text-[10px] text-slate-400 truncate max-w-xs">{s.notes}</div>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
+                                {s.category}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <div className="inline-flex items-center gap-1 justify-end">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={curPortion || ''}
+                                  onChange={e => {
+                                    const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                    setDailyDraftPortions(prev => ({ ...prev, [s.id]: val }));
+                                    setIsDailyDraftDirty(true);
+                                  }}
+                                  className="w-20 px-2 py-1 text-right font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded focus:border-emerald-600 focus:outline-none"
+                                />
+                                <span className="text-slate-400 text-[11px]">porsi</span>
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              {diff === 0 ? (
+                                <span className="text-[10px] font-medium text-slate-400">Sesuai</span>
+                              ) : diff > 0 ? (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  +{diff}
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                  {diff}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
+                              <div className="flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                <span>{s.deliveryTime || '10:00 - 10:30'}</span>
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-4 text-slate-700 text-[11px]">
+                              <div className="font-semibold text-slate-900">{s.contactPerson || '-'}</div>
+                              <div className="text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                                <Phone className="w-2.5 h-2.5 text-slate-400" />
+                                <span>{s.phone || '-'}</span>
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <select
+                                value={currentOrder?.beneficiaryAllocations?.find(b => b.id === s.id)?.status || s.status || 'DIJADWALKAN'}
+                                onChange={e => {
+                                  handleQuickUpdateBeneficiaryStatus(s, e.target.value as any);
+                                }}
+                                className={`text-[11px] font-bold px-2 py-1 rounded border cursor-pointer ${
+                                  (currentOrder?.beneficiaryAllocations?.find(b => b.id === s.id)?.status || s.status) === 'TERKIRIM'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                    : (currentOrder?.beneficiaryAllocations?.find(b => b.id === s.id)?.status || s.status) === 'DALAM_PERJALANAN'
+                                    ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                    : (currentOrder?.beneficiaryAllocations?.find(b => b.id === s.id)?.status || s.status) === 'SIAP_KIRIM'
+                                    ? 'bg-blue-50 text-blue-800 border-blue-300'
+                                    : 'bg-slate-100 text-slate-700 border-slate-300'
+                                }`}
+                              >
+                                <option value="DIJADWALKAN">Dijadwalkan</option>
+                                <option value="SIAP_KIRIM">Siap Kirim</option>
+                                <option value="DALAM_PERJALANAN">Dalam Perjalanan</option>
+                                <option value="TERKIRIM">Terkirim</option>
+                              </select>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-100/90 border-t-2 border-slate-300 font-bold text-slate-900">
+                        <td colSpan={3} className="py-3 px-4 text-right text-xs">
+                          Total Alokasi Porsi Hari Ini:
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-emerald-800 text-sm tabular-nums">
+                          {totalDraftPortions.toLocaleString('id-ID')} <span className="text-xs font-normal">porsi</span>
+                        </td>
+                        <td colSpan={4} className="py-3 px-4 text-xs text-slate-500 font-normal">
+                          {isDailyDraftDirty ? 'Jangan lupa klik "Simpan Alokasi Hari Ini" untuk menyimpan perubahan' : 'Alokasi tersimpan sesuai rencana'}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -3079,6 +3818,164 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 4: PRATINJAU CETAK REKAPITULASI HARIAN PENERIMA MANFAAT              */}
+      {/* ========================================================================= */}
+      {isBeneficiaryPrintModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto no-print">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-5xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center">
+                  <Printer className="w-5 h-5 text-blue-700" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">
+                    Cetak Rekapitulasi Alokasi Porsi Harian Sekolah
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Format resmi siap cetak / simpan PDF standar Satuan Pelayanan Pemenuhan Gizi
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Printer className="w-4 h-4 text-slate-200" />
+                  <span>Cetak / Print PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsBeneficiaryPrintModalOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Tutup dialog"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Paper Preview */}
+            <div className="flex-1 overflow-y-auto p-4 bg-slate-100 rounded-xl">
+              <div id="print-beneficiary-paper" className="bg-white p-6 sm:p-8 rounded-xl shadow-xs border border-slate-200 max-w-4xl mx-auto text-slate-900">
+                {/* Kop Surat Resmi */}
+                <div className="flex items-center justify-between border-b-2 border-slate-900 pb-3 mb-4">
+                  <div className="flex items-center gap-3">
+                    <SppgLogo size="md" variant="color" showText={false} />
+                    <div>
+                      <div className="text-sm font-bold tracking-tight text-slate-900 leading-tight">
+                        SATUAN PELAYANAN PEMENUHAN GIZI (SPPG JERU TUMPANG)
+                      </div>
+                      <div className="text-[11px] font-semibold text-slate-700">
+                        BADAN GIZI NASIONAL (BGN) REPUBLIK INDONESIA
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        Jl. Raya Jeru No. 136, Kec. Tumpang, Kab. Malang, Jawa Timur 65156
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right text-[10px] font-mono text-slate-500">
+                    <div>Dokumen Resmi Distribusi</div>
+                    <div>Dicetak: {formatIndonesianDate(todayStr)}</div>
+                  </div>
+                </div>
+
+                <div className="text-center my-3">
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Rekapitulasi Alokasi Distribusi Porsi Harian Sekolah & Penerima Manfaat
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Periode: {dailyBeneficiaryMatrix.dates[0] ? formatIndonesianDate(dailyBeneficiaryMatrix.dates[0]) : '-'} s/d {dailyBeneficiaryMatrix.dates[dailyBeneficiaryMatrix.dates.length - 1] ? formatIndonesianDate(dailyBeneficiaryMatrix.dates[dailyBeneficiaryMatrix.dates.length - 1]) : '-'}
+                  </p>
+                </div>
+
+                {/* Printable Matrix Table */}
+                <table className="w-full text-left text-[11px] border-collapse border border-slate-900 mt-4">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-900 font-bold border-b border-slate-900">
+                      <th className="py-1.5 px-2 border border-slate-900 w-8 text-center">No</th>
+                      <th className="py-1.5 px-2.5 border border-slate-900">Nama Sekolah / Lembaga</th>
+                      <th className="py-1.5 px-2 border border-slate-900 w-20">Kategori</th>
+                      {dailyBeneficiaryMatrix.dates.map(d => (
+                        <th key={d} className="py-1.5 px-1.5 border border-slate-900 text-center font-mono text-[10px]">
+                          {formatShortDate(d)}
+                        </th>
+                      ))}
+                      <th className="py-1.5 px-2 border border-slate-900 text-right w-24">Total Porsi</th>
+                      <th className="py-1.5 px-2 border border-slate-900 text-right w-20">Rata-rata</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dailyBeneficiaryMatrix.rows.map((row, idx) => (
+                      <tr key={row.schoolId} className="border-b border-slate-900/40">
+                        <td className="py-1 px-2 border border-slate-900/60 text-center font-mono">{idx + 1}</td>
+                        <td className="py-1 px-2.5 border border-slate-900/60 font-semibold">{row.schoolName}</td>
+                        <td className="py-1 px-2 border border-slate-900/60 text-[10px]">{row.category}</td>
+                        {dailyBeneficiaryMatrix.dates.map(d => (
+                          <td key={d} className="py-1 px-1.5 border border-slate-900/60 text-center font-mono">
+                            {row.datePortions[d] ? row.datePortions[d].toLocaleString('id-ID') : '-'}
+                          </td>
+                        ))}
+                        <td className="py-1 px-2 border border-slate-900/60 text-right font-mono font-bold">
+                          {row.totalPeriod.toLocaleString('id-ID')}
+                        </td>
+                        <td className="py-1 px-2 border border-slate-900/60 text-right font-mono">
+                          {Math.round(row.avgDaily).toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-100 font-bold border-t-2 border-slate-900">
+                      <td colSpan={3} className="py-2 px-2 border border-slate-900 text-right text-[10px]">
+                        Total Porsi Harian:
+                      </td>
+                      {dailyBeneficiaryMatrix.dates.map(d => (
+                        <td key={d} className="py-2 px-1.5 border border-slate-900 text-center font-mono font-bold text-[10px]">
+                          {(dailyBeneficiaryMatrix.dateTotals[d] || 0).toLocaleString('id-ID')}
+                        </td>
+                      ))}
+                      <td className="py-2 px-2 border border-slate-900 text-right font-mono font-bold text-xs">
+                        {dailyBeneficiaryMatrix.grandTotal.toLocaleString('id-ID')}
+                      </td>
+                      <td className="py-2 px-2 border border-slate-900 text-right font-mono font-bold text-xs">
+                        {Math.round(dailyBeneficiaryMatrix.avgDailyTotal).toLocaleString('id-ID')}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+
+                {/* Signature Block */}
+                <div className="mt-8 grid grid-cols-2 text-center text-xs pt-4 border-t border-slate-200">
+                  <div className="space-y-12">
+                    <div>
+                      <div className="text-slate-500 text-[11px]">Mengetahui & Menyetujui,</div>
+                      <div className="font-semibold text-slate-800">Ahli Gizi / Kepala SPPG</div>
+                    </div>
+                    <div className="font-bold underline text-slate-900">
+                      ( .................................................. )
+                    </div>
+                  </div>
+
+                  <div className="space-y-12">
+                    <div>
+                      <div className="text-slate-500 text-[11px]">Dibuat & Diverifikasi,</div>
+                      <div className="font-semibold text-slate-800">Petugas Distribusi & Penerima Manfaat</div>
+                    </div>
+                    <div className="font-bold underline text-slate-900">
+                      ( {currentUser?.name || 'Petugas SPPG'} )
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
