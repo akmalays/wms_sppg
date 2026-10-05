@@ -58,9 +58,10 @@ import {
 } from 'lucide-react';
 import { exportMultiSheetExcel, exportToExcel } from '../lib/excelExport';
 import { SppgLogo } from './SppgLogo';
+import { DeliveryNotesSubModule } from './DeliveryNotesSubModule';
 
 type PeriodType = 'WEEKLY' | 'MONTHLY' | 'DAILY' | 'ALL' | 'PRESET_SAMPLE';
-type SubTabType = 'MENU_ORDERS' | 'BENEFICIARIES' | 'MASTER_BENEFICIARIES';
+type SubTabType = 'MENU_ORDERS' | 'BENEFICIARIES' | 'DELIVERY_NOTES' | 'MASTER_BENEFICIARIES';
 
 const DEFAULT_MENU_PRICE_MAP: Record<string, number> = {
   beras: 14500,
@@ -1821,15 +1822,28 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
           <button
             type="button"
-            onClick={() => setActiveSubTab('MASTER_BENEFICIARIES')}
+            onClick={() => setActiveSubTab('DELIVERY_NOTES')}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md transition-all cursor-pointer ${
-              activeSubTab === 'MASTER_BENEFICIARIES'
+              activeSubTab === 'DELIVERY_NOTES'
                 ? 'bg-white text-indigo-900 shadow-2xs font-bold'
                 : 'text-slate-600 hover:text-slate-900 font-medium'
             }`}
           >
-            <Building2 className="w-3.5 h-3.5 text-indigo-600" />
-            <span>3. Master Data Penerima Manfaat</span>
+            <Truck className="w-3.5 h-3.5 text-indigo-600" />
+            <span>3. Surat Jalan Distribusi (3 Lembar)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('MASTER_BENEFICIARIES')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md transition-all cursor-pointer ${
+              activeSubTab === 'MASTER_BENEFICIARIES'
+                ? 'bg-white text-purple-900 shadow-2xs font-bold'
+                : 'text-slate-600 hover:text-slate-900 font-medium'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5 text-purple-600" />
+            <span>4. Master Data Penerima Manfaat</span>
           </button>
         </div>
 
@@ -2974,7 +2988,19 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 3: MASTER DATA PENERIMA MANFAAT                                       */}
+      {/* TAB 3: SURAT JALAN & BERITA ACARA (3 LEMBAR PER SEKOLAH)                 */}
+      {/* ========================================================================= */}
+      {activeSubTab === 'DELIVERY_NOTES' && (
+        <DeliveryNotesSubModule
+          orders={orders}
+          masterSchools={masterSchools}
+          currentDate={beneficiarySelectedDate || todayStr}
+          onSelectDate={setBeneficiarySelectedDate}
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 4: MASTER DATA PENERIMA MANFAAT                                       */}
       {/* ========================================================================= */}
       {activeSubTab === 'MASTER_BENEFICIARIES' && (
         <div className="space-y-4">
