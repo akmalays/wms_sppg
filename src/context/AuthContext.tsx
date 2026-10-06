@@ -168,30 +168,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // 2. Stored / local users validation
-    const matchedUser = availableUsers.find(
-      u => u.email.toLowerCase() === cleanEmail ||
-           (u.role === 'ADMIN' && (cleanEmail === 'akmal' || cleanEmail === 'akmal@sppg.id' || cleanEmail === 'akmal.admin@sppg.id' || cleanEmail === 'hendra.admin@sppg.id'))
-    );
-
-    if (matchedUser) {
-      const savedPassword = warehouseDb.getUserPassword(cleanEmail);
-      if (savedPassword && password && savedPassword !== password) {
-        return {
-          success: false,
-          error: 'Kata sandi yang Anda masukkan salah.',
-        };
-      }
-
-      setCurrentUser(matchedUser);
+    const verification = warehouseDb.verifyUserCredentials(cleanEmail, password || '');
+    if (verification.valid && verification.user) {
+      setCurrentUser(verification.user);
       setIsAuthenticated(true);
-      localStorage.setItem('sppg_active_user_id', matchedUser.id);
+      localStorage.setItem('sppg_active_user_id', verification.user.id);
+      localStorage.setItem('sppg_active_user_name', verification.user.name);
+      localStorage.setItem('sppg_active_user_role', verification.user.role);
       localStorage.setItem('sppg_is_authenticated', 'true');
       return { success: true };
     }
 
+    if (verification.error) {
+      return {
+        success: false,
+        error: verification.error,
+      };
+    }
+
     return {
       success: false,
-      error: 'Email tidak ditemukan dalam sistem. Gunakan salah satu email akun demo SPPG atau buat akun petugas baru.',
+      error: 'Email atau nama pengguna tidak terdaftar dalam database petugas.',
     };
   };
 

@@ -38,7 +38,11 @@ import {
   Store,
   Layers,
   Minus,
-  FileText
+  FileText,
+  Trash2,
+  Sparkles,
+  Tag,
+  Sliders
 } from 'lucide-react';
 import { exportToExcel, downloadExcelTemplate } from '../lib/excelExport';
 import { SppgLogo } from './SppgLogo';
@@ -51,7 +55,7 @@ import {
 
 interface InventoryModuleProps {
   onRefreshData?: () => void;
-  initialTab?: 'stock' | 'opname';
+  initialTab?: 'stock' | 'master' | 'opname';
 }
 
 export const SPPG_STOCK_CATEGORIES = [
@@ -114,7 +118,8 @@ const DEFAULT_PRICE_MAP: Record<string, number> = {
   es: 15000,
 };
 
-function getItemEstimatedUnitPrice(name: string, category: string): number {
+function getItemEstimatedUnitPrice(name: string, category: string, explicitPrice?: number): number {
+  if (explicitPrice && explicitPrice > 0) return explicitPrice;
   const lower = name.toLowerCase();
   for (const key of Object.keys(DEFAULT_PRICE_MAP)) {
     if (lower.includes(key)) return DEFAULT_PRICE_MAP[key];
@@ -141,8 +146,8 @@ interface BatchMasterItemRow {
 export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData, initialTab = 'stock' }) => {
   const { currentUser, can } = useAuth();
 
-  // Top level active tab: 'stock' (Data Stok Keseluruhan) vs 'opname' (Stok Opname Fisik)
-  const [activeMainTab, setActiveMainTab] = useState<'stock' | 'opname'>(initialTab);
+  // Top level active tab: 'stock' (Data Stok Keseluruhan) vs 'master' (Master Barang) vs 'opname' (Stok Opname Fisik)
+  const [activeMainTab, setActiveMainTab] = useState<'stock' | 'master' | 'opname'>(initialTab);
 
   useEffect(() => {
     if (initialTab) setActiveMainTab(initialTab);
@@ -160,6 +165,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
 
   // ----------------------------------------------------
+  // Master Barang Tab Filter States
+  // ----------------------------------------------------
+  const [masterSearchQuery, setMasterSearchQuery] = useState('');
+  const [masterCategoryFilter, setMasterCategoryFilter] = useState<SppgCategory>('Semua Kategori');
+  const [masterStatusFilter, setMasterStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+
+  // ----------------------------------------------------
   // Stock Tab Modals
   // ----------------------------------------------------
   const [editingItem, setEditingItem] = useState<ItemMaster | null>(null);
@@ -174,11 +186,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   const [formSku, setFormSku] = useState('');
   const [formName, setFormName] = useState('');
   const [formCategory, setFormCategory] = useState<SppgCategory>('Bahan Kering');
+  const [formCustomCategory, setFormCustomCategory] = useState('');
   const [formBaseUnit, setFormBaseUnit] = useState<BaseUnit>('Kg');
+  const [formCustomUnit, setFormCustomUnit] = useState('');
   const [formInitialStock, setFormInitialStock] = useState<number>(0);
   const [formMinStock, setFormMinStock] = useState<number>(10);
   const [formLocation, setFormLocation] = useState('Gudang Kering - Rak A');
+  const [formEstimatedPrice, setFormEstimatedPrice] = useState<number>(0);
   const [formNotes, setFormNotes] = useState('');
+  const [formIsActive, setFormIsActive] = useState<boolean>(true);
   const [formError, setFormError] = useState('');
 
   // Batch Master Items Form State
@@ -270,7 +286,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       if (categoryItemCounts[cat] !== undefined) {
         categoryItemCounts[cat]++;
       }
-      const price = getItemEstimatedUnitPrice(i.name, cat);
+      const price = getItemEstimatedUnitPrice(i.name, cat, i.estimatedPrice);
       totalAssetValue += Math.max(0, i.currentStock) * price;
 
       const status = getItemStockStatus(i);
@@ -287,6 +303,43 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       outCount,
       categoryItemCounts,
     };
+  }, [items]);
+
+  // Filtered Items for Master Barang Tab
+  const filteredMasterItems = useMemo(() => {
+    const q = masterSearchQuery.trim().toLowerCase();
+    return items.filter(item => {
+      const cat = getDetailedItemCategory(item);
+      const matchesSearch =
+        !q ||
+        item.id.toLowerCase().includes(q) ||
+        item.name.toLowerCase().includes(q) ||
+        cat.toLowerCase().includes(q) ||
+        item.location.toLowerCase().includes(q) ||
+        (item.notes && item.notes.toLowerCase().includes(q));
+
+      const matchesCat =
+        masterCategoryFilter === 'Semua Kategori' || cat === masterCategoryFilter;
+
+      let matchesStatus = true;
+      if (masterStatusFilter === 'ACTIVE') matchesStatus = item.isActive !== false;
+      else if (masterStatusFilter === 'INACTIVE') matchesStatus = item.isActive === false;
+
+      return matchesSearch && matchesCat && matchesStatus;
+    });
+  }, [items, masterSearchQuery, masterCategoryFilter, masterStatusFilter]);
+
+  // Master KPI Metrics
+  const masterMetrics = useMemo(() => {
+    const total = items.length;
+    const active = items.filter(i => i.isActive !== false).length;
+    const basah = items.filter(i => getDetailedItemCategory(i) === 'Bahan Basah').length;
+    const kering = items.filter(i => getDetailedItemCategory(i) === 'Bahan Kering').length;
+    const nonFood = items.filter(i => {
+      const cat = getDetailedItemCategory(i);
+      return cat !== 'Bahan Basah' && cat !== 'Bahan Kering';
+    }).length;
+    return { total, active, basah, kering, nonFood };
   }, [items]);
 
   // Indonesian print date formatted
@@ -848,18 +901,22 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   };
 
   // ----------------------------------------------------
-  // Single Item Master Modal Handlers
+  // Single Item Master Modal Handlers (Custom Item Support)
   // ----------------------------------------------------
   const handleOpenNewSingleItem = () => {
     setEditingItem(null);
     setFormSku(`ITM-${Date.now().toString().slice(-4)}`);
     setFormName('');
     setFormCategory('Bahan Kering');
+    setFormCustomCategory('');
     setFormBaseUnit('Kg');
+    setFormCustomUnit('');
     setFormInitialStock(0);
     setFormMinStock(20);
-    setFormLocation('Gudang Kering');
+    setFormLocation('Gudang Kering - Rak A');
+    setFormEstimatedPrice(0);
     setFormNotes('');
+    setFormIsActive(true);
     setFormError('');
     setIsSingleModalOpen(true);
   };
@@ -868,12 +925,17 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
     setEditingItem(item);
     setFormSku(item.id);
     setFormName(item.name);
-    setFormCategory(getDetailedItemCategory(item));
+    const cat = getDetailedItemCategory(item);
+    setFormCategory(cat);
+    setFormCustomCategory('');
     setFormBaseUnit(item.baseUnit);
+    setFormCustomUnit('');
     setFormInitialStock(item.currentStock);
     setFormMinStock(item.minimumStock);
     setFormLocation(item.location);
+    setFormEstimatedPrice(item.estimatedPrice || getItemEstimatedUnitPrice(item.name, cat));
     setFormNotes(item.notes || '');
+    setFormIsActive(item.isActive !== false);
     setFormError('');
     setIsSingleModalOpen(true);
   };
@@ -889,33 +951,101 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
     try {
       const isNew = !editingItem;
+      const finalCategory = formCategory === 'Kategori Kustom' && formCustomCategory.trim()
+        ? formCustomCategory.trim()
+        : formCategory;
+      const finalUnit = formBaseUnit === 'Satuan Kustom' && formCustomUnit.trim()
+        ? formCustomUnit.trim()
+        : formBaseUnit;
+      const initialStockVal = Number(formInitialStock) || 0;
+      const minStockVal = Math.max(0, Number(formMinStock) || 0);
+      const estPriceVal = Math.max(0, Number(formEstimatedPrice) || 0);
+
       const itemToSave: ItemMaster = {
         id: formSku.trim() || `ITM-${Date.now().toString().slice(-4)}`,
         name: formName.trim(),
-        itemType: formCategory === 'Bahan Kering'
+        itemType: finalCategory === 'Bahan Kering'
           ? 'FOOD_CARRYING_STOCK'
-          : formCategory === 'Bahan Basah'
+          : finalCategory === 'Bahan Basah'
           ? 'FOOD_DAILY_FLOW'
           : 'OPERATIONAL_CONSUMABLE',
-        category: formCategory,
-        baseUnit: formBaseUnit,
-        minimumStock: Number(formMinStock),
-        reorderPoint: Number(formMinStock) * 1.5,
-        currentStock: editingItem ? editingItem.currentStock : Number(formInitialStock),
+        category: finalCategory,
+        baseUnit: finalUnit,
+        minimumStock: minStockVal,
+        reorderPoint: minStockVal * 1.5,
+        currentStock: editingItem ? editingItem.currentStock : initialStockVal,
         location: formLocation.trim() || 'Gudang Utama',
-        expiryTrackingEnabled: formCategory === 'Bahan Basah' || formCategory === 'Bahan Kering',
-        isActive: true,
+        expiryTrackingEnabled: finalCategory === 'Bahan Basah' || finalCategory === 'Bahan Kering',
+        isActive: formIsActive,
         notes: formNotes.trim() || undefined,
-        lastMovementDate: editingItem?.lastMovementDate,
+        estimatedPrice: estPriceVal > 0 ? estPriceVal : undefined,
+        lastMovementDate: editingItem?.lastMovementDate || (initialStockVal > 0 ? new Date().toISOString() : undefined),
+        createdAt: editingItem?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
       warehouseDb.saveItem(itemToSave, currentUser, isNew);
       refreshData();
       setIsSingleModalOpen(false);
-      showToast(`Berhasil menyimpan data barang: ${itemToSave.name}`);
+      showToast(`Berhasil menyimpan data barang custom: ${itemToSave.name}`);
     } catch (err: any) {
       setFormError(err.message || 'Gagal menyimpan data barang.');
     }
+  };
+
+  const handleDeleteItem = (item: ItemMaster) => {
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus master barang "${item.name}" (${item.id}) dari database?`)) {
+      return;
+    }
+    try {
+      warehouseDb.deleteItem(item.id, currentUser);
+      refreshData();
+      showToast(`Master barang "${item.name}" berhasil dihapus.`);
+    } catch (err: any) {
+      alert(err.message || 'Gagal menghapus item.');
+    }
+  };
+
+  const handleToggleActive = (item: ItemMaster) => {
+    try {
+      const updated = warehouseDb.toggleItemActive(item.id, currentUser);
+      refreshData();
+      showToast(`Status master barang "${updated.name}" berhasil diubah menjadi ${updated.isActive ? 'Aktif' : 'Nonaktif'}.`);
+    } catch (err: any) {
+      alert(err.message || 'Gagal mengubah status item.');
+    }
+  };
+
+  const handleExportMasterExcel = () => {
+    if (filteredMasterItems.length === 0) {
+      alert('Tidak ada data master barang untuk diekspor.');
+      return;
+    }
+
+    const rows = filteredMasterItems.map((item, idx) => {
+      const cat = getDetailedItemCategory(item);
+      const price = getItemEstimatedUnitPrice(item.name, cat, item.estimatedPrice);
+      return {
+        No: idx + 1,
+        'Kode SKU': item.id,
+        'Nama Barang': item.name,
+        Kategori: cat,
+        'Satuan Dasar': item.baseUnit,
+        'Min. Stok': item.minimumStock,
+        'Titik Pesan Ulang': item.reorderPoint,
+        'Lokasi Simpan': item.location,
+        'Estimasi Harga Satuan (Rp)': price,
+        Status: item.isActive !== false ? 'Aktif' : 'Nonaktif',
+        'Saldo Stok Saat Ini': item.currentStock,
+        Catatan: item.notes || '-',
+      };
+    });
+
+    exportToExcel(
+      rows,
+      `Katalog_Master_Barang_SPPG_Jeru_Tumpang_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      'Master Barang'
+    );
   };
 
   // ----------------------------------------------------
@@ -1146,16 +1276,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
           </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* MODULE HEADER BAR */}
+      {/* ========================================================================= */}
+      {/* MODULE HEADER BAR */}
       {/* ========================================================================= */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            Stok Barang & Stock Opname
+            Stok Barang & Master Inventaris
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Monitoring saldo stok fisik real-time per kategori, status restock, penyesuaian cepat, serta pelaksanaan audit fisik (stock opname) berkala.
+            Monitoring saldo stok fisik real-time, pengelolaan katalog master barang kustom, serta pelaksanaan audit fisik (stock opname) berkala.
           </p>
         </div>
 
@@ -1176,6 +1306,22 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
           <button
             type="button"
+            onClick={() => setActiveMainTab('master')}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeMainTab === 'master'
+                ? 'bg-white text-emerald-800 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Package className="w-4 h-4 text-emerald-600" />
+            <span>Master Barang</span>
+            <span className="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+              {items.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveMainTab('opname')}
             className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               activeMainTab === 'opname'
@@ -1184,7 +1330,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
             }`}
           >
             <ClipboardCheck className="w-4 h-4 text-emerald-600" />
-            <span>Stok Opname Fisik (Per Kategori)</span>
+            <span>Stok Opname Fisik</span>
             {opnames.filter(o => o.status === 'PENDING_APPROVAL').length > 0 && (
               <span className="bg-amber-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
                 {opnames.filter(o => o.status === 'PENDING_APPROVAL').length}
@@ -1269,27 +1415,23 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 <button
                   type="button"
                   onClick={handleOpenNewSingleItem}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
+                  title="Tambah dan daftarkan item baru kustom langsung ke inventaris"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>+ Tambah Barang Baru</span>
+                  <span>+ Tambah Item Custom</span>
                 </button>
               )}
 
-              {can('MANAGE_ITEMS') && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBatchMode('GRID');
-                    setPasteRawText('');
-                    setIsBatchModalOpen(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white shadow-2xs transition-colors cursor-pointer"
-                >
-                  <TableProperties className="w-4 h-4" />
-                  <span>Input Masal Master Barang</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setActiveMainTab('master')}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-900 text-white shadow-2xs transition-colors cursor-pointer"
+                title="Buka katalog dan kelola seluruh master barang"
+              >
+                <Package className="w-4 h-4 text-emerald-400" />
+                <span>Buka Master Barang</span>
+              </button>
 
               {/* Fast Launch Opname for Active Category */}
               <button
@@ -1392,13 +1534,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                     <th className="py-3 px-3 w-28 text-center">Status</th>
                     <th className="py-3 px-3 w-28 text-right">Min. Stok</th>
                     <th className="py-3 px-3 w-32 text-right">Estimasi Aset</th>
-                    <th className="py-3 px-3 w-24 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {filteredItems.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-12 text-center text-slate-400 italic">
+                      <td colSpan={8} className="py-12 text-center text-slate-400 italic">
                         Tidak ada data barang yang sesuai dengan filter kategori & pencarian saat ini.
                       </td>
                     </tr>
@@ -1406,7 +1547,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                     filteredItems.map((item, idx) => {
                       const cat = getDetailedItemCategory(item);
                       const status = getItemStockStatus(item);
-                      const unitPrice = getItemEstimatedUnitPrice(item.name, cat);
+                      const unitPrice = getItemEstimatedUnitPrice(item.name, cat, item.estimatedPrice);
                       const assetValue = Math.max(0, item.currentStock) * unitPrice;
 
                       let statusBadge = (
@@ -1469,13 +1610,276 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                               @ Rp {unitPrice.toLocaleString('id-ID')}
                             </div>
                           </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* VIEW 2: MASTER BARANG (KATALOG & CUSTOM ITEM) */}
+      {/* ========================================================================= */}
+      {activeMainTab === 'master' && (
+        <div className="space-y-5">
+          {/* Header Action Card for Master Barang */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Package className="w-5 h-5 text-emerald-600" />
+                Katalog Master Barang SPPG
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Kelola spesifikasi item resmi, satuan, batas minimum stok, lokasi simpan, serta registrasi item custom baru.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {can('MANAGE_ITEMS') && (
+                <button
+                  type="button"
+                  onClick={handleOpenNewSingleItem}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
+                  title="Tambah item custom baru"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Tambah Item Custom</span>
+                </button>
+              )}
+
+              {can('MANAGE_ITEMS') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBatchMode('GRID');
+                    setPasteRawText('');
+                    setIsBatchModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-900 text-white shadow-2xs transition-colors cursor-pointer"
+                  title="Input masal banyak item sekaligus"
+                >
+                  <TableProperties className="w-4 h-4" />
+                  <span>Input Masal (Batch)</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleExportMasterExcel}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                title="Unduh seluruh data master barang ke Excel"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Ekspor Master Excel</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Master Metrics Summary Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="flex items-center justify-between text-slate-500 mb-1">
+                <span className="text-xs font-semibold">Total Master Item</span>
+                <Package className="w-4 h-4 text-slate-400" />
+              </div>
+              <div className="text-xl font-bold text-slate-900">
+                {masterMetrics.total} <span className="text-xs font-normal text-slate-500">item</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">Terdaftar di katalog</p>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="flex items-center justify-between text-slate-500 mb-1">
+                <span className="text-xs font-semibold">Status Aktif</span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="text-xl font-bold text-emerald-800">
+                {masterMetrics.active} <span className="text-xs font-normal text-slate-500">item</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">Siap untuk operasional</p>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="flex items-center justify-between text-slate-500 mb-1">
+                <span className="text-xs font-semibold">Bahan Basah</span>
+                <Boxes className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="text-xl font-bold text-emerald-700">
+                {masterMetrics.basah} <span className="text-xs font-normal text-slate-500">jenis</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">Protein, sayur & buah</p>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="flex items-center justify-between text-slate-500 mb-1">
+                <span className="text-xs font-semibold">Bahan Kering</span>
+                <Boxes className="w-4 h-4 text-amber-500" />
+              </div>
+              <div className="text-xl font-bold text-amber-700">
+                {masterMetrics.kering} <span className="text-xs font-normal text-slate-500">jenis</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">Beras, sembako & bumbu</p>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+              <div className="flex items-center justify-between text-slate-500 mb-1">
+                <span className="text-xs font-semibold">Non-Pangan</span>
+                <Layers className="w-4 h-4 text-slate-400" />
+              </div>
+              <div className="text-xl font-bold text-slate-700">
+                {masterMetrics.nonFood} <span className="text-xs font-normal text-slate-500">jenis</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">ATK, APD & kebersihan</p>
+            </div>
+          </div>
+
+          {/* Master Barang Table Container */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+            {/* Filter Bar */}
+            <div className="px-5 pt-4 pb-3 border-b border-slate-200 bg-slate-50/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {SPPG_STOCK_CATEGORIES.map(cat => {
+                  const isSelected = masterCategoryFilter === cat;
+                  const count = cat === 'Semua Kategori'
+                    ? items.length
+                    : items.filter(i => getDetailedItemCategory(i) === cat).length;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setMasterCategoryFilter(cat)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'bg-emerald-700 text-white shadow-2xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {cat} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Status and Search Filter */}
+              <div className="flex items-center gap-2">
+                <select
+                  value={masterStatusFilter}
+                  onChange={e => setMasterStatusFilter(e.target.value as 'ALL' | 'ACTIVE' | 'INACTIVE')}
+                  className="text-xs border border-slate-300 rounded-lg p-1.5 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                >
+                  <option value="ALL">Semua Status</option>
+                  <option value="ACTIVE">Aktif Saja</option>
+                  <option value="INACTIVE">Nonaktif Saja</option>
+                </select>
+
+                <div className="relative w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Cari SKU, nama, lokasi, catatan..."
+                    value={masterSearchQuery}
+                    onChange={e => setMasterSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th className="py-3 px-3 w-10 text-center">#</th>
+                    <th className="py-3 px-3 w-28">Kode SKU</th>
+                    <th className="py-3 px-3 min-w-[220px]">Nama Barang & Spesifikasi</th>
+                    <th className="py-3 px-3 w-36">Kategori Standar</th>
+                    <th className="py-3 px-3 w-20 text-center">Satuan</th>
+                    <th className="py-3 px-3 w-28 text-right">Min. Stok</th>
+                    <th className="py-3 px-3 w-28 text-right">Saldo Saat Ini</th>
+                    <th className="py-3 px-3 w-36">Lokasi Gudang</th>
+                    <th className="py-3 px-3 w-28 text-right">Estimasi Harga</th>
+                    <th className="py-3 px-3 w-20 text-center">Status</th>
+                    <th className="py-3 px-3 w-28 text-center">Aksi Master</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {filteredMasterItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="py-12 text-center text-slate-400 italic">
+                        Tidak ada data master barang yang sesuai dengan filter dan pencarian saat ini.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredMasterItems.map((item, idx) => {
+                      const cat = getDetailedItemCategory(item);
+                      const unitPrice = getItemEstimatedUnitPrice(item.name, cat, item.estimatedPrice);
+                      const isActive = item.isActive !== false;
+
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3 px-3 text-center text-slate-400 font-mono text-[11px]">
+                            {idx + 1}
+                          </td>
+                          <td className="py-3 px-3 font-mono font-semibold text-slate-700">
+                            {item.id}
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="font-bold text-slate-900">{item.name}</div>
+                            {item.notes && (
+                              <div className="text-[10px] text-slate-400 mt-0.5 italic">
+                                {item.notes}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold border bg-slate-50 border-slate-200 text-slate-700">
+                              {cat}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-center font-mono font-semibold text-slate-700">
+                            {item.baseUnit}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono text-slate-600">
+                            {item.minimumStock} {item.baseUnit}
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            <span className="font-mono font-bold text-slate-900">
+                              {item.currentStock.toLocaleString('id-ID')}
+                            </span>{' '}
+                            <span className="text-slate-500 font-normal">{item.baseUnit}</span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="text-slate-600 text-[11px] flex items-center gap-1">
+                              <Store className="w-3 h-3 text-slate-400" />
+                              <span>{item.location}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono text-slate-700">
+                            Rp {unitPrice.toLocaleString('id-ID')}
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            {isActive ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                <Check className="w-3 h-3" /> Aktif
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                                Nonaktif
+                              </span>
+                            )}
+                          </td>
                           <td className="py-3 px-3 text-center">
                             <div className="flex items-center justify-center gap-1">
                               <button
                                 type="button"
                                 onClick={() => handleOpenAdjust(item)}
                                 className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors cursor-pointer"
-                                title="Penyesuaian cepat stok"
+                                title="Koreksi / Penyesuaian Cepat Stok Fisik"
                               >
                                 <RefreshCw className="w-3.5 h-3.5" />
                               </button>
@@ -1483,10 +1887,30 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                                 <button
                                   type="button"
                                   onClick={() => handleOpenEditItem(item)}
-                                  className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                                  title="Edit data master barang"
+                                  className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
+                                  title="Edit data & spesifikasi master barang"
                                 >
                                   <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {can('MANAGE_ITEMS') && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleActive(item)}
+                                  className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors cursor-pointer"
+                                  title={isActive ? 'Nonaktifkan item ini' : 'Aktifkan kembali item ini'}
+                                >
+                                  {isActive ? <Minus className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                                </button>
+                              )}
+                              {can('MANAGE_ITEMS') && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteItem(item)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                                  title="Hapus master barang dari sistem"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
                             </div>
@@ -2257,7 +2681,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: TAMBAH / EDIT MASTER BARANG SATUAN */}
+      {/* MODAL: TAMBAH / EDIT MASTER BARANG SATUAN & CUSTOM */}
       {/* ========================================================================= */}
       {isSingleModalOpen && (
         <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs">
@@ -2265,10 +2689,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  {editingItem ? 'Edit Data Master Barang' : 'Tambah Master Barang Baru'}
+                  {editingItem ? 'Edit Data Master Barang' : 'Tambah Item Custom Master Barang'}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Daftarkan barang baru ke master inventaris gudang SPPG.
+                  {editingItem
+                    ? 'Perbarui spesifikasi, satuan, lokasi, atau batasan minimum stok barang.'
+                    : 'Daftarkan item custom baru ke master inventaris dan tentukan saldo stok awalnya.'}
                 </p>
               </div>
               <button
@@ -2290,16 +2716,28 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Kode SKU</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-slate-700">Kode SKU</label>
+                    {!editingItem && (
+                      <button
+                        type="button"
+                        onClick={() => setFormSku(`ITM-${Date.now().toString().slice(-4)}`)}
+                        className="text-[10px] text-emerald-700 hover:text-emerald-800 font-semibold cursor-pointer"
+                      >
+                        Auto SKU
+                      </button>
+                    )}
+                  </div>
                   <input
                     type="text"
                     value={formSku}
                     onChange={e => setFormSku(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2 font-mono text-slate-900"
+                    placeholder="Contoh: ITM-001"
+                    className="w-full border border-slate-300 rounded-lg p-2 font-mono text-slate-900 bg-white"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Kategori</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Kategori Standar</label>
                   <select
                     value={formCategory}
                     onChange={e => setFormCategory(e.target.value as SppgCategory)}
@@ -2308,77 +2746,187 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                     {SPPG_STOCK_CATEGORIES.filter(c => c !== 'Semua Kategori').map(c => (
                       <option key={c} value={c}>{c}</option>
                     ))}
+                    <option value="Kategori Kustom">+ Kategori Kustom...</option>
                   </select>
                 </div>
               </div>
 
+              {formCategory === 'Kategori Kustom' && (
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Nama Kategori Kustom <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formCustomCategory}
+                    onChange={e => setFormCustomCategory(e.target.value)}
+                    placeholder="Ketik kategori baru..."
+                    className="w-full border border-emerald-300 bg-emerald-50/30 rounded-lg p-2 text-slate-900"
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Nama Barang <span className="text-rose-500">*</span>
+                  Nama Barang / Item <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={formName}
                   onChange={e => setFormName(e.target.value)}
-                  placeholder="Contoh: Beras Ramos, Daging Ayam, Kertas HVS..."
+                  placeholder="Contoh: Ayam Broiler Potong, Beras Pandan Wangi, Mika Bento..."
                   required
-                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-900"
+                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-900 focus:ring-1 focus:ring-emerald-500"
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Satuan</label>
-                  <input
-                    type="text"
+                  <label className="block font-semibold text-slate-700 mb-1">Satuan Dasar</label>
+                  <select
                     value={formBaseUnit}
                     onChange={e => setFormBaseUnit(e.target.value as BaseUnit)}
-                    className="w-full border border-slate-300 rounded-lg p-2 text-slate-900"
-                  />
+                    className="w-full border border-slate-300 rounded-lg p-2 bg-white text-slate-900 font-medium"
+                  >
+                    <option value="Kg">Kg (Kilogram)</option>
+                    <option value="Gram">Gram</option>
+                    <option value="Liter">Liter</option>
+                    <option value="Pack">Pack</option>
+                    <option value="Pcs">Pcs (Buah)</option>
+                    <option value="Dus">Dus / Karton</option>
+                    <option value="Ikat">Ikat</option>
+                    <option value="Butir">Butir</option>
+                    <option value="Roll">Roll</option>
+                    <option value="Botol">Botol</option>
+                    <option value="Jerigen">Jerigen</option>
+                    <option value="Pouch">Pouch</option>
+                    <option value="Rim">Rim</option>
+                    <option value="Satuan Kustom">+ Satuan Kustom...</option>
+                  </select>
                 </div>
+                {formBaseUnit === 'Satuan Kustom' ? (
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Ketik Satuan Kustom <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formCustomUnit}
+                      onChange={e => setFormCustomUnit(e.target.value)}
+                      placeholder="Contoh: Kaleng, Slop, Keranjang..."
+                      className="w-full border border-emerald-300 bg-emerald-50/30 rounded-lg p-2 text-slate-900"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      {editingItem ? 'Saldo Stok Fisik' : 'Saldo Stok Awal'}
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={formInitialStock}
+                      onChange={e => setFormInitialStock(parseFloat(e.target.value) || 0)}
+                      disabled={!!editingItem}
+                      className="w-full border border-slate-300 rounded-lg p-2 text-right font-mono text-slate-900 disabled:bg-slate-100"
+                    />
+                    {!editingItem && (
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">
+                        *Langsung muncul di Stok Barang
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {formBaseUnit === 'Satuan Kustom' && (
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    {editingItem ? 'Stok Terkini' : 'Stok Awal'}
+                    {editingItem ? 'Saldo Stok Fisik' : 'Saldo Stok Awal'}
                   </label>
                   <input
                     type="number"
+                    step="any"
                     value={formInitialStock}
                     onChange={e => setFormInitialStock(parseFloat(e.target.value) || 0)}
                     disabled={!!editingItem}
                     className="w-full border border-slate-300 rounded-lg p-2 text-right font-mono text-slate-900 disabled:bg-slate-100"
                   />
+                  {!editingItem && (
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">
+                      *Langsung muncul di Stok Barang
+                    </span>
+                  )}
                 </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Min. Stok</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Batas Min. Stok (Buffer)</label>
                   <input
                     type="number"
+                    step="any"
                     value={formMinStock}
                     onChange={e => setFormMinStock(parseFloat(e.target.value) || 0)}
+                    className="w-full border border-slate-300 rounded-lg p-2 text-right font-mono text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Estimasi Harga Satuan (Rp)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={formEstimatedPrice}
+                    onChange={e => setFormEstimatedPrice(parseFloat(e.target.value) || 0)}
+                    placeholder="Contoh: 35000"
                     className="w-full border border-slate-300 rounded-lg p-2 text-right font-mono text-slate-900"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Lokasi Penyimpanan</label>
+                <label className="block font-semibold text-slate-700 mb-1">Lokasi Penyimpanan di Gudang</label>
                 <input
                   type="text"
+                  list="warehouse-locations-list"
                   value={formLocation}
                   onChange={e => setFormLocation(e.target.value)}
-                  placeholder="Gudang Kering, Chiller Dapur, dsb..."
+                  placeholder="Pilih atau ketik lokasi simpan..."
                   className="w-full border border-slate-300 rounded-lg p-2 text-slate-900"
                 />
+                <datalist id="warehouse-locations-list">
+                  <option value="Gudang Kering - Rak A1" />
+                  <option value="Gudang Kering - Rak B1" />
+                  <option value="Gudang Kering - Palet Tengah" />
+                  <option value="Chiller Dapur 1 (Sayur & Buah)" />
+                  <option value="Freezer Dapur 2 (Daging & Unggas)" />
+                  <option value="Area Bumbu & Rempah" />
+                  <option value="Gudang Non-Food & Kebersihan" />
+                  <option value="Ruang Kantor / Lemari ATK" />
+                </datalist>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Catatan</label>
+                <label className="block font-semibold text-slate-700 mb-1">Catatan / Spesifikasi</label>
                 <input
                   type="text"
                   value={formNotes}
                   onChange={e => setFormNotes(e.target.value)}
-                  placeholder="Keterangan tambahan..."
+                  placeholder="Keterangan mutu, ukuran, kemasan, atau supplier umum..."
                   className="w-full border border-slate-300 rounded-lg p-2 text-slate-900"
                 />
+              </div>
+
+              <div className="pt-2 flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={formIsActive}
+                    onChange={e => setFormIsActive(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+                  />
+                  <span className="font-semibold text-slate-700">Item Aktif (Digunakan Operasional)</span>
+                </label>
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">

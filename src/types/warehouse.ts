@@ -102,6 +102,7 @@ export interface ItemMaster {
   lastMovementDate?: string;
   createdAt?: string;
   updatedAt?: string;
+  estimatedPrice?: number;
 }
 
 export interface Supplier {
