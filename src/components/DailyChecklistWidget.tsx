@@ -225,7 +225,7 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
               </span>
             </div>
             <h3 className="text-base font-bold text-white">
-              Monitoring Jobdesk Operasional SPPG Jeru Tumpang Hari Ini
+              Monitoring Jobdesk Operasional SPPG MLG TUMPANG JERU Hari Ini
             </h3>
             <p className="text-xs text-slate-300 mt-0.5">
               Ceklis langsung tugas yang telah selesai dan pantau pengingat target tiap jam untuk masing-masing staf.
@@ -528,7 +528,7 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">
-                    Tambah Jobdesk / Tugas Harian SPPG Jeru Tumpang
+                    Tambah Jobdesk / Tugas Harian SPPG MLG TUMPANG JERU
                   </h4>
                   <p className="text-[11px] text-slate-500">
                     Tentukan target jam dan staf penanggung jawab tugas

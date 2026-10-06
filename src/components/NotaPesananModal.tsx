@@ -105,7 +105,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
   );
 
   // Field khusus format resmi BGN
-  const [deliveryFrom, setDeliveryFrom] = useState('SPPG MALANG TUMPANG JERU');
+  const [deliveryFrom, setDeliveryFrom] = useState('SPPG MLG TUMPANG JERU');
   const [deliveryTimeNote, setDeliveryTimeNote] = useState('(Jam 12.00-15.00)');
   const [signerName, setSignerName] = useState(
     formData.approvedBy && !formData.approvedBy.includes('Siti Rahma')
@@ -285,7 +285,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                 {copyTitle}
               </span>
               <span className="font-mono text-[9px] text-slate-400">
-                Badan Gizi Nasional • SPPG Jeru Tumpang
+                Badan Gizi Nasional • SPPG MLG TUMPANG JERU
               </span>
             </div>
           )}
@@ -726,7 +726,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
         {/* Print Footer Minimalis */}
         {!isCompact && (
           <div className="pt-4 mt-3 text-[9px] text-slate-400 flex justify-between items-center no-print border-t border-slate-200">
-            <span>Dokumen Resmi Nota Pesanan Badan Gizi Nasional (SPPG Jeru Tumpang)</span>
+            <span>Dokumen Resmi Nota Pesanan Badan Gizi Nasional (SPPG MLG TUMPANG JERU)</span>
             <span className="font-mono">Waktu Cetak: {new Date().toLocaleDateString('id-ID')}</span>
           </div>
         )}

@@ -95,7 +95,7 @@ export const INITIAL_USERS: User[] = [
   },
 ];
 
-// Supplier UMKM & mitra asli SPPG Jeru Tumpang (dari data nota pesanan).
+// Supplier UMKM & mitra asli SPPG MLG TUMPANG JERU (dari data nota pesanan).
 // Kategori pasokan perlu dicek ulang lewat menu Master Supplier.
 const umkm = (name: string, address: string, supplyCategory: string): Omit<Supplier, 'id'> => ({
   name,
@@ -1305,11 +1305,11 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     grandTotal: 2607500,
     terbilang: 'Dua Juta Enam Ratus Tujuh Ribu Lima Ratus Rupiah',
     notes: 'Mohon barang dikirim dalam kondisi tersegel baik dan lampirkan faktur pengiriman.',
-    deliveryTerms: 'Pengiriman langsung ke Gudang Utama SPPG Jeru Tumpang sebelum jam 10:00 WIB.',
+    deliveryTerms: 'Pengiriman langsung ke Gudang Utama SPPG MLG TUMPANG JERU sebelum jam 10:00 WIB.',
     createdBy: 'Akmal',
     createdByRole: 'Admin Logistik',
     approvedBy: 'Rizky Iman Ramdhan, S.Pd',
-    approvedByRole: 'Kepala SPPG Jeru Tumpang',
+    approvedByRole: 'Kepala SPPG MLG TUMPANG JERU',
     supplierPic: 'Logistik UMKM Tumpang Grosir',
     relatedReceivingId: 'GR-2026-0003',
     createdAt: '2026-09-28T08:30:00.000Z',
@@ -1358,7 +1358,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     createdBy: 'Akmal',
     createdByRole: 'Admin Logistik',
     approvedBy: 'Rizky Iman Ramdhan, S.Pd',
-    approvedByRole: 'Kepala SPPG Jeru Tumpang',
+    approvedByRole: 'Kepala SPPG MLG TUMPANG JERU',
     supplierPic: 'PIC UMKM Ayam Segar FJR',
     relatedReceivingId: 'GR-2026-0004',
     createdAt: '2026-09-29T06:15:00.000Z',
@@ -1416,7 +1416,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     createdBy: 'Akmal',
     createdByRole: 'Admin Logistik',
     approvedBy: 'Rizky Iman Ramdhan, S.Pd',
-    approvedByRole: 'Kepala SPPG Jeru Tumpang',
+    approvedByRole: 'Kepala SPPG MLG TUMPANG JERU',
     supplierPic: "PIC UMKM Luber's Fresh",
     relatedReceivingId: 'GR-2026-0005',
     createdAt: '2026-09-29T06:45:00.000Z',
@@ -1462,7 +1462,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
     createdBy: 'Akmal',
     createdByRole: 'Admin Logistik',
     approvedBy: 'Rizky Iman Ramdhan, S.Pd',
-    approvedByRole: 'Kepala SPPG Jeru Tumpang',
+    approvedByRole: 'Kepala SPPG MLG TUMPANG JERU',
     supplierPic: 'Pak Syamsul (Toko Barokah)',
     relatedExpenseIds: ['NFE-2026-003', 'NFE-2026-004'],
     createdAt: '2026-09-29T10:00:00.000Z',
@@ -2341,7 +2341,7 @@ class WarehouseDatabase {
 
   /**
    * Pembersihan supplier dummy bawaan (PT ABC Pangan, CV Berkah Unggas, dll.)
-   * dan sinkronisasi 10 supplier UMKM mitra resmi SPPG Jeru Tumpang ke localStorage.
+   * dan sinkronisasi 10 supplier UMKM mitra resmi SPPG MLG TUMPANG JERU ke localStorage.
    */
   private cleanAndSyncRealSuppliers(): void {
     const FLAG = 'sppg_real_suppliers_clean_v6';
@@ -3054,7 +3054,7 @@ class WarehouseDatabase {
       itemName: `Limbah ${item.category}`,
       quantity: Number(item.quantity) || 0,
       unit: item.unit || 'Kg',
-      sourceArea: 'SPPG Jeru Tumpang',
+      sourceArea: 'SPPG MLG TUMPANG JERU',
       reason: 'Sisa preparasi & porsi olahan dapur',
       disposalMethod: item.disposalMethod || 'Pakan Ternak & Kompos Organik',
       recordedBy: user.name,

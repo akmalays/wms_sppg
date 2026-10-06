@@ -137,7 +137,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
                 Badan Gizi Nasional RI
               </div>
               <div className="text-sm font-bold text-white tracking-tight">
-                SPPG Jeru Tumpang
+                SPPG MLG TUMPANG JERU
               </div>
               <div className="text-[10px] text-slate-400">
                 Satuan Pelayanan Pemenuhan Gizi
@@ -404,7 +404,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
                 />
               </div>
               <p className="text-[10px] text-slate-500 mt-1">
-                Kode verifikasi internal unit SPPG Jeru - Tumpang untuk menjamin keaslian data.
+                Kode verifikasi internal unit SPPG MLG TUMPANG JERU untuk menjamin keaslian data.
               </p>
             </div>
 

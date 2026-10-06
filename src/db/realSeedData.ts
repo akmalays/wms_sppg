@@ -607,7 +607,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah karbohidrat",
     "quantity": 64.16,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -621,7 +621,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah sayur",
     "quantity": 48.12,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -635,7 +635,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah protein hewani",
     "quantity": 16.4,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -649,7 +649,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah protein nabati",
     "quantity": 24.6,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -663,7 +663,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah buah",
     "quantity": 8.02,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -677,7 +677,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah karbohidrat",
     "quantity": 62.92,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -691,7 +691,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah sayur",
     "quantity": 47.19,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -705,7 +705,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah protein hewani",
     "quantity": 15.73,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -719,7 +719,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah protein nabati",
     "quantity": 23.6,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -733,7 +733,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah buah",
     "quantity": 7.86,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -747,7 +747,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah karbohidrat",
     "quantity": 59.48,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -761,7 +761,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah sayur",
     "quantity": 44.61,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -775,7 +775,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah protein hewani",
     "quantity": 14.87,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -789,7 +789,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah protein nabati",
     "quantity": 29.74,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -803,7 +803,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah buah",
     "quantity": 0,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -817,7 +817,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah karbohidrat",
     "quantity": 69.36,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -831,7 +831,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah sayur",
     "quantity": 52.02,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -845,7 +845,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah protein hewani",
     "quantity": 17.34,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -859,7 +859,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah protein nabati",
     "quantity": 26.01,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -873,7 +873,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah buah",
     "quantity": 8.67,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -887,7 +887,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah karbohidrat",
     "quantity": 55.72,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -901,7 +901,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah sayur",
     "quantity": 41.79,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -915,7 +915,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah protein hewani",
     "quantity": 13.93,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -929,7 +929,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah protein nabati",
     "quantity": 20.89,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -943,7 +943,7 @@ export const REAL_WASTE_LOGS: WasteLog[] = [
     "itemName": "Limbah buah",
     "quantity": 6.96,
     "unit": "Kg",
-    "sourceArea": "SPPG Jeru Tumpang",
+    "sourceArea": "SPPG MLG TUMPANG JERU",
     "reason": "Sisa preparasi & porsi olahan dapur",
     "disposalMethod": "Pakan Ternak & Kompos Organik",
     "recordedBy": "Tim Dapur Jeru",
@@ -981,7 +981,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -997,7 +997,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1013,7 +1013,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1029,7 +1029,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1045,7 +1045,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1061,7 +1061,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1077,7 +1077,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1093,7 +1093,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1109,7 +1109,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1125,7 +1125,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1141,7 +1141,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1157,7 +1157,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1173,7 +1173,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1189,7 +1189,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1205,7 +1205,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1221,7 +1221,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1237,7 +1237,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1253,7 +1253,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1269,7 +1269,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1285,7 +1285,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1301,7 +1301,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1317,7 +1317,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1333,7 +1333,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1349,7 +1349,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1365,7 +1365,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1381,7 +1381,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1397,7 +1397,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1413,7 +1413,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1429,7 +1429,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1445,7 +1445,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   },
   {
@@ -1461,7 +1461,7 @@ export const REAL_EQUIPMENT_ITEMS: ItemMaster[] = [
     "location": "gudang peralatan",
     "expiryTrackingEnabled": false,
     "isActive": true,
-    "notes": "Data SO Gudang SPPG Jeru Tumpang",
+    "notes": "Data SO Gudang SPPG MLG TUMPANG JERU",
     "lastMovementDate": "2026-09-21"
   }
 ];
@@ -1630,12 +1630,12 @@ export const REAL_MENU_ORDERS: MenuOrder[] = [
     poDate: 'Minggu, 19 Sept 2026',
     mealSession: 'Siang',
     menuTitle: 'Nasi Putih, Ayam Krispi Sambal & Selada, Tahu Cabe Garam, Steam Buncis Wortel',
-    menuDescription: 'Menu lengkap pemenuhan gizi terpadu SPPG Jeru Tumpang. Daging ayam segar krispi berbalur saus rempah nusantara dengan protein tahu cabe garam dan serat sayuran segar.',
+    menuDescription: 'Menu lengkap pemenuhan gizi terpadu SPPG MLG TUMPANG JERU. Daging ayam segar krispi berbalur saus rempah nusantara dengan protein tahu cabe garam dan serat sayuran segar.',
     specialDietB3: 'Menu B3 (Balita & Bumil): Ayam Krispi Fillet Suwir Lembut, Orak-Arik Telur, Tahu Kecap Manis Rendah Garam, Buah Melon Manis',
     targetPortions: 3044,
     totalBeneficiaries: 3044,
     status: 'DISTRIBUTED',
-    chefInCharge: 'Chef Joko Santoso & Tim Dapur SPPG Jeru Tumpang',
+    chefInCharge: 'Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU',
     notes: 'Seluruh 3.044 porsi selesai dimasak dan disalurkan tepat waktu ke 14 sekolah & posyandu sasaran. Diterima oleh PIC Akmal.',
     createdAt: '2026-09-19T14:00:00Z',
     beneficiaryAllocations: DEFAULT_SCHOOL_BENEFICIARIES,
@@ -1680,7 +1680,7 @@ export const REAL_MENU_ORDERS: MenuOrder[] = [
     targetPortions: 2571,
     totalBeneficiaries: 2571,
     status: 'COMPLETED',
-    chefInCharge: 'Chef Joko Santoso & Tim Dapur SPPG Jeru Tumpang',
+    chefInCharge: 'Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU',
     notes: 'Distribusi tepat sasaran untuk 2.571 anak sekolah dasar dan balita 3T.',
     createdAt: '2026-09-20T13:00:00Z',
     beneficiaryAllocations: DEFAULT_SCHOOL_BENEFICIARIES.map(s => ({
@@ -1724,7 +1724,7 @@ export const REAL_MENU_ORDERS: MenuOrder[] = [
     targetPortions: 3044,
     totalBeneficiaries: 3044,
     status: 'COOKING',
-    chefInCharge: 'Chef Joko Santoso & Tim Dapur SPPG Jeru Tumpang',
+    chefInCharge: 'Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU',
     notes: 'Persiapan marinasi ayam katsu dan perebusan saus kari dimulai pukul 06.00 WIB.',
     createdAt: '2026-09-21T15:30:00Z',
     beneficiaryAllocations: DEFAULT_SCHOOL_BENEFICIARIES,
@@ -1764,7 +1764,7 @@ export const REAL_MENU_ORDERS: MenuOrder[] = [
     targetPortions: 3030,
     totalBeneficiaries: 3030,
     status: 'COMPLETED',
-    chefInCharge: 'Chef Joko Santoso & Tim Dapur SPPG Jeru Tumpang',
+    chefInCharge: 'Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU',
     notes: 'Kebutuhan lontong daun siap santap sebanyak 3.060 pcs (tiba 3.100 pcs) bekerja sama dengan UMKM lokal Tumpang.',
     createdAt: '2026-09-22T14:00:00Z',
     beneficiaryAllocations: DEFAULT_SCHOOL_BENEFICIARIES.map(s => ({
@@ -1812,7 +1812,7 @@ export const REAL_MENU_ORDERS: MenuOrder[] = [
     targetPortions: 3008,
     totalBeneficiaries: 3008,
     status: 'DISTRIBUTED',
-    chefInCharge: 'Chef Joko Santoso & Tim Dapur SPPG Jeru Tumpang',
+    chefInCharge: 'Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU',
     notes: 'Total 3.008 penerima manfaat terdistribusi penuh. Penerimaan bahan tiba bertahap oleh PIC Akmal.',
     createdAt: '2026-09-23T10:00:00Z',
     beneficiaryAllocations: DEFAULT_SCHOOL_BENEFICIARIES.map(s => ({
@@ -1858,13 +1858,13 @@ export const REAL_MENU_ORDERS: MenuOrder[] = [
     poDate: 'Sabtu, 26 Sept 2026',
     mealSession: 'Siang',
     menuTitle: 'Nasi Putih Pulen, Ayam Goreng Lengkuas Rempah, Tempe Mendoan Gurih, Sayur Sop Segar, Buah Melon Manis',
-    menuDescription: 'Menu pemenuhan gizi terpadu hari ini di SPPG Jeru Tumpang. Olahan ayam goreng bumbu lengkuas dengan tempe mendoan renyah gurih, kuah sup sayuran segar kaya vitamin, dan melon manis.',
+    menuDescription: 'Menu pemenuhan gizi terpadu hari ini di SPPG MLG TUMPANG JERU. Olahan ayam goreng bumbu lengkuas dengan tempe mendoan renyah gurih, kuah sup sayuran segar kaya vitamin, dan melon manis.',
     specialDietB3: 'Menu B3 (Balita & Bumil): Ayam Suwir Lengkuas Halus, Tempe Bacem Kukus, Sup Sayur Labu Wortel Cincang, Buah Melon Kupas',
     targetPortions: 3044,
     totalBeneficiaries: 3044,
     status: 'COOKING',
-    chefInCharge: 'Chef Joko Santoso & Tim Dapur SPPG Jeru Tumpang',
-    notes: 'Pelaksanaan operasional masak hari ini. 3.044 porsi dalam proses pengolahan dan pemorsian oleh tim dapur SPPG Jeru Tumpang.',
+    chefInCharge: 'Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU',
+    notes: 'Pelaksanaan operasional masak hari ini. 3.044 porsi dalam proses pengolahan dan pemorsian oleh tim dapur SPPG MLG TUMPANG JERU.',
     createdAt: '2026-09-26T14:00:00Z',
     beneficiaryAllocations: DEFAULT_SCHOOL_BENEFICIARIES,
     keyIngredients: [
@@ -1906,7 +1906,7 @@ export const REAL_EMPLOYEES: Employee[] = [
     status: 'AKTIF',
     address: 'Jl. Raya Tumpang No. 45, Kec. Tumpang, Kab. Malang',
     emergencyContact: '0812-9988-1122 (Keluarga)',
-    notes: 'Penanggung jawab operasional penuh SPPG Jeru Tumpang',
+    notes: 'Penanggung jawab operasional penuh SPPG MLG TUMPANG JERU',
   },
   {
     id: 'EMP-002',

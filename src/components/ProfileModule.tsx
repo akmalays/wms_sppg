@@ -532,7 +532,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500">Unit:</span>
-                  <span className="font-medium text-slate-800">SPPG Jeru Tumpang 01</span>
+                  <span className="font-medium text-slate-800">SPPG MLG TUMPANG JERU 01</span>
                 </div>
               </div>
 
@@ -897,10 +897,10 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
                 />
                 <div>
                   <h2 className="text-base font-bold text-slate-900 leading-tight">
-                    Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+                    Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
                   </h2>
                   <p className="text-xs font-semibold text-slate-700">
-                    Unit Pelayanan Dapur Gizi Jeru Tumpang 01
+                    Unit Pelayanan Dapur Gizi SPPG MLG TUMPANG JERU 01
                   </p>
                   <p className="text-[11px] text-slate-500">
                     Sistem Manajemen Pergudangan, Higienitas, & Aliran Bahan Pangan

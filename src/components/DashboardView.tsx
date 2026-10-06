@@ -298,7 +298,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
             <span className="hidden sm:inline-block text-slate-400 font-normal">|</span>
             <span className="text-slate-300 font-medium flex items-center gap-1.5">
               <Building2 className="w-3.5 h-3.5 text-slate-400" />
-              SPPG Jeru Tumpang • Badan Gizi Nasional
+              SPPG MLG TUMPANG JERU • Badan Gizi Nasional
             </span>
           </div>
 
@@ -927,7 +927,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
                 <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-2 text-xs text-emerald-950">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>
-                    <strong>Pengiriman Lengkap:</strong> Semua bahan pesanan PO hari ini telah tiba dan diverifikasi di dapur SPPG Jeru Tumpang.
+                    <strong>Pengiriman Lengkap:</strong> Semua bahan pesanan PO hari ini telah tiba dan diverifikasi di dapur SPPG MLG TUMPANG JERU.
                   </span>
                 </div>
               )}

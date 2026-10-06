@@ -215,7 +215,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   const [viewingOpname, setViewingOpname] = useState<StockOpnameSession | null>(null);
   const [opnameCategoryFilter, setOpnameCategoryFilter] = useState<SppgCategory>('Semua Kategori');
   const [opnameFormDate, setOpnameFormDate] = useState(new Date().toISOString().slice(0, 10));
-  const [opnameFormLocation, setOpnameFormLocation] = useState('Gudang SPPG Jeru Tumpang');
+  const [opnameFormLocation, setOpnameFormLocation] = useState('Gudang SPPG MLG TUMPANG JERU');
   const [opnameFormNotes, setOpnameFormNotes] = useState('');
   const [opnameStatusFilter, setOpnameStatusFilter] = useState<'ALL' | 'PENDING_APPROVAL' | 'APPROVED'>('ALL');
   const [opnameSearchQuery, setOpnameSearchQuery] = useState('');
@@ -442,10 +442,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
             <SppgLogo size="lg" variant="color" showText={false} />
             <div>
               <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
-                Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+                Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
               </h1>
               <p className="text-xs text-slate-600 font-medium">
-                SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi
+                SPPG MLG TUMPANG JERU - Unit Pelayanan Dapur Gizi
               </p>
               <p className="text-[10px] text-slate-500 mt-0.5">
                 Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
@@ -682,7 +682,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
             <div>
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
-              <div className="font-semibold text-slate-800">Kepala SPPG Jeru Tumpang</div>
+              <div className="font-semibold text-slate-800">Kepala SPPG MLG TUMPANG JERU</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
                 (Rizky Iman Ramdhan, S.Pd)
               </div>
@@ -709,9 +709,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
         ? 'Ruang Kantor & Administrasi'
         : chosenCat === 'Alat Kebersihan'
         ? 'Gudang Sanitasi & Kebersihan'
-        : 'Gudang Utama SPPG Jeru Tumpang'
+        : 'Gudang Utama SPPG MLG TUMPANG JERU'
     );
-    setOpnameFormNotes(`Stock Opname Berkala [${chosenCat}] SPPG Jeru Tumpang`);
+    setOpnameFormNotes(`Stock Opname Berkala [${chosenCat}] SPPG MLG TUMPANG JERU`);
     initOpnameItems(chosenCat);
     setIsCreateOpnameModalOpen(true);
   };
@@ -737,7 +737,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
   const handleOpnameCategoryChange = (cat: SppgCategory) => {
     setOpnameCategoryFilter(cat);
-    setOpnameFormNotes(`Stock Opname Berkala [${cat}] SPPG Jeru Tumpang`);
+    setOpnameFormNotes(`Stock Opname Berkala [${cat}] SPPG MLG TUMPANG JERU`);
     initOpnameItems(cat);
   };
 
@@ -1043,7 +1043,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
     exportToExcel(
       rows,
-      `Katalog_Master_Barang_SPPG_Jeru_Tumpang_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      `Katalog_Master_Barang_SPPG_MLG_TUMPANG_JERU_${new Date().toISOString().slice(0, 10)}.xlsx`,
       'Master Barang'
     );
   };
@@ -1229,7 +1229,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
     exportToExcel(
       rows,
-      `Data_Stok_Barang_SPPG_Jeru_Tumpang_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      `Data_Stok_Barang_SPPG_MLG_TUMPANG_JERU_${new Date().toISOString().slice(0, 10)}.xlsx`,
       'Stok Barang'
     );
   };
@@ -2439,10 +2439,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                   <SppgLogo size="lg" variant="color" showText={false} />
                   <div>
                     <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
-                      Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+                      Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
                     </h1>
                     <p className="text-xs text-slate-600 font-medium">
-                      SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi
+                      SPPG MLG TUMPANG JERU - Unit Pelayanan Dapur Gizi
                     </p>
                     <p className="text-[10px] text-slate-500 mt-0.5">
                       Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
@@ -2546,7 +2546,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
                   <div>
                     <div className="text-slate-500">Otorisasi / Persetujuan,</div>
-                    <div className="font-semibold text-slate-800">Kepala SPPG Jeru Tumpang</div>
+                    <div className="font-semibold text-slate-800">Kepala SPPG MLG TUMPANG JERU</div>
                     <div className="h-16 flex items-end justify-center font-bold text-slate-900">
                       ({viewingOpname.approvedByName && !viewingOpname.approvedByName.includes('Siti Rahma') ? viewingOpname.approvedByName : 'Rizky Iman Ramdhan, S.Pd'})
                     </div>

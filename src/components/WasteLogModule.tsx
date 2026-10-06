@@ -45,7 +45,7 @@ interface CompositionPreset {
 
 const NUTRITION_PRESETS: CompositionPreset[] = [
   {
-    name: 'Standar Piring Bergizi SPPG Jeru Tumpang',
+    name: 'Standar Piring Bergizi SPPG MLG TUMPANG JERU',
     description: 'Nasi 40%, sayur 30%, tempe/tahu 15%, lauk hewani 10%, buah 5%',
     shares: {
       karbohidrat: 40,
@@ -298,7 +298,7 @@ export const WasteLogModule: React.FC = () => {
 
   // Calculator Form State (Dedicated Calculator Modal)
   const [calcDate, setCalcDate] = useState(new Date().toISOString().slice(0, 10));
-  const [calcMenuName, setCalcMenuName] = useState('Menu Harian SPPG Jeru Tumpang');
+  const [calcMenuName, setCalcMenuName] = useState('Menu Harian SPPG MLG TUMPANG JERU');
   const [calcTotalWeight, setCalcTotalWeight] = useState<number>(150);
   const [calcDisposal, setCalcDisposal] = useState<DisposalMethod>('Pakan Ternak & Kompos Organik');
   const [activePresetIndex, setActivePresetIndex] = useState<number>(0);
@@ -619,10 +619,10 @@ export const WasteLogModule: React.FC = () => {
             <SppgLogo size="lg" variant="color" showText={false} />
             <div>
               <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
-                Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+                Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
               </h1>
               <p className="text-xs text-slate-600 font-medium">
-                SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi
+                SPPG MLG TUMPANG JERU - Unit Pelayanan Dapur Gizi
               </p>
               <p className="text-[10px] text-slate-500 mt-0.5">
                 Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
@@ -1031,7 +1031,7 @@ export const WasteLogModule: React.FC = () => {
 
             <div>
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
-              <div className="font-semibold text-slate-800">Kepala SPPG Jeru Tumpang</div>
+              <div className="font-semibold text-slate-800">Kepala SPPG MLG TUMPANG JERU</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
                 (Rizky Iman Ramdhan, S.Pd)
               </div>
@@ -1276,7 +1276,7 @@ export const WasteLogModule: React.FC = () => {
         { sheetName: 'Total Hitung Limbah', data: matrixSheetRows },
         { sheetName: 'Detail Log', data: detailedLogsSheet },
       ],
-      `Rekap_Limbah_SPPG_Jeru_Tumpang_${filterMode}_${new Date().toISOString().slice(0, 10)}.xlsx`
+      `Rekap_Limbah_SPPG_MLG_TUMPANG_JERU_${filterMode}_${new Date().toISOString().slice(0, 10)}.xlsx`
     );
   };
 
@@ -2146,7 +2146,7 @@ export const WasteLogModule: React.FC = () => {
                     Input Rekap Limbah Harian (5 Kategori)
                   </h4>
                   <p className="text-[11px] text-slate-500">
-                    Masukkan hasil penimbangan sisa makanan harian SPPG Jeru Tumpang
+                    Masukkan hasil penimbangan sisa makanan harian SPPG MLG TUMPANG JERU
                   </p>
                 </div>
               </div>
@@ -2443,7 +2443,7 @@ export const WasteLogModule: React.FC = () => {
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">
-                    Kalkulator Komposisi Sisa Piring SPPG Jeru Tumpang
+                    Kalkulator Komposisi Sisa Piring SPPG MLG TUMPANG JERU
                   </h4>
                   <p className="text-[11px] text-slate-500">
                     Hitung proporsi gizi sisa makanan piring siswa berdasarkan total timbangan

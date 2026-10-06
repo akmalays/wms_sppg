@@ -166,7 +166,7 @@ const MainLayout: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>SPPG Jeru Tumpang Warehouse Management • Satuan Pelayanan Pemenuhan Gizi</span>
+            <span>SPPG MLG TUMPANG JERU Warehouse Management • Satuan Pelayanan Pemenuhan Gizi</span>
           </div>
           <div className="flex items-center gap-4 text-[11px]">
             <span>Petugas Aktif: <strong className="text-slate-800">{currentUser.name}</strong> ({currentUser.role})</span>

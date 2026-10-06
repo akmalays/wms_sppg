@@ -372,7 +372,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
   const [menuFormDietB3, setMenuFormDietB3] = useState('');
   const [menuFormPortions, setMenuFormPortions] = useState<number>(3044);
   const [menuFormStatus, setMenuFormStatus] = useState<MenuOrderStatus>('PLANNED');
-  const [menuFormChef, setMenuFormChef] = useState('Chef Joko Santoso & Tim Dapur SPPG Jeru Tumpang');
+  const [menuFormChef, setMenuFormChef] = useState('Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU');
   const [menuFormNotes, setMenuFormNotes] = useState('');
 
   // =========================================================================
@@ -1082,7 +1082,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     setMenuFormDietB3('');
     setMenuFormPortions(3044);
     setMenuFormStatus('PLANNED');
-    setMenuFormChef('Chef Joko Santoso & Tim Dapur SPPG Jeru Tumpang');
+    setMenuFormChef('Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU');
     setMenuFormNotes('');
     setIsMenuModalOpen(true);
   };
@@ -1096,7 +1096,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     setMenuFormDietB3(order.specialDietB3 || '');
     setMenuFormPortions(order.targetPortions || 3044);
     setMenuFormStatus(order.status);
-    setMenuFormChef(order.chefInCharge || 'Chef Joko Santoso & Tim Dapur SPPG Jeru Tumpang');
+    setMenuFormChef(order.chefInCharge || 'Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU');
     setMenuFormNotes(order.notes || '');
     setIsMenuModalOpen(true);
   };
@@ -1384,11 +1384,11 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
           grandTotal: grandTotal,
           terbilang: angkaTerbilang(grandTotal),
           notes: `PO dibuat otomatis dari Perencanaan Menu: ${targetOrder.menuTitle} (${targetOrder.targetPortions} porsi).`,
-          deliveryTerms: 'Pengiriman langsung ke Satuan Pelayanan Pemenuhan Gizi (SPPG) Jeru Tumpang (Jam 12.00-15.00).',
+          deliveryTerms: 'Pengiriman langsung ke Satuan Pelayanan Pemenuhan Gizi (SPPG) MLG TUMPANG JERU (Jam 12.00-15.00).',
           createdBy: currentUser.name,
           createdByRole: currentUser.role === 'ADMIN' ? 'Admin Logistik' : currentUser.role,
           approvedBy: 'Rizky Iman Ramdhan, S.Pd',
-          approvedByRole: 'Kepala SPPG Jeru Tumpang',
+          approvedByRole: 'Kepala SPPG MLG TUMPANG JERU',
           supplierPic: suppObj?.contactPerson || 'Pihak Rekanan',
           relatedMenuOrderId: targetOrder.id,
           createdAt: new Date().toISOString(),
@@ -2165,7 +2165,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                           </span>
                           <span className="text-slate-300">•</span>
                           <span>
-                            Penanggung Jawab: <span className="font-medium text-slate-800">{order.chefInCharge || 'Chef Joko Santoso & Tim Dapur SPPG Jeru Tumpang'}</span>
+                            Penanggung Jawab: <span className="font-medium text-slate-800">{order.chefInCharge || 'Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU'}</span>
                           </span>
                         </div>
                       </div>
@@ -3898,7 +3898,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                     <SppgLogo size="md" variant="color" showText={false} />
                     <div>
                       <div className="text-sm font-bold tracking-tight text-slate-900 leading-tight">
-                        SATUAN PELAYANAN PEMENUHAN GIZI (SPPG JERU TUMPANG)
+                        SATUAN PELAYANAN PEMENUHAN GIZI (SPPG MLG TUMPANG JERU)
                       </div>
                       <div className="text-[11px] font-semibold text-slate-700">
                         BADAN GIZI NASIONAL (BGN) REPUBLIK INDONESIA

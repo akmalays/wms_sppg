@@ -430,7 +430,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const [activeForm, setActiveForm] = useState<FormType>(
     initialSupplierId ? 'SUPPLIER_EXPENSE_NOTE' : (initialForm || 'RECEIVING_FORM')
   );
-  const [unitName, setUnitName] = useState<string>('SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi');
+  const [unitName, setUnitName] = useState<string>('SPPG MLG TUMPANG JERU - Unit Pelayanan Dapur Gizi');
   const [printDate, setPrintDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   // Data sources
@@ -477,13 +477,13 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   });
   const [expenseDeliveryRef, setExpenseDeliveryRef] = useState<string>('SJ-TG-8842 / GR-2026-0001');
   const [expensePurpose, setExpensePurpose] = useState<string>(
-    'Pembayaran Belanja Bahan Baku Pangan Dapur Gizi SPPG Jeru Tumpang'
+    'Pembayaran Belanja Bahan Baku Pangan Dapur Gizi SPPG MLG TUMPANG JERU'
   );
   const [expenseStatus, setExpenseStatus] = useState<'LUNAS' | 'DP' | 'TEMPO' | 'PENDING'>('LUNAS');
   const [expenseDiscount, setExpenseDiscount] = useState<number>(0);
   const [expenseShippingCost, setExpenseShippingCost] = useState<number>(0);
   const [expenseNotes, setExpenseNotes] = useState<string>(
-    'Bahan pangan telah diperiksa mutu fisiknya oleh Tim Logistik & Penerimaan Gudang SPPG Jeru Tumpang dalam kondisi segar, lengkap, dan memenuhi standar keamanan pangan.'
+    'Bahan pangan telah diperiksa mutu fisiknya oleh Tim Logistik & Penerimaan Gudang SPPG MLG TUMPANG JERU dalam kondisi segar, lengkap, dan memenuhi standar keamanan pangan.'
   );
   const [expensePicTreasurer, setExpensePicTreasurer] = useState<string>('Siti Aisyah (Bendahara)');
   const [expensePicVerifier, setExpensePicVerifier] = useState<string>('Akmal (Admin Gudang)');
@@ -2037,7 +2037,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               <SppgLogo size="lg" variant="color" showText={false} />
               <div>
                 <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
-                  Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+                  Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
                 </h1>
                 <p className="text-xs text-slate-600 font-medium">{unitName}</p>
                 <p className="text-[10px] text-slate-500 mt-0.5">
@@ -2562,7 +2562,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 pr-5">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="font-bold text-[10px] text-slate-800 truncate">
-                            SPPG Jeru Tumpang
+                            SPPG MLG TUMPANG JERU
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -2996,7 +2996,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
                         <div>
                           <span className="font-bold text-slate-800 block text-[11px]">
-                            SPPG JERU TUMPANG • LOGISTIK & DISTRIBUSI
+                            SPPG MLG TUMPANG JERU • LOGISTIK & DISTRIBUSI
                           </span>
                           <span className="text-[10px] text-slate-500">
                             Penanggung Jawab (PIC): <span className="font-semibold text-slate-800">{rack.picName}</span>
@@ -3116,7 +3116,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 </div>
                 <div>
                   <span className="text-slate-500 font-medium w-32 inline-block">Sumber Dana / Kas:</span>
-                  <span className="text-slate-900 font-medium">Kas Operasional Pelayanan Gizi (SPPG Jeru Tumpang)</span>
+                  <span className="text-slate-900 font-medium">Kas Operasional Pelayanan Gizi (SPPG MLG TUMPANG JERU)</span>
                 </div>
                 <div>
                   <span className="text-slate-500 font-medium w-32 inline-block">Perihal Belanja:</span>
@@ -3258,7 +3258,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                     {expensePicApprover}
                   </div>
                 </div>
-                <p className="text-[10px] text-slate-400 mt-0.5">Kepala SPPG Jeru Tumpang</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Kepala SPPG MLG TUMPANG JERU</p>
               </div>
             </div>
           </div>

@@ -382,7 +382,7 @@ export interface WasteLog {
   itemName?: string;
   quantity: number;
   unit: 'Kg' | 'Liter' | 'Gram' | 'Pcs' | string;
-  sourceArea: string; // e.g. 'Dapur SPPG Jeru Tumpang'
+  sourceArea: string; // e.g. 'Dapur SPPG MLG TUMPANG JERU'
   reason?: string;
   disposalMethod: DisposalMethod;
   recordedBy: string;

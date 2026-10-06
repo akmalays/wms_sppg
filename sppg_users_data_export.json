@@ -1,6 +1,6 @@
 {
-  "system": "WMS SPPG Jeru - Tumpang",
-  "unit": "Satuan Pelayanan Pemenuhan Gizi (SPPG) Jeru - Tumpang, Kab. Malang",
+  "system": "WMS SPPG MLG TUMPANG JERU",
+  "unit": "Satuan Pelayanan Pemenuhan Gizi (SPPG) MLG TUMPANG JERU, Kab. Malang",
   "agency": "Badan Gizi Nasional Republik Indonesia",
   "exportedAt": "2026-10-06T11:05:00+07:00",
   "version": "1.0.0",
@@ -56,5 +56,5 @@
       "duties": "Konfigurasi teknis pusat, pemeliharaan basis data, dan wewenang penuh."
     }
   ],
-  "securityNotice": "Data kredensial resmi internal operasional unit SPPG Jeru Tumpang. Simpan di lokasi aman."
+  "securityNotice": "Data kredensial resmi internal operasional unit SPPG MLG TUMPANG JERU. Simpan di lokasi aman."
 }

@@ -239,7 +239,7 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
           unit: tx.unit,
           unitPrice: price,
           nominal: nominal,
-          recipientOrVolunteer: tx.location || 'Dapur Pengolahan SPPG Jeru Tumpang',
+          recipientOrVolunteer: tx.location || 'Dapur Pengolahan SPPG MLG TUMPANG JERU',
           picOrUser: tx.userName,
           notes: tx.notes,
           referenceNo: tx.referenceDocument || tx.id,
@@ -488,7 +488,7 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
 
     exportToExcel(
       summaryRows.length > 0 ? summaryRows : transactionRows,
-      `Rekap_Pengeluaran_SPPG_Jeru_Tumpang_${periodType}_${selectedCategoryTab}.xlsx`,
+      `Rekap_Pengeluaran_SPPG_MLG_TUMPANG_JERU_${periodType}_${selectedCategoryTab}.xlsx`,
       'Rekap Pengeluaran & Biaya'
     );
   };
@@ -1154,10 +1154,10 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
             <SppgLogo size="lg" variant="color" showText={false} />
             <div>
               <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
-                Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+                Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
               </h1>
               <p className="text-xs text-slate-600 font-medium">
-                SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi
+                SPPG MLG TUMPANG JERU - Unit Pelayanan Dapur Gizi
               </p>
               <p className="text-[10px] text-slate-500 mt-0.5">
                 Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
@@ -1353,7 +1353,7 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
 
             <div>
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
-              <div className="font-semibold text-slate-800">Kepala SPPG Jeru Tumpang</div>
+              <div className="font-semibold text-slate-800">Kepala SPPG MLG TUMPANG JERU</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
                 (Rizky Iman Ramdhan, S.Pd)
               </div>

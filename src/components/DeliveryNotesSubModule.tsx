@@ -436,7 +436,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
             </div>
             <div className="text-xs text-slate-300 flex items-center gap-1.5">
               <UtensilsCrossed className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <span>{currentOrder?.menuTitle || 'Menu Reguler Gizi Seimbang SPPG Jeru Tumpang'}</span>
+              <span>{currentOrder?.menuTitle || 'Menu Reguler Gizi Seimbang SPPG MLG TUMPANG JERU'}</span>
             </div>
           </div>
 
@@ -1018,13 +1018,13 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                                 BADAN GIZI NASIONAL
                               </div>
                               <h1 className="text-sm font-bold text-slate-950 tracking-normal leading-tight">
-                                SATUAN PELAYANAN PEMENUHAN GIZI (SPPG) JERU TUMPANG
+                                SATUAN PELAYANAN PEMENUHAN GIZI (SPPG) MLG TUMPANG JERU
                               </h1>
                               <p className="text-[9.5px] text-slate-700 leading-tight mt-0.5">
                                 Jl. Raya Jeru No. 136, RT.01/RW.02, Kec. Tumpang, Kab. Malang, Jawa Timur 65156
                               </p>
                               <p className="text-[9.5px] text-slate-700 leading-tight">
-                                Email: sppg.jeru.tumpang@bgn.go.id • Hotline / WA: 0812-3456-7890
+                                Email: sppg.mlgtumpangjeru@bgn.go.id • Hotline / WA: 0812-3456-7890
                               </p>
                             </div>
                           </div>
@@ -1151,7 +1151,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
 
                           {/* Catatan Standar */}
                           <div className="p-2 border border-dashed border-slate-400 rounded text-[9.5px] text-slate-600 space-y-0.5 mb-4">
-                            <div>• Makanan telah melalui pengecekan suhu & higienitas dapur SPPG Jeru Tumpang sebelum dikirim.</div>
+                            <div>• Makanan telah melalui pengecekan suhu & higienitas dapur SPPG MLG TUMPANG JERU sebelum dikirim.</div>
                             <div>• Dianjurkan makanan segera dikonsumsi maksimal dalam waktu 2 jam setelah diterima di sekolah.</div>
                             <div>• Segala bentuk masukan atau komplain rasa/porsi dapat dicantumkan pada Lembar 3 (Form Uji Organoleptik).</div>
                           </div>
@@ -1186,7 +1186,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                                   <div className="font-bold text-slate-900 underline">
                                     {officerSettings.fieldAssistantName}
                                   </div>
-                                  <div className="text-[9.5px] text-slate-500">SPPG Jeru Tumpang</div>
+                                  <div className="text-[9.5px] text-slate-500">SPPG MLG TUMPANG JERU</div>
                                 </div>
                               </div>
 
@@ -1207,7 +1207,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                           </div>
 
                           <div className="text-right text-[8.5px] text-slate-400 mt-2 font-mono">
-                            Lembar 1 dari 3 • Dokumen Resmi SPPG Jeru Tumpang
+                            Lembar 1 dari 3 • Dokumen Resmi SPPG MLG TUMPANG JERU
                           </div>
                         </div>
                       )}
@@ -1229,13 +1229,13 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                                 BADAN GIZI NASIONAL
                               </div>
                               <h1 className="text-sm font-bold text-slate-950 tracking-normal leading-tight">
-                                SATUAN PELAYANAN PEMENUHAN GIZI (SPPG) JERU TUMPANG
+                                SATUAN PELAYANAN PEMENUHAN GIZI (SPPG) MLG TUMPANG JERU
                               </h1>
                               <p className="text-[9.5px] text-slate-700 leading-tight mt-0.5">
                                 Jl. Raya Jeru No. 136, RT.01/RW.02, Kec. Tumpang, Kab. Malang, Jawa Timur 65156
                               </p>
                               <p className="text-[9.5px] text-slate-700 leading-tight">
-                                Email: sppg.jeru.tumpang@bgn.go.id • Hotline / WA: 0812-3456-7890
+                                Email: sppg.mlgtumpangjeru@bgn.go.id • Hotline / WA: 0812-3456-7890
                               </p>
                             </div>
                           </div>
@@ -1252,7 +1252,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
 
                           {/* Klausul Pengantar */}
                           <div className="p-2.5 bg-slate-50 border border-slate-300 rounded mb-3 text-[10.5px] leading-relaxed text-slate-700">
-                            Pada hari ini <strong className="text-slate-900">{formatIndonesianDate(selectedDate)}</strong>, bertempat di <strong className="text-slate-900">{school.schoolName}</strong>, telah dilakukan serah terima peralatan pendukung makan bergizi antara <strong>Pihak Pertama (SPPG Jeru Tumpang)</strong> kepada <strong>Pihak Kedua ({school.schoolName})</strong> dengan rincian peralatan sebagai berikut:
+                            Pada hari ini <strong className="text-slate-900">{formatIndonesianDate(selectedDate)}</strong>, bertempat di <strong className="text-slate-900">{school.schoolName}</strong>, telah dilakukan serah terima peralatan pendukung makan bergizi antara <strong>Pihak Pertama (SPPG MLG TUMPANG JERU)</strong> kepada <strong>Pihak Kedua ({school.schoolName})</strong> dengan rincian peralatan sebagai berikut:
                           </div>
 
                           {/* Tabel Peralatan yang Dipinjamkan */}
@@ -1430,7 +1430,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                           </div>
 
                           <div className="text-right text-[8.5px] text-slate-400 mt-3 font-mono">
-                            Lembar 2 dari 3 • Dokumen Resmi SPPG Jeru Tumpang
+                            Lembar 2 dari 3 • Dokumen Resmi SPPG MLG TUMPANG JERU
                           </div>
                         </div>
                       )}
@@ -1452,13 +1452,13 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                                 BADAN GIZI NASIONAL
                               </div>
                               <h1 className="text-sm font-bold text-slate-950 tracking-normal leading-tight">
-                                SATUAN PELAYANAN PEMENUHAN GIZI (SPPG) JERU TUMPANG
+                                SATUAN PELAYANAN PEMENUHAN GIZI (SPPG) MLG TUMPANG JERU
                               </h1>
                               <p className="text-[9.5px] text-slate-700 leading-tight mt-0.5">
                                 Jl. Raya Jeru No. 136, RT.01/RW.02, Kec. Tumpang, Kab. Malang, Jawa Timur 65156
                               </p>
                               <p className="text-[9.5px] text-slate-700 leading-tight">
-                                Email: sppg.jeru.tumpang@bgn.go.id • Hotline / WA: 0812-3456-7890
+                                Email: sppg.mlgtumpangjeru@bgn.go.id • Hotline / WA: 0812-3456-7890
                               </p>
                             </div>
                           </div>
@@ -1687,7 +1687,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                               <div className="p-2 flex flex-col justify-between min-h-[85px]">
                                 <div>
                                   <div className="font-semibold text-slate-700">Saksi Asisten Lapangan SPPG</div>
-                                  <div className="text-[9.5px] text-slate-500">Petugas Pengantar SPPG Jeru Tumpang</div>
+                                  <div className="text-[9.5px] text-slate-500">Petugas Pengantar SPPG MLG TUMPANG JERU</div>
                                 </div>
                                 <div className="mt-12 border-t border-slate-800 pt-1">
                                   <div className="font-bold text-slate-900 underline">
@@ -1700,7 +1700,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                           </div>
 
                           <div className="text-right text-[8.5px] text-slate-400 mt-2 font-mono">
-                            Lembar 3 dari 3 • Dokumen Resmi SPPG Jeru Tumpang
+                            Lembar 3 dari 3 • Dokumen Resmi SPPG MLG TUMPANG JERU
                           </div>
                         </div>
                       )}

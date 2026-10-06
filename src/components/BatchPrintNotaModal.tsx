@@ -201,7 +201,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
             </span>
             <div className="flex items-center gap-2">
               <span className="font-mono text-[9px] text-slate-400">
-                Badan Gizi Nasional • SPPG Jeru Tumpang
+                Badan Gizi Nasional • SPPG MLG TUMPANG JERU
               </span>
               {onOpenSingleNota && (
                 <button
@@ -257,7 +257,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
             <div className="flex items-center">
               <span className="w-16 shrink-0 font-medium">Dari</span>
               <span className="w-2.5 text-center">:</span>
-              <span className="font-semibold text-black">SPPG MALANG TUMPANG JERU</span>
+              <span className="font-semibold text-black">SPPG MLG TUMPANG JERU</span>
             </div>
             <div className="flex items-center">
               <span className="w-16 shrink-0 font-medium">Kepada</span>

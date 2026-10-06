@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx';
 export function exportToExcel<T extends Record<string, any>>(
   data: T[],
   fileName: string,
-  sheetName: string = 'Rekap SPPG Jeru Tumpang'
+  sheetName: string = 'Rekap SPPG MLG TUMPANG JERU'
 ): void {
   if (!data || data.length === 0) {
     alert('Tidak ada data untuk diekspor ke Excel.');

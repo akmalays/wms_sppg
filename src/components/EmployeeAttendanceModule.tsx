@@ -584,7 +584,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
 
     exportToExcel(
       exportData,
-      `Rekap_Presensi_SPPG_Jeru_Tumpang_${selectedDate}.xlsx`,
+      `Rekap_Presensi_SPPG_MLG_TUMPANG_JERU_${selectedDate}.xlsx`,
       'Rekap Presensi Harian'
     );
   };
@@ -611,7 +611,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
 
     exportToExcel(
       exportData,
-      `Master_Data_Karyawan_SPPG_Jeru_Tumpang_${todayStr}.xlsx`,
+      `Master_Data_Karyawan_SPPG_MLG_TUMPANG_JERU_${todayStr}.xlsx`,
       'Master Data Staf'
     );
   };
@@ -797,10 +797,10 @@ export const EmployeeAttendanceModule: React.FC = () => {
             <SppgLogo size="lg" variant="color" showText={false} />
             <div>
               <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
-                Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+                Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
               </h1>
               <p className="text-xs text-slate-600 font-medium">
-                SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi
+                SPPG MLG TUMPANG JERU - Unit Pelayanan Dapur Gizi
               </p>
               <p className="text-[10px] text-slate-500 mt-0.5">
                 Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
@@ -1290,7 +1290,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
 
             <div>
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
-              <div className="font-semibold text-slate-800">Kepala SPPG Jeru Tumpang</div>
+              <div className="font-semibold text-slate-800">Kepala SPPG MLG TUMPANG JERU</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
                 (Rizky Iman Ramdhan, S.Pd)
               </div>
@@ -1338,10 +1338,10 @@ export const EmployeeAttendanceModule: React.FC = () => {
             <SppgLogo size="lg" variant="color" showText={false} />
             <div>
               <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
-                Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+                Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
               </h1>
               <p className="text-xs text-slate-600 font-medium">
-                SPPG Jeru Tumpang - Unit Pelayanan Dapur Gizi
+                SPPG MLG TUMPANG JERU - Unit Pelayanan Dapur Gizi
               </p>
               <p className="text-[10px] text-slate-500 mt-0.5">
                 Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
@@ -1517,7 +1517,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
 
             <div>
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
-              <div className="font-semibold text-slate-800">Kepala SPPG Jeru Tumpang</div>
+              <div className="font-semibold text-slate-800">Kepala SPPG MLG TUMPANG JERU</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
                 (Rizky Iman Ramdhan, S.Pd)
               </div>
@@ -1583,7 +1583,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
               Presensi & Karyawan
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Monitoring absensi harian dan data staf operasional SPPG Jeru Tumpang.
+              Monitoring absensi harian dan data staf operasional SPPG MLG TUMPANG JERU.
             </p>
           </div>
 
@@ -1630,7 +1630,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
               <div className="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5 tabular-nums">
                 {metrics.total} <span className="text-xs font-normal text-slate-500">Staf</span>
               </div>
-              <span className="text-[10px] text-slate-400">Personil SPPG Jeru Tumpang</span>
+              <span className="text-[10px] text-slate-400">Personil SPPG MLG TUMPANG JERU</span>
             </div>
 
             <div className="pt-2 sm:pt-0 sm:px-4">
@@ -1824,7 +1824,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                   Daftar Presensi Karyawan - {new Date(selectedDate).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Menampilkan {filteredAttendanceRows.length} dari {activeEmployees.length} karyawan aktif SPPG Jeru Tumpang.
+                  Menampilkan {filteredAttendanceRows.length} dari {activeEmployees.length} karyawan aktif SPPG MLG TUMPANG JERU.
                 </p>
               </div>
             </div>
@@ -2240,7 +2240,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">
-                    Presensi Cepat 1-Klik - SPPG Jeru Tumpang
+                    Presensi Cepat 1-Klik - SPPG MLG TUMPANG JERU
                   </h3>
                   <p className="text-xs text-slate-500">
                     Tanggal Operasional: <strong className="text-slate-700 font-semibold">{selectedDate}</strong> • Total {quickRows.length} staf aktif
@@ -2412,7 +2412,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  Form Presensi Staf SPPG Jeru Tumpang
+                  Form Presensi Staf SPPG MLG TUMPANG JERU
                 </h3>
                 <p className="text-xs text-slate-500">
                   Catat atau ubah status kehadiran individual beserta jam kerja & bukti foto WebP.
@@ -2592,7 +2592,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                     {editingEmployeeId ? 'Ubah Data Karyawan' : 'Tambah Karyawan Baru'}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang)
+                    Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
                   </p>
                 </div>
               </div>
@@ -2893,7 +2893,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                     Pratinjau Cetak Laporan Presensi Karyawan
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang) • Format resmi kop dinas & rekapitulasi per divisi
+                    Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU) • Format resmi kop dinas & rekapitulasi per divisi
                   </p>
                 </div>
               </div>
@@ -3132,7 +3132,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                     Pratinjau Cetak Data Induk / Master Karyawan
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Satuan Pelayanan Pemenuhan Gizi (SPPG Jeru Tumpang) • Format resmi kop dinas & rincian per divisi
+                    Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU) • Format resmi kop dinas & rincian per divisi
                   </p>
                 </div>
               </div>

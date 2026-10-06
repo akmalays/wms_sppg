@@ -47,7 +47,7 @@ export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData 
             warehouseDb.recordConsumption(
               item.itemId,
               delta,
-              'Dapur Pengolahan SPPG Jeru Tumpang',
+              'Dapur Pengolahan SPPG MLG TUMPANG JERU',
               currentUser,
               `Konsumsi batch menu gizi harian (${selectedDate})`,
               `DAILY-PREP-${selectedDate}`
@@ -246,7 +246,7 @@ export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData 
                   <Utensils className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Pencatatan Masak Cepat Harian Dapur SPPG Jeru Tumpang</h3>
+                  <h3 className="text-sm font-bold text-slate-900">Pencatatan Masak Cepat Harian Dapur SPPG MLG TUMPANG JERU</h3>
                   <p className="text-[11px] text-slate-500">
                     Masukkan jumlah bahan yang telah diolah hari ini ({selectedDate}). Sistem langsung menghitung sisa.
                   </p>

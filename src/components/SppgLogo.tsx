@@ -90,7 +90,7 @@ export const SppgLogo: React.FC<SppgLogoProps> = ({
         <div className="text-left leading-tight">
           <div className="flex items-center gap-1.5">
             <span className={`font-bold tracking-tight ${currentSize.text} ${colors.textTitle}`}>
-              SPPG Jeru Tumpang
+              SPPG MLG TUMPANG JERU
             </span>
             <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
               WMS

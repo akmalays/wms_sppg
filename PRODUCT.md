@@ -14,7 +14,7 @@ web
 
 ## Product Purpose
 
-Sistem Informasi Manajemen Pergudangan & Logistik Bahan Pangan Bergizi (Program Makan Bergizi Gratis - MBG) untuk Satuan Pelayanan Pemenuhan Gizi (SPPG) Jeru Tumpang di bawah Badan Gizi Nasional (BGN) Republik Indonesia. Bertujuan menjaga ketersediaan, higienitas, ketertelusuran rantai pasok dingin/kering, efisiensi anggaran belanja, dan akuntabilitas pelaporan harian.
+Sistem Informasi Manajemen Pergudangan & Logistik Bahan Pangan Bergizi (Program Makan Bergizi Gratis - MBG) untuk Satuan Pelayanan Pemenuhan Gizi (SPPG) MLG TUMPANG JERU di bawah Badan Gizi Nasional (BGN) Republik Indonesia. Bertujuan menjaga ketersediaan, higienitas, ketertelusuran rantai pasok dingin/kering, efisiensi anggaran belanja, dan akuntabilitas pelaporan harian.
 
 ## Positioning
 
@@ -22,7 +22,7 @@ Sistem operasional lapangan (*operational-first*) yang mengintegrasikan pencatat
 
 ## Operating Context
 
-- Dioperasikan langsung di ruang penerimaan, gudang penyimpanan (kering & chiller/freezer), serta kantor administrasi SPPG Jeru Tumpang, Malang, Jawa Timur.
+- Dioperasikan langsung di ruang penerimaan, gudang penyimpanan (kering & chiller/freezer), serta kantor administrasi SPPG MLG TUMPANG JERU, Malang, Jawa Timur.
 - Perangkat operasional: PC desktop gudang, laptop admin, dan tablet lapangan.
 - Output fisik: Nota Pesanan (PO) cetak ukuran A4 dan A5 siap potong, berita acara opname, dan tanda terima supplier dengan tanda tangan resmi basah/digital.
 
@@ -36,7 +36,7 @@ Sistem operasional lapangan (*operational-first*) yang mengintegrasikan pencatat
 
 ## Brand Commitments
 
-- Nama Instansi: Badan Gizi Nasional - SPPG Jeru Tumpang.
+- Nama Instansi: Badan Gizi Nasional - SPPG MLG TUMPANG JERU.
 - Warna Identitas: Emerald 700 (`#047857`) dan Emerald 800 (`#065f46`) sebagai simbol kesegaran pangan dan gizi nasional.
 - Penandatangan Resmi: Kepala Satuan Pelayanan Pemenuhan Gizi, Rizky Iman Ramdhan, S.Pd.
 - Integritas Aset: Logo resmi BGN (`src/assets/logo sppg.png`) dan tanda tangan digital (`src/assets/ttd rizky.png`).

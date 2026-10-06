@@ -247,8 +247,8 @@ export const UserManagementModule: React.FC = () => {
   const handleExportUsers = () => {
     const allUsers = warehouseDb.getUsers();
     const exportPayload = {
-      system: 'WMS SPPG Jeru - Tumpang',
-      unit: 'Satuan Pelayanan Pemenuhan Gizi (SPPG) Jeru - Tumpang, Kab. Malang',
+      system: 'WMS SPPG MLG TUMPANG JERU',
+      unit: 'Satuan Pelayanan Pemenuhan Gizi (SPPG) MLG TUMPANG JERU, Kab. Malang',
       agency: 'Badan Gizi Nasional Republik Indonesia',
       exportedAt: new Date().toISOString(),
       version: '1.0.0',
@@ -287,7 +287,7 @@ export const UserManagementModule: React.FC = () => {
               </h1>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Satuan Pelayanan Pemenuhan Gizi (SPPG) Jeru - Tumpang, Kab. Malang. Kelola hak akses dan penugasan operasional staf.
+              Satuan Pelayanan Pemenuhan Gizi (SPPG) MLG TUMPANG JERU, Kab. Malang. Kelola hak akses dan penugasan operasional staf.
             </p>
           </div>
 
@@ -377,7 +377,7 @@ export const UserManagementModule: React.FC = () => {
                   Formulir Penambahan Akun Petugas Baru
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Lengkapi data petugas untuk menerbitkan akun baru WMS SPPG Jeru Tumpang.
+                  Lengkapi data petugas untuk menerbitkan akun baru WMS SPPG MLG TUMPANG JERU.
                 </p>
               </div>
               <button
@@ -628,7 +628,7 @@ export const UserManagementModule: React.FC = () => {
                 <span>Lokasi Penugasan</span>
               </div>
               <div className="text-xs text-slate-600 leading-relaxed">
-                Unit Layanan SPPG Jeru - Tumpang<br />
+                Unit Layanan SPPG MLG TUMPANG JERU<br />
                 Kabupaten Malang, Jawa Timur<br />
                 Program MBG (Makanan Bergizi Gratis)
               </div>
@@ -761,7 +761,7 @@ export const UserManagementModule: React.FC = () => {
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                             <span>Aktif</span>
                           </div>
-                          <div className="text-[10px] text-slate-400">Unit Jeru - Tumpang</div>
+                          <div className="text-[10px] text-slate-400">Unit SPPG MLG TUMPANG JERU</div>
                         </td>
 
                         {/* Actions */}

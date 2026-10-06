@@ -1,7 +1,7 @@
-# Design Direction: SPPG Jeru Tumpang WMS
+# Design Direction: SPPG MLG TUMPANG JERU WMS
 
 ## 1. Identitas & Karakter Produk (Brand & Purpose)
-- **Nama Produk:** WMS SPPG Jeru Tumpang (Satuan Pelayanan Pemenuhan Gizi)
+- **Nama Produk:** WMS SPPG MLG TUMPANG JERU (Satuan Pelayanan Pemenuhan Gizi)
 - **Bidang:** Sistem Manajemen Pergudangan & Logistik Bahan Pangan Bergizi Anak Sekolah (Program MBG)
 - **Kepribadian Visual:** Terpercaya, presisi, ergonomis, bersih, dan berorientasi operasional lapangan (*operational-first*).
 - **Prinsip Utama:** Setiap piksel dan elemen interaktif harus melayani fungsi verifikasi stok, penerimaan barang basah/kering, kepatuhan gizi, dan transparansi anggaran belanja. Tidak ada elemen dekoratif tanpa tujuan.
