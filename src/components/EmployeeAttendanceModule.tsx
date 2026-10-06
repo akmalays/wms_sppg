@@ -1580,16 +1580,16 @@ export const EmployeeAttendanceModule: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
           <div>
             <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-              Manajemen Karyawan & Presensi Kerja
+              Presensi & Karyawan
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Pusat data staf operasional dapur gizi, monitoring jam kerja, presensi harian, dan dokumentasi kehadiran.
+              Monitoring absensi harian dan data staf operasional SPPG Jeru Tumpang.
             </p>
           </div>
 
-          {/* Tab Switcher & Print Action */}
-          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-            <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-semibold">
+          {/* Tab Switcher */}
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <div className="inline-flex p-0.5 bg-slate-100 rounded-xl border border-slate-200 text-xs font-semibold">
               <button
                 type="button"
                 onClick={() => setActiveTab('ATTENDANCE')}
@@ -1600,7 +1600,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                 }`}
               >
                 <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-                Presensi Harian
+                <span>Presensi Harian</span>
               </button>
               <button
                 type="button"
@@ -1612,25 +1612,9 @@ export const EmployeeAttendanceModule: React.FC = () => {
                 }`}
               >
                 <Users className="w-3.5 h-3.5 text-emerald-600" />
-                Master Karyawan ({employees.length})
+                <span>Master Karyawan ({employees.length})</span>
               </button>
             </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (activeTab === 'ATTENDANCE') {
-                  setIsPrintAttendanceOpen(true);
-                } else {
-                  setIsPrintEmployeesOpen(true);
-                }
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-              title={`Cetak Laporan ${activeTab === 'ATTENDANCE' ? 'Presensi' : 'Master Karyawan'}`}
-            >
-              <Printer className="w-3.5 h-3.5 text-slate-500" />
-              <span>Cetak {activeTab === 'ATTENDANCE' ? 'Presensi' : 'Karyawan'}</span>
-            </button>
           </div>
         </div>
 
@@ -1638,60 +1622,57 @@ export const EmployeeAttendanceModule: React.FC = () => {
           TAB 1: PRESENSI & ABSENSI HARIAN
       ========================================================================= */}
       {activeTab === 'ATTENDANCE' && (
-        <div className="space-y-5">
-          {/* KPI Kehadiran Harian */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-              <span className="text-[11px] font-semibold text-slate-500">Total Karyawan Aktif</span>
-              <div className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">{metrics.total}</div>
+        <div className="space-y-4">
+          {/* KPI Kehadiran Harian (Sederhana & Rapi 4 Metrik) */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4 grid grid-cols-2 sm:grid-cols-4 gap-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+            <div className="pt-2 sm:pt-0 sm:px-3 first:px-0">
+              <span className="text-[11px] font-medium text-slate-500">Total Karyawan</span>
+              <div className="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5 tabular-nums">
+                {metrics.total} <span className="text-xs font-normal text-slate-500">Staf</span>
+              </div>
               <span className="text-[10px] text-slate-400">Personil SPPG Jeru Tumpang</span>
             </div>
 
-            <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
-              <span className="text-[11px] font-semibold text-emerald-800 flex items-center gap-1">
-                <Check className="w-3 h-3 text-emerald-600" /> Hadir Tepat Waktu
+            <div className="pt-2 sm:pt-0 sm:px-4">
+              <span className="text-[11px] font-medium text-emerald-700">Hadir Hari Ini</span>
+              <div className="text-xl sm:text-2xl font-bold text-emerald-800 mt-0.5 tabular-nums">
+                {metrics.hadir}{' '}
+                <span className="text-xs font-medium text-emerald-600">({metrics.rate}%)</span>
+              </div>
+              <span className="text-[10px] text-slate-400">
+                {metrics.terlambat > 0 ? `${metrics.terlambat} terlambat` : 'Semua tepat waktu'}
               </span>
-              <div className="text-2xl font-bold text-emerald-900 mt-1 tabular-nums">{metrics.hadir}</div>
-              <span className="text-[10px] text-emerald-700">Tiba sebelum batas jam shift</span>
             </div>
 
-            <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200 shadow-2xs">
-              <span className="text-[11px] font-semibold text-amber-800 flex items-center gap-1">
-                <Clock className="w-3 h-3 text-amber-600" /> Terlambat
+            <div className="pt-2 sm:pt-0 sm:px-4">
+              <span className="text-[11px] font-medium text-amber-700">Izin & Sakit</span>
+              <div className="text-xl sm:text-2xl font-bold text-slate-800 mt-0.5 tabular-nums">
+                {metrics.izin + metrics.sakit}{' '}
+                <span className="text-xs font-normal text-slate-500">Staf</span>
+              </div>
+              <span className="text-[10px] text-slate-400">
+                Izin: {metrics.izin} • Sakit: {metrics.sakit}
               </span>
-              <div className="text-2xl font-bold text-amber-900 mt-1 tabular-nums">{metrics.terlambat}</div>
-              <span className="text-[10px] text-amber-700">Terdapat toleransi & catatan</span>
             </div>
 
-            <div className="bg-indigo-50/60 p-3.5 rounded-xl border border-indigo-200 shadow-2xs">
-              <span className="text-[11px] font-semibold text-indigo-800 flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3 text-indigo-600" /> Izin & Sakit
+            <div className="pt-2 sm:pt-0 sm:px-4">
+              <span className="text-[11px] font-medium text-rose-700">Belum Hadir / Alpa</span>
+              <div className="text-xl sm:text-2xl font-bold text-rose-800 mt-0.5 tabular-nums">
+                {metrics.alpa + metrics.belumAbsen}{' '}
+                <span className="text-xs font-normal text-slate-500">Staf</span>
+              </div>
+              <span className="text-[10px] text-slate-400">
+                Alpa: {metrics.alpa} • Belum Absen: {metrics.belumAbsen}
               </span>
-              <div className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">{metrics.izin + metrics.sakit}</div>
-              <span className="text-[10px] text-indigo-700">Izin: {metrics.izin} • Sakit: {metrics.sakit}</span>
-            </div>
-
-            <div className="bg-rose-50/60 p-3.5 rounded-xl border border-rose-200 shadow-2xs">
-              <span className="text-[11px] font-semibold text-rose-800 flex items-center gap-1">
-                <UserX className="w-3 h-3 text-rose-600" /> Alpa / Belum Absen
-              </span>
-              <div className="text-2xl font-bold text-rose-900 mt-1 tabular-nums">{metrics.alpa + metrics.belumAbsen}</div>
-              <span className="text-[10px] text-rose-700">Alpa: {metrics.alpa} • Belum: {metrics.belumAbsen}</span>
-            </div>
-
-            <div className="bg-slate-900 text-white p-3.5 rounded-xl shadow-2xs">
-              <span className="text-[11px] font-semibold text-slate-300">Tingkat Kehadiran</span>
-              <div className="text-2xl font-bold text-emerald-400 mt-1 tabular-nums">{metrics.rate}%</div>
-              <span className="text-[10px] text-slate-400">Total kehadiran hari ini</span>
             </div>
           </div>
 
-          {/* Action & Filter Toolbar */}
-          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col xl:flex-row xl:items-center justify-between gap-2.5">
-            {/* Left: Date navigation & Filters */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
-                <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+          {/* Action & Filter Toolbar (Sederhana, Bersih & Sejajar) */}
+          <div className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            {/* Sisi Kiri: Tanggal & Filter Ringkas */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 px-2.5 h-8 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700">
+                <Calendar className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
                 <input
                   type="date"
                   value={selectedDate}
@@ -1700,42 +1681,35 @@ export const EmployeeAttendanceModule: React.FC = () => {
                 />
               </div>
 
-              <button
-                type="button"
-                onClick={() => setSelectedDate(todayStr)}
-                className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer shrink-0 ${
-                  selectedDate === todayStr
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold'
-                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                }`}
-              >
-                Hari Ini
-              </button>
-
-              <div className="h-4 w-px bg-slate-200 hidden sm:block"></div>
+              {selectedDate !== todayStr && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(todayStr)}
+                  className="h-8 px-2.5 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors cursor-pointer"
+                >
+                  Hari Ini
+                </button>
+              )}
 
               {/* Department Filter */}
-              <div className="flex items-center gap-1">
-                <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <select
-                  value={selectedDept}
-                  onChange={e => setSelectedDept(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-                >
-                  <option value="ALL">Semua Dept</option>
-                  {DEPARTMENTS.map(d => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <select
+                value={selectedDept}
+                onChange={e => setSelectedDept(e.target.value)}
+                className="h-8 bg-white border border-slate-200 rounded-lg px-2.5 text-xs text-slate-700 font-medium hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 cursor-pointer shadow-2xs"
+              >
+                <option value="ALL">Semua Dept</option>
+                {DEPARTMENTS.map(d => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
 
               {/* Status Filter */}
               <select
                 value={selectedStatus}
                 onChange={e => setSelectedStatus(e.target.value)}
-                className="bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                className="h-8 bg-white border border-slate-200 rounded-lg px-2.5 text-xs text-slate-700 font-medium hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 cursor-pointer shadow-2xs"
               >
                 <option value="ALL">Semua Status</option>
                 <option value="HADIR">Hadir</option>
@@ -1747,63 +1721,71 @@ export const EmployeeAttendanceModule: React.FC = () => {
               </select>
             </div>
 
-            {/* Right: Search & Actions (Ringkas & Sejajar) */}
-            <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
-              <div className="relative w-full sm:w-40 md:w-44 focus-within:sm:w-52 transition-all">
+            {/* Sisi Kanan: Pencarian, Presensi Cepat, & Menu Laporan */}
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+              <div className="relative w-full sm:w-44 focus-within:sm:w-52 transition-all">
                 <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 <input
                   type="text"
                   placeholder="Cari staf / NIP..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors"
+                  className="w-full h-8 pl-8 pr-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 transition-colors shadow-2xs"
                 />
               </div>
 
-              {/* Split Button: Primary Presensi Cepat + Dropdown for Input Tools */}
-              <div className="relative inline-flex rounded-xl shadow-2xs shrink-0" ref={attDropdownRef}>
-                <button
-                  type="button"
-                  onClick={handleOpenQuickAttendance}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-l-xl bg-emerald-700 hover:bg-emerald-800 text-white transition-colors cursor-pointer shrink-0"
-                  title="Presensi serentak seluruh staf hari ini (1-Klik)"
-                >
-                  <UserCheck className="w-3.5 h-3.5" />
-                  <span>Presensi Cepat</span>
-                </button>
+              {/* Tombol Utama: Presensi Cepat */}
+              <button
+                type="button"
+                onClick={handleOpenQuickAttendance}
+                className="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white shadow-2xs transition-colors cursor-pointer shrink-0"
+                title="Presensi serentak seluruh staf hari ini (1-Klik)"
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>Presensi Cepat</span>
+              </button>
 
+              {/* Menu Opsi & Laporan (Cetak, Excel, Manual) */}
+              <div className="relative inline-flex shrink-0" ref={attDropdownRef}>
                 <button
                   type="button"
                   onClick={() => setIsAttActionDropdownOpen(!isAttActionDropdownOpen)}
-                  className="inline-flex items-center px-2 py-1.5 text-xs font-bold rounded-r-xl bg-emerald-800 hover:bg-emerald-900 text-white border-l border-emerald-600/40 transition-colors cursor-pointer shrink-0"
-                  title="Pilihan input presensi & alat"
+                  className="h-8 inline-flex items-center gap-1.5 px-2.5 text-xs font-medium rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 shadow-2xs transition-colors cursor-pointer shrink-0"
+                  title="Pilihan ekspor & pencatatan"
                 >
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isAttActionDropdownOpen ? 'rotate-180' : ''}`} />
+                  <span>Laporan & Aksi</span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ${isAttActionDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 {/* Dropdown Menu */}
                 {isAttActionDropdownOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
-                    <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100">
-                      Pilihan Input & Alat
-                    </div>
+                  <div className="absolute right-0 top-full mt-1.5 w-56 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-40 animate-in fade-in zoom-95 duration-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAttActionDropdownOpen(false);
+                        setAttPrintTargetDate(selectedDate);
+                        setIsPrintAttendanceOpen(true);
+                      }}
+                      className="w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <Printer className="w-4 h-4 text-slate-500" />
+                      <span>Cetak Rekap Presensi</span>
+                    </button>
 
                     <button
                       type="button"
                       onClick={() => {
                         setIsAttActionDropdownOpen(false);
-                        handleOpenQuickAttendance();
+                        handleExportAttendanceExcel();
                       }}
-                      className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                      className="w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer"
                     >
-                      <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                        <UserCheck className="w-4 h-4 text-emerald-700" />
-                      </div>
-                      <div>
-                        <div className="font-bold text-slate-900">Presensi Cepat 1-Klik</div>
-                        <div className="text-[10px] text-slate-500">Presensi serentak seluruh staf hari ini</div>
-                      </div>
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                      <span>Ekspor ke Excel (.xlsx)</span>
                     </button>
+
+                    <div className="my-1 border-t border-slate-100" />
 
                     <button
                       type="button"
@@ -1811,15 +1793,10 @@ export const EmployeeAttendanceModule: React.FC = () => {
                         setIsAttActionDropdownOpen(false);
                         handleOpenSingleAtt();
                       }}
-                      className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                      className="w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer"
                     >
-                      <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                        <Plus className="w-4 h-4 text-emerald-700" />
-                      </div>
-                      <div>
-                        <div className="font-bold text-slate-900">Catat Absensi Manual</div>
-                        <div className="text-[10px] text-slate-500">Input kehadiran staf secara individu</div>
-                      </div>
+                      <Plus className="w-4 h-4 text-emerald-700" />
+                      <span>Catat Absensi Manual</span>
                     </button>
 
                     <button
@@ -1828,44 +1805,14 @@ export const EmployeeAttendanceModule: React.FC = () => {
                         setIsAttActionDropdownOpen(false);
                         handleOpenAddEmployee();
                       }}
-                      className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-teal-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
+                      className="w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer"
                     >
-                      <div className="w-7 h-7 rounded-lg bg-teal-100 text-teal-800 flex items-center justify-center shrink-0">
-                        <Users className="w-4 h-4 text-teal-700" />
-                      </div>
-                      <div>
-                        <div className="font-bold text-slate-900">Tambah Karyawan</div>
-                        <div className="text-[10px] text-slate-500">Daftarkan personil baru ke master data</div>
-                      </div>
+                      <Users className="w-4 h-4 text-teal-700" />
+                      <span>Tambah Karyawan Baru</span>
                     </button>
                   </div>
                 )}
               </div>
-
-              {/* Cetak Rekap Presensi */}
-              <button
-                type="button"
-                onClick={() => {
-                  setAttPrintTargetDate(selectedDate);
-                  setIsPrintAttendanceOpen(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer shrink-0"
-                title="Cetak formulir dan rekapitulasi presensi karyawan"
-              >
-                <Printer className="w-3.5 h-3.5 text-slate-500" />
-                <span>Cetak Rekap</span>
-              </button>
-
-              {/* Export to Excel */}
-              <button
-                type="button"
-                onClick={handleExportAttendanceExcel}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer shrink-0"
-                title="Unduh laporan presensi format Excel (.xlsx)"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Ekspor Excel</span>
-              </button>
             </div>
           </div>
 

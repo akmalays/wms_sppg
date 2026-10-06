@@ -1,0 +1,60 @@
+{
+  "system": "WMS SPPG Jeru - Tumpang",
+  "unit": "Satuan Pelayanan Pemenuhan Gizi (SPPG) Jeru - Tumpang, Kab. Malang",
+  "agency": "Badan Gizi Nasional Republik Indonesia",
+  "exportedAt": "2026-10-06T11:05:00+07:00",
+  "version": "1.0.0",
+  "users": [
+    {
+      "id": "USR-003",
+      "name": "Akmal",
+      "email": "akmal@sppg.id",
+      "role": "ADMIN",
+      "password": "admin123",
+      "alternativePasswords": ["akmal123"],
+      "aliases": ["akmal", "admin"],
+      "duties": "Pengelolaan master data barang, mutasi stok, surat jalan, dan tata kelola PO."
+    },
+    {
+      "id": "USR-002",
+      "name": "Rizky Iman Ramdhan, S.Pd",
+      "email": "rizky.kasppg@sppg.id",
+      "role": "KA_SPPG",
+      "password": "kasppg123",
+      "alternativePasswords": ["rizky123"],
+      "aliases": ["rizky", "kasppg", "ka sppg"],
+      "duties": "Otorisasi stok opname, pengesahan berita acara, pengawasan kuota MBG & persetujuan audit."
+    },
+    {
+      "id": "USR-005",
+      "name": "Dewi Lestari",
+      "email": "dewi.akuntan@sppg.id",
+      "role": "AKUNTAN",
+      "password": "akuntan123",
+      "alternativePasswords": ["dewi123"],
+      "aliases": ["dewi", "akuntan"],
+      "duties": "Verifikasi faktur nota UMKM lokal, rekonsiliasi pengeluaran non-pangan, audit belanja."
+    },
+    {
+      "id": "USR-004",
+      "name": "Andi Pratama",
+      "email": "andi.aslap@sppg.id",
+      "role": "ASLAP",
+      "password": "aslap123",
+      "alternativePasswords": ["andi123"],
+      "aliases": ["andi", "aslap"],
+      "duties": "Dermaga bongkar muat, timbangan riil penerimaan fisik, checklist harian & limbah organik."
+    },
+    {
+      "id": "USR-001",
+      "name": "Budi Santoso",
+      "email": "budi.superadmin@sppg.id",
+      "role": "SUPERADMIN",
+      "password": "superadmin123",
+      "alternativePasswords": ["budi123"],
+      "aliases": ["budi", "superadmin"],
+      "duties": "Konfigurasi teknis pusat, pemeliharaan basis data, dan wewenang penuh."
+    }
+  ],
+  "securityNotice": "Data kredensial resmi internal operasional unit SPPG Jeru Tumpang. Simpan di lokasi aman."
+}

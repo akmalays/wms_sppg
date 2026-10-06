@@ -21,7 +21,8 @@ import {
   UserCheck,
   KeyRound,
   Building2,
-  Calendar
+  Calendar,
+  Download
 } from 'lucide-react';
 
 export const UserManagementModule: React.FC = () => {
@@ -243,6 +244,34 @@ export const UserManagementModule: React.FC = () => {
     }
   };
 
+  const handleExportUsers = () => {
+    const allUsers = warehouseDb.getUsers();
+    const exportPayload = {
+      system: 'WMS SPPG Jeru - Tumpang',
+      unit: 'Satuan Pelayanan Pemenuhan Gizi (SPPG) Jeru - Tumpang, Kab. Malang',
+      agency: 'Badan Gizi Nasional Republik Indonesia',
+      exportedAt: new Date().toISOString(),
+      version: '1.0.0',
+      users: allUsers.map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        nip: u.nip || '',
+        phone: u.phone || '',
+        password: warehouseDb.getUserPassword(u.email) || `${u.name.toLowerCase().split(' ')[0]}123`,
+      })),
+    };
+
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', `sppg_users_backup_${new Date().toISOString().slice(0, 10)}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Banner / Header */}
@@ -262,36 +291,48 @@ export const UserManagementModule: React.FC = () => {
             </p>
           </div>
 
-          {/* Tab Pill Buttons */}
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-lg border border-slate-200 shrink-0 self-start sm:self-auto">
+          {/* Action & Tab Buttons */}
+          <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto flex-wrap">
             <button
               type="button"
-              onClick={() => setActiveTab('LIST')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'LIST'
-                  ? 'bg-white text-emerald-800 shadow-2xs border border-slate-200'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              onClick={handleExportUsers}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 transition-all cursor-pointer shadow-2xs"
+              title="Ekspor seluruh akun petugas ke file JSON"
             >
-              <Users className="w-3.5 h-3.5" />
-              <span>Daftar Petugas ({users.length})</span>
+              <Download className="w-3.5 h-3.5 text-slate-500" />
+              <span>Ekspor Data User</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('CREATE');
-                setFeedbackMessage(null);
-              }}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'CREATE'
-                  ? 'bg-emerald-700 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>+ Buat User Baru</span>
-            </button>
+            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setActiveTab('LIST')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  activeTab === 'LIST'
+                    ? 'bg-white text-emerald-800 shadow-2xs border border-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Daftar Petugas ({users.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('CREATE');
+                  setFeedbackMessage(null);
+                }}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  activeTab === 'CREATE'
+                    ? 'bg-emerald-700 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>+ Buat User Baru</span>
+              </button>
+            </div>
           </div>
         </div>
 

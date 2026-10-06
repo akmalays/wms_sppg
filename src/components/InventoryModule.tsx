@@ -1289,33 +1289,33 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
           </p>
         </div>
 
-        {/* Sub-Tab Navigation Switcher */}
-        <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+        {/* Sub-Tab Navigation Switcher (Sederhana, Ramping & 1 Baris) */}
+        <div className="inline-flex items-center p-0.5 bg-slate-100/90 rounded-lg border border-slate-200/70 text-xs shrink-0 self-start lg:self-auto">
           <button
             type="button"
             onClick={() => setActiveMainTab('stock')}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-md font-medium transition-all cursor-pointer whitespace-nowrap ${
               activeMainTab === 'stock'
-                ? 'bg-white text-emerald-800 shadow-2xs'
+                ? 'bg-white text-emerald-900 font-semibold shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Boxes className="w-4 h-4 text-emerald-600" />
-            <span>Data Stok Keseluruhan</span>
+            <Boxes className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Data Stok</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveMainTab('master')}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-md font-medium transition-all cursor-pointer whitespace-nowrap ${
               activeMainTab === 'master'
-                ? 'bg-white text-emerald-800 shadow-2xs'
+                ? 'bg-white text-emerald-900 font-semibold shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Package className="w-4 h-4 text-emerald-600" />
+            <Package className="w-3.5 h-3.5 text-emerald-700" />
             <span>Master Barang</span>
-            <span className="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+            <span className="text-[10px] font-mono px-1 rounded bg-slate-200/70 text-slate-700">
               {items.length}
             </span>
           </button>
@@ -1323,18 +1323,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
           <button
             type="button"
             onClick={() => setActiveMainTab('opname')}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-md font-medium transition-all cursor-pointer whitespace-nowrap ${
               activeMainTab === 'opname'
-                ? 'bg-white text-emerald-800 shadow-2xs'
+                ? 'bg-white text-emerald-900 font-semibold shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <ClipboardCheck className="w-4 h-4 text-emerald-600" />
-            <span>Stok Opname Fisik</span>
+            <ClipboardCheck className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Stok Opname</span>
             {opnames.filter(o => o.status === 'PENDING_APPROVAL').length > 0 && (
-              <span className="bg-amber-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                {opnames.filter(o => o.status === 'PENDING_APPROVAL').length}
-              </span>
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="Ada persetujuan pending" />
             )}
           </button>
         </div>
