@@ -1471,10 +1471,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
           </div>
 
           {/* Main Table Container */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-            {/* Category Filter Tabs */}
-            <div className="px-5 pt-4 pb-3 border-b border-slate-200 bg-slate-50/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-1.5">
+          <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
+            {/* Category Filter Tabs & Search Bar */}
+            <div className="p-4 border-b border-slate-150 bg-slate-50/50 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              {/* Category Filter Tabs (Clean Segmented / Pill Bar) */}
+              <div className="flex flex-wrap items-center gap-1">
                 {SPPG_STOCK_CATEGORIES.map(cat => {
                   const count = stockMetrics.categoryItemCounts[cat] || 0;
                   const isSelected = selectedCategoryTab === cat;
@@ -1483,40 +1484,59 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                       key={cat}
                       type="button"
                       onClick={() => setSelectedCategoryTab(cat)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                      className={`h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
                         isSelected
-                          ? 'bg-emerald-700 text-white shadow-2xs'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                          ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                          : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/70'
                       }`}
                     >
-                      {cat} ({count})
+                      <span>{cat}</span>
+                      <span
+                        className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                          isSelected
+                            ? 'bg-slate-800 text-slate-200'
+                            : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {count}
+                      </span>
                     </button>
                   );
                 })}
               </div>
 
               {/* Status and Search Filter */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <select
                   value={filterStatus}
                   onChange={e => setFilterStatus(e.target.value)}
-                  className="text-xs border border-slate-300 rounded-lg p-1.5 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                  className="h-8 px-2.5 text-xs border border-slate-200 rounded-lg bg-white text-slate-700 font-medium hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 cursor-pointer shadow-2xs"
                 >
                   <option value="ALL">Semua Status</option>
-                  <option value="NORMAL">Stok Aman (Normal)</option>
-                  <option value="LOW">Stok Menipis (Warning)</option>
+                  <option value="NORMAL">Stok Aman</option>
+                  <option value="LOW">Stok Menipis</option>
                   <option value="OUT_OF_STOCK">Stok Habis (0)</option>
                 </select>
 
-                <div className="relative w-56">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                <div className="relative w-48 sm:w-56">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Cari barang / lokasi..."
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full h-8 pl-8 pr-7 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 placeholder:text-slate-400 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 transition-colors shadow-2xs"
                   />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-0.5 cursor-pointer"
+                      title="Hapus pencarian"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1524,19 +1544,19 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
             {/* Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200/80">
                   <tr>
-                    <th className="py-3 px-3 w-10 text-center">#</th>
-                    <th className="py-3 px-3 w-28">Kode SKU</th>
-                    <th className="py-3 px-3 min-w-[200px]">Nama Barang & Lokasi Simpan</th>
-                    <th className="py-3 px-3 w-36">Kategori</th>
-                    <th className="py-3 px-3 w-32 text-right">Saldo Stok Fisik</th>
-                    <th className="py-3 px-3 w-28 text-center">Status</th>
-                    <th className="py-3 px-3 w-28 text-right">Min. Stok</th>
-                    <th className="py-3 px-3 w-32 text-right">Estimasi Aset</th>
+                    <th className="py-2.5 px-3 w-10 text-center font-normal">#</th>
+                    <th className="py-2.5 px-3 w-28 font-medium">Kode SKU</th>
+                    <th className="py-2.5 px-3 min-w-[200px] font-medium">Nama Barang & Lokasi Simpan</th>
+                    <th className="py-2.5 px-3 w-36 font-medium">Kategori</th>
+                    <th className="py-2.5 px-3 w-32 text-right font-medium">Saldo Stok Fisik</th>
+                    <th className="py-2.5 px-3 w-28 text-center font-medium">Status</th>
+                    <th className="py-2.5 px-3 w-28 text-right font-medium">Min. Stok</th>
+                    <th className="py-2.5 px-3 w-32 text-right font-medium">Estimasi Aset</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
+                <tbody className="divide-y divide-slate-100">
                   {filteredItems.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="py-12 text-center text-slate-400 italic">
@@ -1551,59 +1571,59 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                       const assetValue = Math.max(0, item.currentStock) * unitPrice;
 
                       let statusBadge = (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3" /> Aman
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Aman
                         </span>
                       );
                       if (status === 'LOW') {
                         statusBadge = (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-                            <AlertTriangle className="w-3 h-3" /> Menipis
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700">
+                            <AlertTriangle className="w-3 h-3 text-amber-600" /> Menipis
                           </span>
                         );
                       } else if (status === 'OUT_OF_STOCK') {
                         statusBadge = (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-50 text-rose-800 border border-rose-200">
-                            <XCircle className="w-3 h-3" /> Habis
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 text-rose-700">
+                            <XCircle className="w-3 h-3 text-rose-500" /> Habis
                           </span>
                         );
                       }
 
                       return (
-                        <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3 px-3 text-center text-slate-400 font-mono text-[11px]">
+                        <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
                             {idx + 1}
                           </td>
-                          <td className="py-3 px-3 font-mono font-semibold text-slate-700">
+                          <td className="py-2.5 px-3 font-mono text-slate-600 font-medium">
                             {item.id}
                           </td>
-                          <td className="py-3 px-3">
-                            <div className="font-bold text-slate-900">{item.name}</div>
-                            <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                              <Store className="w-3 h-3" />
-                              <span>{item.location}</span>
-                              {item.notes && <span className="italic">• {item.notes}</span>}
+                          <td className="py-2.5 px-3">
+                            <div className="font-semibold text-slate-900">{item.name}</div>
+                            <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                              <Store className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span className="truncate">{item.location}</span>
+                              {item.notes && <span className="italic text-slate-400 truncate">• {item.notes}</span>}
                             </div>
                           </td>
-                          <td className="py-3 px-3">
-                            <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold border bg-slate-50 border-slate-200 text-slate-700">
+                          <td className="py-2.5 px-3">
+                            <span className="inline-block px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600">
                               {cat}
                             </span>
                           </td>
-                          <td className="py-3 px-3 text-right">
-                            <span className="font-mono font-bold text-slate-900 text-sm">
+                          <td className="py-2.5 px-3 text-right">
+                            <span className="font-mono font-semibold text-slate-900">
                               {item.currentStock.toLocaleString('id-ID')}
                             </span>{' '}
-                            <span className="text-slate-500 font-normal">{item.baseUnit}</span>
+                            <span className="text-slate-500 text-[11px]">{item.baseUnit}</span>
                           </td>
-                          <td className="py-3 px-3 text-center">
+                          <td className="py-2.5 px-3 text-center">
                             {statusBadge}
                           </td>
-                          <td className="py-3 px-3 text-right font-mono text-slate-600">
+                          <td className="py-2.5 px-3 text-right font-mono text-slate-500 text-xs">
                             {item.minimumStock} {item.baseUnit}
                           </td>
-                          <td className="py-3 px-3 text-right">
-                            <div className="font-mono font-bold text-slate-900">
+                          <td className="py-2.5 px-3 text-right">
+                            <div className="font-mono font-medium text-slate-900">
                               Rp {assetValue.toLocaleString('id-ID')}
                             </div>
                             <div className="text-[10px] text-slate-400 font-mono">

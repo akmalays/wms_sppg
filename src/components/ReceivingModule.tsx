@@ -2496,21 +2496,21 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
         /* ========================================================================= */
         <div className="space-y-4">
           {/* Filter Control Box: Period (Minggu, Bulan, Hari) & Categories */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3.5">
+          <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
             {/* Row 1: Period Mode Selector & Date Controls */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5 shrink-0">
-                  <CalendarRange className="w-4 h-4 text-emerald-700" />
-                  Periode:
+            <div className="px-4 py-3 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-600 flex items-center gap-1.5 shrink-0">
+                  <CalendarRange className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Periode</span>
                 </span>
 
-                {/* Period Tabs */}
-                <div className="inline-flex bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 text-xs">
+                {/* Period Segmented Control */}
+                <div className="inline-flex bg-slate-100/80 p-0.5 rounded-lg border border-slate-200/50 text-xs">
                   <button
                     type="button"
                     onClick={() => setPeriodType('DAILY')}
-                    className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                    className={`h-7 px-2.5 rounded-md text-xs transition-all cursor-pointer ${
                       periodType === 'DAILY' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
                     }`}
                   >
@@ -2520,7 +2520,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                   <button
                     type="button"
                     onClick={handleSetThisWeek}
-                    className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                    className={`h-7 px-2.5 rounded-md text-xs transition-all cursor-pointer ${
                       periodType === 'WEEKLY' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
                     }`}
                   >
@@ -2530,7 +2530,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                   <button
                     type="button"
                     onClick={() => setPeriodType('MONTHLY')}
-                    className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                    className={`h-7 px-2.5 rounded-md text-xs transition-all cursor-pointer ${
                       periodType === 'MONTHLY' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
                     }`}
                   >
@@ -2540,11 +2540,11 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                   <button
                     type="button"
                     onClick={() => setPeriodType('CUSTOM')}
-                    className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
+                    className={`h-7 px-2.5 rounded-md text-xs transition-all cursor-pointer ${
                       periodType === 'CUSTOM' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
                     }`}
                   >
-                    Rentang Kustom
+                    Kustom
                   </button>
                 </div>
               </div>
@@ -2552,36 +2552,33 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
               {/* Date Range Inputs */}
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 {periodType === 'DAILY' && (
-                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
-                    <span className="text-slate-500 font-medium">Tanggal:</span>
+                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-8">
+                    <span className="text-slate-400 text-[11px]">Tanggal:</span>
                     <input
                       type="date"
                       value={selectedDailyDate}
                       onChange={e => setSelectedDailyDate(e.target.value)}
-                      className="font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                      className="text-xs font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
                     />
                   </div>
                 )}
 
                 {(periodType === 'WEEKLY' || periodType === 'CUSTOM') && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
-                      <span className="text-slate-500 font-medium">Dari:</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-8">
+                      <span className="text-slate-400 text-[11px]">Dari</span>
                       <input
                         type="date"
                         value={startDate}
                         onChange={e => setStartDate(e.target.value)}
-                        className="font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                        className="text-xs font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
                       />
-                    </div>
-                    <span className="text-slate-400 font-medium">s/d</span>
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
-                      <span className="text-slate-500 font-medium">Sampai:</span>
+                      <span className="text-slate-300">s/d</span>
                       <input
                         type="date"
                         value={endDate}
                         onChange={e => setEndDate(e.target.value)}
-                        className="font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                        className="text-xs font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
                       />
                     </div>
 
@@ -2590,14 +2587,14 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                         <button
                           type="button"
                           onClick={handleSetThisWeek}
-                          className="px-2 py-1 text-[11px] font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-md border border-slate-200 cursor-pointer transition-colors"
+                          className="h-8 px-2.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer transition-colors"
                         >
                           Minggu Ini
                         </button>
                         <button
                           type="button"
                           onClick={handleSetLastWeek}
-                          className="px-2 py-1 text-[11px] font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-md border border-slate-200 cursor-pointer transition-colors"
+                          className="h-8 px-2.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer transition-colors"
                         >
                           Minggu Lalu
                         </button>
@@ -2607,13 +2604,13 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                 )}
 
                 {periodType === 'MONTHLY' && (
-                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
-                    <span className="text-slate-500 font-medium">Pilih Bulan:</span>
+                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-8">
+                    <span className="text-slate-400 text-[11px]">Bulan:</span>
                     <input
                       type="month"
                       value={selectedMonth}
                       onChange={e => setSelectedMonth(e.target.value)}
-                      className="font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                      className="text-xs font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
                     />
                   </div>
                 )}
@@ -2621,15 +2618,15 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
             </div>
 
             {/* Row 2: Unified Category Tabs, Supplier Select, Search, & View Toggle */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              {/* Unified Category Tabs (No Rainbow AI Slop Borders) */}
-              <div className="flex flex-wrap items-center gap-1.5">
+            <div className="p-3.5 bg-slate-50/50 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+              {/* Category Filter Tabs */}
+              <div className="flex flex-wrap items-center gap-1">
                 {[
                   { id: 'ALL', label: 'Semua Kategori', count: periodRecords.length },
-                  { id: 'Bahan Basah', label: 'Bahan Basah', count: categoryCounts['Bahan Basah'] },
-                  { id: 'Bahan Kering', label: 'Bahan Kering', count: categoryCounts['Bahan Kering'] },
-                  { id: 'Bahan Peralatan', label: 'Bahan Peralatan', count: categoryCounts['Bahan Peralatan'] },
-                  { id: 'SURAT_JALAN', label: 'Surat Jalan', count: categoryCounts['SURAT_JALAN'] },
+                  { id: 'Bahan Basah', label: 'Bahan Basah', count: categoryCounts['Bahan Basah'] || 0 },
+                  { id: 'Bahan Kering', label: 'Bahan Kering', count: categoryCounts['Bahan Kering'] || 0 },
+                  { id: 'Bahan Peralatan', label: 'Peralatan', count: categoryCounts['Bahan Peralatan'] || 0 },
+                  { id: 'SURAT_JALAN', label: 'Surat Jalan', count: categoryCounts['SURAT_JALAN'] || 0 },
                 ].map(tab => {
                   const isActive = selectedCategoryTab === tab.id;
                   return (
@@ -2637,88 +2634,105 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                       key={tab.id}
                       type="button"
                       onClick={() => setSelectedCategoryTab(tab.id as any)}
-                      className={`px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1.5 ${
+                      className={`h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
                         isActive
                           ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                          : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border border-slate-200 font-medium'
+                          : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/70'
                       }`}
                     >
                       <span>{tab.label}</span>
-                      <span
-                        className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${
-                          isActive ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {tab.count}
-                      </span>
+                      {tab.count > 0 && (
+                        <span
+                          className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                            isActive ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          {tab.count}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
               </div>
 
-              {/* Right Side: Supplier Select, Search, & View Toggle */}
+              {/* Right Side: View Mode Toggle, Supplier Select, & Search Box */}
               <div className="flex flex-wrap items-center gap-2">
+                {/* View Mode Toggle: Tabel vs Per Supplier */}
+                <div className="inline-flex bg-slate-150 p-0.5 rounded-lg border border-slate-200/70 text-xs shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('TABLE')}
+                    className={`h-7 px-2.5 rounded-md font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
+                      viewMode === 'TABLE'
+                        ? 'bg-white text-slate-900 font-semibold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Tampilan tabel biasa"
+                  >
+                    <TableProperties className="w-3.5 h-3.5" />
+                    <span>Tabel</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('SUPPLIER_GROUPS')}
+                    className={`h-7 px-2.5 rounded-md font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
+                      viewMode === 'SUPPLIER_GROUPS'
+                        ? 'bg-white text-slate-900 font-semibold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Kelompokkan barang per supplier"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>Per Supplier</span>
+                    {uniqueSuppliers.length > 0 && (
+                      <span className="text-[10px] font-mono bg-slate-100 px-1 rounded">
+                        {uniqueSuppliers.length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+
                 {/* Supplier Filter Dropdown */}
-                <div className="flex items-center gap-1.5">
-                  <div className="relative">
-                    <select
-                      value={selectedSupplierFilter}
-                      onChange={e => setSelectedSupplierFilter(e.target.value)}
-                      className="h-8 pl-8 pr-7 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer appearance-none shadow-2xs"
-                      title="Filter per rekanan / supplier"
-                    >
-                      <option value="ALL">Semua Supplier ({uniqueSuppliers.length})</option>
-                      {uniqueSuppliers.map(s => (
-                        <option key={s.name} value={s.name}>
-                          {s.name} ({s.count} item)
-                        </option>
-                      ))}
-                    </select>
-                    <Building2 className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
+                <div className="relative">
+                  <select
+                    value={selectedSupplierFilter}
+                    onChange={e => setSelectedSupplierFilter(e.target.value)}
+                    className="h-8 pl-7 pr-6 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-600 cursor-pointer appearance-none shadow-2xs"
+                    title="Filter per rekanan / supplier"
+                  >
+                    <option value="ALL">
+                      Semua Supplier {uniqueSuppliers.length > 0 ? `(${uniqueSuppliers.length})` : ''}
+                    </option>
+                    {uniqueSuppliers.map(s => (
+                      <option key={s.name} value={s.name}>
+                        {s.name} ({s.count})
+                      </option>
+                    ))}
+                  </select>
+                  <Building2 className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
 
                 {/* Search Box */}
-                <div className="relative w-full sm:w-48 lg:w-56">
-                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <div className="relative w-44 sm:w-52">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Cari barang, PIC..."
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    className="w-full h-8 pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="w-full h-8 pl-8 pr-7 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 placeholder:text-slate-400 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 transition-colors shadow-2xs"
                   />
-                </div>
-
-                {/* View Mode Toggle: Tabel Biasa vs Kelompokkan Per Supplier */}
-                <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('TABLE')}
-                    className={`h-7 px-2.5 rounded-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                      viewMode === 'TABLE'
-                        ? 'bg-white text-slate-900 shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                    title="Tampilan tabel biasa daftar semua barang"
-                  >
-                    <TableProperties className="w-3.5 h-3.5" />
-                    <span>Tabel Biasa</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('SUPPLIER_GROUPS')}
-                    className={`h-7 px-2.5 rounded-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                      viewMode === 'SUPPLIER_GROUPS'
-                        ? 'bg-white text-slate-900 shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                    title="Kelompokkan barang per supplier dan cetak nota PO gabungan"
-                  >
-                    <LayoutGrid className="w-3.5 h-3.5" />
-                    <span>Per Supplier ({uniqueSuppliers.length})</span>
-                  </button>
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-0.5 cursor-pointer"
+                      title="Hapus pencarian"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
