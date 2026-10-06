@@ -7,6 +7,7 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
+  ArrowLeft,
   AlertCircle,
   ShieldCheck,
   BadgeAlert,
@@ -15,9 +16,10 @@ import {
 
 export interface LoginPageProps {
   onNavigateToRegister?: () => void;
+  onNavigateToLanding?: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister, onNavigateToLanding }) => {
   const { login } = useAuth();
 
   const [identifier, setIdentifier] = useState<string>('');
@@ -82,7 +84,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium">
+            {onNavigateToLanding && (
+              <button
+                type="button"
+                onClick={onNavigateToLanding}
+                className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md text-slate-700 hover:text-emerald-800 bg-white hover:bg-slate-50 border border-slate-200 transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Kembali ke Beranda</span>
+              </button>
+            )}
+            <div className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium">
               <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
               <span>Sistem Logistik Pangan WMS</span>
             </div>
@@ -95,7 +107,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
         <div className="w-full max-w-[440px]">
           <div className="bg-white border border-slate-200/90 rounded-2xl shadow-sm p-6 sm:p-8 space-y-6">
             {/* Header Form */}
-            <div className="text-center space-y-2">
+            <div className="text-center space-y-2 relative">
+              {onNavigateToLanding && (
+                <button
+                  type="button"
+                  onClick={onNavigateToLanding}
+                  className="sm:hidden absolute left-0 top-0 text-[11px] font-medium text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3 h-3" />
+                  <span>Beranda</span>
+                </button>
+              )}
               <div className="mx-auto w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-800 shadow-2xs mb-3">
                 <ShieldCheck className="w-6 h-6" />
               </div>

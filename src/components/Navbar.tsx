@@ -29,7 +29,8 @@ import {
   Clock,
   UserPlus,
   Menu,
-  X
+  X,
+  Globe
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -37,9 +38,10 @@ interface NavbarProps {
   onSelectTab: (tab: string) => void;
   onResetData: () => void;
   onClearTransactions?: () => void;
+  onViewLanding?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetData, onClearTransactions }) => {
+export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetData, onClearTransactions, onViewLanding }) => {
   const { currentUser, switchUser, logout } = useAuth();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isResetMenuOpen, setIsResetMenuOpen] = useState(false);
@@ -252,6 +254,19 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
               )}
             </div>
 
+            {/* View Landing Page Button */}
+            {onViewLanding && (
+              <button
+                type="button"
+                onClick={onViewLanding}
+                title="Lihat Landing Page Publik"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-emerald-800 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer min-h-[36px]"
+              >
+                <Globe className="w-3.5 h-3.5 text-slate-500" />
+                <span>Beranda Publik</span>
+              </button>
+            )}
+
             {/* Logout Button */}
             <button
               onClick={logout}
@@ -405,6 +420,31 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
                   );
                 })}
               </div>
+            </div>
+
+            {/* Quick Actions (Mobile) */}
+            <div className="border-t border-slate-100 pt-3 flex flex-col gap-2">
+              {onViewLanding && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    onViewLanding();
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 border border-slate-200 cursor-pointer min-h-[44px]"
+                >
+                  <Globe className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <span>Lihat Beranda Publik</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={logout}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-rose-700 hover:bg-rose-50 border border-rose-200 cursor-pointer min-h-[44px]"
+              >
+                <LogOut className="w-4 h-4 shrink-0" />
+                <span>Keluar dari Akun</span>
+              </button>
             </div>
           </div>
         </div>

@@ -21,26 +21,96 @@ import { AuditLogModule } from './components/AuditLogModule';
 import { MenuPrintModule } from './components/MenuPrintModule';
 import { LoginPage } from './components/LoginPage';
 import { RegisterPage } from './components/RegisterPage';
+import { LandingPage } from './components/LandingPage';
 import { UserManagementModule } from './components/UserManagementModule';
 import { warehouseDb } from './db/storage';
+
+const getIsDashboardRoute = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  const hash = window.location.hash.toLowerCase().replace(/\/+$/, '');
+
+  return (
+    path === '/dashboard' ||
+    path.startsWith('/dashboard/') ||
+    path === '/login' ||
+    path.startsWith('/login/') ||
+    hash === '#/dashboard' ||
+    hash.startsWith('#/dashboard/') ||
+    hash === '#dashboard' ||
+    hash === '#/login' ||
+    hash.startsWith('#/login/') ||
+    hash === '#login'
+  );
+};
 
 const MainLayout: React.FC = () => {
   const { currentUser, isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [isDashboardRoute, setIsDashboardRoute] = useState<boolean>(getIsDashboardRoute);
   const [authView, setAuthView] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
   const [dataVersion, setDataVersion] = useState<number>(0);
   const [selectedExpenseSupplierId, setSelectedExpenseSupplierId] = useState<string | undefined>(undefined);
+
+  // Sync state when browser URL changes (back/forward navigation or hash change)
+  React.useEffect(() => {
+    const handleLocationChange = () => {
+      setIsDashboardRoute(getIsDashboardRoute());
+    };
+    window.addEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleLocationChange);
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+    };
+  }, []);
+
+  const navigateToDashboard = () => {
+    try {
+      window.history.pushState(null, '', '/dashboard');
+    } catch {
+      window.location.hash = '/dashboard';
+    }
+    setIsDashboardRoute(true);
+  };
+
+  const navigateToHome = () => {
+    try {
+      window.history.pushState(null, '', '/');
+    } catch {
+      window.location.hash = '';
+    }
+    setIsDashboardRoute(false);
+  };
 
   const handleNavigateToSupplierExpense = (supplierId: string) => {
     setSelectedExpenseSupplierId(supplierId);
     setActiveTab('tools_forms');
   };
 
+  // 1. Jika rute BUKAN /dashboard: Tampilkan Halaman Utama Publik (Landing Page)
+  // Tidak ada tombol login untuk umum sehingga publik tidak dapat masuk sembarangan
+  if (!isDashboardRoute) {
+    return (
+      <LandingPage
+        isStaffLoggedIn={isAuthenticated}
+        staffName={currentUser?.name}
+        onReturnToDashboard={isAuthenticated ? navigateToDashboard : undefined}
+      />
+    );
+  }
+
+  // 2. Jika mengakses rute /dashboard tetapi belum login: Tampilkan form login petugas
   if (!isAuthenticated) {
     if (authView === 'REGISTER') {
       return <RegisterPage onNavigateToLogin={() => setAuthView('LOGIN')} />;
     }
-    return <LoginPage onNavigateToRegister={() => setAuthView('REGISTER')} />;
+    return (
+      <LoginPage
+        onNavigateToRegister={() => setAuthView('REGISTER')}
+        onNavigateToLanding={navigateToHome}
+      />
+    );
   }
 
   const handleRefresh = () => {
@@ -77,6 +147,7 @@ const MainLayout: React.FC = () => {
         onSelectTab={setActiveTab}
         onResetData={handleResetData}
         onClearTransactions={handleClearTransactions}
+        onViewLanding={navigateToHome}
       />
 
       {/* Main Content Area */}
