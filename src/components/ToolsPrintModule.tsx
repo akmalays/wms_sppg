@@ -1445,13 +1445,13 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       `}</style>
 
       {/* Screen Control Header */}
-      <div className="no-print bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="no-print bg-white p-5 sm:p-6 rounded-2xl border border-[#ded7c8] shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+            <h1 className="font-serif-display text-xl sm:text-2xl font-bold text-[#111915] tracking-tight">
               Pusat Formulir & Alat Cetak Fisik
             </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-[#5a6860] mt-0.5">
               Cetak dokumen operasional lapangan standar untuk pencatatan fisik di rak gudang, ruang chiller, dan dapur pengolahan.
             </p>
           </div>
@@ -1459,124 +1459,124 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           <div className="flex items-center gap-2.5">
             <button
               onClick={handlePrint}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0c3123] hover:bg-[#155e42] text-white text-xs font-medium shadow-xs transition-colors cursor-pointer"
             >
-              <Printer className="w-4 h-4" />
+              <Printer className="w-4 h-4 text-[#86efac]" />
               Cetak Dokumen Sekarang (Print / PDF)
             </button>
           </div>
         </div>
 
         {/* Form Category Selector */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2 mt-6 pt-5 border-t border-slate-100">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2.5 mt-6 pt-5 border-t border-[#eee8dc]">
           <button
             onClick={() => setActiveForm('RECEIVING_FORM')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
               activeForm === 'RECEIVING_FORM'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-xs'
-                : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100 text-slate-700'
+                ? 'bg-[#ecf7f0] border-[#c2e7cf] text-[#0c3123] shadow-xs font-semibold'
+                : 'bg-[#faf8f4] border-[#ded7c8] hover:bg-[#ede7da] text-[#111915]'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <FileText className="w-4 h-4 text-emerald-700" />
-              <span className="text-xs font-semibold">BA Penerimaan</span>
+              <FileText className="w-4 h-4 text-[#0c3123]" />
+              <span className="text-xs">BA Penerimaan</span>
             </div>
-            <p className="text-[11px] text-slate-500 line-clamp-1">Bukti fisik serah terima supplier</p>
+            <p className="text-[11px] text-[#5a6860] line-clamp-1">Bukti fisik serah terima supplier</p>
           </button>
 
           <button
             onClick={() => setActiveForm('OPNAME_SHEET')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
               activeForm === 'OPNAME_SHEET'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-xs'
-                : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100 text-slate-700'
+                ? 'bg-[#ecf7f0] border-[#c2e7cf] text-[#0c3123] shadow-xs font-semibold'
+                : 'bg-[#faf8f4] border-[#ded7c8] hover:bg-[#ede7da] text-[#111915]'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <ClipboardList className="w-4 h-4 text-emerald-700" />
-              <span className="text-xs font-semibold">Lembar Opname Fisik</span>
+              <ClipboardList className="w-4 h-4 text-[#0c3123]" />
+              <span className="text-xs">Lembar Opname Fisik</span>
             </div>
-            <p className="text-[11px] text-slate-500 line-clamp-1">Tally sheet hitung rak & chiller</p>
+            <p className="text-[11px] text-[#5a6860] line-clamp-1">Tally sheet hitung rak & chiller</p>
           </button>
 
           <button
             onClick={() => setActiveForm('BIN_CARD')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
               activeForm === 'BIN_CARD'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-xs'
-                : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100 text-slate-700'
+                ? 'bg-[#ecf7f0] border-[#c2e7cf] text-[#0c3123] shadow-xs font-semibold'
+                : 'bg-[#faf8f4] border-[#ded7c8] hover:bg-[#ede7da] text-[#111915]'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <Layers className="w-4 h-4 text-emerald-700" />
-              <span className="text-xs font-semibold">Kartu Stok (Bin Card)</span>
+              <Layers className="w-4 h-4 text-[#0c3123]" />
+              <span className="text-xs">Kartu Stok (Bin Card)</span>
             </div>
-            <p className="text-[11px] text-slate-500 line-clamp-1">Kartu gantung mutasi fisik rak</p>
+            <p className="text-[11px] text-[#5a6860] line-clamp-1">Kartu gantung mutasi fisik rak</p>
           </button>
 
           <button
             onClick={() => setActiveForm('KITCHEN_REQUISITION')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
               activeForm === 'KITCHEN_REQUISITION'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-xs'
-                : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100 text-slate-700'
+                ? 'bg-[#ecf7f0] border-[#c2e7cf] text-[#0c3123] shadow-xs font-semibold'
+                : 'bg-[#faf8f4] border-[#ded7c8] hover:bg-[#ede7da] text-[#111915]'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <UtensilsCrossed className="w-4 h-4 text-emerald-700" />
-              <span className="text-xs font-semibold">Bon Permintaan Dapur</span>
+              <UtensilsCrossed className="w-4 h-4 text-[#0c3123]" />
+              <span className="text-xs">Bon Permintaan Dapur</span>
             </div>
-            <p className="text-[11px] text-slate-500 line-clamp-1">Pengeluaran harian porsi masak</p>
+            <p className="text-[11px] text-[#5a6860] line-clamp-1">Pengeluaran harian porsi masak</p>
           </button>
 
           <button
             onClick={() => setActiveForm('EQUIPMENT_LABEL')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
               activeForm === 'EQUIPMENT_LABEL'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-xs'
-                : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100 text-slate-700'
+                ? 'bg-[#ecf7f0] border-[#c2e7cf] text-[#0c3123] shadow-xs font-semibold'
+                : 'bg-[#faf8f4] border-[#ded7c8] hover:bg-[#ede7da] text-[#111915]'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <Tags className="w-4 h-4 text-emerald-700" />
-              <span className="text-xs font-semibold">Label & QR Gudang / Aset</span>
+              <Tags className="w-4 h-4 text-[#0c3123]" />
+              <span className="text-xs">Label & QR Gudang / Aset</span>
             </div>
-            <p className="text-[11px] text-slate-500 line-clamp-1">Stiker barang & aset kering/basah</p>
+            <p className="text-[11px] text-[#5a6860] line-clamp-1">Stiker barang & aset kering/basah</p>
           </button>
 
           <button
             onClick={() => setActiveForm('RACK_LABEL')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
               activeForm === 'RACK_LABEL'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-xs'
-                : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100 text-slate-700'
+                ? 'bg-[#ecf7f0] border-[#c2e7cf] text-[#0c3123] shadow-xs font-semibold'
+                : 'bg-[#faf8f4] border-[#ded7c8] hover:bg-[#ede7da] text-[#111915]'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <Warehouse className="w-4 h-4 text-emerald-700" />
-              <span className="text-xs font-semibold">Label Rak Gudang</span>
+              <Warehouse className="w-4 h-4 text-[#0c3123]" />
+              <span className="text-xs">Label Rak Gudang</span>
             </div>
-            <p className="text-[11px] text-slate-500 line-clamp-1">Plakat rak fisik, daftar isi item & pembeda basah/kering</p>
+            <p className="text-[11px] text-[#5a6860] line-clamp-1">Plakat rak fisik, daftar isi & pembeda</p>
           </button>
 
           <button
             onClick={() => setActiveForm('SUPPLIER_EXPENSE_NOTE')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
               activeForm === 'SUPPLIER_EXPENSE_NOTE'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-xs'
-                : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100 text-slate-700'
+                ? 'bg-[#ecf7f0] border-[#c2e7cf] text-[#0c3123] shadow-xs font-semibold'
+                : 'bg-[#faf8f4] border-[#ded7c8] hover:bg-[#ede7da] text-[#111915]'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <Receipt className="w-4 h-4 text-emerald-700" />
-              <span className="text-xs font-semibold">Nota Kas Keluar</span>
+              <Receipt className="w-4 h-4 text-[#0c3123]" />
+              <span className="text-xs">Nota Kas Keluar</span>
             </div>
-            <p className="text-[11px] text-slate-500 line-clamp-1">Kop resmi & bukti bayar supplier</p>
+            <p className="text-[11px] text-[#5a6860] line-clamp-1">Kop resmi & bukti bayar supplier</p>
           </button>
         </div>
 
         {/* Contextual Customizer Controls */}
-        <div className="mt-5 p-4 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 text-xs">
+        <div className="mt-5 p-4 rounded-xl bg-[#faf8f4] border border-[#ded7c8] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 text-xs">
           {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' ? (
             <>
               <div>

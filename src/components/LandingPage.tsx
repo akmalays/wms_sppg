@@ -1,9 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import logoSppgImg from '../assets/logo sppg.png';
 import trayImg1 from '../assets/tray_sample_1.jpg';
 import trayImg2 from '../assets/tray_double_1.jpg';
 import trayImg3 from '../assets/tray_double_2.jpg';
 import posterMenuImg from '../assets/poster-single.jpg';
+import {
+  getWebsiteConfig,
+  fetchWebsiteConfigFromCloud,
+  WEBSITE_CONFIG_UPDATED_EVENT,
+  WebsiteConfig
+} from '../db/websiteConfigStorage';
 import {
   Lock,
   ArrowRight,
@@ -26,10 +32,15 @@ import {
   FileCheck,
   Check,
   ChevronRight,
+  ChevronLeft,
   Sparkles,
   Award,
   ChevronDown,
-  Info
+  Info,
+  Play,
+  Pause,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 export interface LandingPageProps {
@@ -112,6 +123,41 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   staffName
 }) => {
   const [selectedTraySection, setSelectedTraySection] = useState<TraySectionInfo>(TRAY_SECTIONS[0]);
+  const [config, setConfig] = useState<WebsiteConfig>(getWebsiteConfig);
+  const [isMuted, setIsMuted] = useState(true);
+  const [currentMenuSlide, setCurrentMenuSlide] = useState(0);
+  const [isMenuPaused, setIsMenuPaused] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Sinkronisasi otomatis saat konfigurasi diubah di dashboard CMS dan ambil data cloud
+  useEffect(() => {
+    const handleConfigUpdate = () => {
+      setConfig(getWebsiteConfig());
+    };
+    window.addEventListener(WEBSITE_CONFIG_UPDATED_EVENT, handleConfigUpdate);
+
+    // Tarik pembaruan konfigurasi dari Cloud Supabase di latar belakang
+    fetchWebsiteConfigFromCloud().then(result => {
+      if (result.fromCloud) {
+        setConfig(result.config);
+      }
+    });
+
+    return () => window.removeEventListener(WEBSITE_CONFIG_UPDATED_EVENT, handleConfigUpdate);
+  }, []);
+
+  // Timer Auto-Slide untuk Seksi Foto Menu
+  useEffect(() => {
+    const slides = config.menuSlider.slides;
+    if (!config.menuSlider.autoSlide || isMenuPaused || slides.length <= 1) return;
+
+    const intervalTime = Math.max(2, config.menuSlider.intervalSeconds || 4) * 1000;
+    const timer = setInterval(() => {
+      setCurrentMenuSlide(prev => (prev + 1) % slides.length);
+    }, intervalTime);
+
+    return () => clearInterval(timer);
+  }, [config.menuSlider.autoSlide, config.menuSlider.intervalSeconds, isMenuPaused, config.menuSlider.slides.length]);
 
   return (
     <div className="min-h-screen bg-[#faf8f4] text-[#1c2420] font-sans selection:bg-[#d8eedf] selection:text-[#0c3123] antialiased">
@@ -185,15 +231,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           {/* Navigasi Seksi Publik */}
-          <nav className="hidden lg:flex items-center gap-7 text-xs font-semibold text-[#44534a]">
+          <nav className="hidden lg:flex items-center gap-6 text-xs font-semibold text-[#44534a]">
+            <a href="#siklus-menu" className="hover:text-[#0c3123] transition-colors">
+              Siklus Menu MBG
+            </a>
             <a href="#eksplorasi-nampan" className="hover:text-[#0c3123] transition-colors">
-              Eksplorasi Nampan MBG
+              Eksplorasi Nampan
             </a>
             <a href="#alur-pagi" className="hover:text-[#0c3123] transition-colors">
               Rantai Waktu 04.00
             </a>
-            <a href="#spesifikasi-gizi" className="hover:text-[#0c3123] transition-colors">
-              Standar Porsi
+            <a href="#kajian-visual" className="hover:text-[#0c3123] transition-colors">
+              Kajian Visual
             </a>
             <a href="#pemasok-malang" className="hover:text-[#0c3123] transition-colors">
               Pemasok Desa
@@ -227,82 +276,161 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </header>
 
-      {/* 4. Hero Section: Editorial Headline dengan Narasi Kuat */}
-      <section className="relative overflow-hidden pt-14 pb-16 lg:pt-20 lg:pb-24 border-b border-[#e5dfd3]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* 4. Hero Section: Editorial Headline dengan Video Latar Belakang Sinematik */}
+      <section className="relative overflow-hidden pt-16 pb-16 lg:pt-24 lg:pb-28 border-b border-[#e5dfd3]">
+        {/* Background Video atau Pola Alam */}
+        {config.hero.backgroundType === 'video' && config.hero.videoUrl ? (
+          <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+            <video
+              ref={videoRef}
+              key={config.hero.videoUrl}
+              autoPlay
+              loop
+              muted={isMuted}
+              playsInline
+              poster={config.hero.videoPoster || trayImg1}
+              className="w-full h-full object-cover object-center filter brightness-[0.7] contrast-[1.05]"
+            >
+              <source src={config.hero.videoUrl} type="video/mp4" />
+            </video>
+            {/* Lapisan Gradient Tint Berlapis untuk Keterbacaan Sempurna */}
+            <div
+              className="absolute inset-0 bg-gradient-to-r from-[#0c2217]/95 via-[#0d261a]/85 to-[#081710]/75"
+              style={{ opacity: config.hero.videoOverlayOpacity }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#091811] via-transparent to-[#0a1b13]/60" />
+          </div>
+        ) : (
+          <div className="absolute inset-0 z-0 bg-[#faf8f4]" />
+        )}
+
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-14 items-center">
             {/* Narasi Utama */}
             <div className="lg:col-span-7 space-y-6">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#f1ebe0] text-[#344139] border border-[#ded5c5] text-xs font-medium">
-                <Building2 className="w-3.5 h-3.5 text-[#0c3123]" />
-                <span>Satuan Pelayanan Pemenuhan Gizi Kabupaten Malang</span>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md backdrop-blur-md text-xs font-medium border border-white/20 bg-white/10 text-emerald-200">
+                <Building2 className="w-3.5 h-3.5 text-emerald-300" />
+                <span>{config.hero.heroBadge}</span>
               </div>
 
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#111915] font-serif-display leading-[1.15] tracking-tight">
-                Ketertelusuran Rantai Pangan & Standar Gizi Harian untuk Generasi Penerus
+              <h1 className={`text-3xl sm:text-4xl lg:text-5xl font-bold font-serif-display leading-[1.15] tracking-tight ${
+                config.hero.backgroundType === 'video' ? 'text-white drop-shadow-sm' : 'text-[#111915]'
+              }`}>
+                {config.hero.heroTitle}
               </h1>
 
-              <p className="text-base text-[#4a5850] leading-relaxed max-w-2xl">
-                Dari penimbangan bahan segar petani lokal Tumpang pada pukul 04.00 pagi, pengolahan dapur bersuhu terkontrol, hingga distribusi wadah bersekat SUS 304 sebelum bel istirahat sekolah berbunyi.
+              <p className={`text-base leading-relaxed max-w-2xl ${
+                config.hero.backgroundType === 'video' ? 'text-slate-200 drop-shadow-2xs' : 'text-[#4a5850]'
+              }`}>
+                {config.hero.heroSubtitle}
               </p>
 
               {/* Tombol Aksi Publik */}
               <div className="flex flex-wrap items-center gap-3.5 pt-2">
                 <a
-                  href="#eksplorasi-nampan"
-                  className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl text-xs sm:text-sm font-semibold text-white bg-[#0c3123] hover:bg-[#134431] active:bg-[#071f16] transition-all cursor-pointer shadow-xs"
+                  href={config.hero.primaryCtaLink || '#siklus-menu'}
+                  className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl text-xs sm:text-sm font-semibold text-white bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 transition-all cursor-pointer shadow-lg border border-emerald-500/30"
                 >
-                  <span>Lihat Standar Nampan 5 Sekat</span>
-                  <ChevronRight className="w-4 h-4 text-[#86efac]" />
+                  <span>{config.hero.primaryCtaText || 'Lihat Siklus Menu MBG'}</span>
+                  <ChevronRight className="w-4 h-4 text-emerald-200" />
                 </a>
 
                 <a
-                  href="#alur-pagi"
-                  className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl text-xs sm:text-sm font-semibold text-[#25322b] bg-white hover:bg-[#f2ece1] border border-[#d8d0c0] transition-colors"
+                  href={config.hero.secondaryCtaLink || '#alur-pagi'}
+                  className={`inline-flex items-center gap-2 px-5 py-3.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors border ${
+                    config.hero.backgroundType === 'video'
+                      ? 'bg-white/15 hover:bg-white/25 text-white border-white/30 backdrop-blur-md'
+                      : 'bg-white hover:bg-[#f2ece1] text-[#25322b] border-[#d8d0c0]'
+                  }`}
                 >
-                  <Clock className="w-4 h-4 text-[#0c3123]" />
-                  <span>Alur Operasional 04.00 WIB</span>
+                  <Clock className="w-4 h-4 text-emerald-300" />
+                  <span>{config.hero.secondaryCtaText || 'Alur Operasional 04.00 WIB'}</span>
                 </a>
+
+                {/* Tombol Kontrol Suara Video (jika video aktif) */}
+                {config.hero.backgroundType === 'video' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (videoRef.current) {
+                        videoRef.current.muted = !videoRef.current.muted;
+                        setIsMuted(videoRef.current.muted);
+                      }
+                    }}
+                    title={isMuted ? 'Nyalakan audio video latar' : 'Bisukan audio video latar'}
+                    className="inline-flex items-center gap-1.5 px-3 py-3.5 rounded-xl bg-black/40 hover:bg-black/60 text-white text-xs font-medium border border-white/20 backdrop-blur-md transition-colors cursor-pointer"
+                  >
+                    {isMuted ? <VolumeX className="w-4 h-4 text-slate-300" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+                    <span className="hidden sm:inline">{isMuted ? 'Suara Hening' : 'Suara Aktif'}</span>
+                  </button>
+                )}
               </div>
 
               {/* Nilai Utama Rantai Pasok */}
-              <div className="pt-6 border-t border-[#e8e2d6] grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-[#44534a]">
+              <div className={`pt-6 border-t grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs ${
+                config.hero.backgroundType === 'video'
+                  ? 'border-white/15 text-slate-200'
+                  : 'border-[#e8e2d6] text-[#44534a]'
+              }`}>
                 <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#0c3123]" />
-                  <span className="font-semibold text-[#1c2420]">100% Timbangan Riil</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span className={`font-semibold ${config.hero.backgroundType === 'video' ? 'text-white' : 'text-[#1c2420]'}`}>
+                    100% Timbangan Riil
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#0c3123]" />
-                  <span className="font-semibold text-[#1c2420]">Wadah SUS 304 Food-Grade</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span className={`font-semibold ${config.hero.backgroundType === 'video' ? 'text-white' : 'text-[#1c2420]'}`}>
+                    Wadah SUS 304 Food-Grade
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#0c3123]" />
-                  <span className="font-semibold text-[#1c2420]">Zero Organic Waste</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span className={`font-semibold ${config.hero.backgroundType === 'video' ? 'text-white' : 'text-[#1c2420]'}`}>
+                    Zero Organic Waste
+                  </span>
                 </div>
               </div>
             </div>
 
             {/* Visual Nyata Makanan & Lembar Data */}
             <div className="lg:col-span-5">
-              <div className="bg-white rounded-2xl p-3.5 border border-[#ded7c8] shadow-sm">
-                <div className="relative overflow-hidden rounded-xl bg-slate-900 aspect-4/3 border border-[#ded7c8]">
+              <div className={`rounded-2xl p-3.5 border shadow-xl backdrop-blur-md ${
+                config.hero.backgroundType === 'video'
+                  ? 'bg-slate-900/80 border-slate-700/80'
+                  : 'bg-white border-[#ded7c8]'
+              }`}>
+                <div className="relative overflow-hidden rounded-xl bg-slate-950 aspect-4/3 border border-slate-700/60 shadow-inner">
                   <img
                     src={trayImg1}
                     alt="Standar sajian nampan makan bergizi gratis SPPG Jeru"
                     className="w-full h-full object-cover object-center"
                   />
-                  <div className="absolute top-3 left-3 bg-[#111915]/90 text-white text-[11px] font-medium px-2.5 py-1 rounded-md border border-slate-700 flex items-center gap-1.5">
+                  <div className="absolute top-3 left-3 bg-[#111915]/90 text-white text-[11px] font-medium px-2.5 py-1 rounded-md border border-slate-700 flex items-center gap-1.5 shadow-sm">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#4ade80]" />
                     <span>Dokumentasi Lapangan Nyata</span>
                   </div>
+                  {config.hero.backgroundType === 'video' && (
+                    <div className="absolute bottom-3 right-3 bg-black/75 text-emerald-300 text-[10px] font-mono font-semibold px-2 py-0.5 rounded border border-emerald-500/30">
+                      Live Feed Video Background
+                    </div>
+                  )}
                 </div>
 
-                <div className="mt-3.5 p-3 rounded-lg bg-[#f7f4ec] border border-[#e8e2d4] space-y-1">
+                <div className={`mt-3.5 p-3 rounded-lg border space-y-1 ${
+                  config.hero.backgroundType === 'video'
+                    ? 'bg-slate-800/90 border-slate-700 text-slate-200'
+                    : 'bg-[#f7f4ec] border-[#e8e2d4]'
+                }`}>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-[#141d18]">Sajian Porsi Lengkap MBG</span>
-                    <span className="font-mono text-[11px] text-[#0c3123] font-bold">AKG 1/3 Harian</span>
+                    <span className={`font-bold ${config.hero.backgroundType === 'video' ? 'text-white' : 'text-[#141d18]'}`}>
+                      Sajian Porsi Lengkap MBG
+                    </span>
+                    <span className="font-mono text-[11px] text-emerald-400 font-bold">AKG 1/3 Harian</span>
                   </div>
-                  <p className="text-[11px] text-[#55645c] leading-relaxed">
+                  <p className={`text-[11px] leading-relaxed ${
+                    config.hero.backgroundType === 'video' ? 'text-slate-300' : 'text-[#55645c]'
+                  }`}>
                     Nasi pulen, ayam ungkep rempah, tempe bacem kedelai lokal, sayur sop segar, buah semangka, dan susu pasteurisasi.
                   </p>
                 </div>
@@ -364,6 +492,205 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* 5.5. Seksi Interaktif: Siklus Menu Makanan Bergizi & Auto-Slide Carousel */}
+      <section
+        id="siklus-menu"
+        className="py-16 lg:py-22 bg-[#f6f2e8] border-b border-[#e5dfd3] relative overflow-hidden"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Header Seksi */}
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+            <div className="max-w-3xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#ecf7f0] text-[#0c3123] border border-[#c4e5ce] text-xs font-semibold mb-2">
+                <UtensilsCrossed className="w-3.5 h-3.5 text-[#0c3123]" />
+                <span>{config.menuSlider.sectionBadge || 'Siklus Pangan Bergizi'}</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-serif-display text-[#111915] leading-tight">
+                {config.menuSlider.sectionTitle || 'Koleksi Foto Menu & Siklus Porsi Gizi MBG'}
+              </h2>
+              <p className="text-sm text-[#4d5c53] mt-2.5 leading-relaxed">
+                {config.menuSlider.sectionSubtitle || 'Variasi olahan makanan harian yang dirotasi secara berkala guna mencukupi kebutuhan energi, protein hewani, protein nabati, dan mikronutrien anak sekolah.'}
+              </p>
+            </div>
+
+            {/* Kontrol Auto-Slide & Navigasi Cepat */}
+            <div className="flex items-center gap-3 shrink-0">
+              {config.menuSlider.autoSlide && (
+                <button
+                  type="button"
+                  onClick={() => setIsMenuPaused(!isMenuPaused)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-[#ded7c8] text-xs font-semibold text-[#0c3123] hover:bg-[#fcfbf9] transition-colors cursor-pointer shadow-2xs"
+                  title={isMenuPaused ? 'Lanjutkan putar otomatis' : 'Jeda putar otomatis'}
+                >
+                  {isMenuPaused ? <Play className="w-3.5 h-3.5 text-emerald-700" /> : <Pause className="w-3.5 h-3.5 text-amber-700" />}
+                  <span>{isMenuPaused ? 'Lanjut Putar' : `Auto-Slide (${config.menuSlider.intervalSeconds}s)`}</span>
+                </button>
+              )}
+
+              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-[#ded7c8] shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const total = config.menuSlider.slides.length;
+                    setCurrentMenuSlide(prev => (prev - 1 + total) % total);
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-[#f2ece1] text-[#0c3123] transition-colors cursor-pointer"
+                  title="Menu Sebelumnya"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-xs font-mono font-bold px-2 text-[#2d3b32]">
+                  {currentMenuSlide + 1} / {config.menuSlider.slides.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const total = config.menuSlider.slides.length;
+                    setCurrentMenuSlide(prev => (prev + 1) % total);
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-[#f2ece1] text-[#0c3123] transition-colors cursor-pointer"
+                  title="Menu Berikutnya"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Tab Filter Hari Cepat */}
+          <div className="flex flex-wrap items-center gap-2 mb-6">
+            {config.menuSlider.slides.map((s, idx) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setCurrentMenuSlide(idx)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  currentMenuSlide === idx
+                    ? 'bg-[#0c3123] text-white shadow-xs'
+                    : 'bg-white text-[#44534a] border border-[#ded7c8] hover:bg-[#fbf9f5]'
+                }`}
+              >
+                <span>{s.day}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                  currentMenuSlide === idx ? 'bg-emerald-800 text-emerald-200' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  #{idx + 1}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Kartu Utama Slide Menu Terpilih */}
+          {(() => {
+            const slide = config.menuSlider.slides[currentMenuSlide] || config.menuSlider.slides[0];
+            if (!slide) return null;
+
+            return (
+              <div
+                onMouseEnter={() => {
+                  if (config.menuSlider.pauseOnHover) setIsMenuPaused(true);
+                }}
+                onMouseLeave={() => {
+                  if (config.menuSlider.pauseOnHover) setIsMenuPaused(false);
+                }}
+                className="bg-white rounded-3xl border border-[#ded7c8] shadow-md overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-0 transition-all"
+              >
+                {/* Kolom Kiri: Foto Sajian Menu Resolusi Tinggi */}
+                <div className="lg:col-span-7 relative bg-slate-950 aspect-4/3 lg:aspect-auto overflow-hidden group">
+                  <img
+                    key={slide.imageUrl}
+                    src={slide.imageUrl}
+                    alt={slide.title}
+                    className="w-full h-full object-cover object-center transition-all duration-500 group-hover:scale-102"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+
+                  {/* Badges Atas */}
+                  <div className="absolute top-4 left-4 flex flex-wrap items-center gap-2">
+                    <span className="bg-[#0c3123]/90 backdrop-blur-md text-white text-xs font-bold px-3 py-1 rounded-lg border border-emerald-600/40 shadow-xs">
+                      {slide.day}
+                    </span>
+                    <span className="bg-white/90 backdrop-blur-md text-[#0c3123] text-xs font-semibold px-2.5 py-1 rounded-lg shadow-xs">
+                      {slide.category}
+                    </span>
+                  </div>
+
+                  <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white text-xs">
+                    <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-3 py-1 rounded-lg border border-white/20">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                      <span className="font-medium font-mono text-[11px]">{slide.calories}</span>
+                    </div>
+
+                    {slide.targetGrams && (
+                      <div className="bg-black/60 backdrop-blur-md px-3 py-1 rounded-lg border border-white/20 font-mono text-[11px]">
+                        Target Porsi: {slide.targetGrams}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Kolom Kanan: Rincian Resep & Spesifikasi Gizi */}
+                <div className="lg:col-span-5 p-6 sm:p-8 flex flex-col justify-between space-y-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#0c3123] uppercase tracking-wider">
+                        Spesifikasi Porsi Harian
+                      </span>
+                      <span className="text-xs font-mono text-slate-500 font-medium">
+                        Slide {currentMenuSlide + 1} dari {config.menuSlider.slides.length}
+                      </span>
+                    </div>
+
+                    <h3 className="text-xl sm:text-2xl font-bold font-serif-display text-[#111915] leading-snug">
+                      {slide.title}
+                    </h3>
+
+                    <div className="p-3.5 rounded-xl bg-[#faf8f4] border border-[#e8e2d4] space-y-2">
+                      <div className="text-xs font-bold text-[#141d18]">Komponen Sajian Terpadu:</div>
+                      <p className="text-xs text-[#4d5c53] leading-relaxed">
+                        {slide.description}
+                      </p>
+                    </div>
+
+                    {slide.allergens && (
+                      <div className="flex items-center gap-2 text-xs text-[#0c3123] font-medium bg-[#ecf7f0] p-2.5 rounded-lg border border-[#c4e5ce]">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>{slide.allergens}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Indikator Titik Progress Slide */}
+                  <div className="pt-4 border-t border-[#eee8dc] flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      {config.menuSlider.slides.map((_, dotIdx) => (
+                        <button
+                          key={dotIdx}
+                          type="button"
+                          onClick={() => setCurrentMenuSlide(dotIdx)}
+                          className={`h-2 rounded-full transition-all cursor-pointer ${
+                            currentMenuSlide === dotIdx ? 'w-7 bg-[#0c3123]' : 'w-2 bg-[#ded7c8] hover:bg-[#8e9d95]'
+                          }`}
+                          title={`Buka slide ${dotIdx + 1}`}
+                        />
+                      ))}
+                    </div>
+
+                    <a
+                      href="#eksplorasi-nampan"
+                      className="inline-flex items-center gap-1 text-xs font-bold text-[#0c3123] hover:underline"
+                    >
+                      <span>Lihat Gramatur Detail Nampan</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </section>
 
@@ -606,69 +933,56 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
-      {/* 8. Galeri Dokumentasi Fotografi Nyata */}
-      <section className="py-16 lg:py-20 bg-[#faf8f4] border-b border-[#e5dfd3]">
+      {/* 8. Galeri Dokumentasi Fotografi Nyata (Kajian Visual) */}
+      <section id="kajian-visual" className="py-16 lg:py-20 bg-[#faf8f4] border-b border-[#e5dfd3]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-3xl mb-12">
             <div className="text-xs font-bold text-[#0c3123] uppercase tracking-wider">
-              Dokumentasi Arsip Unit
+              {config.visualStudy.sectionBadge || 'Dokumentasi Arsip Unit'}
             </div>
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-serif-display text-[#111915] mt-1 leading-tight">
-              Kajian Visual Sajian Makanan di Lapangan
+              {config.visualStudy.sectionTitle || 'Kajian Visual Sajian Makanan di Lapangan'}
             </h2>
             <p className="text-sm text-[#4d5c53] mt-3 leading-relaxed">
-              Foto riil dari fasilitas dapur dan persiapan penyajian SPPG MLG TUMPANG JERU.
+              {config.visualStudy.sectionSubtitle || 'Foto riil dari fasilitas dapur dan persiapan penyajian SPPG MLG TUMPANG JERU.'}
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white rounded-2xl p-3 border border-[#ded7c8] shadow-xs">
-              <div className="aspect-4/3 rounded-xl overflow-hidden bg-slate-900 border border-[#ded7c8]">
-                <img
-                  src={trayImg1}
-                  alt="Nampan saji tampak atas"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="p-3">
-                <div className="text-xs font-bold text-[#141d18]">Inspeksi Nampan 5 Sekat</div>
-                <p className="text-[11px] text-[#55645c] mt-1">
-                  Pemisahan higienis antar lauk tanpa risiko bercampur kuah.
-                </p>
-              </div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {config.visualStudy.items.map((item) => (
+              <div key={item.id} className="bg-white rounded-2xl p-3 border border-[#ded7c8] shadow-xs flex flex-col justify-between hover:border-[#0c3123] transition-colors group">
+                <div>
+                  <div className="aspect-4/3 rounded-xl overflow-hidden bg-slate-900 border border-[#ded7c8] relative">
+                    <img
+                      src={item.imageUrl}
+                      alt={item.title}
+                      className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
+                    />
+                    {item.badge && (
+                      <div className="absolute top-2.5 left-2.5 bg-[#0c3123]/90 text-white text-[10px] font-semibold px-2 py-0.5 rounded shadow-xs">
+                        {item.badge}
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-3">
+                    <div className="text-[10px] font-bold text-[#0c3123] uppercase tracking-wide">
+                      {item.category}
+                    </div>
+                    <div className="text-sm font-bold text-[#141d18] mt-0.5">{item.title}</div>
+                    <p className="text-[11px] text-[#55645c] mt-1 leading-relaxed">
+                      {item.description}
+                    </p>
+                  </div>
+                </div>
 
-            <div className="bg-white rounded-2xl p-3 border border-[#ded7c8] shadow-xs">
-              <div className="aspect-4/3 rounded-xl overflow-hidden bg-slate-900 border border-[#ded7c8]">
-                <img
-                  src={trayImg2}
-                  alt="Sepasang nampan saji siap kirim"
-                  className="w-full h-full object-cover"
-                />
+                {item.date && (
+                  <div className="px-3 pb-2 pt-1 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
+                    <span>{item.date}</span>
+                    <span className="text-emerald-700 font-medium">Terverifikasi Tim QC</span>
+                  </div>
+                )}
               </div>
-              <div className="p-3">
-                <div className="text-xs font-bold text-[#141d18]">Kesiapan Wadah Ganda</div>
-                <p className="text-[11px] text-[#55645c] mt-1">
-                  Penimbangan gramatur presisi sebelum dimasukkan ke boks insulasi.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-3 border border-[#ded7c8] shadow-xs">
-              <div className="aspect-4/3 rounded-xl overflow-hidden bg-slate-900 border border-[#ded7c8]">
-                <img
-                  src={trayImg3}
-                  alt="Dokumentasi nampan ganda standar higienis"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="p-3">
-                <div className="text-xs font-bold text-[#141d18]">Penataan Warna & Selera Makan</div>
-                <p className="text-[11px] text-[#55645c] mt-1">
-                  Kombinasi warna alami sayur dan buah untuk mendorong minat makan anak.
-                </p>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </section>

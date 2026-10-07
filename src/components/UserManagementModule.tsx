@@ -275,19 +275,19 @@ export const UserManagementModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner / Header */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-2xs">
+      <div className="bg-white rounded-xl border border-[#ded7c8] p-5 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="p-1.5 rounded-lg bg-[#ecf7f0] text-[#0c3123] border border-[#c2e7cf]">
                 <Users className="w-5 h-5" />
               </span>
-              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                Manajemen Petugas & Buat User Baru
+              <h1 className="font-serif-display text-xl sm:text-2xl font-bold text-[#111915] tracking-tight">
+                Manajemen Petugas & Akun Pengguna
               </h1>
             </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Satuan Pelayanan Pemenuhan Gizi (SPPG) MLG TUMPANG JERU, Kab. Malang. Kelola hak akses dan penugasan operasional staf.
+            <p className="text-xs text-[#5a6860] mt-1">
+              Satuan Pelayanan Pemenuhan Gizi (SPPG) MLG TUMPANG JERU, Kab. Malang. Kelola hak akses, perizinan, dan penugasan operasional staf.
             </p>
           </div>
 
@@ -296,21 +296,21 @@ export const UserManagementModule: React.FC = () => {
             <button
               type="button"
               onClick={handleExportUsers}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 transition-all cursor-pointer shadow-2xs"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-[#111915] bg-white hover:bg-[#faf8f4] border border-[#ded7c8] transition-all cursor-pointer shadow-xs"
               title="Ekspor seluruh akun petugas ke file JSON"
             >
-              <Download className="w-3.5 h-3.5 text-slate-500" />
+              <Download className="w-3.5 h-3.5 text-[#5a6860]" />
               <span>Ekspor Data User</span>
             </button>
 
-            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg border border-slate-200">
+            <div className="flex items-center gap-1 p-1 bg-[#ede7da] rounded-lg border border-[#ded7c8]">
               <button
                 type="button"
                 onClick={() => setActiveTab('LIST')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
                   activeTab === 'LIST'
-                    ? 'bg-white text-emerald-800 shadow-2xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-[#0c3123] text-white shadow-xs'
+                    : 'text-[#44534a] hover:text-[#0c3123]'
                 }`}
               >
                 <Users className="w-3.5 h-3.5" />
@@ -323,10 +323,10 @@ export const UserManagementModule: React.FC = () => {
                   setActiveTab('CREATE');
                   setFeedbackMessage(null);
                 }}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
                   activeTab === 'CREATE'
-                    ? 'bg-emerald-700 text-white shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-[#0c3123] text-white shadow-xs'
+                    : 'text-[#44534a] hover:text-[#0c3123]'
                 }`}
               >
                 <UserPlus className="w-3.5 h-3.5" />
@@ -337,26 +337,26 @@ export const UserManagementModule: React.FC = () => {
         </div>
 
         {/* Quick Stats Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-4 border-t border-slate-100">
-          <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-            <div className="text-[11px] text-slate-500 font-medium">Total Akun Petugas</div>
-            <div className="text-lg font-bold text-slate-800 mt-0.5">{users.length} Orang</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-4 border-t border-[#eee8dc]">
+          <div className="p-3 rounded-lg bg-[#faf8f4] border border-[#ded7c8]">
+            <div className="text-[11px] text-[#5a6860] font-medium">Total Akun Petugas</div>
+            <div className="font-serif-display text-lg font-bold text-[#111915] mt-0.5">{users.length} Orang</div>
           </div>
-          <div className="p-3 rounded-lg bg-emerald-50/60 border border-emerald-100">
-            <div className="text-[11px] text-emerald-700 font-medium">Ka SPPG & Admin</div>
-            <div className="text-lg font-bold text-emerald-900 mt-0.5">
+          <div className="p-3 rounded-lg bg-[#ecf7f0] border border-[#c2e7cf]">
+            <div className="text-[11px] text-[#0c3123] font-medium">Ka SPPG & Admin</div>
+            <div className="font-serif-display text-lg font-bold text-[#0c3123] mt-0.5">
               {users.filter(u => u.role === 'KA_SPPG' || u.role === 'ADMIN').length} Orang
             </div>
           </div>
-          <div className="p-3 rounded-lg bg-amber-50/60 border border-amber-100">
-            <div className="text-[11px] text-amber-700 font-medium">Asisten Lapangan (QC)</div>
-            <div className="text-lg font-bold text-amber-900 mt-0.5">
+          <div className="p-3 rounded-lg bg-[#fbf5ee] border border-[#ebdcc9]">
+            <div className="text-[11px] text-[#8a4a12] font-medium">Asisten Lapangan (QC)</div>
+            <div className="font-serif-display text-lg font-bold text-[#8a4a12] mt-0.5">
               {users.filter(u => u.role === 'ASLAP').length} Orang
             </div>
           </div>
-          <div className="p-3 rounded-lg bg-teal-50/60 border border-teal-100">
-            <div className="text-[11px] text-teal-700 font-medium">Akuntan & Finance</div>
-            <div className="text-lg font-bold text-teal-900 mt-0.5">
+          <div className="p-3 rounded-lg bg-[#f0f9f8] border border-[#bce3de]">
+            <div className="text-[11px] text-[#0e5c54] font-medium">Akuntan & Finance</div>
+            <div className="font-serif-display text-lg font-bold text-[#0e5c54] mt-0.5">
               {users.filter(u => u.role === 'AKUNTAN').length} Orang
             </div>
           </div>
@@ -641,12 +641,12 @@ export const UserManagementModule: React.FC = () => {
       {/* TAB 2: DAFTAR USER TERDAFTAR */}
       {/* ========================================================================= */}
       {activeTab === 'LIST' && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+        <div className="bg-white rounded-xl border border-[#ded7c8] shadow-xs overflow-hidden">
           {/* Filter Bar */}
-          <div className="p-4 border-b border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="p-4 border-b border-[#ded7c8] bg-[#faf8f4] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             {/* Search Input */}
             <div className="relative flex-1 max-w-md">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#5a6860]">
                 <Search className="w-4 h-4" />
               </div>
               <input
@@ -654,7 +654,7 @@ export const UserManagementModule: React.FC = () => {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Cari berdasarkan nama, email dinas, atau NIP..."
-                className="w-full pl-9 pr-3.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 focus:border-emerald-600 bg-white text-slate-800"
+                className="w-full pl-9 pr-3.5 py-1.5 text-xs rounded-lg border border-[#ded7c8] focus:outline-none focus:ring-1 focus:ring-[#0c3123] focus:border-[#0c3123] bg-white text-[#111915]"
               />
             </div>
 
@@ -663,7 +663,7 @@ export const UserManagementModule: React.FC = () => {
               <select
                 value={selectedRoleFilter}
                 onChange={e => setSelectedRoleFilter(e.target.value)}
-                className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-600 cursor-pointer"
+                className="px-3 py-1.5 text-xs rounded-lg border border-[#ded7c8] bg-white text-[#111915] focus:outline-none focus:ring-1 focus:ring-[#0c3123] cursor-pointer"
               >
                 <option value="ALL">Semua Peran ({users.length})</option>
                 <option value="SUPERADMIN">Superadmin</option>
@@ -679,7 +679,7 @@ export const UserManagementModule: React.FC = () => {
                   setActiveTab('CREATE');
                   setFeedbackMessage(null);
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 transition-colors shadow-2xs cursor-pointer shrink-0"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-[#0c3123] hover:bg-[#155e42] transition-colors shadow-xs cursor-pointer shrink-0"
               >
                 <UserPlus className="w-3.5 h-3.5" />
                 <span>+ Buat User Baru</span>
@@ -690,7 +690,7 @@ export const UserManagementModule: React.FC = () => {
           {/* Table of Users */}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+              <thead className="bg-[#fbf9f5] border-b border-[#ded7c8] text-[#44534a] font-semibold">
                 <tr>
                   <th className="py-3 px-4">Petugas</th>
                   <th className="py-3 px-4">Peran & Otorisasi</th>
@@ -699,10 +699,10 @@ export const UserManagementModule: React.FC = () => {
                   <th className="py-3 px-4 text-right">Tindakan</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#eee8dc]">
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-slate-500">
+                    <td colSpan={5} className="py-8 text-center text-[#5a6860]">
                       Tidak ada petugas yang cocok dengan kata kunci atau filter peran ini.
                     </td>
                   </tr>
@@ -712,23 +712,23 @@ export const UserManagementModule: React.FC = () => {
                     const isSelf = user.id === currentUser.id;
 
                     return (
-                      <tr key={user.id} className="hover:bg-slate-50/80 transition-colors">
+                      <tr key={user.id} className="hover:bg-[#faf8f4] transition-colors">
                         {/* Petugas Name & Email */}
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs shrink-0">
+                            <div className="w-8 h-8 rounded-lg bg-[#ecf7f0] text-[#0c3123] flex items-center justify-center font-bold text-xs shrink-0 border border-[#c2e7cf]">
                               {user.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
                             </div>
                             <div>
-                              <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                              <div className="font-semibold text-[#111915] flex items-center gap-1.5">
                                 <span>{user.name}</span>
                                 {isSelf && (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800">
+                                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-[#ecf7f0] text-[#0c3123] border border-[#c2e7cf]">
                                     Anda
                                   </span>
                                 )}
                               </div>
-                              <div className="text-[11px] text-slate-500">{user.email}</div>
+                              <div className="text-[11px] text-[#5a6860] font-mono">{user.email}</div>
                             </div>
                           </div>
                         </td>

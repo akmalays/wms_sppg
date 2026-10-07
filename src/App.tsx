@@ -23,6 +23,7 @@ import { LoginPage } from './components/LoginPage';
 import { RegisterPage } from './components/RegisterPage';
 import { LandingPage } from './components/LandingPage';
 import { UserManagementModule } from './components/UserManagementModule';
+import { WebsiteCmsModule } from './components/WebsiteCmsModule';
 import { warehouseDb } from './db/storage';
 
 const getIsDashboardRoute = (): boolean => {
@@ -140,7 +141,7 @@ const MainLayout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col text-slate-800">
+    <div className="min-h-screen bg-[#f1f5f9] flex flex-col text-slate-800 font-sans selection:bg-blue-100 selection:text-blue-900">
       {/* Navigation & Header */}
       <Navbar
         activeTab={activeTab}
@@ -228,19 +229,31 @@ const MainLayout: React.FC = () => {
 
           {activeTab === 'user_management' && <UserManagementModule />}
 
+          {activeTab === 'website_cms' && (
+            <WebsiteCmsModule onViewLanding={navigateToHome} />
+          )}
+
           {activeTab === 'audit' && <AuditLogModule />}
         </div>
       </main>
 
-      {/* Operational Footer */}
-      <footer className="border-t border-slate-200 bg-white py-4 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>SPPG MLG TUMPANG JERU Warehouse Management • Satuan Pelayanan Pemenuhan Gizi</span>
+      {/* Operational Footer - Technical Logistics Style */}
+      <footer className="border-t border-slate-200 bg-white py-3.5 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="font-semibold text-slate-800">
+              SPPG MLG TUMPANG JERU Warehouse Management System
+            </span>
+            <span className="hidden md:inline text-slate-300">•</span>
+            <span className="hidden md:inline text-slate-500">
+              Badan Gizi Nasional Republik Indonesia
+            </span>
           </div>
-          <div className="flex items-center gap-4 text-[11px]">
-            <span>Petugas Aktif: <strong className="text-slate-800">{currentUser.name}</strong> ({currentUser.role})</span>
+          <div className="flex items-center gap-4 text-xs font-mono">
+            <span>
+              Petugas Aktif: <strong className="text-slate-900 font-sans font-bold">{currentUser.name}</strong> ({currentUser.role})
+            </span>
           </div>
         </div>
       </footer>
