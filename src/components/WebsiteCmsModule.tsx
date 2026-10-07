@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   WebsiteConfig,
+  HeroVideoItem,
   MenuSlideItem,
   VisualStudyItem,
   getWebsiteConfig,
@@ -80,6 +81,13 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   const [isVisualModalOpen, setIsVisualModalOpen] = useState(false);
   const [visualImagePreview, setVisualImagePreview] = useState<string>('');
   const [isUploadingVisualImg, setIsUploadingVisualImg] = useState(false);
+
+  // State untuk Multi-Video Hero Playlist & Modal
+  const [editingHeroVideo, setEditingHeroVideo] = useState<HeroVideoItem | null>(null);
+  const [isHeroVideoModalOpen, setIsHeroVideoModalOpen] = useState(false);
+  const [isUploadingHeroVideo, setIsUploadingHeroVideo] = useState(false);
+  const newHeroVideoFileRef = useRef<HTMLInputElement>(null);
+  const editingHeroVideoFileRef = useRef<HTMLInputElement>(null);
 
   // Video preview testing
   const [isVideoUploading, setIsVideoUploading] = useState(false);
@@ -168,7 +176,202 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
     }
   };
 
-  // Video Upload Handler (Mengunggah ke Supabase Object Storage bucket sppg-assets)
+  // Hero Video Playlist CRUD Handlers
+  const handleOpenAddHeroVideo = () => {
+    const newVid: HeroVideoItem = {
+      id: `vid-${Date.now()}`,
+      title: `Video #${(config.hero.videos?.length || 0) + 1} - Dokumentasi Unit`,
+      url: VIDEO_PRESETS[0].url,
+      poster: VIDEO_PRESETS[0].poster
+    };
+    setEditingHeroVideo(newVid);
+    setIsHeroVideoModalOpen(true);
+  };
+
+  const handleOpenEditHeroVideo = (vid: HeroVideoItem) => {
+    setEditingHeroVideo({ ...vid });
+    setIsHeroVideoModalOpen(true);
+  };
+
+  const handleSaveHeroVideo = () => {
+    if (!editingHeroVideo) return;
+    if (!editingHeroVideo.url.trim()) {
+      alert('Tautan/file video wajib diisi.');
+      return;
+    }
+
+    setConfig(prev => {
+      const curVideos = prev.hero.videos || [];
+      const exists = curVideos.some(v => v.id === editingHeroVideo.id);
+      const nextVideos = exists
+        ? curVideos.map(v => v.id === editingHeroVideo.id ? editingHeroVideo : v)
+        : [...curVideos, editingHeroVideo];
+
+      return {
+        ...prev,
+        hero: {
+          ...prev.hero,
+          videos: nextVideos,
+          videoUrl: nextVideos[0]?.url || prev.hero.videoUrl
+        }
+      };
+    });
+
+    setIsHeroVideoModalOpen(false);
+    setEditingHeroVideo(null);
+    showNotification(`Video "${editingHeroVideo.title}" berhasil disimpan ke playlist loop!`);
+  };
+
+  const handleDeleteHeroVideo = (id: string) => {
+    const curVideos = config.hero.videos || [];
+    if (curVideos.length <= 1) {
+      alert('Minimal harus ada 1 video dalam playlist hero.');
+      return;
+    }
+    if (window.confirm('Hapus video ini dari playlist putar hero?')) {
+      setConfig(prev => {
+        const nextVideos = (prev.hero.videos || []).filter(v => v.id !== id);
+        return {
+          ...prev,
+          hero: {
+            ...prev.hero,
+            videos: nextVideos,
+            videoUrl: nextVideos[0]?.url || prev.hero.videoUrl
+          }
+        };
+      });
+      showNotification('Video dihapus dari playlist hero.');
+    }
+  };
+
+  const handleMoveHeroVideo = (idx: number, direction: 'up' | 'down') => {
+    const curVideos = [...(config.hero.videos || [])];
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= curVideos.length) return;
+    const temp = curVideos[idx];
+    curVideos[idx] = curVideos[targetIdx];
+    curVideos[targetIdx] = temp;
+    setConfig(prev => ({
+      ...prev,
+      hero: {
+        ...prev.hero,
+        videos: curVideos,
+        videoUrl: curVideos[0]?.url || prev.hero.videoUrl
+      }
+    }));
+  };
+
+  // Upload Video Baru Langsung dari Tombol di Tab Hero
+  const handleDirectUploadNewHeroVideo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('video/')) {
+      alert('Mohon pilih file video yang valid (.mp4, .webm).');
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      alert('Ukuran video terlalu besar (maksimal 50 MB). Disarankan video ringkas berdurasi 10–30 detik.');
+      return;
+    }
+
+    setIsUploadingHeroVideo(true);
+    try {
+      const result = await uploadCmsMedia(file, 'hero');
+      const cleanTitle = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+      const newVid: HeroVideoItem = {
+        id: `vid-${Date.now()}`,
+        title: cleanTitle.length > 2 ? cleanTitle : `Video #${(config.hero.videos?.length || 0) + 1}`,
+        url: result.url
+      };
+
+      setConfig(prev => {
+        const nextVideos = [...(prev.hero.videos || []), newVid];
+        return {
+          ...prev,
+          hero: {
+            ...prev.hero,
+            backgroundType: 'video',
+            videos: nextVideos,
+            videoUrl: nextVideos[0]?.url || prev.hero.videoUrl
+          }
+        };
+      });
+
+      if (result.isCloudStorage) {
+        showNotification(`Video "${newVid.title}" (${result.finalSizeKb} KB) berhasil diunggah ke Cloud Storage & ditambahkan ke playlist loop!`);
+      } else {
+        showNotification(`Video "${newVid.title}" berhasil ditambahkan ke playlist loop (tersimpan lokal).`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Gagal mengunggah file video.');
+    } finally {
+      setIsUploadingHeroVideo(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  // Upload untuk mengganti file video pada modal edit
+  const handleUploadForEditingHeroVideo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingHeroVideo) return;
+
+    if (!file.type.startsWith('video/')) {
+      alert('Mohon pilih file video yang valid (.mp4, .webm).');
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      alert('Ukuran video maksimal 50 MB.');
+      return;
+    }
+
+    setIsUploadingHeroVideo(true);
+    try {
+      const result = await uploadCmsMedia(file, 'hero');
+      setEditingHeroVideo(prev => prev ? { ...prev, url: result.url } : null);
+      if (result.isCloudStorage) {
+        showNotification(`Video baru berhasil diunggah ke Supabase Storage!`);
+      } else {
+        showNotification(result.warning || 'Video disimpan secara lokal.');
+      }
+    } catch {
+      alert('Gagal mengunggah file video.');
+    } finally {
+      setIsUploadingHeroVideo(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  // Tambah Cepat Preset ke Playlist
+  const handleAddPresetToHeroVideos = (preset: typeof VIDEO_PRESETS[0]) => {
+    const newVid: HeroVideoItem = {
+      id: `vid-${Date.now()}-${preset.id}`,
+      title: preset.label.split(':')[1]?.trim() || preset.label,
+      url: preset.url,
+      poster: preset.poster
+    };
+
+    setConfig(prev => {
+      const curVideos = prev.hero.videos || [];
+      const nextVideos = [...curVideos, newVid];
+      return {
+        ...prev,
+        hero: {
+          ...prev.hero,
+          backgroundType: 'video',
+          videos: nextVideos,
+          videoUrl: nextVideos[0]?.url || prev.hero.videoUrl
+        }
+      };
+    });
+
+    showNotification(`Preset "${newVid.title}" ditambahkan ke playlist loop video!`);
+  };
+
+  // Video Upload Handler Legacy (Fallback)
   const handleVideoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -711,64 +914,185 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                 </div>
               </div>
 
-              {/* Input URL Video & Upload Video */}
-              <div className="space-y-3">
-                <label className="block text-xs font-bold text-slate-700">
-                  Tautan Video (Direct MP4 / WebM URL) atau Unggah dari Perangkat
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={config.hero.videoUrl}
-                    onChange={e => setConfig(prev => ({ ...prev, hero: { ...prev.hero, videoUrl: e.target.value } }))}
-                    placeholder="https://.../video.mp4"
-                    className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-300 font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
-                  />
-                  <input
-                    type="file"
-                    ref={videoFileRef}
-                    accept="video/mp4,video/webm"
-                    onChange={handleVideoFileUpload}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => videoFileRef.current?.click()}
-                    disabled={isVideoUploading}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition-colors cursor-pointer shrink-0"
-                  >
-                    <Upload className="w-3.5 h-3.5 text-blue-600" />
-                    <span>{isVideoUploading ? 'Mengunggah...' : 'Upload Video Lokal'}</span>
-                  </button>
+              {/* Multi-Video Playlist Management */}
+              <div className="space-y-4 pt-1">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-100">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <span>Daftar Playlist Video Hero (Putar Bergantian / Loop)</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-100 text-blue-800 font-semibold">
+                        {(config.hero.videos || []).length} Video
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Saat video selesai diputar, website otomatis memutar video berikutnya secara berulang (looping).
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Input File Tersembunyi untuk Upload Video Baru ke Playlist */}
+                    <input
+                      type="file"
+                      ref={newHeroVideoFileRef}
+                      accept="video/mp4,video/webm"
+                      onChange={handleDirectUploadNewHeroVideo}
+                      className="hidden"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => newHeroVideoFileRef.current?.click()}
+                      disabled={isUploadingHeroVideo}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-75 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                      title="Unggah file MP4 langsung ke Cloud Storage dan tambahkan ke loop"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{isUploadingHeroVideo ? 'Mengunggah...' : 'Upload Video Baru'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleOpenAddHeroVideo}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium border border-slate-200 transition-colors cursor-pointer"
+                      title="Tambah tautan video manual atau preset"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Tambah URL</span>
+                    </button>
+                  </div>
                 </div>
 
-                {/* Video Presets Siap Pakai */}
-                <div className="pt-2">
-                  <span className="text-[11px] font-semibold text-slate-600 block mb-1.5">
-                    Pilihan Preset Video HD Dapur & Kuliner Siap Pakai:
-                  </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {VIDEO_PRESETS.map((vp) => (
-                      <button
-                        key={vp.id}
-                        type="button"
-                        onClick={() => setConfig(prev => ({
-                          ...prev,
-                          hero: { ...prev.hero, videoUrl: vp.url, backgroundType: 'video' }
-                        }))}
-                        className={`p-2 rounded-lg text-left border text-[11px] transition-all cursor-pointer ${
-                          config.hero.videoUrl === vp.url
-                            ? 'bg-blue-50/80 border-blue-500 text-blue-900 font-semibold'
-                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div className="font-bold flex items-center justify-between">
-                          <span>{vp.label.split(':')[0]}</span>
-                          {config.hero.videoUrl === vp.url && <Check className="w-3 h-3 text-blue-600" />}
+                {/* Daftar Item Video Playlist */}
+                <div className="space-y-2">
+                  {(config.hero.videos || []).map((vid, idx) => (
+                    <div
+                      key={vid.id}
+                      className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="w-6 h-6 rounded-lg bg-[#0f172a] text-cyan-400 font-mono text-xs font-bold flex items-center justify-center shrink-0">
+                          #{idx + 1}
+                        </span>
+                        <div className="w-16 h-11 rounded-lg bg-slate-900 border border-slate-300 overflow-hidden shrink-0 flex items-center justify-center relative">
+                          <video src={vid.url} className="w-full h-full object-cover" muted preload="metadata" />
+                          <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                            <Play className="w-3.5 h-3.5 text-white/80" />
+                          </div>
                         </div>
-                        <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">{vp.description}</p>
-                      </button>
-                    ))}
+                        <div className="min-w-0">
+                          <h5 className="font-bold text-xs text-slate-900 truncate">
+                            {vid.title}
+                          </h5>
+                          <p className="text-[10px] text-slate-500 font-mono truncate max-w-[280px]">
+                            {vid.url}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0 self-end sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => handleMoveHeroVideo(idx, 'up')}
+                          disabled={idx === 0}
+                          className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 text-slate-600 transition-colors cursor-pointer"
+                          title="Geser ke atas"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5 rotate-90" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveHeroVideo(idx, 'down')}
+                          disabled={idx === (config.hero.videos?.length || 1) - 1}
+                          className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 text-slate-600 transition-colors cursor-pointer"
+                          title="Geser ke bawah"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5 rotate-90" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditHeroVideo(vid)}
+                          className="p-1.5 rounded hover:bg-blue-100 text-blue-600 transition-colors cursor-pointer"
+                          title="Edit video ini"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteHeroVideo(vid.id)}
+                          className="p-1.5 rounded hover:bg-rose-100 text-rose-600 transition-colors cursor-pointer"
+                          title="Hapus video dari playlist"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Pengaturan Looping & Waktu Transisi Playlist */}
+                <div className="p-3.5 rounded-xl bg-slate-100/80 border border-slate-200 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <span className="font-bold text-xs text-slate-800">Mode Transisi & Looping Video:</span>
+                      <p className="text-[11px] text-slate-500">
+                        Atur kapan video berganti ke urutan berikutnya di hero section.
+                      </p>
+                    </div>
+
+                    <select
+                      value={config.hero.videoIntervalSeconds || 0}
+                      onChange={e => setConfig(prev => ({
+                        ...prev,
+                        hero: {
+                          ...prev.hero,
+                          videoIntervalSeconds: parseInt(e.target.value, 10)
+                        }
+                      }))}
+                      className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 font-medium"
+                    >
+                      <option value={0}>Transisi Alami saat Video Berakhir (onEnded)</option>
+                      <option value={8}>Otomatis Tiap 8 Detik</option>
+                      <option value={12}>Otomatis Tiap 12 Detik</option>
+                      <option value={20}>Otomatis Tiap 20 Detik</option>
+                      <option value={30}>Otomatis Tiap 30 Detik</option>
+                    </select>
+                  </div>
+
+                  {/* Tambah Cepat Preset HD ke Playlist */}
+                  <div className="pt-2 border-t border-slate-200">
+                    <span className="text-[11px] font-semibold text-slate-600 block mb-1.5">
+                      Tambah Cepat Video HD Dapur ke Playlist:
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {VIDEO_PRESETS.map((vp) => {
+                        const isAlreadyAdded = (config.hero.videos || []).some(v => v.url === vp.url);
+                        return (
+                          <button
+                            key={vp.id}
+                            type="button"
+                            onClick={() => handleAddPresetToHeroVideos(vp)}
+                            disabled={isAlreadyAdded}
+                            className={`p-2 rounded-lg text-left border text-[11px] transition-all cursor-pointer ${
+                              isAlreadyAdded
+                                ? 'bg-emerald-50 border-emerald-300 text-emerald-800 opacity-80'
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-blue-400'
+                            }`}
+                          >
+                            <div className="font-bold flex items-center justify-between">
+                              <span>{vp.label.split(':')[0]}</span>
+                              {isAlreadyAdded ? (
+                                <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-0.5">
+                                  <Check className="w-3 h-3" /> Ada di List
+                                </span>
+                              ) : (
+                                <Plus className="w-3 h-3 text-blue-600" />
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">{vp.description}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1573,6 +1897,108 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                   className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer"
                 >
                   Terapkan Dokumentasi
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 7. MODAL FORM: TAMBAH / EDIT VIDEO HERO */}
+      {isHeroVideoModalOpen && editingHeroVideo && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center">
+                  <Video className="w-4 h-4" />
+                </div>
+                <h4 className="font-display text-sm font-bold text-slate-900">
+                  {editingHeroVideo.id.startsWith('vid-') ? 'Edit Video Playlist Hero' : 'Tambah Video Hero'}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsHeroVideoModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Judul / Label Video</label>
+                <input
+                  type="text"
+                  value={editingHeroVideo.title}
+                  onChange={e => setEditingHeroVideo(prev => prev ? { ...prev, title: e.target.value } : null)}
+                  placeholder="Contoh: Dapur Pukul 04.00 WIB & Sayuran Segar"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Tautan File Video (Direct MP4 / WebM URL) atau Unggah Berkas
+                </label>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={editingHeroVideo.url}
+                    onChange={e => setEditingHeroVideo(prev => prev ? { ...prev, url: e.target.value } : null)}
+                    placeholder="https://.../video.mp4"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-slate-800"
+                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      ref={editingHeroVideoFileRef}
+                      accept="video/mp4,video/webm"
+                      onChange={handleUploadForEditingHeroVideo}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => editingHeroVideoFileRef.current?.click()}
+                      disabled={isUploadingHeroVideo}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{isUploadingHeroVideo ? 'Mengunggah...' : 'Pilih Berkas MP4 dari Laptop'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pratinjau Video Mini */}
+              {editingHeroVideo.url && (
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Pratinjau Video</label>
+                  <div className="aspect-video rounded-xl bg-slate-950 overflow-hidden border border-slate-300">
+                    <video
+                      key={editingHeroVideo.url}
+                      src={editingHeroVideo.url}
+                      controls
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsHeroVideoModalOpen(false)}
+                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveHeroVideo}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer"
+                >
+                  Simpan Video
                 </button>
               </div>
             </div>

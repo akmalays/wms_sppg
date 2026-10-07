@@ -28,12 +28,23 @@ export interface VisualStudyItem {
   badge?: string;
 }
 
+export interface HeroVideoItem {
+  id: string;
+  title: string;
+  url: string;
+  poster?: string;
+}
+
 export interface WebsiteHeroConfig {
   backgroundType: 'video' | 'image';
-  videoUrl: string;
+  videoUrl: string; // single URL fallback
   videoPoster: string;
   videoOverlayOpacity: number; // 0.2 s/d 0.9
   showVideoSoundToggle: boolean;
+  // Multi-video playlist & auto loop support:
+  videos: HeroVideoItem[];
+  autoLoopPlaylist: boolean; // default true: loop video berikutnya saat selesai
+  videoIntervalSeconds: number; // 0 = tunggu sampai video selesai (onEnded), >0 = auto switch tiap X detik
   heroBadge: string;
   heroTitle: string;
   heroSubtitle: string;
@@ -77,18 +88,21 @@ export const VIDEO_PRESETS = [
     id: 'cooking_veg',
     label: 'Preset 1: Dapur & Olahan Sayuran Segar (Mixkit HD)',
     url: 'https://assets.mixkit.co/videos/42749/42749-720.mp4',
+    poster: trayImg1,
     description: 'Aksi pemotongan bahan sayur segar dalam lingkungan dapur higienis'
   },
   {
     id: 'kitchen_prep',
     label: 'Preset 2: Buah & Sayur Meja Dapur (Mixkit HD)',
     url: 'https://assets.mixkit.co/videos/42750/42750-720.mp4',
+    poster: trayImg2,
     description: 'Penataan bahan pangan segar warna-warni di atas meja persiapan'
   },
   {
     id: 'soup_pot',
     label: 'Preset 3: Pengolahan Sup Panci Besar (Mixkit HD)',
     url: 'https://assets.mixkit.co/videos/49605/49605-720.mp4',
+    poster: trayImg3,
     description: 'Masakan sop kaldu segar mendidih khas dapur sentra porsi besar'
   }
 ];
@@ -108,6 +122,28 @@ export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = {
     videoPoster: trayImg1,
     videoOverlayOpacity: 0.65,
     showVideoSoundToggle: true,
+    autoLoopPlaylist: true,
+    videoIntervalSeconds: 0, // 0 = transisi otomatis saat video selesai diputar
+    videos: [
+      {
+        id: 'vid-1',
+        title: 'Video 1: Dapur & Olahan Sayuran Segar',
+        url: 'https://assets.mixkit.co/videos/42749/42749-720.mp4',
+        poster: trayImg1
+      },
+      {
+        id: 'vid-2',
+        title: 'Video 2: Penataan Meja Persiapan Sayur & Buah',
+        url: 'https://assets.mixkit.co/videos/42750/42750-720.mp4',
+        poster: trayImg2
+      },
+      {
+        id: 'vid-3',
+        title: 'Video 3: Pengolahan Sup Panci Besar Dapur Sentra',
+        url: 'https://assets.mixkit.co/videos/49605/49605-720.mp4',
+        poster: trayImg3
+      }
+    ],
     heroBadge: 'Satuan Pelayanan Pemenuhan Gizi Kabupaten Malang',
     heroTitle: 'Ketertelusuran Rantai Pangan & Standar Gizi Harian untuk Generasi Penerus',
     heroSubtitle: 'Dari penimbangan bahan segar petani lokal Tumpang pada pukul 04.00 pagi, pengolahan dapur bersuhu terkontrol, hingga distribusi wadah bersekat SUS 304 sebelum bel istirahat sekolah berbunyi.',
@@ -223,10 +259,30 @@ export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = {
  */
 function normalizeConfig(parsed: Partial<WebsiteConfig> | null | undefined): WebsiteConfig {
   if (!parsed) return DEFAULT_WEBSITE_CONFIG;
+
+  const parsedHero = parsed.hero || {};
+  let normalizedVideos: HeroVideoItem[] = DEFAULT_WEBSITE_CONFIG.hero.videos;
+  if (Array.isArray(parsedHero.videos) && parsedHero.videos.length > 0) {
+    normalizedVideos = parsedHero.videos;
+  } else if (parsedHero.videoUrl) {
+    normalizedVideos = [
+      {
+        id: 'vid-custom',
+        title: 'Video Latar Belakang Hero',
+        url: parsedHero.videoUrl,
+        poster: parsedHero.videoPoster || DEFAULT_WEBSITE_CONFIG.hero.videoPoster
+      }
+    ];
+  }
+
+  const primaryVideoUrl = normalizedVideos[0]?.url || parsedHero.videoUrl || DEFAULT_WEBSITE_CONFIG.hero.videoUrl;
+
   return {
     hero: {
       ...DEFAULT_WEBSITE_CONFIG.hero,
-      ...(parsed.hero || {})
+      ...parsedHero,
+      videoUrl: primaryVideoUrl,
+      videos: normalizedVideos
     },
     menuSlider: {
       ...DEFAULT_WEBSITE_CONFIG.menuSlider,

@@ -129,6 +129,60 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [isMenuPaused, setIsMenuPaused] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  // Multi-Video Playlist & Loop Management
+  const videoList = (config.hero.videos && config.hero.videos.length > 0)
+    ? config.hero.videos
+    : (config.hero.videoUrl ? [{ id: 'vid-1', title: 'Video Hero Utama', url: config.hero.videoUrl, poster: config.hero.videoPoster }] : []);
+
+  const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+  const activeVideoIndex = videoList.length > 0 ? (currentVideoIndex % videoList.length) : 0;
+  const activeVideo = videoList[activeVideoIndex];
+
+  // Handler loop otomatis saat video selesai diputar (seamless transition ke video berikutnya)
+  const handleVideoEnded = () => {
+    if (videoList.length > 1) {
+      setCurrentVideoIndex(prev => (prev + 1) % videoList.length);
+    } else if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.play().catch(() => {});
+    }
+  };
+
+  const handleVideoError = () => {
+    console.warn('Gagal memuat video aktif:', activeVideo?.url);
+    if (videoList.length > 1) {
+      setCurrentVideoIndex(prev => (prev + 1) % videoList.length);
+    }
+  };
+
+  // Pastikan browser modern (Chrome, Safari, iOS) mengizinkan autoplay tanpa terhalang
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || !activeVideo?.url) return;
+
+    el.muted = isMuted;
+    el.defaultMuted = true;
+
+    const playPromise = el.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        console.warn('Autoplay dicegah oleh kebijakan browser (menunggu interaksi):', err);
+      });
+    }
+  }, [activeVideoIndex, activeVideo?.url, isMuted]);
+
+  // Timer auto-switch jika pengguna mengaktifkan interval pergantian detik (> 0)
+  useEffect(() => {
+    const intervalSec = config.hero.videoIntervalSeconds;
+    if (!intervalSec || intervalSec <= 0 || videoList.length <= 1) return;
+
+    const timer = setInterval(() => {
+      setCurrentVideoIndex(prev => (prev + 1) % videoList.length);
+    }, intervalSec * 1000);
+
+    return () => clearInterval(timer);
+  }, [config.hero.videoIntervalSeconds, videoList.length]);
+
   // Sinkronisasi otomatis saat konfigurasi diubah di dashboard CMS dan ambil data cloud
   useEffect(() => {
     const handleConfigUpdate = () => {
@@ -279,19 +333,22 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* 4. Hero Section: Editorial Headline dengan Video Latar Belakang Sinematik */}
       <section className="relative overflow-hidden pt-16 pb-16 lg:pt-24 lg:pb-28 border-b border-[#e5dfd3]">
         {/* Background Video atau Pola Alam */}
-        {config.hero.backgroundType === 'video' && config.hero.videoUrl ? (
+        {config.hero.backgroundType === 'video' && activeVideo?.url ? (
           <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
             <video
               ref={videoRef}
-              key={config.hero.videoUrl}
+              key={activeVideo.url}
               autoPlay
-              loop
               muted={isMuted}
               playsInline
-              poster={config.hero.videoPoster || trayImg1}
-              className="w-full h-full object-cover object-center filter brightness-[0.7] contrast-[1.05]"
+              webkit-playsinline="true"
+              onEnded={handleVideoEnded}
+              onError={handleVideoError}
+              poster={activeVideo.poster || config.hero.videoPoster || trayImg1}
+              className="w-full h-full object-cover object-center filter brightness-[0.7] contrast-[1.05] transition-opacity duration-700"
             >
-              <source src={config.hero.videoUrl} type="video/mp4" />
+              <source src={activeVideo.url} type="video/mp4" />
+              <source src={activeVideo.url} type="video/webm" />
             </video>
             {/* Lapisan Gradient Tint Berlapis untuk Keterbacaan Sempurna */}
             <div
@@ -325,7 +382,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 {config.hero.heroSubtitle}
               </p>
 
-              {/* Tombol Aksi Publik */}
+              {/* Tombol Aksi Publik & Kontrol Media Hero */}
               <div className="flex flex-wrap items-center gap-3.5 pt-2">
                 <a
                   href={config.hero.primaryCtaLink || '#siklus-menu'}
@@ -347,22 +404,53 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   <span>{config.hero.secondaryCtaText || 'Alur Operasional 04.00 WIB'}</span>
                 </a>
 
-                {/* Tombol Kontrol Suara Video (jika video aktif) */}
+                {/* Kontrol Multi-Video Playlist & Suara */}
                 {config.hero.backgroundType === 'video' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (videoRef.current) {
-                        videoRef.current.muted = !videoRef.current.muted;
-                        setIsMuted(videoRef.current.muted);
-                      }
-                    }}
-                    title={isMuted ? 'Nyalakan audio video latar' : 'Bisukan audio video latar'}
-                    className="inline-flex items-center gap-1.5 px-3 py-3.5 rounded-xl bg-black/40 hover:bg-black/60 text-white text-xs font-medium border border-white/20 backdrop-blur-md transition-colors cursor-pointer"
-                  >
-                    {isMuted ? <VolumeX className="w-4 h-4 text-slate-300" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
-                    <span className="hidden sm:inline">{isMuted ? 'Suara Hening' : 'Suara Aktif'}</span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Indikator Looping Playlist jika terdapat lebih dari 1 video */}
+                    {videoList.length > 1 && (
+                      <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-black/40 hover:bg-black/60 text-white text-xs font-medium border border-white/20 backdrop-blur-md shadow-xs">
+                        <button
+                          type="button"
+                          onClick={() => setCurrentVideoIndex(prev => (prev - 1 + videoList.length) % videoList.length)}
+                          className="p-1 hover:text-emerald-300 transition-colors cursor-pointer"
+                          title="Video Sebelumnya"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="font-semibold text-emerald-300">
+                          Video {activeVideoIndex + 1}/{videoList.length}
+                        </span>
+                        <span className="text-slate-300 hidden sm:inline truncate max-w-[140px] md:max-w-[200px]">
+                          {activeVideo?.title || 'Video Hero'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCurrentVideoIndex(prev => (prev + 1) % videoList.length)}
+                          className="p-1 hover:text-emerald-300 transition-colors cursor-pointer"
+                          title="Video Berikutnya"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Tombol Kontrol Suara Video */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (videoRef.current) {
+                          videoRef.current.muted = !videoRef.current.muted;
+                          setIsMuted(videoRef.current.muted);
+                        }
+                      }}
+                      title={isMuted ? 'Nyalakan audio video latar' : 'Bisukan audio video latar'}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-3 rounded-xl bg-black/40 hover:bg-black/60 text-white text-xs font-medium border border-white/20 backdrop-blur-md transition-colors cursor-pointer shadow-xs"
+                    >
+                      {isMuted ? <VolumeX className="w-4 h-4 text-slate-300" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+                      <span className="hidden sm:inline">{isMuted ? 'Hening' : 'Suara Aktif'}</span>
+                    </button>
+                  </div>
                 )}
               </div>
 
