@@ -82,28 +82,28 @@ const STORAGE_KEY = 'sppg_website_cms_config_v1';
 export const WEBSITE_CONFIG_UPDATED_EVENT = 'sppg_website_config_updated';
 const SUPABASE_BUCKET_NAME = 'sppg-assets';
 
-// Video CDN presets yang telah teruji cepat & stabil
+// Video CDN presets yang telah teruji cepat & stabil (Supabase Cloud Storage)
 export const VIDEO_PRESETS = [
   {
-    id: 'cooking_veg',
-    label: 'Preset 1: Dapur & Olahan Sayuran Segar (Mixkit HD)',
-    url: 'https://assets.mixkit.co/videos/42749/42749-720.mp4',
+    id: 'sppg_kitchen_1',
+    label: 'Preset 1: Dapur & Olahan Sayuran Segar SPPG',
+    url: 'https://fqsqtxtmdcajcnhpcwgw.supabase.co/storage/v1/object/public/sppg-assets/hero/1791362609925_qifjdf.mp4',
     poster: trayImg1,
-    description: 'Aksi pemotongan bahan sayur segar dalam lingkungan dapur higienis'
+    description: 'Dokumentasi pengolahan bahan sayur segar dalam lingkungan dapur SPPG Jeru'
   },
   {
-    id: 'kitchen_prep',
-    label: 'Preset 2: Buah & Sayur Meja Dapur (Mixkit HD)',
-    url: 'https://assets.mixkit.co/videos/42750/42750-720.mp4',
+    id: 'sppg_kitchen_2',
+    label: 'Preset 2: Penataan Meja Persiapan & Porsi MBG',
+    url: 'https://fqsqtxtmdcajcnhpcwgw.supabase.co/storage/v1/object/public/sppg-assets/hero/1791362621960_a4uig3.mp4',
     poster: trayImg2,
-    description: 'Penataan bahan pangan segar warna-warni di atas meja persiapan'
+    description: 'Penataan sajian nampan bersekat SUS 304 sesuai standar gizi harian'
   },
   {
-    id: 'soup_pot',
-    label: 'Preset 3: Pengolahan Sup Panci Besar (Mixkit HD)',
-    url: 'https://assets.mixkit.co/videos/49605/49605-720.mp4',
+    id: 'sppg_kitchen_3',
+    label: 'Preset 3: Pengolahan Sup Panci Besar Dapur Sentra',
+    url: 'https://fqsqtxtmdcajcnhpcwgw.supabase.co/storage/v1/object/public/sppg-assets/hero/1791359566504_4wfoj7.mp4',
     poster: trayImg3,
-    description: 'Masakan sop kaldu segar mendidih khas dapur sentra porsi besar'
+    description: 'Masakan sop kaldu segar mendidih khas dapur sentra porsi besar SPPG'
   }
 ];
 
@@ -118,29 +118,29 @@ export const IMAGE_PRESETS = [
 export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = {
   hero: {
     backgroundType: 'video',
-    videoUrl: 'https://assets.mixkit.co/videos/42749/42749-720.mp4',
+    videoUrl: 'https://fqsqtxtmdcajcnhpcwgw.supabase.co/storage/v1/object/public/sppg-assets/hero/1791362609925_qifjdf.mp4',
     videoPoster: trayImg1,
-    videoOverlayOpacity: 0.65,
+    videoOverlayOpacity: 0.45,
     showVideoSoundToggle: true,
     autoLoopPlaylist: true,
     videoIntervalSeconds: 0, // 0 = transisi otomatis saat video selesai diputar
     videos: [
       {
-        id: 'vid-1',
-        title: 'Video 1: Dapur & Olahan Sayuran Segar',
-        url: 'https://assets.mixkit.co/videos/42749/42749-720.mp4',
+        id: 'vid-1791362614609',
+        title: 'Video 1: Dapur & Olahan Sayuran Segar SPPG',
+        url: 'https://fqsqtxtmdcajcnhpcwgw.supabase.co/storage/v1/object/public/sppg-assets/hero/1791362609925_qifjdf.mp4',
         poster: trayImg1
       },
       {
-        id: 'vid-2',
-        title: 'Video 2: Penataan Meja Persiapan Sayur & Buah',
-        url: 'https://assets.mixkit.co/videos/42750/42750-720.mp4',
+        id: 'vid-1791362627190',
+        title: 'Video 2: Penataan Meja Persiapan & Porsi MBG',
+        url: 'https://fqsqtxtmdcajcnhpcwgw.supabase.co/storage/v1/object/public/sppg-assets/hero/1791362621960_a4uig3.mp4',
         poster: trayImg2
       },
       {
-        id: 'vid-3',
+        id: 'vid-custom',
         title: 'Video 3: Pengolahan Sup Panci Besar Dapur Sentra',
-        url: 'https://assets.mixkit.co/videos/49605/49605-720.mp4',
+        url: 'https://fqsqtxtmdcajcnhpcwgw.supabase.co/storage/v1/object/public/sppg-assets/hero/1791359566504_4wfoj7.mp4',
         poster: trayImg3
       }
     ],
@@ -263,8 +263,14 @@ function normalizeConfig(parsed: Partial<WebsiteConfig> | null | undefined): Web
   const parsedHero: Partial<WebsiteHeroConfig> = parsed.hero || {};
   let normalizedVideos: HeroVideoItem[] = DEFAULT_WEBSITE_CONFIG.hero.videos;
   if (Array.isArray(parsedHero.videos) && parsedHero.videos.length > 0) {
-    normalizedVideos = parsedHero.videos;
-  } else if (parsedHero.videoUrl) {
+    // Otomatis ganti ke video Supabase jika cache browser menyimpan tautan dummy mixkit
+    const hasMixkitUrl = parsedHero.videos.some(v => v.url && v.url.includes('mixkit.co'));
+    if (hasMixkitUrl) {
+      normalizedVideos = DEFAULT_WEBSITE_CONFIG.hero.videos;
+    } else {
+      normalizedVideos = parsedHero.videos;
+    }
+  } else if (parsedHero.videoUrl && !parsedHero.videoUrl.includes('mixkit.co')) {
     normalizedVideos = [
       {
         id: 'vid-custom',
@@ -275,12 +281,13 @@ function normalizeConfig(parsed: Partial<WebsiteConfig> | null | undefined): Web
     ];
   }
 
-  const primaryVideoUrl = normalizedVideos[0]?.url || parsedHero.videoUrl || DEFAULT_WEBSITE_CONFIG.hero.videoUrl;
+  const primaryVideoUrl = normalizedVideos[0]?.url || DEFAULT_WEBSITE_CONFIG.hero.videoUrl;
 
   return {
     hero: {
       ...DEFAULT_WEBSITE_CONFIG.hero,
       ...parsedHero,
+      backgroundType: parsedHero.backgroundType || 'video',
       videoUrl: primaryVideoUrl,
       videos: normalizedVideos
     },
