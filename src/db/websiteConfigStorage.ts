@@ -260,7 +260,7 @@ export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = {
 function normalizeConfig(parsed: Partial<WebsiteConfig> | null | undefined): WebsiteConfig {
   if (!parsed) return DEFAULT_WEBSITE_CONFIG;
 
-  const parsedHero = parsed.hero || {};
+  const parsedHero: Partial<WebsiteHeroConfig> = parsed.hero || {};
   let normalizedVideos: HeroVideoItem[] = DEFAULT_WEBSITE_CONFIG.hero.videos;
   if (Array.isArray(parsedHero.videos) && parsedHero.videos.length > 0) {
     normalizedVideos = parsedHero.videos;

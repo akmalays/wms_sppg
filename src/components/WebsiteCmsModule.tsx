@@ -1178,18 +1178,18 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
               {/* Layar Simulasi Hero dengan Video & Teks */}
               <div className="relative aspect-16/10 overflow-hidden bg-slate-950 flex flex-col justify-end p-5 text-white">
                 {/* Background Video atau Image */}
-                {config.hero.backgroundType === 'video' && config.hero.videoUrl ? (
+                {config.hero.backgroundType === 'video' && (config.hero.videos?.[0]?.url || config.hero.videoUrl) ? (
                   <video
-                    key={config.hero.videoUrl}
+                    key={config.hero.videos?.[0]?.url || config.hero.videoUrl}
+                    src={config.hero.videos?.[0]?.url || config.hero.videoUrl}
                     autoPlay
                     loop
                     muted
                     playsInline
+                    preload="auto"
                     poster={config.hero.videoPoster}
                     className="absolute inset-0 w-full h-full object-cover object-center filter brightness-90"
-                  >
-                    <source src={config.hero.videoUrl} type="video/mp4" />
-                  </video>
+                  />
                 ) : (
                   <img
                     src={config.hero.videoPoster}

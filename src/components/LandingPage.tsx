@@ -128,6 +128,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [currentMenuSlide, setCurrentMenuSlide] = useState(0);
   const [isMenuPaused, setIsMenuPaused] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const cardVideoRef = useRef<HTMLVideoElement>(null);
+  const [cardMediaView, setCardMediaView] = useState<'video' | 'photo'>('video');
+  const [isCardVideoPlaying, setIsCardVideoPlaying] = useState(true);
 
   // Multi-Video Playlist & Loop Management
   const videoList = (config.hero.videos && config.hero.videos.length > 0)
@@ -142,9 +145,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const handleVideoEnded = () => {
     if (videoList.length > 1) {
       setCurrentVideoIndex(prev => (prev + 1) % videoList.length);
-    } else if (videoRef.current) {
-      videoRef.current.currentTime = 0;
-      videoRef.current.play().catch(() => {});
+    } else {
+      if (videoRef.current) {
+        videoRef.current.currentTime = 0;
+        videoRef.current.play().catch(() => {});
+      }
+      if (cardVideoRef.current) {
+        cardVideoRef.current.currentTime = 0;
+        cardVideoRef.current.play().catch(() => {});
+      }
     }
   };
 
@@ -155,21 +164,59 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     }
   };
 
+  const toggleCardVideoPlayback = () => {
+    const el = cardVideoRef.current;
+    if (!el) return;
+    if (el.paused) {
+      el.play().then(() => setIsCardVideoPlaying(true)).catch(() => {});
+    } else {
+      el.pause();
+      setIsCardVideoPlaying(false);
+    }
+  };
+
   // Pastikan browser modern (Chrome, Safari, iOS) mengizinkan autoplay tanpa terhalang
   useEffect(() => {
-    const el = videoRef.current;
-    if (!el || !activeVideo?.url) return;
+    const playTarget = (el: HTMLVideoElement | null) => {
+      if (!el || !activeVideo?.url) return;
+      el.muted = isMuted;
+      el.defaultMuted = true;
+      try {
+        el.setAttribute('muted', '');
+      } catch {
+        // Abaikan jika tidak didukung
+      }
 
-    el.muted = isMuted;
-    el.defaultMuted = true;
+      const playPromise = el.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn('Autoplay ditunda oleh kebijakan browser (menunggu interaksi pertama):', err);
+        });
+      }
+    };
 
-    const playPromise = el.play();
-    if (playPromise !== undefined) {
-      playPromise.catch((err) => {
-        console.warn('Autoplay dicegah oleh kebijakan browser (menunggu interaksi):', err);
-      });
-    }
+    playTarget(videoRef.current);
+    playTarget(cardVideoRef.current);
   }, [activeVideoIndex, activeVideo?.url, isMuted]);
+
+  // Listener untuk memulai autoplay jika browser menahan video sampai ada interaksi klik pertama
+  useEffect(() => {
+    const handleFirstUserInteraction = () => {
+      if (videoRef.current && videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+      }
+      if (cardVideoRef.current && cardVideoRef.current.paused && isCardVideoPlaying) {
+        cardVideoRef.current.play().catch(() => {});
+      }
+    };
+
+    window.addEventListener('click', handleFirstUserInteraction, { once: true });
+    window.addEventListener('touchstart', handleFirstUserInteraction, { once: true });
+    return () => {
+      window.removeEventListener('click', handleFirstUserInteraction);
+      window.removeEventListener('touchstart', handleFirstUserInteraction);
+    };
+  }, [isCardVideoPlaying]);
 
   // Timer auto-switch jika pengguna mengaktifkan interval pergantian detik (> 0)
   useEffect(() => {
@@ -337,25 +384,24 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
             <video
               ref={videoRef}
-              key={activeVideo.url}
+              key={`bg-${activeVideo.url}`}
+              src={activeVideo.url}
               autoPlay
               muted={isMuted}
+              loop={videoList.length <= 1}
               playsInline
-              webkit-playsinline="true"
+              preload="auto"
               onEnded={handleVideoEnded}
               onError={handleVideoError}
               poster={activeVideo.poster || config.hero.videoPoster || trayImg1}
-              className="w-full h-full object-cover object-center filter brightness-[0.7] contrast-[1.05] transition-opacity duration-700"
-            >
-              <source src={activeVideo.url} type="video/mp4" />
-              <source src={activeVideo.url} type="video/webm" />
-            </video>
+              className="w-full h-full object-cover object-center filter brightness-[0.78] contrast-[1.05] transition-opacity duration-700"
+            />
             {/* Lapisan Gradient Tint Berlapis untuk Keterbacaan Sempurna */}
             <div
-              className="absolute inset-0 bg-gradient-to-r from-[#0c2217]/95 via-[#0d261a]/85 to-[#081710]/75"
-              style={{ opacity: config.hero.videoOverlayOpacity }}
+              className="absolute inset-0 bg-gradient-to-r from-[#0c2217]/85 via-[#0d261a]/65 to-[#081710]/45"
+              style={{ opacity: Math.max(0.25, Math.min(0.85, config.hero.videoOverlayOpacity)) }}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#091811] via-transparent to-[#0a1b13]/60" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#091811]/90 via-transparent to-[#0a1b13]/35" />
           </div>
         ) : (
           <div className="absolute inset-0 z-0 bg-[#faf8f4]" />
@@ -483,24 +529,112 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
             {/* Visual Nyata Makanan & Lembar Data */}
             <div className="lg:col-span-5">
-              <div className={`rounded-2xl p-3.5 border shadow-xl backdrop-blur-md ${
+              <div className={`rounded-2xl p-3.5 border shadow-xl backdrop-blur-md transition-all ${
                 config.hero.backgroundType === 'video'
-                  ? 'bg-slate-900/80 border-slate-700/80'
+                  ? 'bg-slate-900/85 border-slate-700/80 shadow-black/30'
                   : 'bg-white border-[#ded7c8]'
               }`}>
-                <div className="relative overflow-hidden rounded-xl bg-slate-950 aspect-4/3 border border-slate-700/60 shadow-inner">
-                  <img
-                    src={trayImg1}
-                    alt="Standar sajian nampan makan bergizi gratis SPPG Jeru"
-                    className="w-full h-full object-cover object-center"
-                  />
-                  <div className="absolute top-3 left-3 bg-[#111915]/90 text-white text-[11px] font-medium px-2.5 py-1 rounded-md border border-slate-700 flex items-center gap-1.5 shadow-sm">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#4ade80]" />
-                    <span>Dokumentasi Lapangan Nyata</span>
+                {/* Frame Media Utama: Pemutar Video atau Foto Sajian */}
+                <div className="relative overflow-hidden rounded-xl bg-slate-950 aspect-4/3 border border-slate-700/60 shadow-inner group">
+                  {config.hero.backgroundType === 'video' && activeVideo?.url && cardMediaView === 'video' ? (
+                    <>
+                      <video
+                        ref={cardVideoRef}
+                        key={`card-${activeVideo.url}`}
+                        src={activeVideo.url}
+                        autoPlay
+                        muted={isMuted}
+                        loop={videoList.length <= 1}
+                        playsInline
+                        preload="auto"
+                        onEnded={handleVideoEnded}
+                        onError={handleVideoError}
+                        poster={activeVideo.poster || config.hero.videoPoster || trayImg1}
+                        className="w-full h-full object-cover object-center"
+                        onPlay={() => setIsCardVideoPlaying(true)}
+                        onPause={() => setIsCardVideoPlaying(false)}
+                      />
+                      {/* Kontrol Overlay Pemutar Video saat Kursor Diarahkan */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3.5 pointer-events-auto">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold text-white/95 bg-black/70 px-2 py-1 rounded-md backdrop-blur-xs truncate max-w-[200px]">
+                            {activeVideo.title || 'Video Hero'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (cardVideoRef.current) {
+                                cardVideoRef.current.muted = !cardVideoRef.current.muted;
+                                setIsMuted(cardVideoRef.current.muted);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg bg-black/70 hover:bg-black/90 text-white transition-colors cursor-pointer"
+                            title={isMuted ? 'Nyalakan Audio Video' : 'Bisukan Audio Video'}
+                          >
+                            {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-center">
+                          <button
+                            type="button"
+                            onClick={toggleCardVideoPlayback}
+                            className="w-12 h-12 rounded-full bg-emerald-600/90 hover:bg-emerald-500 text-white flex items-center justify-center shadow-lg transition-transform hover:scale-105 cursor-pointer"
+                            title={isCardVideoPlaying ? 'Jeda Pemutaran' : 'Lanjutkan Pemutaran'}
+                          >
+                            {isCardVideoPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-300">
+                          <span>Video {activeVideoIndex + 1} dari {videoList.length}</span>
+                          <span className="text-emerald-400 font-mono">1080p Dokumentasi Aktif</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <img
+                      src={trayImg1}
+                      alt="Standar sajian nampan makan bergizi gratis SPPG Jeru"
+                      className="w-full h-full object-cover object-center"
+                    />
+                  )}
+
+                  {/* Label Status Media */}
+                  <div className="absolute top-3 left-3 bg-[#111915]/90 text-white text-[11px] font-medium px-2.5 py-1 rounded-md border border-slate-700 flex items-center gap-1.5 shadow-sm pointer-events-none">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#4ade80] animate-pulse" />
+                    <span>
+                      {config.hero.backgroundType === 'video' && cardMediaView === 'video'
+                        ? 'Video Dokumentasi Lapangan'
+                        : 'Foto Dokumentasi Nyata'}
+                    </span>
                   </div>
-                  {config.hero.backgroundType === 'video' && (
-                    <div className="absolute bottom-3 right-3 bg-black/75 text-emerald-300 text-[10px] font-mono font-semibold px-2 py-0.5 rounded border border-emerald-500/30">
-                      Live Feed Video Background
+
+                  {/* Tombol Tab Beralih Video vs Foto Nampan */}
+                  {config.hero.backgroundType === 'video' && activeVideo?.url && (
+                    <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-black/80 p-0.5 rounded-lg border border-white/20 backdrop-blur-md z-10">
+                      <button
+                        type="button"
+                        onClick={() => setCardMediaView('video')}
+                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                          cardMediaView === 'video'
+                            ? 'bg-emerald-600 text-white font-bold'
+                            : 'text-slate-300 hover:text-white'
+                        }`}
+                        title="Tampilkan Video Dokumentasi Lapangan"
+                      >
+                        Video
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCardMediaView('photo')}
+                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                          cardMediaView === 'photo'
+                            ? 'bg-emerald-600 text-white font-bold'
+                            : 'text-slate-300 hover:text-white'
+                        }`}
+                        title="Tampilkan Foto Nampan 5 Sekat"
+                      >
+                        Foto Nampan
+                      </button>
                     </div>
                   )}
                 </div>
@@ -512,7 +646,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 }`}>
                   <div className="flex items-center justify-between text-xs">
                     <span className={`font-bold ${config.hero.backgroundType === 'video' ? 'text-white' : 'text-[#141d18]'}`}>
-                      Sajian Porsi Lengkap MBG
+                      {cardMediaView === 'video' && activeVideo?.title
+                        ? activeVideo.title
+                        : 'Sajian Porsi Lengkap MBG'}
                     </span>
                     <span className="font-mono text-[11px] text-emerald-400 font-bold">AKG 1/3 Harian</span>
                   </div>

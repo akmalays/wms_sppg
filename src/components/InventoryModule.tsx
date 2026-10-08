@@ -185,9 +185,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   // Single Item Form State
   const [formSku, setFormSku] = useState('');
   const [formName, setFormName] = useState('');
-  const [formCategory, setFormCategory] = useState<SppgCategory>('Bahan Kering');
+  const [formCategory, setFormCategory] = useState<SppgCategory | 'Kategori Kustom'>('Bahan Kering');
   const [formCustomCategory, setFormCustomCategory] = useState('');
-  const [formBaseUnit, setFormBaseUnit] = useState<BaseUnit>('Kg');
+  const [formBaseUnit, setFormBaseUnit] = useState<BaseUnit | 'Satuan Kustom'>('Kg');
   const [formCustomUnit, setFormCustomUnit] = useState('');
   const [formInitialStock, setFormInitialStock] = useState<number>(0);
   const [formMinStock, setFormMinStock] = useState<number>(10);
