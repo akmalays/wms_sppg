@@ -1,12 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl =
-  import.meta.env.VITE_SUPABASE_URL ||
-  'https://fqsqtxtmdcajcnhpcwgw.supabase.co';
-
-const supabaseAnonKey =
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxc3F0eHRtZGNhamNuaHBjd2d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5NzA0ODUsImV4cCI6MjEwNTU0NjQ4NX0.LODDoF05rj8JD7CYNJL9AOLusDOf29rMTPg_srMUg1g';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 /**
  * Checks if live Supabase credentials are configured in .env
