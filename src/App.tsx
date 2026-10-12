@@ -141,7 +141,7 @@ const MainLayout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f1f5f9] flex flex-col text-slate-800 font-sans selection:bg-blue-100 selection:text-blue-900">
+    <div className="min-h-screen bg-[#f1f5f9] flex flex-col text-slate-800 font-sans selection:bg-emerald-100 selection:text-emerald-900">
       {/* Navigation & Header */}
       <Navbar
         activeTab={activeTab}

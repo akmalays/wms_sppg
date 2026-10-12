@@ -112,11 +112,8 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
 
   const secondaryNavItems = [
     { id: 'website_cms', label: 'Atur Website', icon: Globe },
-    { id: 'menu_print', label: 'Cetak Menu MBG', icon: Printer },
-    { id: 'nonfood_expenses', label: 'Pengeluaran Non-Food', icon: Receipt },
     { id: 'daily_flow', label: 'Aliran Stok Harian (Daily-Flow)', icon: Utensils },
     { id: 'ledger', label: 'Buku Mutasi (Ledger)', icon: History },
-    { id: 'stock_opname', label: 'Stock Opname Fisik', icon: ClipboardCheck },
     { id: 'equipment', label: 'Inventaris Aset Dapur', icon: Wrench },
     { id: 'suppliers', label: 'Manajemen Rekanan Supplier', icon: Building2 },
     { id: 'user_management', label: 'Kelola & Buat User Baru', icon: UserPlus },
@@ -140,7 +137,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
             {/* Tanggal & Jam Realtime */}
             <div className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 shadow-2xs">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                 <span className="hidden xl:inline">{fullDateString}</span>
                 <span className="xl:hidden">{shortDateString}</span>
               </div>
@@ -163,21 +160,21 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
               <button
                 type="button"
                 onClick={() => onSelectTab('profile')}
-                className="flex items-center gap-1.5 text-left hover:text-blue-600 transition-colors cursor-pointer group"
+                className="flex items-center gap-1.5 text-left hover:text-emerald-700 transition-colors cursor-pointer group"
                 title="Buka Menu Profil & Pengaturan Akun"
               >
-                <div className="w-6 h-6 rounded-full bg-blue-100 group-hover:bg-blue-200 text-blue-800 flex items-center justify-center font-bold text-xs shrink-0 transition-colors">
+                <div className="w-6 h-6 rounded-full bg-emerald-100 group-hover:bg-emerald-200 text-emerald-800 flex items-center justify-center font-bold text-xs shrink-0 transition-colors">
                   {currentUser.name.charAt(0)}
                 </div>
                 <div className="hidden xl:block">
-                  <div className="text-[10px] font-medium text-slate-500 group-hover:text-blue-600 leading-none">Petugas</div>
-                  <div className="text-xs font-semibold text-slate-800 group-hover:text-blue-600 leading-tight truncate max-w-[120px]">{currentUser.name}</div>
+                  <div className="text-[10px] font-medium text-slate-500 group-hover:text-emerald-700 leading-none">Petugas</div>
+                  <div className="text-xs font-semibold text-slate-800 group-hover:text-emerald-700 leading-tight truncate max-w-[120px]">{currentUser.name}</div>
                 </div>
               </button>
               <select
                 value={currentUser.role}
                 onChange={e => switchUser(e.target.value as UserRole)}
-                className="text-xs font-semibold rounded border border-slate-200 bg-white px-2 py-1 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 cursor-pointer"
+                className="text-xs font-semibold rounded border border-slate-200 bg-white px-2 py-1 text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
                 title="Ganti peran pengguna (RBAC)"
               >
                 <option value="SUPERADMIN">Superadmin</option>
@@ -270,7 +267,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="lg:hidden p-2 rounded-lg text-slate-800 hover:bg-slate-100 border border-slate-200 cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-blue-600"
+              className="lg:hidden p-2 rounded-lg text-slate-800 hover:bg-slate-100 border border-slate-200 cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors focus-visible:ring-2 focus-visible:ring-emerald-500"
               aria-label={isMobileMenuOpen ? 'Tutup navigasi menu' : 'Buka navigasi menu'}
             >
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -291,13 +288,13 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
                 <button
                   key={item.id}
                   onClick={() => onSelectTab(item.id)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg whitespace-nowrap transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-600 ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg whitespace-nowrap transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                     isActive
-                      ? 'bg-[#0f172a] text-white border border-[#0f172a] shadow-xs font-bold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 font-medium'
+                      ? 'bg-white text-emerald-800 shadow-2xs border border-slate-200 font-semibold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 font-medium'
                   }`}
                 >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-cyan-400' : 'text-slate-500'}`} />
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-emerald-600' : 'text-slate-500'}`} />
                   <span>{item.label}</span>
                 </button>
               );
@@ -311,19 +308,19 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
               onClick={() => setIsMoreOpen(!isMoreOpen)}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer shadow-2xs border ${
                 isSecondaryActive
-                  ? 'bg-[#0f172a] text-white border-[#0f172a] shadow-xs font-bold'
+                  ? 'bg-white text-emerald-800 border-slate-200 shadow-2xs font-semibold'
                   : isMoreOpen
                   ? 'bg-slate-200 text-slate-900 border-slate-300'
                   : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-100 border-slate-200 font-medium'
               }`}
             >
               <span>Modul Lainnya</span>
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isMoreOpen ? 'rotate-180 text-cyan-500' : 'text-slate-500'}`} />
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isMoreOpen ? 'rotate-180 text-emerald-600' : isSecondaryActive ? 'text-emerald-600' : 'text-slate-500'}`} />
             </button>
 
             {isMoreOpen && (
               <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-2xl shadow-2xl py-2 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
-                <div className="px-3.5 py-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                <div className="px-3.5 py-1 text-[11px] font-semibold text-slate-500">
                   Modul Lainnya
                 </div>
                 <div className="py-1">
@@ -339,11 +336,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
                         }}
                         className={`w-full text-left flex items-center gap-2.5 px-3.5 py-2 text-xs transition-colors cursor-pointer ${
                           isActive
-                            ? 'bg-blue-50 text-blue-900 font-bold border-l-2 border-blue-600'
+                            ? 'bg-emerald-50 text-emerald-900 font-bold border-l-2 border-emerald-600'
                             : 'text-slate-700 hover:bg-slate-50'
                         }`}
                       >
-                        <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600' : 'text-slate-500'}`} />
+                        <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-600' : 'text-slate-500'}`} />
                         <span>{item.label}</span>
                       </button>
                     );
@@ -358,13 +355,13 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
                         setIsMoreOpen(false);
                         onViewLanding();
                       }}
-                      className="w-full text-left flex items-center justify-between px-3 py-2 text-xs text-blue-700 bg-blue-50/70 hover:bg-blue-100/70 rounded-xl transition-colors cursor-pointer font-semibold group border border-blue-100"
+                      className="w-full text-left flex items-center justify-between px-3 py-2 text-xs text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100/70 rounded-xl transition-colors cursor-pointer font-semibold group border border-emerald-200"
                     >
                       <span className="flex items-center gap-2">
-                        <Globe className="w-4 h-4 text-blue-600" />
+                        <Globe className="w-4 h-4 text-emerald-600" />
                         <span>Ke Website</span>
                       </span>
-                      <ExternalLink className="w-3.5 h-3.5 text-blue-500 group-hover:translate-x-0.5 transition-transform" />
+                      <ExternalLink className="w-3.5 h-3.5 text-emerald-600 group-hover:translate-x-0.5 transition-transform" />
                     </button>
                   </div>
                 )}
@@ -395,11 +392,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
                       }}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer min-h-[44px] transition-colors ${
                         isActive
-                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold'
+                          ? 'bg-white text-emerald-800 border border-slate-200 shadow-2xs font-semibold'
                           : 'text-slate-700 hover:bg-slate-50 border border-transparent'
                       }`}
                     >
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-emerald-700' : 'text-slate-500'}`} />
+                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-emerald-600' : 'text-slate-500'}`} />
                       <span>{item.label}</span>
                     </button>
                   );
@@ -424,11 +421,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
                       }}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold cursor-pointer min-h-[44px] transition-colors ${
                         isActive
-                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold'
+                          ? 'bg-white text-emerald-800 border border-slate-200 shadow-2xs font-semibold'
                           : 'text-slate-700 hover:bg-slate-50 border border-transparent'
                       }`}
                     >
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-emerald-700' : 'text-slate-500'}`} />
+                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-emerald-600' : 'text-slate-500'}`} />
                       <span>{item.label}</span>
                     </button>
                   );
@@ -445,13 +442,13 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
                     setIsMobileMenuOpen(false);
                     onViewLanding();
                   }}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50/50 hover:bg-blue-50 border border-blue-200 cursor-pointer min-h-[44px]"
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold text-emerald-800 bg-emerald-50/50 hover:bg-emerald-50 border border-emerald-200 cursor-pointer min-h-[44px]"
                 >
                   <span className="flex items-center gap-3">
-                    <Globe className="w-4 h-4 text-blue-600 shrink-0" />
+                    <Globe className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span>Ke Website</span>
                   </span>
-                  <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
+                  <ExternalLink className="w-3.5 h-3.5 text-emerald-500" />
                 </button>
               )}
               <button

@@ -32,14 +32,227 @@ import {
   Trash2,
   Banknote,
   Calculator,
-  ArrowRight
+  ArrowRight,
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 import { warehouseDb } from '../db/storage';
 import { useAuth } from '../context/AuthContext';
 import { ReceivingDocument, ItemMaster, EquipmentItem, Supplier, normalizeItemCategory } from '../types/warehouse';
 import { SppgLogo } from './SppgLogo';
 
-type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'SUPPLIER_EXPENSE_NOTE';
+type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'SUPPLIER_EXPENSE_NOTE';
+
+export interface ItemTagData {
+  uniqueKey: string;
+  id: string;
+  batchLotNo: string;
+  name: string;
+  category: string;
+  warehouseType: 'GUDANG_KERING' | 'GUDANG_BASAH';
+  storageLocation: string;
+  storageTemp: string;
+  supplier: string;
+  arrivalDate: string;
+  arrivalDateFormatted: string;
+  arrivalTime: string;
+  expiryDate: string;
+  shelfLifeText: string;
+  quantity?: number;
+  unit?: string;
+  qcStatus: string;
+  inspector: string;
+  notes?: string;
+  copyIndex: number;
+  totalCopies: number;
+}
+
+export const SAMPLE_DUMMY_TAG_ITEMS: ItemTagData[] = [
+  {
+    uniqueKey: 'dummy-aym-1',
+    id: 'ITM-AYM-001',
+    batchLotNo: 'LOT-AYM-20261011-01',
+    name: 'Daging Ayam Broiler Fillet (Dada)',
+    category: 'Bahan Basah (Unggas)',
+    warehouseType: 'GUDANG_BASAH',
+    storageLocation: 'Chiller Dapur D-01',
+    storageTemp: 'Chiller (1°C - 4°C)',
+    supplier: 'Peternakan Ayam Barokah Tumpang',
+    arrivalDate: '2026-10-11',
+    arrivalDateFormatted: '11 Okt 2026',
+    arrivalTime: '06:15 WIB',
+    expiryDate: '14 Okt 2026',
+    shelfLifeText: '3 Hari (Chiller Dapur)',
+    quantity: 45,
+    unit: 'Kg',
+    qcStatus: 'Lolos QC Organoleptik & Higiene',
+    inspector: 'Chef Rahmat (Kepala Dapur)',
+    notes: 'Kenyal segar, bebas memar & bau asing',
+    copyIndex: 1,
+    totalCopies: 3,
+  },
+  {
+    uniqueKey: 'dummy-ikn-1',
+    id: 'ITM-IKN-002',
+    batchLotNo: 'LOT-IKN-20261011-02',
+    name: 'Ikan Tongkol Segar Potong (Steak Gizi)',
+    category: 'Bahan Basah (Ikan Laut)',
+    warehouseType: 'GUDANG_BASAH',
+    storageLocation: 'Freezer Dapur F-02',
+    storageTemp: 'Freezer (≤ -18°C)',
+    supplier: 'Nelayan Bahari Sendangbiru Malang',
+    arrivalDate: '2026-10-11',
+    arrivalDateFormatted: '11 Okt 2026',
+    arrivalTime: '05:45 WIB',
+    expiryDate: '13 Okt 2026',
+    shelfLifeText: '2 Hari (Es Curah Segera Olah)',
+    quantity: 30,
+    unit: 'Kg',
+    qcStatus: 'Lolos QC Organoleptik & Higiene',
+    inspector: 'Akmal (Admin Gudang)',
+    notes: 'Insang merah segar, mata jernih, box es 2°C',
+    copyIndex: 1,
+    totalCopies: 2,
+  },
+  {
+    uniqueKey: 'dummy-wrt-1',
+    id: 'ITM-SYR-003',
+    batchLotNo: 'LOT-WRT-20261011-03',
+    name: 'Wortel Manis Berastagi Segar Grade A',
+    category: 'Bahan Basah (Sayur Mayur)',
+    warehouseType: 'GUDANG_BASAH',
+    storageLocation: 'Chiller Sayur C-02',
+    storageTemp: 'Chiller Sayur (4°C - 8°C)',
+    supplier: 'Kelompok Tani Sayur Jeru Tumpang',
+    arrivalDate: '2026-10-11',
+    arrivalDateFormatted: '11 Okt 2026',
+    arrivalTime: '06:40 WIB',
+    expiryDate: '18 Okt 2026',
+    shelfLifeText: '7 Hari (Chiller Sayuran)',
+    quantity: 25,
+    unit: 'Kg',
+    qcStatus: 'Lolos QC Organoleptik & Higiene',
+    inspector: 'Chef Rahmat (Kepala Dapur)',
+    notes: 'Bersih tanah, renyah tanpa layu / bintik',
+    copyIndex: 1,
+    totalCopies: 2,
+  },
+  {
+    uniqueKey: 'dummy-tlr-1',
+    id: 'ITM-TLR-004',
+    batchLotNo: 'LOT-TLR-20261011-04',
+    name: 'Telur Ayam Negeri Cangkang Cokelat Grade A',
+    category: 'Bahan Basah (Telur)',
+    warehouseType: 'GUDANG_BASAH',
+    storageLocation: 'Rak Sejuk Telur T-01',
+    storageTemp: 'Ruang Sejuk (15°C - 20°C)',
+    supplier: 'Koperasi Unggas Makmur Jeru',
+    arrivalDate: '2026-10-11',
+    arrivalDateFormatted: '11 Okt 2026',
+    arrivalTime: '07:10 WIB',
+    expiryDate: '25 Okt 2026',
+    shelfLifeText: '14 Hari (Rotasi Berkala)',
+    quantity: 60,
+    unit: 'Kg',
+    qcStatus: 'Lolos QC Organoleptik & Higiene',
+    inspector: 'Akmal (Admin Gudang)',
+    notes: 'Cangkang utuh bersih, bebas retak & kotoran',
+    copyIndex: 1,
+    totalCopies: 4,
+  },
+  {
+    uniqueKey: 'dummy-tmp-1',
+    id: 'ITM-TMP-005',
+    batchLotNo: 'LOT-TMP-20261011-05',
+    name: 'Tempe Kedelai Super Daun Pisang Murni',
+    category: 'Bahan Basah (Olahan Nabati)',
+    warehouseType: 'GUDANG_BASAH',
+    storageLocation: 'Meja Transit Dapur MT-01',
+    storageTemp: 'Suhu Sejuk (18°C - 22°C)',
+    supplier: 'Pengrajin Tempe Mandiri Tumpang',
+    arrivalDate: '2026-10-11',
+    arrivalDateFormatted: '11 Okt 2026',
+    arrivalTime: '05:30 WIB',
+    expiryDate: '13 Okt 2026',
+    shelfLifeText: '2 Hari (Fermentasi Siap Olah)',
+    quantity: 120,
+    unit: 'Pcs',
+    qcStatus: 'Lolos QC Organoleptik & Higiene',
+    inspector: 'Chef Rahmat (Kepala Dapur)',
+    notes: 'Kapang putih rapat rata, aroma wangi khas',
+    copyIndex: 1,
+    totalCopies: 2,
+  },
+  {
+    uniqueKey: 'dummy-brs-1',
+    id: 'ITM-BRS-006',
+    batchLotNo: 'LOT-BRS-20261011-06',
+    name: 'Beras Pandan Wangi Premium Kemasan 25Kg',
+    category: 'Bahan Kering (Sembako)',
+    warehouseType: 'GUDANG_KERING',
+    storageLocation: 'Palet Beras Utama P-01',
+    storageTemp: 'Suhu Ruang Kering (18°C - 25°C)',
+    supplier: 'Mitra Tani Tumpang Makmur (Gapoktan)',
+    arrivalDate: '2026-10-11',
+    arrivalDateFormatted: '11 Okt 2026',
+    arrivalTime: '08:00 WIB',
+    expiryDate: '11 Apr 2027',
+    shelfLifeText: '180 Hari (Simpan Kering Berpalet)',
+    quantity: 250,
+    unit: 'Kg',
+    qcStatus: 'Lolos QC Organoleptik & Higiene',
+    inspector: 'Akmal (Admin Gudang)',
+    notes: 'Karung utuh segel pabrik, kadar air ≤14%',
+    copyIndex: 1,
+    totalCopies: 5,
+  },
+  {
+    uniqueKey: 'dummy-ssu-1',
+    id: 'ITM-SSU-007',
+    batchLotNo: 'LOT-SSU-20261011-07',
+    name: 'Susu Sapi Murni Pasteurisasi Botol 1 Liter',
+    category: 'Bahan Basah (Susu Sehat)',
+    warehouseType: 'GUDANG_BASAH',
+    storageLocation: 'Chiller Susu CS-01',
+    storageTemp: 'Chiller Ketat (1°C - 3°C)',
+    supplier: 'KUD Susu Segar Malang Raya',
+    arrivalDate: '2026-10-11',
+    arrivalDateFormatted: '11 Okt 2026',
+    arrivalTime: '06:00 WIB',
+    expiryDate: '16 Okt 2026',
+    shelfLifeText: '5 Hari (Wajib Cold Chain)',
+    quantity: 40,
+    unit: 'Liter',
+    qcStatus: 'Lolos QC Organoleptik & Higiene',
+    inspector: 'Rizky I. R. (Kepala SPPG)',
+    notes: 'Segel foil rapat, uji alkohol negatif',
+    copyIndex: 1,
+    totalCopies: 2,
+  },
+  {
+    uniqueKey: 'dummy-myk-1',
+    id: 'ITM-MYK-008',
+    batchLotNo: 'LOT-MYK-20261011-08',
+    name: 'Minyak Goreng Sawit Higienis Jerigen 5 Liter',
+    category: 'Bahan Kering (Sembako)',
+    warehouseType: 'GUDANG_KERING',
+    storageLocation: 'Rak Minyak R-02',
+    storageTemp: 'Suhu Ruang Kering (18°C - 25°C)',
+    supplier: 'UD Berkah Jaya Sembako Tumpang',
+    arrivalDate: '2026-10-11',
+    arrivalDateFormatted: '11 Okt 2026',
+    arrivalTime: '08:30 WIB',
+    expiryDate: '11 Okt 2027',
+    shelfLifeText: '365 Hari (Ruang Bersih Terlindung)',
+    quantity: 60,
+    unit: 'Liter',
+    qcStatus: 'Lolos QC Organoleptik & Higiene',
+    inspector: 'Akmal (Admin Gudang)',
+    notes: 'Jerigen food-grade utuh, minyak jernih',
+    copyIndex: 1,
+    totalCopies: 3,
+  },
+];
 
 interface PrintableLabelItem {
   id: string;
@@ -416,6 +629,187 @@ function getDefaultLinesForSupplier(supplier: Supplier): SupplierExpenseLine[] {
   ];
 }
 
+// =========================================================================
+// UTILITY FUNCTIONS FOR TAG & LABEL CALCULATIONS (HOISTED FOR COMPONENT USE)
+// =========================================================================
+
+export const parseLocalDate = (dateStr: string): Date => {
+  const parts = (dateStr || '').split('-');
+  if (parts.length === 3) {
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const d = parseInt(parts[2], 10);
+    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+      return new Date(y, m - 1, d);
+    }
+  }
+  return new Date();
+};
+
+export const formatDisplayDate = (d: Date): string => {
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
+export const addDaysToDate = (dateStr: string, days: number): string => {
+  try {
+    const base = parseLocalDate(dateStr);
+    base.setDate(base.getDate() + days);
+    return formatDisplayDate(base);
+  } catch {
+    return dateStr;
+  }
+};
+
+export const getDefaultSupplierForItem = (item: ItemMaster, fallbackSupplier = 'UMKM Sumber Lumintu'): string => {
+  const cat = (item.category || '').toLowerCase();
+  const name = (item.name || '').toLowerCase();
+  if (cat.includes('protein') || name.includes('ayam') || name.includes('telur') || name.includes('ikan') || name.includes('daging')) {
+    return 'UMKM Ayam Segar FJR';
+  }
+  if (cat.includes('sayur') || name.includes('sayur') || name.includes('bayam') || name.includes('wortel')) {
+    return "UMKM Luber's Fresh";
+  }
+  if (cat.includes('buah') || name.includes('buah') || name.includes('pisang')) {
+    return 'UMKM Sumber Lumintu';
+  }
+  if (cat.includes('clean') || cat.includes('hygiene') || cat.includes('pack')) {
+    return 'UMKM Divarif Plastik';
+  }
+  if (cat.includes('sembako') || name.includes('beras') || name.includes('minyak') || name.includes('gula') || name.includes('tepung') || name.includes('garam')) {
+    return 'UMKM Tumpang Grosir';
+  }
+  return fallbackSupplier;
+};
+
+export const getItemShelfLifeInfo = (item: ItemMaster): { durationText: string; shelfLifeDays: number } => {
+  const name = (item.name || '').toLowerCase();
+  const cat = (item.category || '').toLowerCase();
+  const sub = (item.subcategory || '').toLowerCase();
+  const loc = (item.location || '').toLowerCase();
+
+  // Daging Unggas / Ayam
+  if (name.includes('ayam') || sub.includes('unggas')) {
+    if (loc.includes('freezer')) {
+      return { durationText: '30 - 60 Hari (Freezer ≤ -18°C)', shelfLifeDays: 30 };
+    }
+    return { durationText: '1 - 2 Hari (Chiller <4°C)', shelfLifeDays: 2 };
+  }
+  // Daging Sapi / Ternak Lain
+  if (name.includes('daging') || name.includes('sapi')) {
+    if (loc.includes('freezer')) {
+      return { durationText: '60 - 90 Hari (Freezer ≤ -18°C)', shelfLifeDays: 60 };
+    }
+    return { durationText: '2 - 3 Hari (Chiller 1-4°C)', shelfLifeDays: 2 };
+  }
+
+  // Ikan Laut & Hasil Laut Segar
+  if (name.includes('ikan') || sub.includes('ikan') || name.includes('udang') || name.includes('cumi')) {
+    if (loc.includes('freezer')) {
+      return { durationText: '30 Hari (Freezer ≤ -18°C)', shelfLifeDays: 30 };
+    }
+    return { durationText: '1 Hari (Chiller 0-2°C)', shelfLifeDays: 1 };
+  }
+
+  // Telur Ayam Ras Segar
+  if (name.includes('telur') || sub.includes('telur')) {
+    return { durationText: '14 - 21 Hari (Suhu Sejuk)', shelfLifeDays: 14 };
+  }
+
+  // Sayuran Daun (Bayam, Kangkung, Sawi)
+  if (name.includes('bayam') || name.includes('kangkung') || name.includes('sawi') || sub.includes('daun')) {
+    return { durationText: '1 - 2 Hari (Chiller 2-4°C)', shelfLifeDays: 2 };
+  }
+
+  // Sayuran Umbi & Buah Sayur (Wortel, Kentang, Buncis, Tomat)
+  if (name.includes('wortel') || name.includes('kentang') || name.includes('buncis') || name.includes('tomat') || sub.includes('umbi') || cat.includes('sayur')) {
+    return { durationText: '5 - 7 Hari (Chiller 4-8°C)', shelfLifeDays: 7 };
+  }
+
+  // Buah Segar
+  if (cat.includes('buah') || name.includes('pisang') || name.includes('jeruk') || name.includes('apel') || name.includes('melon')) {
+    return { durationText: '3 - 5 Hari (Suhu Sejuk 12-16°C)', shelfLifeDays: 4 };
+  }
+
+  // Tahu / Tempe
+  if (name.includes('tahu') || name.includes('tempe')) {
+    return { durationText: '2 - 3 Hari (Chiller 1-4°C)', shelfLifeDays: 2 };
+  }
+
+  // Beras
+  if (name.includes('beras') || sub.includes('beras')) {
+    return { durationText: '3 - 6 Bulan (Suhu Ruang Kering)', shelfLifeDays: 120 };
+  }
+
+  // Minyak
+  if (name.includes('minyak') || sub.includes('minyak')) {
+    return { durationText: '12 Bulan (Tertutup & Sejuk)', shelfLifeDays: 365 };
+  }
+
+  // Gula Pasir
+  if (name.includes('gula') || sub.includes('pemanis')) {
+    return { durationText: '24 Bulan (Kering Tersegel)', shelfLifeDays: 730 };
+  }
+
+  // Tepung
+  if (name.includes('tepung')) {
+    return { durationText: '6 - 8 Bulan (Wadah Kedap Kering)', shelfLifeDays: 180 };
+  }
+
+  // Garam & Bumbu Kering
+  if (name.includes('garam') || name.includes('bumbu') || sub.includes('bumbu')) {
+    return { durationText: '12 - 24 Bulan (Kering Tersegel)', shelfLifeDays: 365 };
+  }
+
+  // Non-food / Operational
+  if (cat.includes('clean') || name.includes('sabun')) {
+    return { durationText: '24 Bulan (Tertutup Rapat)', shelfLifeDays: 730 };
+  }
+  if (cat.includes('pack') || cat.includes('hygiene') || cat.includes('operational')) {
+    return { durationText: '36 Bulan / Kering Higienis', shelfLifeDays: 1095 };
+  }
+
+  // Default fallback
+  if (loc.includes('chiller') || loc.includes('basah')) {
+    return { durationText: '2 - 3 Hari (Chiller)', shelfLifeDays: 3 };
+  }
+  if (loc.includes('freezer')) {
+    return { durationText: '30 - 60 Hari (Freezer)', shelfLifeDays: 30 };
+  }
+  return { durationText: '6 - 12 Bulan (Suhu Ruang)', shelfLifeDays: 180 };
+};
+
+export const isWetItem = (item: ItemMaster): boolean => {
+  const norm = normalizeItemCategory(item.category);
+  if (norm === 'Bahan Basah') return true;
+  const loc = (item.location || '').toLowerCase();
+  if (
+    loc.includes('chiller') ||
+    loc.includes('freezer') ||
+    loc.includes('basah') ||
+    loc.includes('segar') ||
+    loc.includes('sayur') ||
+    loc.includes('buah')
+  ) {
+    return true;
+  }
+  const cat = (item.category || '').toLowerCase();
+  if (
+    cat.includes('protein') ||
+    cat.includes('sayur') ||
+    cat.includes('buah') ||
+    cat.includes('ayam') ||
+    cat.includes('daging') ||
+    cat.includes('ikan') ||
+    cat.includes('telur')
+  ) {
+    return true;
+  }
+  return false;
+};
+
 export interface ToolsPrintModuleProps {
   initialForm?: FormType;
   initialSupplierId?: string;
@@ -656,6 +1050,239 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     arrivalDate: string;
   } | null>(null);
 
+  // =========================================================================
+  // ITEM TAG LABELS (TAG ITEM & BAHAN MASUK - SUPPLIER, JAM DATANG & EXPIRED)
+  // =========================================================================
+  const [tagSourceType, setTagSourceType] = useState<'DUMMY_SAMPLE' | 'FROM_GR' | 'FROM_ITEMS'>('DUMMY_SAMPLE');
+  const [tagSelectedGrId, setTagSelectedGrId] = useState<string>(receivingDocs[0]?.id || '');
+  const [tagGridCols, setTagGridCols] = useState<'4' | '3' | '2'>('4');
+  const [tagArrivalDate, setTagArrivalDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+  const [tagArrivalTime, setTagArrivalTime] = useState<string>(
+    receivingDocs[0]?.arrivalTime || '08:30 WIB'
+  );
+  const [tagGlobalSupplier, setTagGlobalSupplier] = useState<string>(
+    receivingDocs[0]?.supplierName || ''
+  );
+  const [tagExpiryMode, setTagExpiryMode] = useState<'AUTO' | 'CUSTOM_DATE' | 'BLANK'>('AUTO');
+  const [tagManualExpiryDate, setTagManualExpiryDate] = useState<string>('');
+  const [tagCopiesPerItem, setTagCopiesPerItem] = useState<number>(1);
+  const [tagWarehouseFilter, setTagWarehouseFilter] = useState<'ALL' | 'GUDANG_KERING' | 'GUDANG_BASAH'>('ALL');
+  const [tagSearchQuery, setTagSearchQuery] = useState<string>('');
+  const [tagSelectedKeys, setTagSelectedKeys] = useState<string[]>([]);
+  const [tagHasCustomSelection, setTagHasCustomSelection] = useState<boolean>(false);
+  const [tagQcStatus, setTagQcStatus] = useState<string>('Lolos QC Organoleptik & Higiene');
+  const [tagInspectorName, setTagInspectorName] = useState<string>(currentUser?.name || 'Petugas SPPG MLG TUMPANG JERU');
+
+  // Deriving Item Tags List
+  const allItemTags = useMemo<ItemTagData[]>(() => {
+    const list: ItemTagData[] = [];
+
+    if (tagSourceType === 'DUMMY_SAMPLE') {
+      SAMPLE_DUMMY_TAG_ITEMS.forEach(sample => {
+        const copies = Math.max(1, tagCopiesPerItem);
+        for (let c = 1; c <= copies; c++) {
+          list.push({
+            ...sample,
+            uniqueKey: `dummy-${sample.id}-${c}`,
+            copyIndex: c,
+            totalCopies: copies,
+            supplier: tagGlobalSupplier || sample.supplier,
+            arrivalDate: tagArrivalDate || sample.arrivalDate,
+            arrivalDateFormatted: tagArrivalDate ? formatDisplayDate(parseLocalDate(tagArrivalDate)) : sample.arrivalDateFormatted,
+            arrivalTime: tagArrivalTime || sample.arrivalTime,
+            expiryDate: tagExpiryMode === 'CUSTOM_DATE' && tagManualExpiryDate
+              ? formatDisplayDate(parseLocalDate(tagManualExpiryDate))
+              : sample.expiryDate,
+            qcStatus: tagQcStatus || sample.qcStatus,
+            inspector: tagInspectorName || sample.inspector,
+          });
+        }
+      });
+      return list;
+    }
+
+    if (tagSourceType === 'FROM_GR') {
+      const doc = receivingDocs.find(d => d.id === tagSelectedGrId) || receivingDocs[0];
+      if (doc) {
+        const docSupplier = tagGlobalSupplier || doc.supplierName || 'Mitra Pemasok Rekanan';
+        const docDate = tagArrivalDate || doc.date;
+        const docTime = tagArrivalTime || doc.arrivalTime || '08:30 WIB';
+
+        (doc.lines || []).forEach((line, lineIdx) => {
+          const matchedItem = items.find(
+            i => i.id === line.itemId || i.name.toLowerCase() === line.itemName.toLowerCase()
+          );
+
+          const wet = matchedItem ? isWetItem(matchedItem) : true;
+          const locLower = (matchedItem?.location || '').toLowerCase();
+          const isFreezer = locLower.includes('freezer');
+          const isChiller = locLower.includes('chiller');
+
+          const autoShelf = matchedItem
+            ? getItemShelfLifeInfo(matchedItem)
+            : { durationText: '2 - 3 Hari (Chiller)', shelfLifeDays: 3 };
+
+          let expDateFormatted = '';
+          if (tagExpiryMode === 'AUTO') {
+            expDateFormatted = addDaysToDate(docDate, autoShelf.shelfLifeDays);
+          } else if (tagExpiryMode === 'CUSTOM_DATE' && tagManualExpiryDate) {
+            expDateFormatted = formatDisplayDate(parseLocalDate(tagManualExpiryDate));
+          }
+
+          const storageLoc = matchedItem?.location || (wet ? 'Chiller Dapur' : 'Gudang Utama');
+          const storageTemp = isFreezer
+            ? 'Freezer (≤ -18°C)'
+            : isChiller || wet
+            ? 'Chiller (1°C - 4°C)'
+            : 'Suhu Ruang Kering (18°C - 25°C)';
+
+          const copies = Math.max(1, tagCopiesPerItem);
+          for (let c = 1; c <= copies; c++) {
+            list.push({
+              uniqueKey: `gr-${doc.id}-${lineIdx}-${c}`,
+              id: line.itemId || `ITEM-${lineIdx + 1}`,
+              batchLotNo: line.batchLotNo || `LOT-${doc.id.replace('GR-', '')}-${String(lineIdx + 1).padStart(2, '0')}`,
+              name: line.itemName,
+              category: matchedItem?.category || (wet ? 'Bahan Basah' : 'Bahan Kering'),
+              warehouseType: wet ? 'GUDANG_BASAH' : 'GUDANG_KERING',
+              storageLocation: storageLoc,
+              storageTemp,
+              supplier: docSupplier,
+              arrivalDate: docDate,
+              arrivalDateFormatted: formatDisplayDate(parseLocalDate(docDate)),
+              arrivalTime: docTime,
+              expiryDate: expDateFormatted,
+              shelfLifeText: autoShelf.durationText,
+              quantity: line.quantity,
+              unit: line.unit,
+              qcStatus: tagQcStatus,
+              inspector: tagInspectorName,
+              notes: copies > 1 ? `Wadah ${c} dari ${copies}` : (line.notes || ''),
+              copyIndex: c,
+              totalCopies: copies,
+            });
+          }
+        });
+      }
+    } else {
+      // FROM_ITEMS: Loop through catalog items
+      items.forEach(item => {
+        const wet = isWetItem(item);
+        const locLower = (item.location || '').toLowerCase();
+        const isFreezer = locLower.includes('freezer');
+        const isChiller = locLower.includes('chiller');
+        const autoShelf = getItemShelfLifeInfo(item);
+        const itemSupplier = tagGlobalSupplier || getDefaultSupplierForItem(item);
+        const arrivalFormatted = formatDisplayDate(parseLocalDate(tagArrivalDate));
+
+        let expDateFormatted = '';
+        if (tagExpiryMode === 'AUTO') {
+          expDateFormatted = addDaysToDate(tagArrivalDate, autoShelf.shelfLifeDays);
+        } else if (tagExpiryMode === 'CUSTOM_DATE' && tagManualExpiryDate) {
+          expDateFormatted = formatDisplayDate(parseLocalDate(tagManualExpiryDate));
+        }
+
+        const storageTemp = isFreezer
+          ? 'Freezer (≤ -18°C)'
+          : isChiller || wet
+          ? 'Chiller (1°C - 4°C)'
+          : 'Suhu Ruang Kering (18°C - 25°C)';
+
+        const copies = Math.max(1, tagCopiesPerItem);
+        for (let c = 1; c <= copies; c++) {
+          list.push({
+            uniqueKey: `item-${item.id}-${c}`,
+            id: item.id,
+            batchLotNo: `LOT-${item.id}-${tagArrivalDate.replace(/-/g, '').slice(2)}`,
+            name: item.name,
+            category: item.category,
+            warehouseType: wet ? 'GUDANG_BASAH' : 'GUDANG_KERING',
+            storageLocation: item.location,
+            storageTemp,
+            supplier: itemSupplier,
+            arrivalDate: tagArrivalDate,
+            arrivalDateFormatted: arrivalFormatted,
+            arrivalTime: tagArrivalTime,
+            expiryDate: expDateFormatted,
+            shelfLifeText: autoShelf.durationText,
+            quantity: item.minimumStock,
+            unit: item.baseUnit,
+            qcStatus: tagQcStatus,
+            inspector: tagInspectorName,
+            notes: copies > 1 ? `Wadah ${c} dari ${copies}` : '',
+            copyIndex: c,
+            totalCopies: copies,
+          });
+        }
+      });
+    }
+
+    return list;
+  }, [
+    tagSourceType,
+    tagSelectedGrId,
+    receivingDocs,
+    items,
+    tagGlobalSupplier,
+    tagArrivalDate,
+    tagArrivalTime,
+    tagExpiryMode,
+    tagManualExpiryDate,
+    tagCopiesPerItem,
+    tagQcStatus,
+    tagInspectorName,
+  ]);
+
+  // Filtered Item Tags
+  const filteredItemTags = useMemo(() => {
+    return allItemTags.filter(tag => {
+      if (tagWarehouseFilter !== 'ALL' && tag.warehouseType !== tagWarehouseFilter) {
+        return false;
+      }
+      if (tagSearchQuery.trim()) {
+        const q = tagSearchQuery.toLowerCase();
+        const mName = tag.name.toLowerCase().includes(q);
+        const mId = tag.id.toLowerCase().includes(q);
+        const mSup = tag.supplier.toLowerCase().includes(q);
+        const mBatch = tag.batchLotNo.toLowerCase().includes(q);
+        if (!mName && !mId && !mSup && !mBatch) return false;
+      }
+      return true;
+    });
+  }, [allItemTags, tagWarehouseFilter, tagSearchQuery]);
+
+  // Final tags to print
+  const itemTagsToPrint = useMemo(() => {
+    if (!tagHasCustomSelection) return filteredItemTags;
+    return filteredItemTags.filter(t => tagSelectedKeys.includes(t.uniqueKey));
+  }, [filteredItemTags, tagHasCustomSelection, tagSelectedKeys]);
+
+  const toggleSelectAllItemTags = () => {
+    if (tagHasCustomSelection && tagSelectedKeys.length === filteredItemTags.length) {
+      setTagHasCustomSelection(true);
+      setTagSelectedKeys([]);
+    } else {
+      setTagHasCustomSelection(false);
+      setTagSelectedKeys(filteredItemTags.map(t => t.uniqueKey));
+    }
+  };
+
+  const toggleSelectItemTag = (key: string) => {
+    if (!tagHasCustomSelection) {
+      const newKeys = filteredItemTags.map(t => t.uniqueKey).filter(k => k !== key);
+      setTagHasCustomSelection(true);
+      setTagSelectedKeys(newKeys);
+    } else {
+      if (tagSelectedKeys.includes(key)) {
+        setTagSelectedKeys(tagSelectedKeys.filter(k => k !== key));
+      } else {
+        setTagSelectedKeys([...tagSelectedKeys, key]);
+      }
+    }
+  };
+
   // Selected entities
   const selectedReceivingDoc = useMemo<ReceivingDocument | null>(() => {
     if (selectedReceivingId === 'BLANK') return null;
@@ -671,190 +1298,9 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     return items.filter(i => i.location.toLowerCase().includes(opnameLocation.toLowerCase()));
   }, [items, opnameLocation]);
 
-  // Helpers for date parsing and shelf life calculation
-  const parseLocalDate = (dateStr: string): Date => {
-    const parts = (dateStr || '').split('-');
-    if (parts.length === 3) {
-      const y = parseInt(parts[0], 10);
-      const m = parseInt(parts[1], 10);
-      const d = parseInt(parts[2], 10);
-      if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
-        return new Date(y, m - 1, d);
-      }
-    }
-    return new Date();
-  };
-
-  const formatDisplayDate = (d: Date): string => {
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    return `${day}/${month}/${year}`;
-  };
-
-  const addDaysToDate = (dateStr: string, days: number): string => {
-    try {
-      const base = parseLocalDate(dateStr);
-      base.setDate(base.getDate() + days);
-      return formatDisplayDate(base);
-    } catch {
-      return dateStr;
-    }
-  };
-
   const formattedArrivalDate = useMemo(() => {
     return formatDisplayDate(parseLocalDate(labelArrivalDate));
   }, [labelArrivalDate]);
-
-  // Default supplier resolver per ingredient category
-  const getDefaultSupplierForItem = (item: ItemMaster): string => {
-    const cat = (item.category || '').toLowerCase();
-    const name = (item.name || '').toLowerCase();
-    if (cat.includes('protein') || name.includes('ayam') || name.includes('telur') || name.includes('ikan') || name.includes('daging')) {
-      return 'UMKM Ayam Segar FJR';
-    }
-    if (cat.includes('sayur') || name.includes('sayur') || name.includes('bayam') || name.includes('wortel')) {
-      return "UMKM Luber's Fresh";
-    }
-    if (cat.includes('buah') || name.includes('buah') || name.includes('pisang')) {
-      return 'UMKM Sumber Lumintu';
-    }
-    if (cat.includes('clean') || cat.includes('hygiene') || cat.includes('pack')) {
-      return 'UMKM Divarif Plastik';
-    }
-    if (cat.includes('sembako') || name.includes('beras') || name.includes('minyak') || name.includes('gula') || name.includes('tepung') || name.includes('garam')) {
-      return 'UMKM Tumpang Grosir';
-    }
-    return suppliers[0]?.name || 'UMKM Sumber Lumintu';
-  };
-
-  // Shelf life estimation tailored per ingredient & warehouse storage condition
-  const getItemShelfLifeInfo = (item: ItemMaster): { durationText: string; shelfLifeDays: number } => {
-    const name = (item.name || '').toLowerCase();
-    const cat = (item.category || '').toLowerCase();
-    const sub = (item.subcategory || '').toLowerCase();
-    const loc = (item.location || '').toLowerCase();
-
-    // Daging Unggas / Ayam
-    if (name.includes('ayam') || sub.includes('unggas')) {
-      if (loc.includes('freezer')) {
-        return { durationText: '30 - 60 Hari (Freezer ≤ -18°C)', shelfLifeDays: 30 };
-      }
-      return { durationText: '1 - 2 Hari (Chiller <4°C)', shelfLifeDays: 2 };
-    }
-    // Daging Sapi / Ternak Lain
-    if (name.includes('daging') || name.includes('sapi')) {
-      if (loc.includes('freezer')) {
-        return { durationText: '60 - 90 Hari (Freezer ≤ -18°C)', shelfLifeDays: 60 };
-      }
-      return { durationText: '2 - 3 Hari (Chiller 1-4°C)', shelfLifeDays: 2 };
-    }
-
-    // Ikan Laut & Hasil Laut Segar
-    if (name.includes('ikan') || sub.includes('ikan') || name.includes('udang') || name.includes('cumi')) {
-      if (loc.includes('freezer')) {
-        return { durationText: '30 Hari (Freezer ≤ -18°C)', shelfLifeDays: 30 };
-      }
-      return { durationText: '1 Hari (Chiller 0-2°C)', shelfLifeDays: 1 };
-    }
-
-    // Telur Ayam Ras Segar
-    if (name.includes('telur') || sub.includes('telur')) {
-      return { durationText: '14 - 21 Hari (Suhu Sejuk)', shelfLifeDays: 14 };
-    }
-
-    // Sayuran Daun (Bayam, Kangkung, Sawi)
-    if (name.includes('bayam') || name.includes('kangkung') || name.includes('sawi') || sub.includes('daun')) {
-      return { durationText: '1 - 2 Hari (Chiller 2-4°C)', shelfLifeDays: 2 };
-    }
-
-    // Sayuran Umbi & Buah Sayur (Wortel, Kentang, Buncis, Tomat)
-    if (name.includes('wortel') || name.includes('kentang') || name.includes('buncis') || name.includes('tomat') || sub.includes('umbi') || cat.includes('sayur')) {
-      return { durationText: '5 - 7 Hari (Chiller 4-8°C)', shelfLifeDays: 7 };
-    }
-
-    // Buah Segar
-    if (cat.includes('buah') || name.includes('pisang') || name.includes('jeruk') || name.includes('apel') || name.includes('melon')) {
-      return { durationText: '3 - 5 Hari (Suhu Sejuk 12-16°C)', shelfLifeDays: 4 };
-    }
-
-    // Tahu / Tempe
-    if (name.includes('tahu') || name.includes('tempe')) {
-      return { durationText: '2 - 3 Hari (Chiller 1-4°C)', shelfLifeDays: 2 };
-    }
-
-    // Beras
-    if (name.includes('beras') || sub.includes('beras')) {
-      return { durationText: '3 - 6 Bulan (Suhu Ruang Kering)', shelfLifeDays: 120 };
-    }
-
-    // Minyak
-    if (name.includes('minyak') || sub.includes('minyak')) {
-      return { durationText: '12 Bulan (Tertutup & Sejuk)', shelfLifeDays: 365 };
-    }
-
-    // Gula Pasir
-    if (name.includes('gula') || sub.includes('pemanis')) {
-      return { durationText: '24 Bulan (Kering Tersegel)', shelfLifeDays: 730 };
-    }
-
-    // Tepung
-    if (name.includes('tepung')) {
-      return { durationText: '6 - 8 Bulan (Wadah Kedap Kering)', shelfLifeDays: 180 };
-    }
-
-    // Garam & Bumbu Kering
-    if (name.includes('garam') || name.includes('bumbu') || sub.includes('bumbu')) {
-      return { durationText: '12 - 24 Bulan (Kering Tersegel)', shelfLifeDays: 365 };
-    }
-
-    // Non-food / Operational
-    if (cat.includes('clean') || name.includes('sabun')) {
-      return { durationText: '24 Bulan (Tertutup Rapat)', shelfLifeDays: 730 };
-    }
-    if (cat.includes('pack') || cat.includes('hygiene') || cat.includes('operational')) {
-      return { durationText: '36 Bulan / Kering Higienis', shelfLifeDays: 1095 };
-    }
-
-    // Default fallback
-    if (loc.includes('chiller') || loc.includes('basah')) {
-      return { durationText: '2 - 3 Hari (Chiller)', shelfLifeDays: 3 };
-    }
-    if (loc.includes('freezer')) {
-      return { durationText: '30 - 60 Hari (Freezer)', shelfLifeDays: 30 };
-    }
-    return { durationText: '6 - 12 Bulan (Suhu Ruang)', shelfLifeDays: 180 };
-  };
-
-  // Helper: check if item belongs to wet / cold warehouse
-  const isWetItem = (item: ItemMaster): boolean => {
-    const norm = normalizeItemCategory(item.category);
-    if (norm === 'Bahan Basah') return true;
-    const loc = (item.location || '').toLowerCase();
-    if (
-      loc.includes('chiller') ||
-      loc.includes('freezer') ||
-      loc.includes('basah') ||
-      loc.includes('segar') ||
-      loc.includes('sayur') ||
-      loc.includes('buah')
-    ) {
-      return true;
-    }
-    const cat = (item.category || '').toLowerCase();
-    if (
-      cat.includes('protein') ||
-      cat.includes('sayur') ||
-      cat.includes('buah') ||
-      cat.includes('ayam') ||
-      cat.includes('daging') ||
-      cat.includes('ikan') ||
-      cat.includes('telur')
-    ) {
-      return true;
-    }
-    return false;
-  };
 
   // Unified list of printable labels for Gudang Kering, Gudang Basah & Peralatan
   const allLabelItems = useMemo<PrintableLabelItem[]>(() => {
@@ -1445,13 +1891,13 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       `}</style>
 
       {/* Screen Control Header */}
-      <div className="no-print bg-white p-5 sm:p-6 rounded-2xl border border-[#ded7c8] shadow-xs">
+      <div className="no-print bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="font-serif-display text-xl sm:text-2xl font-bold text-[#111915] tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
               Pusat Formulir & Alat Cetak Fisik
             </h1>
-            <p className="text-xs text-[#5a6860] mt-0.5">
+            <p className="text-xs text-slate-500 mt-1">
               Cetak dokumen operasional lapangan standar untuk pencatatan fisik di rak gudang, ruang chiller, dan dapur pengolahan.
             </p>
           </div>
@@ -1459,125 +1905,156 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           <div className="flex items-center gap-2.5">
             <button
               onClick={handlePrint}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0c3123] hover:bg-[#155e42] text-white text-xs font-medium shadow-xs transition-colors cursor-pointer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
             >
-              <Printer className="w-4 h-4 text-[#86efac]" />
+              <Printer className="w-4 h-4 text-emerald-100" />
               Cetak Dokumen Sekarang (Print / PDF)
             </button>
           </div>
         </div>
 
         {/* Form Category Selector */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2.5 mt-6 pt-5 border-t border-[#eee8dc]">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2.5 mt-6 pt-5 border-t border-slate-200">
           <button
             onClick={() => setActiveForm('RECEIVING_FORM')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
               activeForm === 'RECEIVING_FORM'
-                ? 'bg-[#ecf7f0] border-[#c2e7cf] text-[#0c3123] shadow-xs font-semibold'
-                : 'bg-[#faf8f4] border-[#ded7c8] hover:bg-[#ede7da] text-[#111915]'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
+                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <FileText className="w-4 h-4 text-[#0c3123]" />
+              <FileText className={`w-4 h-4 ${activeForm === 'RECEIVING_FORM' ? 'text-emerald-700' : 'text-slate-500'}`} />
               <span className="text-xs">BA Penerimaan</span>
             </div>
-            <p className="text-[11px] text-[#5a6860] line-clamp-1">Bukti fisik serah terima supplier</p>
+            <p className={`text-[11px] line-clamp-1 ${activeForm === 'RECEIVING_FORM' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
+              Bukti fisik serah terima supplier
+            </p>
           </button>
 
           <button
             onClick={() => setActiveForm('OPNAME_SHEET')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
               activeForm === 'OPNAME_SHEET'
-                ? 'bg-[#ecf7f0] border-[#c2e7cf] text-[#0c3123] shadow-xs font-semibold'
-                : 'bg-[#faf8f4] border-[#ded7c8] hover:bg-[#ede7da] text-[#111915]'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
+                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <ClipboardList className="w-4 h-4 text-[#0c3123]" />
+              <ClipboardList className={`w-4 h-4 ${activeForm === 'OPNAME_SHEET' ? 'text-emerald-700' : 'text-slate-500'}`} />
               <span className="text-xs">Lembar Opname Fisik</span>
             </div>
-            <p className="text-[11px] text-[#5a6860] line-clamp-1">Tally sheet hitung rak & chiller</p>
+            <p className={`text-[11px] line-clamp-1 ${activeForm === 'OPNAME_SHEET' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
+              Tally sheet hitung rak & chiller
+            </p>
           </button>
 
           <button
             onClick={() => setActiveForm('BIN_CARD')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
               activeForm === 'BIN_CARD'
-                ? 'bg-[#ecf7f0] border-[#c2e7cf] text-[#0c3123] shadow-xs font-semibold'
-                : 'bg-[#faf8f4] border-[#ded7c8] hover:bg-[#ede7da] text-[#111915]'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
+                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <Layers className="w-4 h-4 text-[#0c3123]" />
+              <Layers className={`w-4 h-4 ${activeForm === 'BIN_CARD' ? 'text-emerald-700' : 'text-slate-500'}`} />
               <span className="text-xs">Kartu Stok (Bin Card)</span>
             </div>
-            <p className="text-[11px] text-[#5a6860] line-clamp-1">Kartu gantung mutasi fisik rak</p>
+            <p className={`text-[11px] line-clamp-1 ${activeForm === 'BIN_CARD' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
+              Kartu gantung mutasi fisik rak
+            </p>
           </button>
 
           <button
             onClick={() => setActiveForm('KITCHEN_REQUISITION')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
               activeForm === 'KITCHEN_REQUISITION'
-                ? 'bg-[#ecf7f0] border-[#c2e7cf] text-[#0c3123] shadow-xs font-semibold'
-                : 'bg-[#faf8f4] border-[#ded7c8] hover:bg-[#ede7da] text-[#111915]'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
+                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <UtensilsCrossed className="w-4 h-4 text-[#0c3123]" />
+              <UtensilsCrossed className={`w-4 h-4 ${activeForm === 'KITCHEN_REQUISITION' ? 'text-emerald-700' : 'text-slate-500'}`} />
               <span className="text-xs">Bon Permintaan Dapur</span>
             </div>
-            <p className="text-[11px] text-[#5a6860] line-clamp-1">Pengeluaran harian porsi masak</p>
+            <p className={`text-[11px] line-clamp-1 ${activeForm === 'KITCHEN_REQUISITION' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
+              Pengeluaran harian porsi masak
+            </p>
+          </button>
+
+          <button
+            onClick={() => setActiveForm('ITEM_TAG_LABEL')}
+            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+              activeForm === 'ITEM_TAG_LABEL'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
+                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Tags className={`w-4 h-4 ${activeForm === 'ITEM_TAG_LABEL' ? 'text-emerald-700' : 'text-slate-500'}`} />
+              <span className="text-xs">Tag Item Bahan Datang</span>
+            </div>
+            <p className={`text-[11px] line-clamp-1 ${activeForm === 'ITEM_TAG_LABEL' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
+              Supplier, jam datang & expired (ukuran mini)
+            </p>
           </button>
 
           <button
             onClick={() => setActiveForm('EQUIPMENT_LABEL')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
               activeForm === 'EQUIPMENT_LABEL'
-                ? 'bg-[#ecf7f0] border-[#c2e7cf] text-[#0c3123] shadow-xs font-semibold'
-                : 'bg-[#faf8f4] border-[#ded7c8] hover:bg-[#ede7da] text-[#111915]'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
+                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <Tags className="w-4 h-4 text-[#0c3123]" />
+              <Tags className={`w-4 h-4 ${activeForm === 'EQUIPMENT_LABEL' ? 'text-emerald-700' : 'text-slate-500'}`} />
               <span className="text-xs">Label & QR Gudang / Aset</span>
             </div>
-            <p className="text-[11px] text-[#5a6860] line-clamp-1">Stiker barang & aset kering/basah</p>
+            <p className={`text-[11px] line-clamp-1 ${activeForm === 'EQUIPMENT_LABEL' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
+              Stiker barang & aset kering/basah
+            </p>
           </button>
 
           <button
             onClick={() => setActiveForm('RACK_LABEL')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
               activeForm === 'RACK_LABEL'
-                ? 'bg-[#ecf7f0] border-[#c2e7cf] text-[#0c3123] shadow-xs font-semibold'
-                : 'bg-[#faf8f4] border-[#ded7c8] hover:bg-[#ede7da] text-[#111915]'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
+                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <Warehouse className="w-4 h-4 text-[#0c3123]" />
+              <Warehouse className={`w-4 h-4 ${activeForm === 'RACK_LABEL' ? 'text-emerald-700' : 'text-slate-500'}`} />
               <span className="text-xs">Label Rak Gudang</span>
             </div>
-            <p className="text-[11px] text-[#5a6860] line-clamp-1">Plakat rak fisik, daftar isi & pembeda</p>
+            <p className={`text-[11px] line-clamp-1 ${activeForm === 'RACK_LABEL' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
+              Plakat rak fisik, daftar isi & pembeda
+            </p>
           </button>
 
           <button
             onClick={() => setActiveForm('SUPPLIER_EXPENSE_NOTE')}
             className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
               activeForm === 'SUPPLIER_EXPENSE_NOTE'
-                ? 'bg-[#ecf7f0] border-[#c2e7cf] text-[#0c3123] shadow-xs font-semibold'
-                : 'bg-[#faf8f4] border-[#ded7c8] hover:bg-[#ede7da] text-[#111915]'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
+                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <Receipt className="w-4 h-4 text-[#0c3123]" />
+              <Receipt className={`w-4 h-4 ${activeForm === 'SUPPLIER_EXPENSE_NOTE' ? 'text-emerald-700' : 'text-slate-500'}`} />
               <span className="text-xs">Nota Kas Keluar</span>
             </div>
-            <p className="text-[11px] text-[#5a6860] line-clamp-1">Kop resmi & bukti bayar supplier</p>
+            <p className={`text-[11px] line-clamp-1 ${activeForm === 'SUPPLIER_EXPENSE_NOTE' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
+              Kop resmi & bukti bayar supplier
+            </p>
           </button>
         </div>
 
         {/* Contextual Customizer Controls */}
-        <div className="mt-5 p-4 rounded-xl bg-[#faf8f4] border border-[#ded7c8] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 text-xs">
-          {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' ? (
+        <div className="mt-5 p-4 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 text-xs">
+          {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' && activeForm !== 'ITEM_TAG_LABEL' ? (
             <>
               <div>
                 <label className="block text-slate-600 font-medium mb-1">Nama Satuan Layanan (Header)</label>
@@ -1852,6 +2329,208 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 </div>
               </div>
             </>
+          ) : activeForm === 'ITEM_TAG_LABEL' ? (
+            <>
+              {/* 1. Sumber Data Bahan */}
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Sumber Data Bahan</label>
+                <select
+                  value={tagSourceType}
+                  onChange={e => setTagSourceType(e.target.value as any)}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
+                >
+                  <option value="DUMMY_SAMPLE">Contoh Data Dummy (8 Sampel Bahan SPPG)</option>
+                  <option value="FROM_GR">Tarik dari Penerimaan (GR) Riil</option>
+                  <option value="FROM_ITEMS">Katalog Master Bahan SPPG</option>
+                </select>
+              </div>
+
+              {/* 2. Banner / Pemilihan Dokumen GR jika FROM_GR */}
+              {tagSourceType === 'DUMMY_SAMPLE' ? (
+                <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-emerald-900">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    Contoh Data Dummy Aktif
+                  </div>
+                  <p className="text-[11px] text-emerald-800 leading-relaxed">
+                    Menampilkan 8 contoh label bahan basah (ayam, ikan, wortel, telur, tempe, susu) dan kering (beras, minyak) lengkap dengan supplier, jam datang, dan expired.
+                  </p>
+                </div>
+              ) : tagSourceType === 'FROM_GR' ? (
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Pilih Dokumen GR Datang</label>
+                  <select
+                    value={tagSelectedGrId}
+                    onChange={e => {
+                      const grId = e.target.value;
+                      setTagSelectedGrId(grId);
+                      const doc = receivingDocs.find(d => d.id === grId);
+                      if (doc) {
+                        setTagGlobalSupplier(doc.supplierName);
+                        setTagArrivalDate(doc.date);
+                        setTagArrivalTime(doc.arrivalTime || '08:30 WIB');
+                      }
+                    }}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    {receivingDocs.map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.id} • {d.supplierName} ({d.date})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-slate-600 font-medium mb-1">Filter Gudang / Suhu</label>
+                  <select
+                    value={tagWarehouseFilter}
+                    onChange={e => setTagWarehouseFilter(e.target.value as any)}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="ALL">Semua Gudang (Basah & Kering)</option>
+                    <option value="GUDANG_BASAH">Gudang Basah (Chiller/Freezer)</option>
+                    <option value="GUDANG_KERING">Gudang Kering (Dry Storage)</option>
+                  </select>
+                </div>
+              )}
+
+              {/* 3. Ukuran Cetak (Muat Banyak per Lembar) */}
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  Ukuran Cetak (Kapasitas Lembar)
+                </label>
+                <select
+                  value={tagGridCols}
+                  onChange={e => setTagGridCols(e.target.value as any)}
+                  className="w-full px-3 py-1.5 rounded-lg border border-emerald-500 bg-emerald-50/50 text-emerald-950 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                >
+                  <option value="4">Mini Kompak (4 Kolom • 16 Tag/Lembar)</option>
+                  <option value="3">Sedang (3 Kolom • 12 Tag/Lembar)</option>
+                  <option value="2">Standar / Wadah Besar (2 Kolom • 6 Tag/Lembar)</option>
+                </select>
+              </div>
+
+              {/* 4. Supplier */}
+              <div>
+                <label className="block text-slate-600 font-medium mb-1">Pemasok / Supplier</label>
+                <input
+                  type="text"
+                  value={tagGlobalSupplier}
+                  onChange={e => setTagGlobalSupplier(e.target.value)}
+                  placeholder="Nama supplier..."
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
+                />
+              </div>
+
+              {/* 5. Tanggal Datang */}
+              <div>
+                <label className="block text-slate-600 font-medium mb-1">Tanggal Barang Datang</label>
+                <input
+                  type="date"
+                  value={tagArrivalDate}
+                  onChange={e => setTagArrivalDate(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                />
+              </div>
+
+              {/* 6. Waktu / Jam Datang */}
+              <div>
+                <label className="block text-slate-600 font-medium mb-1">Waktu / Jam Kedatangan</label>
+                <input
+                  type="text"
+                  value={tagArrivalTime}
+                  onChange={e => setTagArrivalTime(e.target.value)}
+                  placeholder="Contoh: 08:30 WIB"
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono font-semibold"
+                />
+              </div>
+
+              {/* 7. Mode Estimasi Expired */}
+              <div>
+                <label className="block text-slate-600 font-medium mb-1">Mode Estimasi Expired</label>
+                <select
+                  value={tagExpiryMode}
+                  onChange={e => setTagExpiryMode(e.target.value as any)}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="AUTO">Otomatis Hitung (Sesuai Shelf Life)</option>
+                  <option value="CUSTOM_DATE">Tetapkan Tanggal Tertentu</option>
+                  <option value="BLANK">Kosongkan (Tulis Tangan)</option>
+                </select>
+              </div>
+
+              {/* 8. Tanggal Expired Manual (jika CUSTOM_DATE) atau Salinan Tag */}
+              {tagExpiryMode === 'CUSTOM_DATE' ? (
+                <div>
+                  <label className="block text-slate-600 font-medium mb-1">Tanggal Expired Serentak</label>
+                  <input
+                    type="date"
+                    value={tagManualExpiryDate}
+                    onChange={e => setTagManualExpiryDate(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-slate-600 font-medium mb-1">Salinan per Item (Wadah)</label>
+                  <select
+                    value={tagCopiesPerItem}
+                    onChange={e => setTagCopiesPerItem(Number(e.target.value))}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
+                  >
+                    <option value={1}>1 Tag per Item (Default)</option>
+                    <option value={2}>2 Tag per Item (2 Wadah / Box)</option>
+                    <option value={3}>3 Tag per Item (3 Wadah / Box)</option>
+                    <option value={4}>4 Tag per Item (4 Wadah / Box)</option>
+                    <option value={5}>5 Tag per Item (5 Wadah / Box)</option>
+                    <option value={8}>8 Tag per Item (8 Wadah / Box)</option>
+                    <option value={10}>10 Tag per Item (10 Wadah / Box)</option>
+                  </select>
+                </div>
+              )}
+
+              {/* 9. Petugas QC / Pemeriksa */}
+              <div>
+                <label className="block text-slate-600 font-medium mb-1">Petugas Penerima / QC</label>
+                <input
+                  type="text"
+                  value={tagInspectorName}
+                  onChange={e => setTagInspectorName(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* 10. Status Uji QC Mutu */}
+              <div>
+                <label className="block text-slate-600 font-medium mb-1">Status Kontrol Kualitas</label>
+                <select
+                  value={tagQcStatus}
+                  onChange={e => setTagQcStatus(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
+                >
+                  <option value="Lolos QC Organoleptik & Higiene">✓ Lolos QC Organoleptik & Higiene</option>
+                  <option value="Segar & Standar SNI Pangan">✓ Segar & Standar SNI Pangan</option>
+                  <option value="Karantina / Uji Organoleptik">Karantina / Verifikasi Suhu</option>
+                  <option value="Kualitas Prima Petani Lokal">✓ Kualitas Prima Petani Lokal</option>
+                </select>
+              </div>
+
+              {/* 11. Cari Bahan */}
+              <div className="sm:col-span-2">
+                <label className="block text-slate-600 font-medium mb-1">Cari Bahan Tertentu</label>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={tagSearchQuery}
+                    onChange={e => setTagSearchQuery(e.target.value)}
+                    placeholder="Ketik nama bahan pangan atau nomor lot..."
+                    className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+            </>
           ) : (
             /* activeForm === 'RACK_LABEL' */
             <>
@@ -2024,14 +2703,14 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       <div
         id="print-area"
         className={`bg-white rounded-2xl border border-slate-200 shadow-sm max-w-4xl mx-auto font-sans text-slate-900 ${
-          activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' ? 'p-4 sm:p-6' : 'p-8 sm:p-12'
+          activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' || activeForm === 'ITEM_TAG_LABEL' ? 'p-4 sm:p-6' : 'p-8 sm:p-12'
         }`}
       >
         {/* =========================================================================
             HEADER RESMI SATUAN PELAYANAN PEMENUHAN GIZI (SPPG)
-            (Ditiadakan khusus untuk Label & QR serta Label Rak agar lembar cetak maksimal)
+            (Ditiadakan khusus untuk Label & QR, Label Rak, dan Tag Item agar lembar cetak maksimal)
         ========================================================================= */}
-        {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && (
+        {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'ITEM_TAG_LABEL' && (
           <div className="border-b-2 border-slate-900 pb-4 mb-6 flex items-start justify-between">
             <div className="flex items-center gap-3.5">
               <SppgLogo size="lg" variant="color" showText={false} />
@@ -2051,7 +2730,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 Tanggal Cetak: <span className="font-semibold text-slate-700">{printDate}</span>
               </div>
               <div>
-                Operator: <span className="font-semibold text-slate-700">{currentUser.name}</span>
+                Operator: <span className="font-semibold text-slate-700">{currentUser?.name || 'Petugas SPPG'}</span>
               </div>
             </div>
           </div>
@@ -2098,7 +2777,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 <div>
                   <span className="text-slate-500 font-medium w-28 inline-block">Petugas Penerima:</span>
                   <span className="font-semibold text-slate-900">
-                    {selectedReceivingDoc ? `${selectedReceivingDoc.receiverName} (${selectedReceivingDoc.receiverRole})` : `${currentUser.name} (${currentUser.role})`}
+                    {selectedReceivingDoc ? `${selectedReceivingDoc.receiverName} (${selectedReceivingDoc.receiverRole})` : `${currentUser?.name || 'Petugas'} (${currentUser?.role || 'ADMIN'})`}
                   </span>
                 </div>
                 <div>
@@ -2211,7 +2890,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                   )}
                 </div>
                 <div className="border-t border-slate-300 pt-1 text-xs font-semibold text-slate-900">
-                  {selectedReceivingDoc ? `${selectedReceivingDoc.receiverName} (${selectedReceivingDoc.receiverRole})` : `( ${currentUser.name} )`}
+                  {selectedReceivingDoc ? `${selectedReceivingDoc.receiverName} (${selectedReceivingDoc.receiverRole})` : `( ${currentUser?.name || 'Petugas SPPG'} )`}
                 </div>
               </div>
             </div>
@@ -2466,7 +3145,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 <p className="text-slate-600">Diserahkan Oleh (Gudang)</p>
                 <div className="h-20 flex items-end justify-center">
                   <div className="border-t border-slate-400 w-40 pt-1 font-semibold text-slate-800">
-                    {currentUser.name}
+                    {currentUser?.name || 'Petugas Gudang'}
                   </div>
                 </div>
               </div>
@@ -2479,6 +3158,245 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* =========================================================================
+            4.5. TAG ITEM BAHAN DATANG (SUPPLIER, WAKTU & JAM DATANG, EXPIRED & UKURAN MINI)
+            Dicetak tanpa kop surat resmi agar satu lembar bisa muat banyak item (hingga 16 tag/A4)
+        ========================================================================= */}
+        {activeForm === 'ITEM_TAG_LABEL' && (
+          <div className="space-y-4">
+            {/* Screen-Only Control Toolbar & Guidance */}
+            <div className="no-print p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                {tagSourceType === 'DUMMY_SAMPLE' ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold text-[11px] bg-emerald-100 text-emerald-900 border border-emerald-300">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-700" />
+                    Contoh Data Dummy (8 Sampel)
+                  </span>
+                ) : null}
+                <span className="font-semibold text-slate-800">
+                  {itemTagsToPrint.length} tag siap dicetak
+                </span>
+                <span className="text-slate-400">•</span>
+                <span className="text-slate-500">
+                  Total filter: {filteredItemTags.length} tag
+                </span>
+                <span className="text-slate-400">•</span>
+                <span className="text-emerald-700 font-medium">
+                  Ukuran: {tagGridCols === '4' ? 'Mini Kompak (16 per Lembar)' : tagGridCols === '3' ? 'Sedang (12 per Lembar)' : 'Standar (6 per Lembar)'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {tagSourceType !== 'DUMMY_SAMPLE' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTagSourceType('DUMMY_SAMPLE');
+                      setTagGlobalSupplier('');
+                    }}
+                    className="px-2.5 py-1 text-[11px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-lg hover:bg-emerald-100 transition-colors cursor-pointer"
+                  >
+                    Muat Contoh Data Dummy
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={toggleSelectAllItemTags}
+                  className="px-2.5 py-1 text-[11px] font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  {tagHasCustomSelection && tagSelectedKeys.length === filteredItemTags.length
+                    ? 'Batal Pilih Semua'
+                    : 'Pilih Semua'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  Cetak Tag Item ({itemTagsToPrint.length})
+                </button>
+              </div>
+            </div>
+
+            {/* Tags Grid */}
+            {itemTagsToPrint.length === 0 ? (
+              <div className="py-12 text-center text-slate-500 text-xs">
+                Tidak ada tag item yang sesuai dengan filter atau kata kunci pencarian.
+              </div>
+            ) : (
+              <div
+                className={`grid ${
+                  tagGridCols === '4'
+                    ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 print:grid-cols-4 gap-2.5 print:gap-1.5'
+                    : tagGridCols === '3'
+                    ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 print:grid-cols-3 gap-3 print:gap-2'
+                    : 'grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-3.5 print:gap-2.5'
+                }`}
+              >
+                {itemTagsToPrint.map(tag => {
+                  const isSelected = !tagHasCustomSelection || tagSelectedKeys.includes(tag.uniqueKey);
+                  const isMini = tagGridCols === '4';
+                  const isCompact = tagGridCols === '3';
+
+                  return (
+                    <div
+                      key={tag.uniqueKey}
+                      className={`relative border-2 border-slate-800 rounded-xl p-2.5 bg-white flex flex-col justify-between gap-2 shadow-2xs break-inside-avoid transition-all ${
+                        !isSelected ? 'opacity-40 border-slate-300 no-print' : ''
+                      } print:border-slate-800 print:shadow-none print:break-inside-avoid print:p-2`}
+                    >
+                      {/* Screen selection checkbox */}
+                      <div className="no-print absolute top-1.5 right-1.5 z-10">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectItemTag(tag.uniqueKey)}
+                          className="w-3.5 h-3.5 accent-emerald-600 rounded cursor-pointer"
+                          title="Centang untuk cetak tag ini"
+                        />
+                      </div>
+
+                      {/* Tag Header */}
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-1 pr-4">
+                        <div className="flex items-center gap-1 min-w-0">
+                          <span className="font-bold text-[8.5px] text-slate-800 truncate">
+                            SPPG MLG TUMPANG JERU
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {tag.totalCopies > 1 && (
+                            <span className="px-1 py-0.2 rounded text-[7.5px] font-mono font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                              Wadah {tag.copyIndex}/{tag.totalCopies}
+                            </span>
+                          )}
+                          <span
+                            className={`px-1 py-0.2 rounded text-[7.5px] font-bold border ${
+                              tag.warehouseType === 'GUDANG_BASAH'
+                                ? 'bg-sky-50 text-sky-800 border-sky-300'
+                                : 'bg-amber-50 text-amber-800 border-amber-300'
+                            }`}
+                          >
+                            {tag.warehouseType === 'GUDANG_BASAH' ? 'FEFO' : 'FIFO'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Main Item Name & Lot ID */}
+                      <div className="flex items-start justify-between gap-1.5">
+                        <div className="space-y-0.5 flex-1 min-w-0">
+                          <div className="font-mono font-bold text-[8px] text-slate-500 tracking-tight">
+                            {tag.batchLotNo}
+                          </div>
+                          <h4
+                            className={`font-bold text-slate-900 leading-snug line-clamp-2 ${
+                              isMini ? 'text-[11px]' : isCompact ? 'text-xs' : 'text-sm'
+                            }`}
+                          >
+                            {tag.name}
+                          </h4>
+                          <div className="text-[8px] text-slate-500 truncate">
+                            <span>Kat:</span> <span className="font-medium text-slate-700">{tag.category}</span>
+                            {tag.quantity !== undefined && (
+                              <span className="ml-1 font-mono font-bold text-slate-900">
+                                • {tag.quantity} {tag.unit}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* High Contrast Compact QR Code */}
+                        <div
+                          className={`flex flex-col items-center justify-center p-0.5 border border-slate-900 rounded bg-white shrink-0 text-center ${
+                            isMini ? 'w-11 h-11' : isCompact ? 'w-13 h-13' : 'w-16 h-16'
+                          }`}
+                        >
+                          <QrCode
+                            className={`${isMini ? 'w-6 h-6' : isCompact ? 'w-7 h-7' : 'w-9 h-9'} text-slate-900`}
+                          />
+                          <span className="text-[6.5px] font-mono font-bold text-slate-800 truncate w-full mt-0.2">
+                            {tag.id}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Data Supplier, Waktu Datang & Expired Strip */}
+                      <div className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[8.5px] space-y-1">
+                        {/* Baris 1: Supplier */}
+                        <div className="flex items-center gap-1 text-slate-800 truncate">
+                          <Truck className="w-2.5 h-2.5 text-emerald-700 shrink-0" />
+                          <span className="text-slate-500 font-medium">Supplier:</span>
+                          <span className="font-bold text-slate-900 truncate">{tag.supplier}</span>
+                        </div>
+
+                        {/* Baris 2: Tanggal & Waktu Datang */}
+                        <div className="flex items-center gap-1 text-slate-800 truncate">
+                          <Clock className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                          <span className="text-slate-500 font-medium">Waktu Datang:</span>
+                          <span className="font-mono font-bold text-slate-900">
+                            {tag.arrivalDateFormatted}
+                          </span>
+                          <span className="text-slate-400 font-mono">•</span>
+                          <span className="font-mono font-bold text-emerald-800">
+                            {tag.arrivalTime}
+                          </span>
+                        </div>
+
+                        {/* Baris 3: Estimasi Expired */}
+                        <div className="pt-0.5 border-t border-slate-200 flex items-center justify-between text-[8px]">
+                          <span className="text-slate-600 font-semibold flex items-center gap-0.5">
+                            <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                            Batas Expired:
+                          </span>
+                          {tag.expiryDate ? (
+                            <span className="font-mono font-bold text-rose-700 bg-rose-50 px-1 py-0.2 rounded border border-rose-200">
+                              {tag.expiryDate}
+                            </span>
+                          ) : (
+                            <span className="font-mono text-slate-400">
+                              _____/_____/202___
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Baris 4: Masa Simpan */}
+                        <div className="text-[7.5px] text-slate-500 flex items-center justify-between truncate">
+                          <span>Masa Simpan:</span>
+                          <span className="font-medium text-emerald-800 truncate">{tag.shelfLifeText}</span>
+                        </div>
+                      </div>
+
+                      {/* Detail Tambahan: Lokasi, QC & Petugas */}
+                      <div className="grid grid-cols-2 gap-1 text-[7.5px] text-slate-600 pt-0.5 border-t border-slate-100">
+                        <div className="truncate">
+                          <span className="text-slate-400 block text-[6.5px]">Penyimpanan:</span>
+                          <span className="font-semibold text-slate-800 truncate block">
+                            {tag.storageTemp}
+                          </span>
+                        </div>
+                        <div className="text-right truncate">
+                          <span className="text-slate-400 block text-[6.5px]">Pemeriksa / QC:</span>
+                          <span className="font-semibold text-emerald-800 truncate block">
+                            {tag.qcStatus ? '✓ ' + tag.inspector : tag.inspector}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Area Catatan Lapangan / Paraf Dapur */}
+                      <div className="pt-0.5 border-t border-slate-200">
+                        <div className="min-h-[14px] border border-dashed border-slate-300 rounded px-1 text-[7px] text-slate-500 flex items-center justify-between">
+                          <span>Catatan: {tag.notes || '-'}</span>
+                          <span className="text-[6.5px] text-slate-400">Paraf: [_______]</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -3124,7 +4042,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 </div>
                 <div>
                   <span className="text-slate-500 font-medium w-32 inline-block">Petugas Kasir / PIC:</span>
-                  <span className="text-slate-900">{currentUser.name} ({currentUser.role})</span>
+                  <span className="text-slate-900">{currentUser?.name || 'Petugas SPPG'} ({currentUser?.role || 'ADMIN'})</span>
                 </div>
               </div>
             </div>

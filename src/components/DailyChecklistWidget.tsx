@@ -242,14 +242,14 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
               title="Uji suara pengingat jam"
               className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5"
             >
-              <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
+              <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
               <span className="hidden sm:inline">Uji Suara</span>
             </button>
 
             <button
               type="button"
               onClick={() => setIsAddModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white border border-blue-500 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-500 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5 text-white" />
               Tambah Jobdesk
@@ -260,7 +260,7 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
         {/* Hourly Smart Notification Banner */}
         <div className="mt-4 pt-3 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2.5">
-            <div className={`p-1.5 rounded-lg shrink-0 ${overdueTasks.length > 0 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-slate-800 text-cyan-300 border border-slate-700'}`}>
+            <div className={`p-1.5 rounded-lg shrink-0 ${overdueTasks.length > 0 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-slate-800 text-emerald-300 border border-slate-700'}`}>
               <Bell className="w-4 h-4" />
             </div>
             <div>
@@ -296,9 +296,9 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
         <div>
           <div className="flex items-center justify-between text-xs mb-1.5 font-medium">
             <span className="text-slate-800 flex items-center gap-1.5 font-medium">
-              <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
               Progres Ceklis Hari Ini:
-              <strong className="text-blue-700 font-bold ml-1 font-mono">
+              <strong className="text-emerald-700 font-bold ml-1 font-mono">
                 {completedCount} dari {totalCount} Tugas Selesai ({progressPercent}%)
               </strong>
             </span>
@@ -308,7 +308,7 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
           </div>
           <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
             <div
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+              className="bg-emerald-600 h-2 rounded-full transition-all duration-300 ease-out"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
@@ -325,7 +325,7 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
             <select
               value={selectedStaffFilter}
               onChange={e => setSelectedStaffFilter(e.target.value)}
-              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 cursor-pointer shadow-2xs"
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer shadow-2xs"
             >
               <option value="ALL">Semua Staf (Semua Jobdesk)</option>
               <option value="ME">⭐ Tugas Saya ({currentUser.name})</option>
@@ -340,7 +340,7 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
             <select
               value={selectedCategoryFilter}
               onChange={e => setSelectedCategoryFilter(e.target.value)}
-              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 cursor-pointer shadow-2xs"
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer shadow-2xs"
             >
               <option value="ALL">Semua Kategori</option>
               <option value="Penerimaan & QC">Penerimaan & QC</option>
@@ -415,10 +415,10 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
                   onClick={() => handleToggle(todo.id)}
                   className={`mt-0.5 shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-all cursor-pointer ${
                     todo.isCompleted
-                      ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
+                      ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs'
                       : isOverdue
                       ? 'border-rose-400 bg-white hover:border-rose-600'
-                      : 'border-slate-300 bg-white hover:border-blue-600'
+                      : 'border-slate-300 bg-white hover:border-emerald-600'
                   }`}
                   title={todo.isCompleted ? 'Batalkan status selesai' : 'Tandai selesai'}
                 >
@@ -510,7 +510,7 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
           <button
             type="button"
             onClick={onNavigateToProfileTodos}
-            className="font-medium text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-1 cursor-pointer"
+            className="font-medium text-emerald-600 hover:text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
           >
             Buka Menu Jobdesk & Laporan <ArrowRight className="w-3.5 h-3.5" />
           </button>
