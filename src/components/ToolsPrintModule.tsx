@@ -33,6 +33,8 @@ import {
   Banknote,
   Calculator,
   ArrowRight,
+  ArrowUp,
+  ArrowDown,
   Clock,
   AlertTriangle
 } from 'lucide-react';
@@ -305,6 +307,7 @@ export interface WarehouseRack {
   capacityMax: string;
   picName: string;
   customNote?: string;
+  isCustom?: boolean;
   items: RackItemDetail[];
 }
 
@@ -828,10 +831,24 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const [printDate, setPrintDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   // Data sources
-  const receivingDocs = useMemo(() => warehouseDb.getReceivings(), []);
-  const items = useMemo(() => warehouseDb.getItems(), []);
+  const [receivingDocs, setReceivingDocs] = useState<ReceivingDocument[]>(() => warehouseDb.getReceivings());
+  const [items, setItems] = useState<ItemMaster[]>(() => warehouseDb.getItems());
   const equipment = useMemo(() => warehouseDb.getEquipment(), []);
   const suppliers = useMemo(() => warehouseDb.getSuppliers(), []);
+
+  // Sync data sources automatically when storage changes or window receives focus
+  useEffect(() => {
+    const handleSync = () => {
+      setItems(warehouseDb.getItems());
+      setReceivingDocs(warehouseDb.getReceivings());
+    };
+    window.addEventListener('sppg_storage_items_changed', handleSync);
+    window.addEventListener('focus', handleSync);
+    return () => {
+      window.removeEventListener('sppg_storage_items_changed', handleSync);
+      window.removeEventListener('focus', handleSync);
+    };
+  }, []);
 
   // Form-specific states
   const [selectedReceivingId, setSelectedReceivingId] = useState<string>(receivingDocs[0]?.id || 'BLANK');
@@ -1585,52 +1602,92 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const [rackWarehouseFilter, setRackWarehouseFilter] = useState<'ALL' | 'GUDANG_KERING' | 'GUDANG_BASAH'>('ALL');
   const [rackSelectedId, setRackSelectedId] = useState<string>('ALL');
   const [rackSearchQuery, setRackSearchQuery] = useState<string>('');
-  const [rackLayoutMode, setRackLayoutMode] = useState<'1' | '2'>('1');
+  const [rackLayoutMode, setRackLayoutMode] = useState<'1' | '2'>('2');
   const [rackGlobalPic, setRackGlobalPic] = useState<string>('Petugas Logistik SPPG');
   const [rackGlobalNote, setRackGlobalNote] = useState<string>('');
   const [selectedRackIds, setSelectedRackIds] = useState<string[]>([]);
   const [hasCustomRackSelection, setHasCustomRackSelection] = useState<boolean>(false);
 
+  // Plakat rak kustom yang dibuat pengguna
+  const [customRacks, setCustomRacks] = useState<WarehouseRack[]>([]);
+
   const [rackOverrides, setRackOverrides] = useState<Record<string, {
     name?: string;
+    warehouseType?: 'GUDANG_KERING' | 'GUDANG_BASAH';
+    warehouseName?: string;
     zone?: string;
     temperatureGuide?: string;
+    humidityGuide?: string;
     capacityMax?: string;
     storageRule?: string;
+    rotationMethod?: 'FIFO' | 'FEFO';
     picName?: string;
     customNote?: string;
     extraItemsText?: string;
+    customItems?: RackItemDetail[];
   }>>({});
 
   const [editingRackData, setEditingRackData] = useState<{
     id: string;
+    isNew?: boolean;
     name: string;
     warehouseType: 'GUDANG_KERING' | 'GUDANG_BASAH';
+    warehouseName?: string;
     zone: string;
     temperatureGuide: string;
+    humidityGuide?: string;
     capacityMax: string;
     storageRule: string;
+    rotationMethod: 'FIFO' | 'FEFO';
     picName: string;
     customNote: string;
-    extraItemsText: string;
+    items: RackItemDetail[];
   } | null>(null);
+
+  // State untuk penambahan item dari master stok barang atau manual di modal
+  const [selectedMasterItemId, setSelectedMasterItemId] = useState<string>('');
+  const [masterItemSearch, setMasterItemSearch] = useState<string>('');
+  const [showManualItemInput, setShowManualItemInput] = useState<boolean>(false);
+  const [manualItemForm, setManualItemForm] = useState<{
+    id: string;
+    name: string;
+    category: string;
+    unit: string;
+    handlingNote: string;
+  }>({
+    id: '',
+    name: '',
+    category: 'Sembako',
+    unit: 'Kg',
+    handlingNote: '',
+  });
 
   // Group all items dynamically into Warehouse Racks (Gudang Kering vs Gudang Basah)
   const allWarehouseRacks = useMemo<WarehouseRack[]>(() => {
-    const matchItemToRackId = (loc: string, cat: string, name: string): string => {
+    const matchItemToRackId = (loc: string, cat: string, name: string, id: string): string => {
       const l = (loc || '').toLowerCase();
       const c = (cat || '').toLowerCase();
       const n = (name || '').toLowerCase();
+      const upperId = (id || '').toUpperCase();
 
-      if (l.includes('rak a1') || n.includes('beras')) return 'RAK-KRG-A1';
-      if (l.includes('rak a2') || n.includes('minyak')) return 'RAK-KRG-A2';
-      if (l.includes('rak a3') || n.includes('gula') || n.includes('tepung')) return 'RAK-KRG-A3';
-      if (l.includes('rak a4') || n.includes('garam') || c.includes('bumbu')) return 'RAK-KRG-A4';
-      if (l.includes('rak n1') || n.includes('sabun') || c.includes('cleaning')) return 'RAK-KRG-N1';
+      // Check explicit rack ID match in location
+      for (const base of BASE_RACKS_CONFIG) {
+        if (l.includes(base.id.toLowerCase())) return base.id;
+      }
+      for (const cr of customRacks) {
+        if (l.includes(cr.id.toLowerCase()) || l.includes(cr.name.toLowerCase())) return cr.id;
+      }
+
+      if (l.includes('rak a1') || upperId.startsWith('ITM-KRG-001') || n.includes('beras')) return 'RAK-KRG-A1';
+      if (l.includes('rak a2') || upperId.startsWith('ITM-KRG-002') || n.includes('minyak')) return 'RAK-KRG-A2';
+      if (l.includes('rak a3') || upperId.startsWith('ITM-KRG-003') || upperId.startsWith('ITM-KRG-004') || n.includes('gula') || n.includes('tepung')) return 'RAK-KRG-A3';
+      if (l.includes('rak a4') || upperId.startsWith('ITM-KRG-005') || n.includes('garam') || c.includes('bumbu')) return 'RAK-KRG-A4';
+      if (l.includes('rak n1') || upperId.startsWith('ITM-NFD-001') || n.includes('sabun') || c.includes('cleaning')) return 'RAK-KRG-N1';
       if (
         l.includes('rak n2') ||
         l.includes('rak n3') ||
         l.includes('apd') ||
+        upperId.startsWith('ITM-NFD-') ||
         n.includes('plastik') ||
         n.includes('tissue') ||
         n.includes('sarung tangan')
@@ -1638,18 +1695,49 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
         return 'RAK-KRG-N2';
 
       if (
+        upperId.startsWith('ITM-CHL-') ||
         l.includes('bin c1') ||
         l.includes('chiller') ||
         n.includes('ayam') ||
         (c.includes('protein') && !n.includes('ikan') && !n.includes('telur'))
       )
         return 'BIN-CHL-C1';
-      if (l.includes('bin f2') || l.includes('freezer') || n.includes('ikan') || n.includes('daging sapi'))
+      if (
+        upperId.startsWith('ITM-FRZ-') ||
+        l.includes('bin f2') ||
+        l.includes('freezer') ||
+        n.includes('ikan') ||
+        n.includes('daging sapi')
+      )
         return 'BIN-FRZ-F2';
-      if (l.includes('sortir sayur') || c.includes('sayur') || n.includes('bayam') || n.includes('wortel'))
+      if (
+        (upperId.startsWith('ITM-BSH-') && (c.includes('sayur') || n.includes('sayur'))) ||
+        l.includes('sortir sayur') ||
+        c.includes('sayur') ||
+        n.includes('bayam') ||
+        n.includes('wortel')
+      )
         return 'RAK-BSH-V1';
-      if (l.includes('buah') || c.includes('buah') || n.includes('pisang')) return 'RAK-BSH-F1';
-      if (l.includes('telur') || n.includes('telur')) return 'RAK-BSH-T1';
+      if (
+        (upperId.startsWith('ITM-BSH-') && (c.includes('buah') || n.includes('buah'))) ||
+        l.includes('buah') ||
+        c.includes('buah') ||
+        n.includes('pisang')
+      )
+        return 'RAK-BSH-F1';
+      if (
+        (upperId.startsWith('ITM-BSH-') && n.includes('telur')) ||
+        l.includes('telur') ||
+        n.includes('telur')
+      )
+        return 'RAK-BSH-T1';
+
+      if (upperId.startsWith('ITM-KRG-')) {
+        return 'RAK-KRG-A1';
+      }
+      if (upperId.startsWith('ITM-BSH-')) {
+        return 'RAK-BSH-V1';
+      }
 
       return '';
     };
@@ -1662,7 +1750,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     const dynamicRacks: Record<string, WarehouseRack> = {};
 
     items.forEach(itm => {
-      const targetRackId = matchItemToRackId(itm.location, itm.category, itm.name);
+      const targetRackId = matchItemToRackId(itm.location, itm.category, itm.name, itm.id);
       const detail: RackItemDetail = {
         id: itm.id,
         name: itm.name,
@@ -1708,30 +1796,38 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
     const baseList: WarehouseRack[] = BASE_RACKS_CONFIG.map(base => {
       const ov = rackOverrides[base.id] || {};
-      const rackItems = [...(itemsByRackId[base.id] || [])];
-
-      if (ov.extraItemsText) {
-        const extraLines = ov.extraItemsText.split('\n').filter(l => l.trim().length > 0);
-        extraLines.forEach((line, idx) => {
-          const parts = line.split('|').map(p => p.trim());
-          rackItems.push({
-            id: parts[0] || `ITM-EXTRA-${idx + 1}`,
-            name: parts[1] || parts[0] || 'Item Tambahan',
-            category: parts[2] || 'Bahan Pangan',
-            currentStock: Number(parts[3]) || 0,
-            unit: parts[4] || 'Kg',
-            minStock: 10,
-            reorderPoint: 20,
-            handlingNote: 'Item tambahan manual lapangan',
+      let rackItems: RackItemDetail[];
+      if (ov.customItems !== undefined) {
+        rackItems = ov.customItems;
+      } else {
+        rackItems = [...(itemsByRackId[base.id] || [])];
+        if (ov.extraItemsText) {
+          const extraLines = ov.extraItemsText.split('\n').filter(l => l.trim().length > 0);
+          extraLines.forEach((line, idx) => {
+            const parts = line.split('|').map(p => p.trim());
+            rackItems.push({
+              id: parts[0] || `ITM-EXTRA-${idx + 1}`,
+              name: parts[1] || parts[0] || 'Item Tambahan',
+              category: parts[2] || 'Bahan Pangan',
+              currentStock: Number(parts[3]) || 0,
+              unit: parts[4] || 'Kg',
+              minStock: 10,
+              reorderPoint: 20,
+              handlingNote: 'Item tambahan manual lapangan',
+            });
           });
-        });
+        }
       }
 
       return {
         ...base,
         name: ov.name || base.name,
+        warehouseType: ov.warehouseType || base.warehouseType,
+        warehouseName: ov.warehouseName || (ov.warehouseType === 'GUDANG_BASAH' ? 'Gudang Basah & Dingin (Cold Storage)' : 'Gudang Kering (Dry Storage)'),
         zone: ov.zone || base.zone,
         temperatureGuide: ov.temperatureGuide || base.temperatureGuide,
+        humidityGuide: ov.humidityGuide !== undefined ? ov.humidityGuide : base.humidityGuide,
+        rotationMethod: ov.rotationMethod || base.rotationMethod,
         capacityMax: ov.capacityMax || base.capacityMax,
         storageRule: ov.storageRule || base.storageRule,
         picName: ov.picName || rackGlobalPic || base.picName,
@@ -1740,22 +1836,47 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       };
     });
 
+    const customList: WarehouseRack[] = customRacks.map(cr => {
+      const ov = rackOverrides[cr.id] || {};
+      return {
+        ...cr,
+        isCustom: true,
+        name: ov.name || cr.name,
+        warehouseType: ov.warehouseType || cr.warehouseType,
+        warehouseName: ov.warehouseName || cr.warehouseName,
+        zone: ov.zone || cr.zone,
+        temperatureGuide: ov.temperatureGuide || cr.temperatureGuide,
+        humidityGuide: ov.humidityGuide !== undefined ? ov.humidityGuide : cr.humidityGuide,
+        rotationMethod: ov.rotationMethod || cr.rotationMethod,
+        capacityMax: ov.capacityMax || cr.capacityMax,
+        storageRule: ov.storageRule || cr.storageRule,
+        picName: ov.picName || rackGlobalPic || cr.picName,
+        customNote: ov.customNote !== undefined ? ov.customNote : (rackGlobalNote || cr.customNote),
+        items: ov.customItems !== undefined ? ov.customItems : cr.items,
+      };
+    });
+
     const dynList: WarehouseRack[] = Object.values(dynamicRacks).map(dyn => {
       const ov = rackOverrides[dyn.id] || {};
       return {
         ...dyn,
         name: ov.name || dyn.name,
+        warehouseType: ov.warehouseType || dyn.warehouseType,
+        warehouseName: ov.warehouseName || dyn.warehouseName,
         zone: ov.zone || dyn.zone,
         temperatureGuide: ov.temperatureGuide || dyn.temperatureGuide,
+        humidityGuide: ov.humidityGuide !== undefined ? ov.humidityGuide : dyn.humidityGuide,
+        rotationMethod: ov.rotationMethod || dyn.rotationMethod,
         capacityMax: ov.capacityMax || dyn.capacityMax,
         storageRule: ov.storageRule || dyn.storageRule,
         picName: ov.picName || rackGlobalPic || dyn.picName,
         customNote: ov.customNote !== undefined ? ov.customNote : (rackGlobalNote || dyn.customNote),
+        items: ov.customItems !== undefined ? ov.customItems : dyn.items,
       };
     });
 
-    return [...baseList, ...dynList];
-  }, [items, rackOverrides, rackGlobalPic, rackGlobalNote]);
+    return [...baseList, ...customList, ...dynList];
+  }, [items, rackOverrides, customRacks, rackGlobalPic, rackGlobalNote]);
 
   const filteredRacks = useMemo(() => {
     return allWarehouseRacks.filter(rack => {
@@ -1813,37 +1934,131 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   };
 
   const openEditRackModal = (rack: WarehouseRack) => {
+    setItems(warehouseDb.getItems());
     const ov = rackOverrides[rack.id] || {};
     setEditingRackData({
       id: rack.id,
+      isNew: false,
       name: ov.name || rack.name,
-      warehouseType: rack.warehouseType,
+      warehouseType: ov.warehouseType || rack.warehouseType,
+      warehouseName: ov.warehouseName || rack.warehouseName,
       zone: ov.zone || rack.zone,
       temperatureGuide: ov.temperatureGuide || rack.temperatureGuide,
+      humidityGuide: ov.humidityGuide !== undefined ? ov.humidityGuide : (rack.humidityGuide || ''),
       capacityMax: ov.capacityMax || rack.capacityMax,
       storageRule: ov.storageRule || rack.storageRule,
+      rotationMethod: ov.rotationMethod || rack.rotationMethod,
       picName: ov.picName || rack.picName,
       customNote: ov.customNote !== undefined ? ov.customNote : (rack.customNote || ''),
-      extraItemsText: ov.extraItemsText || '',
+      items: (ov.customItems !== undefined ? ov.customItems : rack.items).map(item => ({ ...item })),
     });
+    setMasterItemSearch('');
+    setSelectedMasterItemId('');
+    setShowManualItemInput(false);
+  };
+
+  const handleCreateNewRack = () => {
+    setItems(warehouseDb.getItems());
+    const nextNum = customRacks.length + 1;
+    const newId = `RAK-KST-${String(nextNum).padStart(2, '0')}`;
+    setEditingRackData({
+      id: newId,
+      isNew: true,
+      name: `Plakat Rak Kustom #${nextNum}`,
+      warehouseType: 'GUDANG_KERING',
+      warehouseName: 'Gudang Kering (Dry Storage)',
+      zone: 'Sektor Khusus / Tambahan',
+      temperatureGuide: '20°C - 25°C (Suhu Ruang Terkendali)',
+      humidityGuide: 'Maks. 60% RH',
+      capacityMax: '1.000 Kg',
+      storageRule: 'Wajib di atas palet plastik/kayu min. 15 cm dari lantai & bersih dari hama.',
+      rotationMethod: 'FIFO',
+      picName: rackGlobalPic || 'Petugas Logistik SPPG',
+      customNote: '',
+      items: [],
+    });
+    setMasterItemSearch('');
+    setSelectedMasterItemId('');
+    setShowManualItemInput(false);
   };
 
   const handleSaveRackModal = () => {
     if (!editingRackData) return;
-    setRackOverrides(prev => ({
-      ...prev,
-      [editingRackData.id]: {
-        name: editingRackData.name,
-        zone: editingRackData.zone,
-        temperatureGuide: editingRackData.temperatureGuide,
-        capacityMax: editingRackData.capacityMax,
-        storageRule: editingRackData.storageRule,
-        picName: editingRackData.picName,
-        customNote: editingRackData.customNote,
-        extraItemsText: editingRackData.extraItemsText,
-      },
-    }));
+    const {
+      id,
+      isNew,
+      name,
+      warehouseType,
+      zone,
+      temperatureGuide,
+      humidityGuide,
+      capacityMax,
+      storageRule,
+      rotationMethod,
+      picName,
+      customNote,
+      items: rackItems,
+    } = editingRackData;
+
+    const whName =
+      warehouseType === 'GUDANG_BASAH'
+        ? 'Gudang Basah & Dingin (Cold Storage)'
+        : 'Gudang Kering (Dry Storage)';
+
+    if (isNew) {
+      const newRack: WarehouseRack = {
+        id,
+        isCustom: true,
+        name,
+        warehouseType,
+        warehouseName: whName,
+        zone,
+        temperatureGuide,
+        humidityGuide: humidityGuide || undefined,
+        capacityMax,
+        storageRule,
+        rotationMethod,
+        picName,
+        customNote,
+        items: rackItems,
+      };
+      setCustomRacks(prev => [...prev.filter(r => r.id !== id), newRack]);
+      if (hasCustomRackSelection) {
+        setSelectedRackIds(prev => [...prev, id]);
+      }
+    } else {
+      setRackOverrides(prev => ({
+        ...prev,
+        [id]: {
+          name,
+          warehouseType,
+          warehouseName: whName,
+          zone,
+          temperatureGuide,
+          humidityGuide,
+          capacityMax,
+          storageRule,
+          rotationMethod,
+          picName,
+          customNote,
+          customItems: rackItems,
+        },
+      }));
+    }
     setEditingRackData(null);
+  };
+
+  const handleDeleteCustomRack = (id: string) => {
+    setCustomRacks(prev => prev.filter(r => r.id !== id));
+    setRackOverrides(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setSelectedRackIds(prev => prev.filter(i => i !== id));
+    if (editingRackData?.id === id) {
+      setEditingRackData(null);
+    }
   };
 
   const handleResetRackOverride = (id: string) => {
@@ -1855,6 +2070,106 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     setEditingRackData(null);
   };
 
+  const handleAddItemFromMaster = () => {
+    if (!editingRackData || !selectedMasterItemId) return;
+    const masterItem = items.find(i => i.id === selectedMasterItemId);
+    if (!masterItem) return;
+
+    const newItem: RackItemDetail = {
+      id: masterItem.id,
+      name: masterItem.name,
+      category: masterItem.category,
+      subcategory: masterItem.subcategory,
+      currentStock: masterItem.currentStock,
+      unit: masterItem.baseUnit || 'Kg',
+      minStock: masterItem.minimumStock,
+      reorderPoint: masterItem.reorderPoint,
+      handlingNote: masterItem.notes || (masterItem.location ? `Lokasi: ${masterItem.location}` : ''),
+    };
+
+    setEditingRackData(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        items: [...prev.items, newItem],
+      };
+    });
+    setSelectedMasterItemId('');
+  };
+
+  const handleAddManualItem = () => {
+    if (!editingRackData || !manualItemForm.name.trim()) return;
+    const newSku =
+      manualItemForm.id.trim() ||
+      `ITM-KST-${String(editingRackData.items.length + 1).padStart(2, '0')}`;
+    const newItem: RackItemDetail = {
+      id: newSku,
+      name: manualItemForm.name.trim(),
+      category: manualItemForm.category.trim() || 'Bahan Pangan',
+      currentStock: 0,
+      unit: manualItemForm.unit.trim() || 'Kg',
+      minStock: 0,
+      reorderPoint: 0,
+      handlingNote: manualItemForm.handlingNote.trim() || 'Penataan rak fisik manual',
+    };
+
+    setEditingRackData(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        items: [...prev.items, newItem],
+      };
+    });
+    setManualItemForm({
+      id: '',
+      name: '',
+      category: 'Sembako',
+      unit: 'Kg',
+      handlingNote: '',
+    });
+    setShowManualItemInput(false);
+  };
+
+  const handleRemoveItemFromEditingRack = (indexToRemove: number) => {
+    if (!editingRackData) return;
+    setEditingRackData(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        items: prev.items.filter((_, idx) => idx !== indexToRemove),
+      };
+    });
+  };
+
+  const handleMoveItemInEditingRack = (index: number, direction: 'UP' | 'DOWN') => {
+    if (!editingRackData) return;
+    const itemsList = [...editingRackData.items];
+    const targetIndex = direction === 'UP' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= itemsList.length) return;
+
+    const temp = itemsList[index];
+    itemsList[index] = itemsList[targetIndex];
+    itemsList[targetIndex] = temp;
+
+    setEditingRackData(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        items: itemsList,
+      };
+    });
+  };
+
+  const handleUpdateItemField = (index: number, field: keyof RackItemDetail, value: any) => {
+    if (!editingRackData) return;
+    setEditingRackData(prev => {
+      if (!prev) return null;
+      const newItems = [...prev.items];
+      newItems[index] = { ...newItems[index], [field]: value };
+      return { ...prev, items: newItems };
+    });
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -1864,10 +2179,19 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       {/* Print-specific style injected into head */}
       <style>{`
         @media print {
+          @page {
+            size: A4 portrait;
+            margin: 8mm 8mm;
+          }
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
           body {
             background-color: #ffffff !important;
             color: #000000 !important;
-            font-size: 12pt;
+            font-size: 11pt;
           }
           nav, header, footer, .no-print {
             display: none !important;
@@ -1886,6 +2210,39 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           .table-print th, .table-print td {
             border: 1px solid #333333 !important;
             padding: 6px 8px !important;
+          }
+          /* Tata letak plakat rak 2 item per lembar kertas A4 */
+          .rack-print-container-2per-page {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 5mm !important;
+          }
+          .rack-card-2per-page {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+            max-height: 133mm !important;
+            margin-bottom: 5mm !important;
+            box-sizing: border-box !important;
+          }
+          .rack-card-2per-page:nth-child(2n) {
+            break-after: page !important;
+            page-break-after: always !important;
+            margin-bottom: 0 !important;
+          }
+          .rack-card-2per-page:last-child {
+            break-after: auto !important;
+            page-break-after: auto !important;
+          }
+          .rack-card-1per-page {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+            break-after: page !important;
+            page-break-after: always !important;
+            margin-bottom: 0 !important;
+          }
+          .rack-card-1per-page:last-child {
+            break-after: auto !important;
+            page-break-after: auto !important;
           }
         }
       `}</style>
@@ -2577,10 +2934,10 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 <select
                   value={rackLayoutMode}
                   onChange={e => setRackLayoutMode(e.target.value as '1' | '2')}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
                 >
-                  <option value="1">1 Plakat Besar per Lembar A4 (Plakat Rak Utama)</option>
-                  <option value="2">2 Plakat Sedang per Lembar (Grid Ambalan)</option>
+                  <option value="2">2 Plakat per Lembar A4 (Standar Hemat Kertas - Pas 2 Item)</option>
+                  <option value="1">1 Plakat Besar per Lembar A4 (Ukuran Penuh)</option>
                 </select>
               </div>
 
@@ -3631,39 +3988,89 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
         {activeForm === 'RACK_LABEL' && (
           <div className="space-y-5">
             {/* Screen-Only Control Toolbar & Guidance (Hidden during print) */}
-            <div className="no-print p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-slate-800">
-                  {racksToPrint.length} plakat rak siap dicetak
-                </span>
-                <span className="text-slate-400">•</span>
-                <span className="text-slate-500">
-                  Total filter: {filteredRacks.length} rak
-                </span>
-                <span className="text-slate-400">•</span>
-                <span className="text-emerald-700 font-medium">
-                  Dilengkapi tabel daftar isi item & pembeda visual gudang basah/kering
-                </span>
+            <div className="no-print p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 shadow-2xs">
+              {/* Baris 1: Tombol Aksi Utama di Sebelah Kiri & Format Cetak di Kanan */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                {/* CTA Buttons Group (Sebelah Kiri) */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow-xs transition-colors cursor-pointer"
+                    title="Cetak plakat rak gudang yang terpilih"
+                  >
+                    <Printer className="w-4 h-4 text-emerald-100" />
+                    <span>Cetak Plakat Rak ({racksToPrint.length})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCreateNewRack}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-xl hover:bg-emerald-100 transition-colors cursor-pointer"
+                    title="Tambah plakat rak fisik baru yang dapat dikustomisasi bebas"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Buat Plakat Rak Baru</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={toggleSelectAllRacks}
+                    className="px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    {hasCustomRackSelection && selectedRackIds.length === filteredRacks.length
+                      ? 'Batal Pilih Semua'
+                      : 'Pilih Semua'}
+                  </button>
+                </div>
+
+                {/* Segmented Control Format Cetak (Sebelah Kanan) */}
+                <div className="flex items-center gap-1.5 self-start lg:self-auto bg-white border border-slate-300 rounded-xl p-1 shadow-2xs">
+                  <span className="text-[11px] font-medium text-slate-500 pl-2 pr-1">Format A4:</span>
+                  <button
+                    type="button"
+                    onClick={() => setRackLayoutMode('2')}
+                    className={`px-3 py-1.5 text-xs rounded-lg transition-colors cursor-pointer font-medium ${
+                      rackLayoutMode === '2'
+                        ? 'bg-emerald-600 text-white font-semibold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Tata letak hemat: 2 plakat pas dalam 1 lembar kertas A4"
+                  >
+                    2 Rak / Kertas A4 (Hemat)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRackLayoutMode('1')}
+                    className={`px-3 py-1.5 text-xs rounded-lg transition-colors cursor-pointer font-medium ${
+                      rackLayoutMode === '1'
+                        ? 'bg-emerald-600 text-white font-semibold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Tata letak 1 plakat penuh per lembar kertas A4"
+                  >
+                    1 Rak / Kertas A4
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={toggleSelectAllRacks}
-                  className="px-2.5 py-1 text-[11px] font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  {hasCustomRackSelection && selectedRackIds.length === filteredRacks.length
-                    ? 'Batal Pilih Semua'
-                    : 'Pilih Semua'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg shadow-2xs transition-colors cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  Cetak Plakat Rak ({racksToPrint.length})
-                </button>
+              {/* Baris 2: Informasi Status & Panduan yang Bersih & Rapi */}
+              <div className="pt-2.5 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg font-semibold text-[11px] bg-emerald-100/80 text-emerald-900 border border-emerald-200">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>{racksToPrint.length} plakat siap dicetak</span>
+                  </span>
+                  <span className="text-slate-300">•</span>
+                  <span className="text-slate-500 font-medium">
+                    Total filter: {filteredRacks.length} rak
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-slate-500 text-[11px]">
+                  <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>Dilengkapi tabel daftar isi item & pembeda visual gudang basah/kering</span>
+                </div>
               </div>
             </div>
 
@@ -3676,34 +4083,59 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               <div
                 className={`grid ${
                   rackLayoutMode === '2'
-                    ? 'grid-cols-1 md:grid-cols-2 gap-4 print:grid-cols-2'
-                    : 'grid-cols-1 gap-6'
+                    ? 'grid-cols-1 gap-5 print:gap-4 rack-print-container-2per-page'
+                    : 'grid-cols-1 gap-6 rack-print-container-1per-page'
                 }`}
               >
                 {racksToPrint.map(rack => {
                   const isSelected = !hasCustomRackSelection || selectedRackIds.includes(rack.id);
                   const isDry = rack.warehouseType === 'GUDANG_KERING';
+                  const isOverridden = Boolean(rackOverrides[rack.id] || rack.isCustom);
 
                   return (
                     <div
                       key={rack.id}
                       className={`relative border-2 ${
-                        isDry ? 'border-amber-700 bg-white' : 'border-sky-700 bg-white'
-                      } rounded-2xl p-5 flex flex-col justify-between gap-4 shadow-sm break-inside-avoid transition-all ${
+                        isDry ? 'border-amber-600 bg-white' : 'border-sky-600 bg-white'
+                      } rounded-xl p-3.5 sm:p-4 print:p-3 flex flex-col justify-between gap-2.5 print:gap-2 shadow-xs transition-all ${
                         !isSelected ? 'opacity-40 border-slate-300 no-print' : ''
-                      } ${rackLayoutMode === '1' ? 'print:my-6 print:break-after-page' : ''}`}
+                      } ${
+                        rackLayoutMode === '2'
+                          ? 'rack-card-2per-page'
+                          : 'rack-card-1per-page'
+                      }`}
+                      style={{
+                        borderColor: isDry ? '#d97706' : '#0284c7',
+                        WebkitPrintColorAdjust: 'exact',
+                        printColorAdjust: 'exact',
+                      }}
                     >
                       {/* Screen selection & edit buttons (Hidden on print) */}
                       <div className="no-print absolute top-3 right-3 z-10 flex items-center gap-1.5">
+                        {isOverridden && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Kustom
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={() => openEditRackModal(rack)}
                           className="px-2 py-1 rounded-lg bg-white/90 border border-slate-300 hover:bg-slate-100 text-slate-700 text-[10px] font-medium transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                          title="Edit plakat rak ini sebelum cetak"
+                          title="Edit informasi rak dan sesuaikan daftar item bahan pangan"
                         >
                           <Edit3 className="w-3 h-3 text-emerald-700" />
                           <span>Edit Rak</span>
                         </button>
+                        {rack.isCustom && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomRack(rack.id)}
+                            className="p-1 rounded-lg bg-white/90 border border-slate-300 hover:bg-rose-50 text-slate-500 hover:text-rose-700 text-[10px] transition-colors cursor-pointer shadow-2xs"
+                            title="Hapus plakat kustom ini"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -3715,25 +4147,39 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
                       {/* Header Plakat: Visual Pembeda Basah vs Kering */}
                       <div
-                        className={`-mx-5 -mt-5 p-4 rounded-t-2xl flex items-center justify-between border-b ${
+                        className={`-mx-3.5 -mt-3.5 sm:-mx-4 sm:-mt-4 print:-mx-3 print:-mt-3 p-3 print:py-2 print:px-3 rounded-t-lg flex items-center justify-between border-b ${
                           isDry
                             ? 'bg-amber-800 text-amber-50 border-amber-900'
                             : 'bg-sky-800 text-sky-50 border-sky-900'
                         }`}
+                        style={{
+                          backgroundColor: isDry ? '#92400e' : '#0369a1',
+                          color: isDry ? '#fffbeb' : '#f0f9ff',
+                          borderColor: isDry ? '#78350f' : '#075985',
+                          WebkitPrintColorAdjust: 'exact',
+                          printColorAdjust: 'exact',
+                        }}
                       >
-                        <div className="flex items-center gap-2.5">
-                          <div className={`p-2 rounded-xl ${isDry ? 'bg-amber-900/60' : 'bg-sky-900/60'}`}>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`p-1.5 rounded-lg ${isDry ? 'bg-amber-950/60' : 'bg-sky-950/60'}`}
+                            style={{
+                              backgroundColor: isDry ? 'rgba(69, 26, 3, 0.65)' : 'rgba(8, 47, 73, 0.65)',
+                              WebkitPrintColorAdjust: 'exact',
+                              printColorAdjust: 'exact',
+                            }}
+                          >
                             {isDry ? (
-                              <Package className="w-5 h-5 text-amber-200" />
+                              <Package className="w-4 h-4 text-amber-200" />
                             ) : (
-                              <Snowflake className="w-5 h-5 text-sky-200" />
+                              <Snowflake className="w-4 h-4 text-sky-200" />
                             )}
                           </div>
                           <div>
-                            <div className="text-[10px] font-bold tracking-tight opacity-90">
+                            <div className="text-[9.5px] print:text-[8.5px] font-bold tracking-tight opacity-90">
                               SPPG LOGISTIK • {rack.warehouseName}
                             </div>
-                            <div className="text-sm font-bold tracking-tight text-white leading-tight">
+                            <div className="text-xs sm:text-sm print:text-xs font-bold tracking-tight text-white leading-tight">
                               {rack.zone}
                             </div>
                           </div>
@@ -3741,32 +4187,49 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
                         <div className="text-right pr-14 sm:pr-0">
                           <span
-                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                            className={`inline-block px-2 py-0.5 rounded-full text-[9.5px] print:text-[8.5px] font-bold border ${
                               isDry
                                 ? 'bg-amber-100 text-amber-900 border-amber-300'
                                 : 'bg-sky-100 text-sky-900 border-sky-300'
                             }`}
+                            style={{
+                              backgroundColor: isDry ? '#fef3c7' : '#e0f2fe',
+                              color: isDry ? '#78350f' : '#075985',
+                              borderColor: isDry ? '#fcd34d' : '#7dd3fc',
+                              WebkitPrintColorAdjust: 'exact',
+                              printColorAdjust: 'exact',
+                            }}
                           >
                             ROTASI: {rack.rotationMethod}
                           </span>
-                          <div className="text-[9px] opacity-80 mt-0.5 font-mono">
-                            STANDAR GIZI & HIGIENE
+                          <div className="text-[8.5px] print:text-[7.5px] opacity-80 mt-0.5 font-mono">
+                            Standar Gizi & Higiene
                           </div>
                         </div>
                       </div>
 
                       {/* Rack Identification & QR Code */}
-                      <div className="flex items-start justify-between gap-3 pt-1">
-                        <div className="space-y-1 flex-1 min-w-0">
-                          <div className="inline-block px-2 py-0.5 rounded bg-slate-900 text-white font-mono font-bold text-xs tracking-tight">
+                      <div className="flex items-start justify-between gap-2.5 pt-0.5">
+                        <div className="space-y-0.5 flex-1 min-w-0">
+                          <div
+                            className={`inline-block px-2 py-0.5 rounded font-mono font-bold text-[10px] tracking-tight ${
+                              isDry ? 'bg-amber-800 text-amber-50' : 'bg-sky-800 text-sky-50'
+                            }`}
+                            style={{
+                              backgroundColor: isDry ? '#92400e' : '#0369a1',
+                              color: '#ffffff',
+                              WebkitPrintColorAdjust: 'exact',
+                              printColorAdjust: 'exact',
+                            }}
+                          >
                             {rack.id}
                           </div>
-                          <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-snug">
+                          <h2 className="text-sm sm:text-base print:text-sm font-bold text-slate-900 tracking-tight leading-snug">
                             {rack.name}
                           </h2>
-                          <div className="flex items-center gap-2.5 text-xs text-slate-600 flex-wrap pt-0.5">
+                          <div className="flex items-center gap-2 text-[11px] print:text-[9.5px] text-slate-600 flex-wrap pt-0.5">
                             <span className="flex items-center gap-1 font-medium text-slate-800">
-                              <Thermometer className="w-3.5 h-3.5 text-slate-500" />
+                              <Thermometer className="w-3 h-3 text-slate-500" />
                               <span>{rack.temperatureGuide}</span>
                             </span>
                             {rack.humidityGuide && (
@@ -3780,97 +4243,117 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                           </div>
                         </div>
 
-                        {/* High-Contrast QR Code */}
-                        <div className="flex flex-col items-center justify-center p-1.5 border-2 border-slate-900 rounded-xl bg-white shrink-0 text-center w-20 h-20">
-                          <QrCode className="w-10 h-10 text-slate-900" />
-                          <span className="text-[7px] font-mono font-bold text-slate-800 truncate w-full mt-0.5">
+                        {/* Barcode / QR Code Box with Amber/Sky Theme */}
+                        <div
+                          className={`flex flex-col items-center justify-center p-1 border-2 rounded-xl shrink-0 text-center w-16 h-16 print:w-14 print:h-14 ${
+                            isDry
+                              ? 'border-amber-600 bg-amber-50 text-amber-900'
+                              : 'border-sky-600 bg-sky-50 text-sky-900'
+                          }`}
+                          style={{
+                            borderColor: isDry ? '#d97706' : '#0284c7',
+                            backgroundColor: isDry ? '#fffbeb' : '#f0f9ff',
+                            WebkitPrintColorAdjust: 'exact',
+                            printColorAdjust: 'exact',
+                          }}
+                        >
+                          <QrCode
+                            className={`w-8 h-8 print:w-7 print:h-7 ${
+                              isDry ? 'text-amber-800' : 'text-sky-800'
+                            }`}
+                            style={{ color: isDry ? '#92400e' : '#0369a1' }}
+                          />
+                          <span
+                            className={`text-[8px] print:text-[7px] font-mono font-bold truncate w-full mt-0.5 ${
+                              isDry ? 'text-amber-900' : 'text-sky-900'
+                            }`}
+                            style={{ color: isDry ? '#78350f' : '#075985' }}
+                          >
                             {rack.id}
                           </span>
                         </div>
                       </div>
 
-                      {/* DAFTAR ITEM YANG MENGISI RAK INI ("ada tanda misal rak ini itu isinya item apa saja") */}
-                      <div className="space-y-2">
+                      {/* DAFTAR ITEM YANG MENGISI RAK INI */}
+                      <div className="space-y-1">
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
                             <span
-                              className={`w-2 h-4 rounded-full ${
+                              className={`w-1.5 h-3.5 rounded-full ${
                                 isDry ? 'bg-amber-600' : 'bg-sky-600'
                               }`}
+                              style={{
+                                backgroundColor: isDry ? '#d97706' : '#0284c7',
+                                WebkitPrintColorAdjust: 'exact',
+                                printColorAdjust: 'exact',
+                              }}
                             ></span>
-                            <h3 className="font-bold text-xs text-slate-900">
-                              DAFTAR BAHAN / ITEM TERDAFTAR DI RAK INI ({rack.items.length} Item)
+                            <h3 className="font-bold text-[11px] print:text-[10px] text-slate-900">
+                              Daftar Bahan / Item di Rak Ini ({rack.items.length} Item)
                             </h3>
                           </div>
-                          <span className="text-[10px] text-slate-500 font-medium">
+                          <span className="text-[9.5px] print:text-[8px] text-slate-500 font-medium">
                             Katalog Fisik Penataan Rak
                           </span>
                         </div>
 
                         {rack.items.length === 0 ? (
-                          <div className="p-3.5 rounded-xl border border-dashed border-slate-300 text-center text-xs text-slate-500 bg-slate-50">
-                            Belum ada item terdaftar di rak ini. Siap dialokasikan untuk bahan pangan baru.
+                          <div className="p-2 rounded-lg border border-dashed border-slate-300 text-center text-[10px] text-slate-500 bg-slate-50">
+                            Belum ada item terdaftar di rak ini. Klik "Edit Rak" untuk mengambil item dari Master Stok Barang.
                           </div>
                         ) : (
-                          <div className="overflow-x-auto rounded-xl border border-slate-300">
+                          <div className="overflow-x-auto rounded-lg border border-slate-300">
                             <table className="w-full text-left text-xs border-collapse">
                               <thead>
                                 <tr
                                   className={`${
                                     isDry
-                                      ? 'bg-amber-50/90 text-amber-950 border-b border-amber-200'
-                                      : 'bg-sky-50/90 text-sky-950 border-b border-sky-200'
-                                  } font-bold text-[10px]`}
+                                      ? 'bg-amber-100/90 text-amber-950 border-b border-amber-300'
+                                      : 'bg-sky-100/90 text-sky-950 border-b border-sky-300'
+                                  } font-bold text-[9.5px] print:text-[8.5px]`}
+                                  style={{
+                                    backgroundColor: isDry ? '#fef3c7' : '#e0f2fe',
+                                    color: isDry ? '#451a03' : '#082f49',
+                                    borderColor: isDry ? '#fcd34d' : '#bae6fd',
+                                    WebkitPrintColorAdjust: 'exact',
+                                    printColorAdjust: 'exact',
+                                  }}
                                 >
-                                  <th className="py-1.5 px-2.5 w-8 text-center">No</th>
-                                  <th className="py-1.5 px-2.5 w-24">Kode SKU</th>
-                                  <th className="py-1.5 px-2.5">Nama Bahan Pangan / Barang</th>
-                                  <th className="py-1.5 px-2.5">Kategori</th>
-                                  <th className="py-1.5 px-2.5 text-right">Stok WMS</th>
-                                  <th className="py-1.5 px-2.5 text-center">Batas Min</th>
-                                  <th className="py-1.5 px-2.5 text-center">Status</th>
+                                  <th className="py-1 px-2 w-7 text-center">No</th>
+                                  <th className="py-1 px-2 w-20">Kode SKU</th>
+                                  <th className="py-1 px-2">Nama Bahan Pangan / Barang</th>
+                                  <th className="py-1 px-2">Kategori</th>
+                                  <th className="py-1 px-2 w-16 text-center">Satuan</th>
+                                  <th className="py-1 px-2">Catatan Penanganan / Posisi</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-slate-200 text-[11px]">
+                              <tbody className="divide-y divide-slate-200 text-[10px] print:text-[9px]">
                                 {rack.items.map((itm, idx) => (
-                                  <tr key={itm.id} className="hover:bg-slate-50/50">
-                                    <td className="py-1.5 px-2.5 text-center text-slate-500 font-mono text-[10px]">
+                                  <tr key={`${itm.id}-${idx}`} className="hover:bg-slate-50/50">
+                                    <td className="py-1 px-2 text-center text-slate-500 font-mono text-[9.5px] print:text-[8.5px]">
                                       {String(idx + 1).padStart(2, '0')}
                                     </td>
-                                    <td className="py-1.5 px-2.5 font-mono font-bold text-slate-900 text-[10px]">
+                                    <td className="py-1 px-2 font-mono font-bold text-slate-900 text-[9.5px] print:text-[8.5px]">
                                       {itm.id}
                                     </td>
-                                    <td className="py-1.5 px-2.5">
+                                    <td className="py-1 px-2">
                                       <div className="font-bold text-slate-900 leading-tight">{itm.name}</div>
-                                      {itm.handlingNote && (
-                                        <div className="text-[9px] text-slate-500 line-clamp-1">
-                                          {itm.handlingNote}
+                                      {itm.subcategory && (
+                                        <div className="text-[8.5px] print:text-[7.5px] text-slate-500 line-clamp-1">
+                                          {itm.subcategory}
                                         </div>
                                       )}
                                     </td>
-                                    <td className="py-1.5 px-2.5 text-slate-600 text-[10px]">
-                                      {itm.category} {itm.subcategory ? `• ${itm.subcategory}` : ''}
+                                    <td className="py-1 px-2 text-slate-600">
+                                      <span className="px-1 py-0.5 rounded bg-slate-100 text-slate-700 font-medium border border-slate-200 text-[8.5px] print:text-[7.5px]">
+                                        {itm.category}
+                                      </span>
                                     </td>
-                                    <td className="py-1.5 px-2.5 text-right font-mono font-bold text-slate-900">
-                                      {itm.currentStock.toLocaleString('id-ID')} {itm.unit}
+                                    <td className="py-1 px-2 text-center font-mono font-semibold text-slate-800">
+                                      {itm.unit || 'Kg'}
                                     </td>
-                                    <td className="py-1.5 px-2.5 text-center text-slate-500 font-mono text-[10px]">
-                                      {itm.minStock} {itm.unit}
-                                    </td>
-                                    <td className="py-1.5 px-2.5 text-center">
-                                      {itm.currentStock <= 0 ? (
-                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
-                                          Habis
-                                        </span>
-                                      ) : itm.currentStock <= itm.minStock ? (
-                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                                          Menipis
-                                        </span>
-                                      ) : (
-                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                          Tersedia
-                                        </span>
-                                      )}
+                                    <td className="py-1 px-2 text-slate-600">
+                                      {itm.handlingNote || '-'}
                                     </td>
                                   </tr>
                                 ))}
@@ -3880,8 +4363,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         )}
 
                         {/* Garis Tambahan Item Lapangan */}
-                        <div className="pt-1 flex items-center justify-between text-[9px] text-slate-500">
-                          <span className="font-medium text-slate-700">+ Tambahan Item Fisik:</span>
+                        <div className="pt-0.5 flex items-center justify-between text-[8.5px] print:text-[7.5px] text-slate-500">
+                          <span className="font-medium text-slate-700 shrink-0">+ Tambahan Item Fisik:</span>
                           <span className="font-mono text-slate-300 truncate pl-2">
                             ...................................................................................................................................................
                           </span>
@@ -3890,41 +4373,50 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
                       {/* Standar Operasional Penataan (SOP Rak SPPG) */}
                       <div
-                        className={`p-3 rounded-xl border text-xs space-y-1 ${
+                        className={`p-2 print:p-1.5 rounded-lg border text-xs print:text-[9px] space-y-0.5 ${
                           isDry
                             ? 'bg-amber-50/70 border-amber-200 text-amber-950'
                             : 'bg-sky-50/70 border-sky-200 text-sky-950'
                         }`}
+                        style={{
+                          backgroundColor: isDry ? '#fffbeb' : '#f0f9ff',
+                          borderColor: isDry ? '#fde68a' : '#bae6fd',
+                          WebkitPrintColorAdjust: 'exact',
+                          printColorAdjust: 'exact',
+                        }}
                       >
-                        <div className="flex items-center gap-1.5 font-bold text-[11px]">
-                          <ShieldCheck className="w-4 h-4 shrink-0" />
+                        <div className="flex items-center gap-1.5 font-bold text-[10px] print:text-[9px]">
+                          <ShieldCheck
+                            className={`w-3.5 h-3.5 shrink-0 ${isDry ? 'text-amber-700' : 'text-sky-700'}`}
+                            style={{ color: isDry ? '#b45309' : '#0369a1' }}
+                          />
                           <span>Standar Penataan & Kebersihan Rak SPPG:</span>
                         </div>
-                        <p className="text-[10px] leading-relaxed text-slate-700">
+                        <p className="text-[9.5px] print:text-[8.5px] leading-snug text-slate-700">
                           {rack.storageRule}
                         </p>
                         {rack.customNote && (
-                          <div className="text-[10px] font-medium text-slate-800 pt-1 border-t border-slate-200/80">
+                          <div className="text-[9px] print:text-[8px] font-medium text-slate-800 pt-0.5 border-t border-slate-200/80">
                             <span className="font-semibold">Catatan Khusus:</span> {rack.customNote}
                           </div>
                         )}
                       </div>
 
                       {/* Footer Plakat: PIC & Paraf */}
-                      <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
+                      <div className="pt-1.5 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
                         <div>
-                          <span className="font-bold text-slate-800 block text-[11px]">
+                          <span className="font-bold text-slate-800 block text-[10px] print:text-[9px]">
                             SPPG MLG TUMPANG JERU • LOGISTIK & DISTRIBUSI
                           </span>
-                          <span className="text-[10px] text-slate-500">
+                          <span className="text-[9px] print:text-[8px] text-slate-500">
                             Penanggung Jawab (PIC): <span className="font-semibold text-slate-800">{rack.picName}</span>
                           </span>
                         </div>
                         <div className="text-right">
-                          <span className="text-[10px] text-slate-500 block">
+                          <span className="text-[9px] print:text-[8px] text-slate-500 block">
                             Paraf Juru Gudang / Tanggal Pasang:
                           </span>
-                          <span className="font-mono text-slate-400 text-xs">
+                          <span className="font-mono text-slate-400 text-[10px] print:text-[9px]">
                             _____________________ / _____ - _____ - 202___
                           </span>
                         </div>
@@ -4299,142 +4791,476 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       {/* Modal Edit Plakat Rak (Hanya di layar, hidden on print) */}
       {editingRackData && (
         <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-5 border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full p-5 sm:p-6 border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
+            {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-slate-200 pb-3">
               <div>
-                <h3 className="font-bold text-sm text-slate-900">
-                  Edit Plakat Rak: {editingRackData.name}
+                <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
+                  <Warehouse className="w-5 h-5 text-emerald-700" />
+                  <span>
+                    {editingRackData.isNew
+                      ? 'Tambah Plakat Rak Gudang Baru'
+                      : `Edit Plakat Rak: ${editingRackData.name}`}
+                  </span>
                 </h3>
-                <p className="text-[11px] font-mono text-slate-500 mt-0.5">
-                  ID: {editingRackData.id} • {editingRackData.warehouseType === 'GUDANG_KERING' ? 'Gudang Kering' : 'Gudang Basah / Dingin'}
+                <p className="text-xs text-slate-500 mt-0.5">
+                  ID: <span className="font-mono font-bold text-slate-800">{editingRackData.id}</span> •{' '}
+                  {editingRackData.warehouseType === 'GUDANG_KERING'
+                    ? 'Gudang Kering (Dry Storage)'
+                    : 'Gudang Basah & Dingin (Cold Storage)'}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setEditingRackData(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-slate-700 font-medium mb-1">Nama Rak / Lokasi</label>
-                <input
-                  type="text"
-                  value={editingRackData.name}
-                  onChange={e => setEditingRackData({ ...editingRackData, name: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+            {/* Bagian 1: Identitas & Standar Penyimpanan Rak */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-1.5 h-3.5 bg-emerald-600 rounded-full"></span>
+                1. Identitas & Standar Penyimpanan Rak
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Zona / Sektor</label>
+                  <label className="block text-slate-700 font-semibold mb-1">Kode Rak / Barcode</label>
+                  <input
+                    type="text"
+                    value={editingRackData.id}
+                    disabled={!editingRackData.isNew}
+                    onChange={e => setEditingRackData({ ...editingRackData, id: e.target.value.toUpperCase() })}
+                    placeholder="Misal: RAK-KRG-A5"
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-mono font-bold text-slate-900 text-xs focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-100 disabled:text-slate-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 lg:col-span-2">
+                  <label className="block text-slate-700 font-semibold mb-1">Nama Plakat Rak</label>
+                  <input
+                    type="text"
+                    value={editingRackData.name}
+                    onChange={e => setEditingRackData({ ...editingRackData, name: e.target.value })}
+                    placeholder="Misal: Rak A1 - Sembako Beras & Karung Pangan"
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-900 text-xs focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Tipe Gudang</label>
+                  <select
+                    value={editingRackData.warehouseType}
+                    onChange={e =>
+                      setEditingRackData({
+                        ...editingRackData,
+                        warehouseType: e.target.value as any,
+                        warehouseName:
+                          e.target.value === 'GUDANG_BASAH'
+                            ? 'Gudang Basah & Dingin (Cold Storage)'
+                            : 'Gudang Kering (Dry Storage)',
+                      })
+                    }
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-medium focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="GUDANG_KERING">Gudang Kering (Dry Storage)</option>
+                    <option value="GUDANG_BASAH">Gudang Basah / Dingin (Cold Storage)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Metode Rotasi</label>
+                  <select
+                    value={editingRackData.rotationMethod}
+                    onChange={e =>
+                      setEditingRackData({ ...editingRackData, rotationMethod: e.target.value as any })
+                    }
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-medium focus:ring-1 focus:ring-emerald-500"
+                  >
+                    <option value="FIFO">FIFO (First In First Out)</option>
+                    <option value="FEFO">FEFO (First Expired First Out)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Zona / Sektor Rak</label>
                   <input
                     type="text"
                     value={editingRackData.zone}
                     onChange={e => setEditingRackData({ ...editingRackData, zone: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    placeholder="Misal: Zona Sembako Sektor A"
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Kapasitas Maksimal</label>
+                  <label className="block text-slate-700 font-semibold mb-1">Kapasitas Beban Maksimal</label>
                   <input
                     type="text"
                     value={editingRackData.capacityMax}
                     onChange={e => setEditingRackData({ ...editingRackData, capacityMax: e.target.value })}
-                    placeholder="Contoh: 1.500 Kg, 30 Box..."
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    placeholder="Misal: 1.500 Kg (30 Karung)"
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Suhu & Parameter Lingkungan</label>
+                  <label className="block text-slate-700 font-semibold mb-1">Parameter Suhu</label>
                   <input
                     type="text"
                     value={editingRackData.temperatureGuide}
-                    onChange={e => setEditingRackData({ ...editingRackData, temperatureGuide: e.target.value })}
-                    placeholder="Contoh: 20°C - 25°C atau 2°C - 4°C..."
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    onChange={e =>
+                      setEditingRackData({ ...editingRackData, temperatureGuide: e.target.value })
+                    }
+                    placeholder="Misal: 20°C - 25°C (Suhu Ruang)"
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-slate-700 font-medium mb-1">Penanggung Jawab (PIC)</label>
+                  <label className="block text-slate-700 font-semibold mb-1">Parameter Kelembapan</label>
+                  <input
+                    type="text"
+                    value={editingRackData.humidityGuide || ''}
+                    onChange={e =>
+                      setEditingRackData({ ...editingRackData, humidityGuide: e.target.value })
+                    }
+                    placeholder="Misal: Maks. 60% RH"
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Penanggung Jawab (PIC)</label>
                   <input
                     type="text"
                     value={editingRackData.picName}
                     onChange={e => setEditingRackData({ ...editingRackData, picName: e.target.value })}
                     placeholder="Nama PIC Rak..."
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 lg:col-span-2">
+                  <label className="block text-slate-700 font-semibold mb-1">Standar Penataan (SOP Rak)</label>
+                  <input
+                    type="text"
+                    value={editingRackData.storageRule}
+                    onChange={e => setEditingRackData({ ...editingRackData, storageRule: e.target.value })}
+                    placeholder="Wajib di atas palet min 15 cm dari lantai & bersih dari debu/hama..."
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 lg:col-span-4">
+                  <label className="block text-slate-700 font-semibold mb-1">
+                    Catatan Khusus Plakat (Bisa Kosong)
+                  </label>
+                  <input
+                    type="text"
+                    value={editingRackData.customNote}
+                    onChange={e => setEditingRackData({ ...editingRackData, customNote: e.target.value })}
+                    placeholder="Periksa segel karung & catat nomor batch saat penumpukan..."
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
               </div>
+            </div>
 
-              <div>
-                <label className="block text-slate-700 font-medium mb-1">Standar Penataan (SOP Rak)</label>
-                <textarea
-                  rows={2}
-                  value={editingRackData.storageRule}
-                  onChange={e => setEditingRackData({ ...editingRackData, storageRule: e.target.value })}
-                  placeholder="Instruksi penataan palet, rantai dingin, dll..."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-medium mb-1">Catatan Khusus Rak (Bisa Kosong)</label>
-                <input
-                  type="text"
-                  value={editingRackData.customNote}
-                  onChange={e => setEditingRackData({ ...editingRackData, customNote: e.target.value })}
-                  placeholder="Catatan tambahan di plakat..."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-slate-700 font-medium">Tambah Item Manual ke Rak</label>
-                  <span className="text-[10px] text-slate-500 italic">Format: SKU | Nama | Kategori | Stok | Satuan</span>
+            {/* Bagian 2: Daftar Item Bahan Pangan di Rak */}
+            <div className="space-y-3 pt-3 border-t border-slate-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-1.5 h-3.5 bg-emerald-600 rounded-full"></span>
+                    2. Daftar Item Terdaftar di Rak Ini ({editingRackData.items.length} Item)
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Pilih item dari Master Stok Barang SPPG atau buat item khusus secara manual.
+                  </p>
                 </div>
-                <textarea
-                  rows={2}
-                  value={editingRackData.extraItemsText}
-                  onChange={e => setEditingRackData({ ...editingRackData, extraItemsText: e.target.value })}
-                  placeholder="Contoh: ITM-X01 | Bumbu Kari Bubuk | Sembako | 10 | Pack"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowManualItemInput(!showManualItemInput)}
+                    className="px-2.5 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{showManualItemInput ? 'Tutup Input Manual' : 'Input Manual'}</span>
+                  </button>
+                  {editingRackData.items.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setEditingRackData({ ...editingRackData, items: [] })}
+                      className="px-2.5 py-1 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors cursor-pointer"
+                    >
+                      Kosongkan Item
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Panel Ambil dari Master Stok Barang */}
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Package className="w-4 h-4 text-emerald-700" />
+                    Ambil Item dari Master Stok Barang (SPPG)
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Total {items.length} item tersedia di katalog master
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs">
+                  <div className="sm:col-span-4">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={masterItemSearch}
+                        onChange={e => setMasterItemSearch(e.target.value)}
+                        placeholder="Cari nama / SKU master..."
+                        className="w-full pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
+                      />
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2 pointer-events-none" />
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-6">
+                    <select
+                      value={selectedMasterItemId}
+                      onChange={e => setSelectedMasterItemId(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs font-medium focus:ring-1 focus:ring-emerald-500 truncate"
+                    >
+                      <option value="">-- Pilih Bahan / Barang dari Master Stok --</option>
+                      {items
+                        .filter(i => {
+                          if (!masterItemSearch.trim()) return true;
+                          const q = masterItemSearch.toLowerCase();
+                          return (
+                            i.name.toLowerCase().includes(q) ||
+                            i.id.toLowerCase().includes(q) ||
+                            i.category.toLowerCase().includes(q)
+                          );
+                        })
+                        .map(itm => (
+                          <option key={itm.id} value={itm.id}>
+                            {itm.id} • {itm.name} ({itm.category} • Satuan: {itm.baseUnit})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <button
+                      type="button"
+                      onClick={handleAddItemFromMaster}
+                      disabled={!selectedMasterItemId}
+                      className="w-full py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-semibold text-xs shadow-2xs transition-colors cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Tambah</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Panel Form Input Manual (Collapsible) */}
+              {showManualItemInput && (
+                <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-200 space-y-2 text-xs">
+                  <span className="font-bold text-emerald-900 block">
+                    Tambah Item Bebas / Non-Master ke Rak:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                    <div>
+                      <label className="block text-[11px] text-slate-600 font-medium mb-0.5">
+                        Kode SKU (Opsional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="ITM-CUSTOM-01"
+                        value={manualItemForm.id}
+                        onChange={e => setManualItemForm({ ...manualItemForm, id: e.target.value })}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] text-slate-600 font-medium mb-0.5">
+                        Nama Bahan / Barang *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Misal: Beras Ramos 25 Kg..."
+                        value={manualItemForm.name}
+                        onChange={e => setManualItemForm({ ...manualItemForm, name: e.target.value })}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-600 font-medium mb-0.5">Kategori</label>
+                      <input
+                        type="text"
+                        placeholder="Sembako / Sayur..."
+                        value={manualItemForm.category}
+                        onChange={e => setManualItemForm({ ...manualItemForm, category: e.target.value })}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-600 font-medium mb-0.5">Satuan</label>
+                      <input
+                        type="text"
+                        placeholder="Kg / Liter / Pack"
+                        value={manualItemForm.unit}
+                        onChange={e => setManualItemForm({ ...manualItemForm, unit: e.target.value })}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="text"
+                      placeholder="Catatan penanganan fisik / penempatan khusus di rak..."
+                      value={manualItemForm.handlingNote}
+                      onChange={e =>
+                        setManualItemForm({ ...manualItemForm, handlingNote: e.target.value })
+                      }
+                      className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddManualItem}
+                      disabled={!manualItemForm.name.trim()}
+                      className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white font-semibold text-xs transition-colors cursor-pointer shrink-0"
+                    >
+                      + Tambah Item Manual
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Tabel Interaktif Daftar Item yang Terdaftar */}
+              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-100 text-slate-700 font-bold text-[11px] border-b border-slate-200">
+                    <tr>
+                      <th className="py-2 px-2.5 w-10 text-center">No</th>
+                      <th className="py-2 px-2.5 w-24">Kode SKU</th>
+                      <th className="py-2 px-2.5">Nama Bahan Pangan</th>
+                      <th className="py-2 px-2.5">Kategori</th>
+                      <th className="py-2 px-2.5 w-16 text-center">Satuan</th>
+                      <th className="py-2 px-2.5">Catatan / Posisi</th>
+                      <th className="py-2 px-2.5 w-24 text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs">
+                    {editingRackData.items.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-6 text-center text-slate-500 bg-slate-50">
+                          Belum ada item di rak ini. Silakan pilih item dari Master Stok Barang di atas atau input manual.
+                        </td>
+                      </tr>
+                    ) : (
+                      editingRackData.items.map((itm, idx) => (
+                        <tr key={`${itm.id}-${idx}`} className="hover:bg-slate-50">
+                          <td className="py-2 px-2.5 text-center font-mono text-slate-400 text-[11px]">
+                            {idx + 1}
+                          </td>
+                          <td className="py-2 px-2.5 font-mono font-bold text-slate-800 text-[11px]">
+                            {itm.id}
+                          </td>
+                          <td className="py-2 px-2.5">
+                            <div className="font-semibold text-slate-900">{itm.name}</div>
+                            {itm.subcategory && (
+                              <div className="text-[10px] text-slate-500">{itm.subcategory}</div>
+                            )}
+                          </td>
+                          <td className="py-2 px-2.5 text-slate-600">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-medium border border-slate-200 text-[10px]">
+                              {itm.category}
+                            </span>
+                          </td>
+                          <td className="py-2 px-2.5 text-center font-mono font-semibold text-slate-700">
+                            {itm.unit || 'Kg'}
+                          </td>
+                          <td className="py-2 px-2.5">
+                            <input
+                              type="text"
+                              value={itm.handlingNote || ''}
+                              onChange={e => handleUpdateItemField(idx, 'handlingNote', e.target.value)}
+                              placeholder="Catatan penempatan..."
+                              className="w-full px-2 py-1 rounded border border-transparent hover:border-slate-300 focus:border-emerald-500 focus:bg-white text-[11px] text-slate-700 bg-transparent"
+                            />
+                          </td>
+                          <td className="py-2 px-2.5 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleMoveItemInEditingRack(idx, 'UP')}
+                                disabled={idx === 0}
+                                title="Geser Naik"
+                                className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer"
+                              >
+                                <ArrowUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleMoveItemInEditingRack(idx, 'DOWN')}
+                                disabled={idx === editingRackData.items.length - 1}
+                                title="Geser Turun"
+                                className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer"
+                              >
+                                <ArrowDown className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItemFromEditingRack(idx)}
+                                title="Hapus Item dari Rak"
+                                className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
 
+            {/* Modal Actions */}
             <div className="flex items-center justify-between pt-3 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => handleResetRackOverride(editingRackData.id)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs transition-colors cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Reset ke Bawaan
-              </button>
+              <div>
+                {!editingRackData.isNew && (
+                  <button
+                    type="button"
+                    onClick={() => handleResetRackOverride(editingRackData.id)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Reset ke Standar Bawaan
+                  </button>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setEditingRackData(null)}
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs transition-colors cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs transition-colors cursor-pointer font-medium"
                 >
                   Batal
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveRackModal}
-                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs shadow-xs transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-2xs transition-colors cursor-pointer"
                 >
                   <Save className="w-3.5 h-3.5" />
-                  Simpan Perubahan
+                  Simpan Plakat Rak
                 </button>
               </div>
             </div>

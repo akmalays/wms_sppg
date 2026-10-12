@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { ItemMaster, StockOpnameSession, StockOpnameItem } from '../types/warehouse';
@@ -11,7 +11,21 @@ interface StockOpnameModuleProps {
 export const StockOpnameModule: React.FC<StockOpnameModuleProps> = ({ onRefreshData }) => {
   const { currentUser, can } = useAuth();
   const [opnames, setOpnames] = useState<StockOpnameSession[]>(() => warehouseDb.getOpnames());
-  const [items] = useState<ItemMaster[]>(() => warehouseDb.getItems().filter(i => i.isActive && i.itemType !== 'EQUIPMENT'));
+  const [items, setItems] = useState<ItemMaster[]>(() => warehouseDb.getItems().filter(i => i.isActive && i.itemType !== 'EQUIPMENT'));
+
+  // Sync data automatically when storage items change
+  useEffect(() => {
+    const handleSync = () => {
+      setItems(warehouseDb.getItems().filter(i => i.isActive && i.itemType !== 'EQUIPMENT'));
+      setOpnames(warehouseDb.getOpnames());
+    };
+    window.addEventListener('sppg_storage_items_changed', handleSync);
+    window.addEventListener('focus', handleSync);
+    return () => {
+      window.removeEventListener('sppg_storage_items_changed', handleSync);
+      window.removeEventListener('focus', handleSync);
+    };
+  }, []);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [viewingOpname, setViewingOpname] = useState<StockOpnameSession | null>(null);
@@ -35,6 +49,8 @@ export const StockOpnameModule: React.FC<StockOpnameModuleProps> = ({ onRefreshD
   };
 
   const handleOpenCreate = () => {
+    const freshItems = warehouseDb.getItems().filter(i => i.isActive && i.itemType !== 'EQUIPMENT');
+    setItems(freshItems);
     setFormDate(new Date().toISOString().slice(0, 10));
     setFormLocation('Gudang Kering - Area Sembako');
     setFormNotes('Stock opname berkala SPPG MLG TUMPANG JERU');
@@ -43,12 +59,12 @@ export const StockOpnameModule: React.FC<StockOpnameModuleProps> = ({ onRefreshD
     setSuccessMessage('');
 
     // Pre-populate items
-    initCountingItems('ALL');
+    initCountingItems('ALL', freshItems);
     setIsCreateModalOpen(true);
   };
 
-  const initCountingItems = (cat: string) => {
-    const pool = cat === 'ALL' ? items : items.filter(i => i.category === cat);
+  const initCountingItems = (cat: string, itemsPool = items) => {
+    const pool = cat === 'ALL' ? itemsPool : itemsPool.filter(i => i.category === cat);
     setCountingItems(
       pool.map(item => ({
         itemId: item.id,
@@ -173,10 +189,10 @@ export const StockOpnameModule: React.FC<StockOpnameModuleProps> = ({ onRefreshD
         {can('CREATE_OPNAME') && (
           <button
             onClick={handleOpenCreate}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer whitespace-nowrap"
           >
-            <Plus className="w-4 h-4" />
-            Mulai Sesi Stock Opname
+            <Plus className="w-4 h-4 text-emerald-100" />
+            Stock Opname
           </button>
         )}
       </div>
@@ -314,6 +330,7 @@ export const StockOpnameModule: React.FC<StockOpnameModuleProps> = ({ onRefreshD
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
                     <tr>
+                      <th className="py-2.5 px-3 w-28 font-mono">Kode SKU</th>
                       <th className="py-2.5 px-3">Nama Item</th>
                       <th className="py-2.5 px-3">Kategori</th>
                       <th className="py-2.5 px-3 text-right">Stok Sistem</th>
@@ -327,6 +344,7 @@ export const StockOpnameModule: React.FC<StockOpnameModuleProps> = ({ onRefreshD
                       const hasVar = i.variance !== 0;
                       return (
                         <tr key={i.id} className={hasVar ? 'bg-amber-50/40' : ''}>
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-800">{i.itemId}</td>
                           <td className="py-2.5 px-3 font-semibold text-slate-900">{i.itemName}</td>
                           <td className="py-2.5 px-3 text-slate-500">{i.category}</td>
                           <td className="py-2.5 px-3 text-right font-mono text-slate-600">
@@ -454,19 +472,23 @@ export const StockOpnameModule: React.FC<StockOpnameModuleProps> = ({ onRefreshD
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                       <tr>
+                        <th className="py-2.5 px-3 w-28 font-mono">Kode SKU</th>
                         <th className="py-2.5 px-3 w-48">Nama Item</th>
-                        <th className="py-2.5 px-3 w-28 text-right">Stok Sistem</th>
-                        <th className="py-2.5 px-3 w-36 text-right">Hitung Fisik</th>
-                        <th className="py-2.5 px-3 w-28 text-right">Selisih</th>
+                        <th className="py-2.5 px-3 w-24 text-right">Stok Sistem</th>
+                        <th className="py-2.5 px-3 w-32 text-right">Hitung Fisik</th>
+                        <th className="py-2.5 px-3 w-24 text-right">Selisih</th>
                         <th className="py-2.5 px-3">Alasan Penjelasan Selisih (Wajib jika != 0)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {countingItems.map((c, idx) => (
                         <tr key={c.itemId} className={c.variance !== 0 ? 'bg-amber-50/50' : 'hover:bg-slate-50'}>
+                          <td className="py-2 px-3 font-mono font-bold text-slate-800 text-xs whitespace-nowrap">
+                            {c.itemId}
+                          </td>
                           <td className="py-2 px-3">
                             <div className="font-semibold text-slate-900">{c.name}</div>
-                            <div className="text-[10px] text-slate-400 font-mono">{c.itemId}</div>
+                            <div className="text-[10px] text-slate-400">{c.category}</div>
                           </td>
                           <td className="py-2 px-3 text-right font-mono text-slate-600 font-medium">
                             {c.systemStock} {c.unit}

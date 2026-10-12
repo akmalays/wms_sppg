@@ -46,12 +46,20 @@ import {
 } from 'lucide-react';
 import { exportToExcel, downloadExcelTemplate } from '../lib/excelExport';
 import { SppgLogo } from './SppgLogo';
+import { useToast } from '../context/ToastContext';
 
 import {
   STANDARD_CATEGORIES,
   StandardCategory,
   normalizeToStandardCategory,
 } from '../utils/categoryStandards';
+import {
+  WarehouseSkuType,
+  WAREHOUSE_SKU_DEFINITIONS,
+  ALL_STANDARD_LOCATIONS,
+  detectWarehouseType,
+  generateAutoSku,
+} from '../utils/skuGenerator';
 
 interface InventoryModuleProps {
   onRefreshData?: () => void;
@@ -145,6 +153,7 @@ interface BatchMasterItemRow {
 
 export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData, initialTab = 'stock' }) => {
   const { currentUser, can } = useAuth();
+  const toast = useToast();
 
   // Top level active tab: 'stock' (Data Stok Keseluruhan) vs 'master' (Master Barang) vs 'opname' (Stok Opname Fisik)
   const [activeMainTab, setActiveMainTab] = useState<'stock' | 'master' | 'opname'>(initialTab);
@@ -162,7 +171,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<SppgCategory>('Semua Kategori');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [successNotice, setSuccessNotice] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string>('');
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+
+  // Confirmation Modals State
+  const [itemToDelete, setItemToDelete] = useState<ItemMaster | null>(null);
+  const [opnameSessionToApprove, setOpnameSessionToApprove] = useState<StockOpnameSession | null>(null);
 
   // ----------------------------------------------------
   // Master Barang Tab Filter States
@@ -183,6 +197,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   const [adjustReason, setAdjustReason] = useState('Koreksi stok fisik');
 
   // Single Item Form State
+  const [formWarehouse, setFormWarehouse] = useState<WarehouseSkuType>('GUDANG_KERING');
   const [formSku, setFormSku] = useState('');
   const [formName, setFormName] = useState('');
   const [formCategory, setFormCategory] = useState<SppgCategory | 'Kategori Kustom'>('Bahan Kering');
@@ -191,7 +206,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   const [formCustomUnit, setFormCustomUnit] = useState('');
   const [formInitialStock, setFormInitialStock] = useState<number>(0);
   const [formMinStock, setFormMinStock] = useState<number>(10);
-  const [formLocation, setFormLocation] = useState('Gudang Kering - Rak A');
+  const [formLocation, setFormLocation] = useState('Gudang Kering - Rak A1');
   const [formEstimatedPrice, setFormEstimatedPrice] = useState<number>(0);
   const [formNotes, setFormNotes] = useState('');
   const [formIsActive, setFormIsActive] = useState<boolean>(true);
@@ -228,9 +243,26 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
     if (onRefreshData) onRefreshData();
   };
 
-  const showToast = (msg: string) => {
+  useEffect(() => {
+    const handleStorageUpdate = () => {
+      setDataVersion(v => v + 1);
+    };
+    window.addEventListener('sppg_storage_items_changed', handleStorageUpdate);
+    return () => {
+      window.removeEventListener('sppg_storage_items_changed', handleStorageUpdate);
+    };
+  }, []);
+
+  const showToast = (msg: string, title?: string) => {
+    toast.success(msg, title || 'Sukses');
     setSuccessNotice(msg);
     setTimeout(() => setSuccessNotice(''), 4500);
+  };
+
+  const showError = (msg: string, title?: string) => {
+    toast.error(msg, title || 'Peringatan');
+    setErrorMessage(msg);
+    setTimeout(() => setErrorMessage(''), 5000);
   };
 
   const getItemStockStatus = (item: ItemMaster): StockStatus => {
@@ -835,19 +867,22 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
   const handleApproveOpname = (session: StockOpnameSession) => {
     if (!can('APPROVE_OPNAME')) {
-      alert('Anda tidak memiliki peran otorisasi untuk menyetujui Stock Opname (Hanya Manager / Superadmin).');
+      showError('Anda tidak memiliki peran otorisasi untuk menyetujui Stock Opname (Hanya Manager / Superadmin).');
       return;
     }
+    setOpnameSessionToApprove(session);
+  };
 
-    if (window.confirm(`Setujui Stock Opname #${session.id}? Saldo stok fisik sistem akan langsung disesuaikan dengan hasil hitung fisik.`)) {
-      try {
-        warehouseDb.approveStockOpname(session.id, currentUser);
-        showToast(`Stock Opname #${session.id} berhasil disetujui! Saldo stok gudang telah diperbarui.`);
-        refreshData();
-        setViewingOpname(null);
-      } catch (err: any) {
-        alert(err.message || 'Gagal menyetujui stock opname.');
-      }
+  const confirmApproveOpname = () => {
+    if (!opnameSessionToApprove) return;
+    try {
+      warehouseDb.approveStockOpname(opnameSessionToApprove.id, currentUser);
+      showToast(`Stock Opname #${opnameSessionToApprove.id} berhasil disetujui! Saldo stok gudang telah diperbarui.`);
+      refreshData();
+      setViewingOpname(null);
+      setOpnameSessionToApprove(null);
+    } catch (err: any) {
+      showError(err.message || 'Gagal menyetujui stock opname.');
     }
   };
 
@@ -905,7 +940,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   // ----------------------------------------------------
   const handleOpenNewSingleItem = () => {
     setEditingItem(null);
-    setFormSku(`ITM-${Date.now().toString().slice(-4)}`);
+    const initialWh: WarehouseSkuType = 'GUDANG_KERING';
+    setFormWarehouse(initialWh);
+    const autoSku = generateAutoSku(initialWh, items);
+    setFormSku(autoSku);
     setFormName('');
     setFormCategory('Bahan Kering');
     setFormCustomCategory('');
@@ -913,7 +951,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
     setFormCustomUnit('');
     setFormInitialStock(0);
     setFormMinStock(20);
-    setFormLocation('Gudang Kering - Rak A');
+    setFormLocation(WAREHOUSE_SKU_DEFINITIONS[initialWh].defaultLocation);
     setFormEstimatedPrice(0);
     setFormNotes('');
     setFormIsActive(true);
@@ -923,6 +961,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
   const handleOpenEditItem = (item: ItemMaster) => {
     setEditingItem(item);
+    const wh = detectWarehouseType(item.location, item.category);
+    setFormWarehouse(wh);
     setFormSku(item.id);
     setFormName(item.name);
     const cat = getDetailedItemCategory(item);
@@ -940,12 +980,34 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
     setIsSingleModalOpen(true);
   };
 
+  const handleWarehouseChange = (wh: WarehouseSkuType) => {
+    setFormWarehouse(wh);
+    if (!editingItem) {
+      const nextSku = generateAutoSku(wh, items);
+      setFormSku(nextSku);
+      setFormLocation(WAREHOUSE_SKU_DEFINITIONS[wh].defaultLocation);
+      if (wh === 'GUDANG_KERING' && (formCategory === 'Bahan Basah' || formCategory === 'Alat Kebersihan')) {
+        setFormCategory('Bahan Kering');
+      } else if (wh === 'GUDANG_BASAH' && (formCategory === 'Bahan Kering' || formCategory === 'Alat Kebersihan')) {
+        setFormCategory('Bahan Basah');
+      } else if (wh === 'GUDANG_NONFOOD') {
+        setFormCategory('Alat Kebersihan');
+      }
+    }
+  };
+
+  const handleRegenerateAutoSku = () => {
+    const nextSku = generateAutoSku(formWarehouse, items);
+    setFormSku(nextSku);
+  };
+
   const handleSaveSingleItem = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
 
     if (!formName.trim()) {
       setFormError('Nama barang wajib diisi.');
+      showError('Nama barang wajib diisi sebelum menyimpan data.', 'Validasi Form');
       return;
     }
 
@@ -961,8 +1023,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       const minStockVal = Math.max(0, Number(formMinStock) || 0);
       const estPriceVal = Math.max(0, Number(formEstimatedPrice) || 0);
 
+      const finalSku = formSku.trim() || generateAutoSku(formWarehouse, items);
+
       const itemToSave: ItemMaster = {
-        id: formSku.trim() || `ITM-${Date.now().toString().slice(-4)}`,
+        id: finalSku,
         name: formName.trim(),
         itemType: finalCategory === 'Bahan Kering'
           ? 'FOOD_CARRYING_STOCK'
@@ -974,7 +1038,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
         minimumStock: minStockVal,
         reorderPoint: minStockVal * 1.5,
         currentStock: editingItem ? editingItem.currentStock : initialStockVal,
-        location: formLocation.trim() || 'Gudang Utama',
+        location: formLocation.trim() || WAREHOUSE_SKU_DEFINITIONS[formWarehouse]?.defaultLocation || 'Gudang Utama',
         expiryTrackingEnabled: finalCategory === 'Bahan Basah' || finalCategory === 'Bahan Kering',
         isActive: formIsActive,
         notes: formNotes.trim() || undefined,
@@ -987,22 +1051,32 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       warehouseDb.saveItem(itemToSave, currentUser, isNew);
       refreshData();
       setIsSingleModalOpen(false);
-      showToast(`Berhasil menyimpan data barang custom: ${itemToSave.name}`);
+
+      if (isNew) {
+        showToast(`Master barang "${itemToSave.name}" (${itemToSave.id}) berhasil didaftarkan ke katalog!`, 'Berhasil Ditambahkan');
+      } else {
+        showToast(`Perubahan data master barang "${itemToSave.name}" (${itemToSave.id}) berhasil disimpan!`, 'Perubahan Tersimpan');
+      }
     } catch (err: any) {
-      setFormError(err.message || 'Gagal menyimpan data barang.');
+      const errMsg = err.message || 'Gagal menyimpan data barang.';
+      setFormError(errMsg);
+      showError(errMsg, 'Gagal Menyimpan');
     }
   };
 
   const handleDeleteItem = (item: ItemMaster) => {
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus master barang "${item.name}" (${item.id}) dari database?`)) {
-      return;
-    }
+    setItemToDelete(item);
+  };
+
+  const confirmDeleteItem = () => {
+    if (!itemToDelete) return;
     try {
-      warehouseDb.deleteItem(item.id, currentUser);
+      warehouseDb.deleteItem(itemToDelete.id, currentUser);
       refreshData();
-      showToast(`Master barang "${item.name}" berhasil dihapus.`);
+      showToast(`Master barang "${itemToDelete.name}" (${itemToDelete.id}) berhasil dihapus dari database.`, 'Berhasil Dihapus');
+      setItemToDelete(null);
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus item.');
+      showError(err.message || 'Gagal menghapus item.', 'Gagal Menghapus');
     }
   };
 
@@ -1012,7 +1086,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       refreshData();
       showToast(`Status master barang "${updated.name}" berhasil diubah menjadi ${updated.isActive ? 'Aktif' : 'Nonaktif'}.`);
     } catch (err: any) {
-      alert(err.message || 'Gagal mengubah status item.');
+      showError(err.message || 'Gagal mengubah status item.');
     }
   };
 
@@ -1276,6 +1350,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
           </div>
         )}
 
+        {errorMessage && (
+          <div className="flex items-center gap-2.5 p-3.5 bg-rose-50 border border-rose-200 text-rose-900 rounded-xl text-xs font-medium animate-in fade-in duration-150">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
       {/* ========================================================================= */}
       {/* MODULE HEADER BAR */}
       {/* ========================================================================= */}
@@ -1413,11 +1494,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 <button
                   type="button"
                   onClick={handleOpenNewSingleItem}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors cursor-pointer"
                   title="Tambah dan daftarkan item baru kustom langsung ke inventaris"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>+ Tambah Item Custom</span>
+                  <Plus className="w-4 h-4 text-emerald-100" />
+                  <span>Tambah Item Custom</span>
                 </button>
               )}
 
@@ -1557,8 +1638,24 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 <tbody className="divide-y divide-slate-100">
                   {filteredItems.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-12 text-center text-slate-400 italic">
-                        Tidak ada data barang yang sesuai dengan filter kategori & pencarian saat ini.
+                      <td colSpan={8} className="py-12 text-center text-slate-500">
+                        {items.length === 0 ? (
+                          <div className="max-w-md mx-auto space-y-2">
+                            <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                              <Package className="w-5 h-5" />
+                            </div>
+                            <div className="font-semibold text-slate-800 text-xs">
+                              Belum Ada Data Stok Barang
+                            </div>
+                            <p className="text-[11px] text-slate-500">
+                              Master inventaris kosong. Silakan buka tab <strong className="text-emerald-700 cursor-pointer" onClick={() => setActiveMainTab('master')}>Master Barang</strong> untuk menambahkan item baru.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="italic text-slate-400">
+                            Tidak ada data barang yang sesuai dengan filter kategori & pencarian saat ini.
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ) : (
@@ -1656,16 +1753,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
               {can('MANAGE_ITEMS') && (
                 <button
                   type="button"
                   onClick={handleOpenNewSingleItem}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors cursor-pointer"
                   title="Tambah item custom baru"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>+ Tambah Item Custom</span>
+                  <Plus className="w-4 h-4 text-emerald-100" />
+                  <span>Tambah Item Custom</span>
                 </button>
               )}
 
@@ -1677,10 +1774,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                     setPasteRawText('');
                     setIsBatchModalOpen(true);
                   }}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-900 text-white shadow-2xs transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 transition-colors cursor-pointer"
                   title="Input masal banyak item sekaligus"
                 >
-                  <TableProperties className="w-4 h-4" />
+                  <TableProperties className="w-4 h-4 text-slate-600" />
                   <span>Input Masal (Batch)</span>
                 </button>
               )}
@@ -1688,10 +1785,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               <button
                 type="button"
                 onClick={handleExportMasterExcel}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
                 title="Unduh seluruh data master barang ke Excel"
               >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                 <span>Ekspor Master Excel</span>
               </button>
             </div>
@@ -1828,8 +1925,48 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {filteredMasterItems.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="py-12 text-center text-slate-400 italic">
-                        Tidak ada data master barang yang sesuai dengan filter dan pencarian saat ini.
+                      <td colSpan={11} className="py-12 text-center text-slate-500">
+                        {items.length === 0 ? (
+                          <div className="max-w-md mx-auto space-y-3">
+                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+                              <Package className="w-6 h-6" />
+                            </div>
+                            <div className="font-bold text-slate-800 text-sm">
+                              Katalog Master Barang Masih Kosong
+                            </div>
+                            <p className="text-xs text-slate-500 leading-relaxed">
+                              Data barang telah dikosongkan. Anda dapat mulai mendaftarkan barang baru dari awal, baik satuan maupun secara masal (Excel).
+                            </p>
+                            {can('MANAGE_ITEMS') && (
+                              <div className="flex items-center justify-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={handleOpenNewSingleItem}
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors cursor-pointer"
+                                >
+                                  <Plus className="w-4 h-4 text-emerald-100" />
+                                  <span>Tambah Item Pertama</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setBatchMode('GRID');
+                                    setPasteRawText('');
+                                    setIsBatchModalOpen(true);
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-900 text-white shadow-2xs transition-colors cursor-pointer"
+                                >
+                                  <TableProperties className="w-4 h-4" />
+                                  <span>Input Masal (Batch)</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="italic text-slate-400">
+                            Tidak ada data master barang yang sesuai dengan filter dan pencarian saat ini.
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ) : (
@@ -1965,10 +2102,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               <button
                 type="button"
                 onClick={() => handleOpenCreateOpname()}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer whitespace-nowrap"
               >
-                <Plus className="w-4 h-4" />
-                <span>+ Mulai Sesi Stock Opname Baru</span>
+                <Plus className="w-4 h-4 text-emerald-100" />
+                <span>Stock Opname</span>
               </button>
             </div>
           </div>
@@ -2732,41 +2869,72 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-semibold text-slate-700">Kode SKU</label>
-                    {!editingItem && (
-                      <button
-                        type="button"
-                        onClick={() => setFormSku(`ITM-${Date.now().toString().slice(-4)}`)}
-                        className="text-[10px] text-emerald-700 hover:text-emerald-800 font-semibold cursor-pointer"
-                      >
-                        Auto SKU
-                      </button>
-                    )}
+              {/* Pilihan Gudang & Auto SKU Berurutan */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Pilihan Gudang / Area Penyimpanan
+                    </label>
+                    <select
+                      value={formWarehouse}
+                      onChange={e => handleWarehouseChange(e.target.value as WarehouseSkuType)}
+                      disabled={!!editingItem}
+                      className="w-full border border-slate-300 rounded-lg p-2 bg-white text-slate-900 font-medium text-xs focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-100"
+                    >
+                      {Object.values(WAREHOUSE_SKU_DEFINITIONS).map(wh => (
+                        <option key={wh.key} value={wh.key}>
+                          {wh.label} [{wh.prefix}]
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <input
-                    type="text"
-                    value={formSku}
-                    onChange={e => setFormSku(e.target.value)}
-                    placeholder="Contoh: ITM-001"
-                    className="w-full border border-slate-300 rounded-lg p-2 font-mono text-slate-900 bg-white"
-                  />
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="font-semibold text-slate-700">Kode SKU</label>
+                      {!editingItem && (
+                        <button
+                          type="button"
+                          onClick={handleRegenerateAutoSku}
+                          className="text-[10px] text-emerald-700 hover:text-emerald-800 font-semibold cursor-pointer flex items-center gap-1"
+                          title="Generate nomor urut SKU berikutnya untuk gudang ini"
+                        >
+                          <RefreshCw className="w-2.5 h-2.5" />
+                          Auto SKU
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={formSku}
+                      onChange={e => setFormSku(e.target.value)}
+                      placeholder="Contoh: ITM-KRG-001"
+                      className="w-full border border-slate-300 rounded-lg p-2 font-mono font-semibold text-slate-900 bg-white text-xs uppercase"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Kategori Standar</label>
-                  <select
-                    value={formCategory}
-                    onChange={e => setFormCategory(e.target.value as SppgCategory)}
-                    className="w-full border border-slate-300 rounded-lg p-2 bg-white text-slate-900 font-medium"
-                  >
-                    {SPPG_STOCK_CATEGORIES.filter(c => c !== 'Semua Kategori').map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                    <option value="Kategori Kustom">+ Kategori Kustom...</option>
-                  </select>
+                <div className="text-[11px] text-slate-500 flex items-center justify-between pt-0.5 border-t border-slate-200/60">
+                  <span>
+                    Format: <strong className="font-mono text-emerald-700">{WAREHOUSE_SKU_DEFINITIONS[formWarehouse].prefix}-[No Seri]</strong> • {WAREHOUSE_SKU_DEFINITIONS[formWarehouse].temperature}
+                  </span>
+                  <span className="text-slate-400">
+                    *Konsisten di Cetak Rak & SO
+                  </span>
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Kategori Standar</label>
+                <select
+                  value={formCategory}
+                  onChange={e => setFormCategory(e.target.value as SppgCategory)}
+                  className="w-full border border-slate-300 rounded-lg p-2 bg-white text-slate-900 font-medium"
+                >
+                  {SPPG_STOCK_CATEGORIES.filter(c => c !== 'Semua Kategori').map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                  <option value="Kategori Kustom">+ Kategori Kustom...</option>
+                </select>
               </div>
 
               {formCategory === 'Kategori Kustom' && (
@@ -2903,25 +3071,59 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Lokasi Penyimpanan di Gudang</label>
-                <input
-                  type="text"
-                  list="warehouse-locations-list"
-                  value={formLocation}
-                  onChange={e => setFormLocation(e.target.value)}
-                  placeholder="Pilih atau ketik lokasi simpan..."
-                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-900"
-                />
-                <datalist id="warehouse-locations-list">
-                  <option value="Gudang Kering - Rak A1" />
-                  <option value="Gudang Kering - Rak B1" />
-                  <option value="Gudang Kering - Palet Tengah" />
-                  <option value="Chiller Dapur 1 (Sayur & Buah)" />
-                  <option value="Freezer Dapur 2 (Daging & Unggas)" />
-                  <option value="Area Bumbu & Rempah" />
-                  <option value="Gudang Non-Food & Kebersihan" />
-                  <option value="Ruang Kantor / Lemari ATK" />
-                </datalist>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Lokasi Penyimpanan di Gudang
+                </label>
+                <select
+                  value={
+                    ALL_STANDARD_LOCATIONS.includes(formLocation)
+                      ? formLocation
+                      : 'LOKASI_KUSTOM'
+                  }
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (val === 'LOKASI_KUSTOM') {
+                      setFormLocation('');
+                    } else {
+                      setFormLocation(val);
+                    }
+                  }}
+                  className="w-full border border-slate-300 rounded-lg p-2 bg-white text-slate-900 font-medium text-xs focus:ring-1 focus:ring-emerald-500"
+                >
+                  <optgroup label={`Rekomendasi ${WAREHOUSE_SKU_DEFINITIONS[formWarehouse]?.label || 'Gudang Terpilih'}`}>
+                    {(WAREHOUSE_SKU_DEFINITIONS[formWarehouse]?.suggestedLocations || []).map(loc => (
+                      <option key={loc} value={loc}>
+                        {loc}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Area & Rak Gudang Lainnya">
+                    {ALL_STANDARD_LOCATIONS.filter(
+                      loc => !(WAREHOUSE_SKU_DEFINITIONS[formWarehouse]?.suggestedLocations || []).includes(loc)
+                    ).map(loc => (
+                      <option key={loc} value={loc}>
+                        {loc}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <option value="LOKASI_KUSTOM">+ Lokasi Kustom...</option>
+                </select>
+
+                {(!ALL_STANDARD_LOCATIONS.includes(formLocation) || formLocation === '') && (
+                  <div className="mt-2">
+                    <label className="block font-semibold text-slate-600 text-[11px] mb-1">
+                      Ketik Nama Lokasi / Rak Kustom <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formLocation}
+                      onChange={e => setFormLocation(e.target.value)}
+                      placeholder="Contoh: Rak Khusus B2, Palet Tambahan, Bin Chiller 3..."
+                      required
+                      className="w-full border border-emerald-300 bg-emerald-50/30 rounded-lg p-2 text-slate-900 text-xs focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                )}
               </div>
 
               <div>
@@ -3237,6 +3439,174 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
             {/* Document Sheet */}
             <div className="p-6 sm:p-10 overflow-y-auto print:p-0 print:overflow-visible">
               {renderPrintableStockSheet()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL KONFIRMASI: HAPUS MASTER BARANG (SINGLE ITEM) */}
+      {/* ========================================================================= */}
+      {itemToDelete && (
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Header Dialog */}
+            <div className="p-5 sm:p-6 pb-4">
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0 shadow-2xs">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-bold text-slate-900 leading-snug">
+                    Hapus Master Barang?
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Apakah Anda yakin ingin menghapus data master barang ini dari database sistem?
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setItemToDelete(null)}
+                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Tutup dialog"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Card Detail Item yang Hendak Dihapus */}
+              <div className="mt-4 p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5 text-xs">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[10px] font-semibold text-slate-400 block">
+                      Nama Bahan Pangan / Barang
+                    </span>
+                    <div className="font-bold text-slate-900 text-sm mt-0.5 truncate">
+                      {itemToDelete.name}
+                    </div>
+                  </div>
+                  <span className="font-mono font-bold text-[10px] px-2 py-0.5 rounded bg-slate-200/80 text-slate-800 shrink-0">
+                    {itemToDelete.id}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 pt-2 border-t border-slate-200/70">
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">Kategori</span>
+                    <span className="font-medium text-slate-800">{itemToDelete.category || 'Bahan Kering'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">Lokasi Gudang</span>
+                    <span className="font-medium text-slate-800 truncate block">{itemToDelete.location || '-'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">Satuan / Min. Stok</span>
+                    <span className="font-medium text-slate-800">
+                      {itemToDelete.baseUnit} (Min. {itemToDelete.minimumStock} {itemToDelete.baseUnit})
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">Saldo Stok Tercatat</span>
+                    <span className={`font-mono font-bold ${itemToDelete.currentStock > 0 ? 'text-amber-700' : 'text-slate-800'}`}>
+                      {itemToDelete.currentStock.toLocaleString('id-ID')} {itemToDelete.baseUnit}
+                    </span>
+                  </div>
+                </div>
+
+                {itemToDelete.currentStock > 0 ? (
+                  <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px] flex items-start gap-2 font-medium">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+                    <p className="leading-relaxed">
+                      Perhatian: Item ini masih memiliki saldo stok fisik sebesar <strong>{itemToDelete.currentStock} {itemToDelete.baseUnit}</strong>.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-500 italic">
+                    Riwayat dokumen dan transaksi lama yang pernah menggunakan SKU ini tetap tersimpan secara historis.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Footer Aksi */}
+            <div className="px-5 sm:px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteItem}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 shadow-xs transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Ya, Hapus Master Barang</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+
+      {/* ========================================================================= */}
+      {/* MODAL KONFIRMASI: PERSETUJUAN STOCK OPNAME */}
+      {/* ========================================================================= */}
+      {opnameSessionToApprove && (
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="p-5 sm:p-6 pb-4">
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center shrink-0 shadow-2xs">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-bold text-slate-900 leading-snug">
+                    Setujui & Terapkan Hasil Stock Opname?
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Sesi audit #{opnameSessionToApprove.id} ({opnameSessionToApprove.category})
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOpnameSessionToApprove(null)}
+                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Tutup dialog"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="mt-4 p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1.5 text-slate-600">
+                <p className="leading-relaxed">
+                  Dengan menyetujui sesi ini, saldo stok fisik sistem akan <strong>langsung disesuaikan</strong> dengan hasil hitung fisik yang tercatat.
+                </p>
+                <div className="pt-2 border-t border-slate-200 text-[11px] text-slate-500">
+                  Disetujui oleh: <strong className="text-slate-800">{currentUser.name}</strong> ({currentUser.role})
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 sm:px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setOpnameSessionToApprove(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmApproveOpname}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 shadow-xs transition-colors cursor-pointer"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Ya, Setujui & Terapkan</span>
+              </button>
             </div>
           </div>
         </div>

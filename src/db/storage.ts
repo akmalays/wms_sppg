@@ -1544,7 +1544,15 @@ class WarehouseDatabase {
       localStorage.setItem('sppg_active_user_id', 'USR-003');
       localStorage.setItem('sppg_active_user_role', 'ADMIN');
     }
-    this.items = getStored<ItemMaster[]>(STORAGE_KEYS.ITEMS, INITIAL_ITEMS);
+
+    const isMasterCleared = localStorage.getItem('sppg_master_items_cleared_v2') === 'true';
+    if (!isMasterCleared) {
+      localStorage.setItem('sppg_master_items_cleared_v2', 'true');
+      this.items = [];
+      setStored(STORAGE_KEYS.ITEMS, []);
+    } else {
+      this.items = getStored<ItemMaster[]>(STORAGE_KEYS.ITEMS, []);
+    }
     this.suppliers = getStored<Supplier[]>(STORAGE_KEYS.SUPPLIERS, INITIAL_SUPPLIERS);
     this.cleanAndSyncRealSuppliers();
     this.receivings = getStored<ReceivingDocument[]>(STORAGE_KEYS.RECEIVINGS, isTransactionsCleared ? [] : INITIAL_RECEIVINGS);
@@ -1835,6 +1843,12 @@ class WarehouseDatabase {
     };
     this.auditLogs.unshift(newLog);
     setStored(STORAGE_KEYS.AUDIT_LOGS, this.auditLogs);
+  }
+
+  public notifyItemsChanged(): void {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sppg_storage_items_changed'));
+    }
   }
 
   // --- ATOMIC RECEIVING POSTING ---
@@ -2236,6 +2250,7 @@ class WarehouseDatabase {
     }
 
     setStored(STORAGE_KEYS.ITEMS, this.items);
+    this.notifyItemsChanged();
     return item;
   }
 
@@ -2245,7 +2260,22 @@ class WarehouseDatabase {
     const deletedItem = this.items[idx];
     this.items.splice(idx, 1);
     setStored(STORAGE_KEYS.ITEMS, this.items);
+    this.notifyItemsChanged();
     this.logAudit(user, 'ITEM_MASTER_DELETED', 'ITEM_MASTER', itemId, `Menghapus master item: ${deletedItem.name} (${deletedItem.id}).`);
+  }
+
+  public clearAllItems(user?: User): void {
+    localStorage.setItem('sppg_master_items_cleared_v2', 'true');
+    this.items = [];
+    setStored(STORAGE_KEYS.ITEMS, []);
+    this.notifyItemsChanged();
+    this.logAudit(
+      user || { id: 'USR-003', name: 'Akmal', email: 'akmal@sppg.id', role: 'ADMIN' },
+      'ITEM_MASTER_DELETED',
+      'ITEM_MASTER',
+      'ALL_ITEMS',
+      'Mengosongkan seluruh katalog master barang untuk input data baru dari awal.'
+    );
   }
 
   public toggleItemActive(itemId: string, user: User): ItemMaster {
@@ -2255,6 +2285,7 @@ class WarehouseDatabase {
     item.isActive = !item.isActive;
     item.updatedAt = new Date().toISOString();
     setStored(STORAGE_KEYS.ITEMS, this.items);
+    this.notifyItemsChanged();
     this.logAudit(user, 'ITEM_MASTER_UPDATED', 'ITEM_MASTER', itemId, `Mengubah status item ${item.name} menjadi ${item.isActive ? 'Aktif' : 'Nonaktif'}.`);
     return item;
   }
@@ -2295,6 +2326,7 @@ class WarehouseDatabase {
     }
 
     setStored(STORAGE_KEYS.ITEMS, this.items);
+    this.notifyItemsChanged();
     this.logAudit(
       user,
       'ITEMS_BATCH_SAVED',
