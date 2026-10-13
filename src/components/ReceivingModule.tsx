@@ -23,7 +23,6 @@ import {
   AlertCircle,
   Eye,
   ArrowLeft,
-  PackagePlus,
   TableProperties,
   ClipboardPaste,
   PlusCircle,
@@ -61,7 +60,6 @@ import { ReceivingDetailModal } from './ReceivingDetailModal';
 import { PhotoUploadCompressor } from './PhotoUploadCompressor';
 import { exportToExcel } from '../lib/excelExport';
 import { NotaPesananModal } from './NotaPesananModal';
-import { MasterSupplierModal } from './MasterSupplierModal';
 import { BatchPrintNotaModal } from './BatchPrintNotaModal';
 import { PoReceivingWeighingModal } from './PoReceivingWeighingModal';
 import { useToast } from '../context/ToastContext';
@@ -84,6 +82,7 @@ import {
 
 interface ReceivingModuleProps {
   onRefreshData?: () => void;
+  onNavigate?: (tab: string) => void;
 }
 
 // ----------------------------------------------------
@@ -288,7 +287,7 @@ function parseExpenseDate(dateStr: string): Date | null {
   return isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData }) => {
+export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData, onNavigate }) => {
   const { currentUser, can } = useAuth();
   const toast = useToast();
 
@@ -380,6 +379,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     const updated = addToPrintPool(id);
     setPoolNotaIds(updated);
     refreshAll();
+    toast.success('Nota berhasil dimasukkan ke antrean pool cetak!', 'Pool Cetak');
     setSuccessMessage('Nota berhasil dimasukkan ke antrean pool cetak!');
     setTimeout(() => setSuccessMessage(''), 3000);
   };
@@ -388,12 +388,14 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     const updated = removeFromPrintPool(id);
     setPoolNotaIds(updated);
     refreshAll();
+    toast.info('Nota dihapus dari antrean pool cetak.', 'Pool Cetak');
   };
 
   const handleClearPool = () => {
     clearPrintPool();
     setPoolNotaIds([]);
     refreshAll();
+    toast.info('Antrean pool cetak nota berhasil dikosongkan.', 'Pool Cetak');
     setSuccessMessage('Antrean pool cetak nota berhasil dikosongkan.');
     setTimeout(() => setSuccessMessage(''), 3000);
   };
@@ -408,9 +410,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       handleAddToPool(id);
     }
   };
-
-  // Master Supplier Modal state
-  const [isMasterSupplierModalOpen, setIsMasterSupplierModalOpen] = useState(false);
 
   // Active views & modals
   const [isCreatingDeliveryOrder, setIsCreatingDeliveryOrder] = useState(false);
@@ -659,65 +658,73 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   const handleSaveSingleItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!singleItemName.trim()) {
-      alert('Nama barang wajib diisi.');
+      toast.error('Nama barang wajib diisi.', 'Gagal Menyimpan');
       return;
     }
 
-    const numQty = parseFloat(singleQty) || 1;
-    const finalPrice = singleUnitPrice > 0 ? singleUnitPrice : (getItemCatalogInfo(singleItemName)?.price || 0);
-    const totalCost = numQty * finalPrice;
+    try {
+      const numQty = parseFloat(singleQty) || 1;
+      const finalPrice = singleUnitPrice > 0 ? singleUnitPrice : (getItemCatalogInfo(singleItemName)?.price || 0);
+      const totalCost = numQty * finalPrice;
 
-    const matchedSupplier = suppliers.find(
-      s => s.name.trim().toLowerCase() === singleSupplier.trim().toLowerCase()
-    );
-    const finalSupplierName = matchedSupplier ? matchedSupplier.name : singleSupplier.trim();
+      const matchedSupplier = suppliers.find(
+        s => s.name.trim().toLowerCase() === singleSupplier.trim().toLowerCase()
+      );
+      const finalSupplierName = matchedSupplier ? matchedSupplier.name : singleSupplier.trim();
 
-    const newRecord = warehouseDb.recordNonFoodExpense(
-      {
-        date: singleDate,
-        time: singleTime.trim() || defaultCurrentTime,
-        itemName: singleItemName.trim(),
+      const newRecord = warehouseDb.recordNonFoodExpense(
+        {
+          date: singleDate,
+          time: singleTime.trim() || defaultCurrentTime,
+          itemName: singleItemName.trim(),
+          category: singleCategory,
+          quantity: singleQty.trim() || '1',
+          unit: singleUnit.trim() || 'Pcs',
+          unitPrice: finalPrice,
+          totalCost: totalCost,
+          pic: singlePic.trim() || 'Akmal',
+          volunteer: singleVolunteer.trim() || undefined,
+          department: singleCategory.includes('ATK')
+            ? 'Administrasi & Kantor'
+            : singleCategory.includes('Kebersihan')
+            ? 'Area Cuci & Sanitasi'
+            : 'Dapur Pengolahan Utama',
+          notes: `${finalSupplierName ? `[Toko/Supplier: ${finalSupplierName}] ` : ''}${singleNotes.trim()}`.trim() || undefined,
+          receiptRef: singleReceiptRef.trim() || undefined,
+        },
+        currentUser
+      );
+
+      toast.success(
+        `Berhasil mencatat input barang: "${singleItemName.trim()}" (${singleQty} ${singleUnit})!`,
+        'Berhasil Disimpan'
+      );
+      showToast(`Berhasil mencatat input barang: "${singleItemName.trim()}" (${singleQty} ${singleUnit})!`);
+      setIsSingleInputModalOpen(false);
+      refreshAll();
+
+      // Trigger post-input prompt for printing Nota Pesanan
+      const item: PurchaseOrderItem = {
+        id: `POI-${Date.now()}`,
+        name: singleItemName.trim(),
         category: singleCategory,
-        quantity: singleQty.trim() || '1',
+        quantity: numQty,
         unit: singleUnit.trim() || 'Pcs',
         unitPrice: finalPrice,
-        totalCost: totalCost,
-        pic: singlePic.trim() || 'Akmal',
-        volunteer: singleVolunteer.trim() || undefined,
-        department: singleCategory.includes('ATK')
-          ? 'Administrasi & Kantor'
-          : singleCategory.includes('Kebersihan')
-          ? 'Area Cuci & Sanitasi'
-          : 'Dapur Pengolahan Utama',
-        notes: `${finalSupplierName ? `[Toko/Supplier: ${finalSupplierName}] ` : ''}${singleNotes.trim()}`.trim() || undefined,
-        receiptRef: singleReceiptRef.trim() || undefined,
-      },
-      currentUser
-    );
-
-    showToast(`Berhasil mencatat input barang: "${singleItemName.trim()}" (${singleQty} ${singleUnit})!`);
-    setIsSingleInputModalOpen(false);
-    refreshAll();
-
-    // Trigger post-input prompt for printing Nota Pesanan
-    const item: PurchaseOrderItem = {
-      id: `POI-${Date.now()}`,
-      name: singleItemName.trim(),
-      category: singleCategory,
-      quantity: numQty,
-      unit: singleUnit.trim() || 'Pcs',
-      unitPrice: finalPrice,
-      subtotal: totalCost,
-      notes: singleNotes.trim() || undefined,
-    };
-    setJustSavedPrompt({
-      title: 'Input Barang Berhasil Disimpan!',
-      subtitle: `Catatan belanja "${singleItemName.trim()}" (${singleQty} ${singleUnit}) telah tersimpan ke sistem.`,
-      supplierName: finalSupplierName || 'Toko / Pasar Belanja Rutin',
-      items: [item],
-      refId: newRecord.id,
-      refIds: [newRecord.id],
-    });
+        subtotal: totalCost,
+        notes: singleNotes.trim() || undefined,
+      };
+      setJustSavedPrompt({
+        title: 'Input Barang Berhasil Disimpan!',
+        subtitle: `Catatan belanja "${singleItemName.trim()}" (${singleQty} ${singleUnit}) telah tersimpan ke sistem.`,
+        supplierName: finalSupplierName || 'Toko / Pasar Belanja Rutin',
+        items: [item],
+        refId: newRecord.id,
+        refIds: [newRecord.id],
+      });
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal menyimpan catatan belanja.', 'Gagal Menyimpan');
+    }
   };
 
   // ----------------------------------------------------
@@ -975,11 +982,11 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
 
   const handleParsePastedExcel = () => {
     if (batchSuppliers.length === 0) {
-      alert('Isi daftar supplier terlebih dahulu sebelum menempel data barang.');
+      toast.warning('Isi daftar supplier terlebih dahulu sebelum menempel data barang.', 'Supplier Belum Diisi');
       return;
     }
     if (!batchRawPaste.trim()) {
-      alert('Tempelkan teks data dari Excel / Google Sheet terlebih dahulu.');
+      toast.warning('Tempelkan teks data dari Excel / Google Sheet terlebih dahulu.', 'Data Kosong');
       return;
     }
 
@@ -1277,19 +1284,25 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
     setErrorMessage('');
 
     if (!formSupplierId) {
-      setErrorMessage('Pilih supplier terlebih dahulu.');
+      const msg = 'Pilih supplier terlebih dahulu.';
+      setErrorMessage(msg);
+      toast.error(msg, 'Validasi Gagal');
       return;
     }
 
     const selectedSupplier = suppliers.find(s => s.id === formSupplierId);
     if (!selectedSupplier) {
-      setErrorMessage('Supplier tidak valid.');
+      const msg = 'Supplier tidak valid.';
+      setErrorMessage(msg);
+      toast.error(msg, 'Validasi Gagal');
       return;
     }
 
     for (const [idx, line] of lines.entries()) {
       if (line.quantity <= 0) {
-        setErrorMessage(`Baris #${idx + 1} (${line.itemName}): Kuantitas harus lebih dari 0.`);
+        const msg = `Baris #${idx + 1} (${line.itemName}): Kuantitas harus lebih dari 0.`;
+        setErrorMessage(msg);
+        toast.error(msg, 'Validasi Gagal');
         return;
       }
     }
@@ -1314,6 +1327,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
         currentUser
       );
 
+      toast.success(`Penerimaan barang #${newDoc.id} berhasil diposting ke stok gudang!`, 'Penerimaan Berhasil');
       showToast(`Penerimaan barang #${newDoc.id} berhasil diposting ke stok gudang!`);
       setIsCreatingDeliveryOrder(false);
       setSelectedDocForDetail(newDoc);
@@ -1342,7 +1356,9 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
         refId: newDoc.id,
       });
     } catch (err: any) {
-      setErrorMessage(err.message || 'Terjadi kesalahan saat memposting penerimaan.');
+      const msg = err.message || 'Terjadi kesalahan saat memposting penerimaan.';
+      setErrorMessage(msg);
+      toast.error(msg, 'Gagal Memposting');
     }
   };
 
@@ -1360,11 +1376,16 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
           isLoading: true,
           message: 'Menghapus catatan barang...',
         });
-        await new Promise(r => setTimeout(r, 250));
-        warehouseDb.deleteNonFoodExpense(id, currentUser);
-        setActionLoading({ isLoading: false });
-        toast.success(`Catatan "${name}" berhasil dihapus.`, 'Catatan Dihapus');
-        refreshAll();
+        try {
+          await new Promise(r => setTimeout(r, 250));
+          warehouseDb.deleteNonFoodExpense(id, currentUser);
+          toast.success(`Catatan "${name}" berhasil dihapus.`, 'Catatan Dihapus');
+          refreshAll();
+        } catch (err: any) {
+          toast.error(err?.message || 'Gagal menghapus catatan barang.', 'Gagal Menghapus');
+        } finally {
+          setActionLoading({ isLoading: false });
+        }
       },
     });
   };
@@ -1497,7 +1518,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
         });
 
     if (rawRecords.length === 0) {
-      alert(`Tidak ada barang ditemukan untuk supplier "${supplierName}".`);
+      toast.warning(`Tidak ada barang ditemukan untuk supplier "${supplierName}".`, 'Data Kosong');
       return;
     }
 
@@ -1621,9 +1642,14 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   };
 
   const handleSaveNotaFromModal = (updatedNota: PurchaseOrderNota) => {
-    warehouseDb.savePurchaseOrder(updatedNota, currentUser);
-    setActiveNota(updatedNota);
-    refreshAll();
+    try {
+      warehouseDb.savePurchaseOrder(updatedNota, currentUser);
+      setActiveNota(updatedNota);
+      refreshAll();
+      toast.success(`Nota PO ${updatedNota.poNumber} berhasil diperbarui.`, 'Nota Disimpan');
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal menyimpan pembaruan Nota PO.', 'Gagal Menyimpan');
+    }
   };
 
   const handleDeleteNota = (nota: PurchaseOrderNota) => {
@@ -1865,7 +1891,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
   // Export to Excel
   const handleExportExcel = () => {
     if (filteredRecords.length === 0) {
-      alert('Tidak ada data belanja / barang masuk untuk diekspor.');
+      toast.warning('Tidak ada data belanja atau barang masuk untuk diekspor.', 'Data Kosong');
       return;
     }
 
@@ -1890,6 +1916,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
       `Rekap_Input_Barang_SPPG_MLG_TUMPANG_JERU_${today}.xlsx`,
       'Input Barang & Belanja'
     );
+    toast.success('Rekap belanja berhasil diekspor ke Excel.', 'Ekspor Sukses');
   };
 
   return (
@@ -1971,12 +1998,16 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
                 {
                   id: 'master-supplier',
                   label: 'Master Data Supplier',
-                  description: 'Kelola, tambah & edit supplier rekanan',
+                  description: 'Kelola, tambah & edit rekanan di modul supplier',
                   icon: Building2,
                   iconBgClass: 'bg-emerald-100 text-emerald-800',
                   iconColorClass: 'text-emerald-700',
                   dividerAbove: true,
-                  onClick: () => setIsMasterSupplierModalOpen(true),
+                  onClick: () => {
+                    if (onNavigate) {
+                      onNavigate('suppliers');
+                    }
+                  },
                 },
               ]}
             />
@@ -3278,8 +3309,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
-                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <PackagePlus className="w-5 h-5 text-emerald-600" />
+                <h2 className="text-base font-bold text-slate-900">
                   Input Satuan Barang & Belanja
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -3583,8 +3613,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
-                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <TableProperties className="w-5 h-5 text-emerald-700" />
+                <h2 className="text-base font-bold text-slate-900">
                   Input Masal Barang & Belanja (Multi-Baris)
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -4390,16 +4419,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData 
           }}
         />
       )}
-
-      {/* ========================================================================= */}
-      {/* MODAL: MASTER DATA SUPPLIER REKANAN                                       */}
-      {/* ========================================================================= */}
-      <MasterSupplierModal
-        isOpen={isMasterSupplierModalOpen}
-        onClose={() => setIsMasterSupplierModalOpen(false)}
-        onSuppliersUpdated={() => refreshAll()}
-        currentUser={currentUser}
-      />
 
       {/* Standard Reusable Confirmation Modal */}
       <ConfirmationModal

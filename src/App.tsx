@@ -199,7 +199,7 @@ const MainLayout: React.FC = () => {
 
           {/* Secondary / Deep Logistics Modules */}
           {activeTab === 'receiving' && (
-            <ReceivingModule onRefreshData={handleRefresh} />
+            <ReceivingModule onRefreshData={handleRefresh} onNavigate={setActiveTab} />
           )}
 
           {activeTab === 'daily_flow' && (

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Receipt,
   Printer,
   X,
   Plus,
@@ -22,6 +21,7 @@ import logoSppgImg from '../assets/logo sppg.png';
 import ttdRizkyImg from '../assets/ttd rizky.png';
 import { COMMON_GOODS_CATALOG } from './ReceivingModule';
 import { syncPoNumberWithDate } from '../utils/poNumberGenerator';
+import { useToast } from '../context/ToastContext';
 
 export interface NotaPesananModalProps {
   isOpen: boolean;
@@ -96,6 +96,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
   onOpenBatchPool,
   poolCount = 0,
 }) => {
+  const toast = useToast();
   const [formData, setFormData] = useState<PurchaseOrderNota>(nota);
   const [saveToast, setSaveToast] = useState(false);
 
@@ -246,22 +247,31 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
   };
 
   const handleSaveOnly = () => {
-    const updated: PurchaseOrderNota = {
-      ...formData,
-      approvedBy: signerName,
-    };
-    onSaveNota(updated);
-    setSaveToast(true);
-    setTimeout(() => setSaveToast(false), 2500);
+    try {
+      const updated: PurchaseOrderNota = {
+        ...formData,
+        approvedBy: signerName,
+      };
+      onSaveNota(updated);
+      toast.success(`Nota PO ${formData.poNumber} berhasil disimpan.`, 'Nota Disimpan');
+      setSaveToast(true);
+      setTimeout(() => setSaveToast(false), 2500);
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal menyimpan Nota PO.', 'Gagal Menyimpan');
+    }
   };
 
   const handlePrint = () => {
-    const updated: PurchaseOrderNota = {
-      ...formData,
-      approvedBy: signerName,
-    };
-    onSaveNota(updated);
-    window.print();
+    try {
+      const updated: PurchaseOrderNota = {
+        ...formData,
+        approvedBy: signerName,
+      };
+      onSaveNota(updated);
+      window.print();
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal mencetak Nota PO.', 'Gagal Mencetak');
+    }
   };
 
   const displayDeliveryDate = formatDateWithDashes(formData.deliveryDate || formData.date);
@@ -318,7 +328,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                   isCompact ? 'text-[9.5px] sm:text-[10px]' : 'text-[11px] sm:text-xs'
                 } text-black leading-snug mt-0.5`}
               >
-                Jl. Kebon Sirih No.1, RT.01/RW.07, Kb. Dirih, Kec. Menteng,
+                Jl. Kebon Sirih No.1, RT.01/RW.07, Kb. Sirih, Kec. Menteng,
               </p>
               <p
                 className={`${
@@ -660,11 +670,6 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                 <div>
                   3. Pengiriman barang dilakukan sesuai jadwal yang telah ditentukan oleh pihak pembeli.
                 </div>
-                {formData.notes && (
-                  <div className="pt-0.5 text-slate-700 italic">
-                    Catatan tambahan: {formData.notes}
-                  </div>
-                )}
               </div>
             </div>
 
@@ -806,204 +811,206 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
         }
       `}</style>
 
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[94vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        {/* Header Modal */}
-        <div className="px-5 py-3 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3 shrink-0 no-print">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 border border-sky-200 flex items-center justify-center shadow-2xs">
-              <Receipt className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-slate-900">
-                  Nota Pesanan Bahan Makanan & Operasional
-                </h2>
-                <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                  {formData.poNumber}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500">
-                Format Resmi Badan Gizi Nasional Republik Indonesia
-              </p>
-            </div>
-          </div>
-
-          {/* Quick Actions & Layout Mode Switcher */}
-          <div className="flex items-center gap-2">
-            {/* Mode Cetak: 1 Lembar vs 2 Lembar Hemat Kertas */}
-            <div className="flex items-center gap-1 bg-slate-200/80 p-0.5 rounded-lg border border-slate-300">
-              <button
-                type="button"
-                onClick={() => setPrintLayout('SINGLE')}
-                className={`px-2 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-                  printLayout === 'SINGLE'
-                    ? 'bg-white text-slate-900 shadow-2xs font-semibold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-                title="Cetak 1 lembar A4 penuh standar"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>1 Lembar (A4)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPrintLayout('DOUBLE')}
-                className={`px-2 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-                  printLayout === 'DOUBLE'
-                    ? 'bg-emerald-600 text-white shadow-2xs font-semibold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-                title="Hemat kertas: 1 halaman A4 berisi 2 rangkap (Arsip SPPG & Rekanan)"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                <span>2 Lembar (Hemat Kertas)</span>
-              </button>
-            </div>
-
-            {saveToast && (
-              <span className="text-xs font-medium text-emerald-700 flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded border border-emerald-200 animate-in fade-in">
-                <Check className="w-3.5 h-3.5" />
-                Tersimpan
-              </span>
-            )}
-            {/* Button Tambah/Hapus dari Pool Cetak */}
-            {onTogglePool && (
-              <button
-                type="button"
-                onClick={() => {
-                  const updated: PurchaseOrderNota = {
-                    ...formData,
-                    approvedBy: signerName,
-                  };
-                  onSaveNota(updated);
-                  onTogglePool(updated.id);
-                  setSaveToast(true);
-                  setTimeout(() => setSaveToast(false), 2000);
-                }}
-                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  isInPool
-                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
-                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
-                }`}
-                title={isInPool ? 'Keluarkan nota ini dari pool antrean cetak' : 'Tampung nota ini ke pool antrean cetak untuk dicetak bareng nota lain (2 nota per lembar A4)'}
-              >
-                <Layers className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{isInPool ? '✓ Dalam Pool Cetak' : '+ Masuk Pool Cetak'}</span>
-              </button>
-            )}
-
-            {/* Shortcut buka Pool Cetak jika ada isinya */}
-            {onOpenBatchPool && poolCount > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  const updated: PurchaseOrderNota = {
-                    ...formData,
-                    approvedBy: signerName,
-                  };
-                  onSaveNota(updated);
-                  onOpenBatchPool();
-                }}
-                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
-                title="Buka antrean pool cetak gabungan"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>Buka Pool ({poolCount})</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={handleSaveOnly}
-              className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1.5"
-              title="Simpan perubahan data"
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>Simpan</span>
-            </button>
-            {onDeleteNota && (
-              <button
-                type="button"
-                onClick={() => onDeleteNota(formData)}
-                className="px-3 py-1.5 rounded-lg border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-semibold hover:border-rose-300 transition-colors cursor-pointer flex items-center gap-1.5"
-                title="Hapus Nota PO ini dari sistem"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                <span>Hapus PO</span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handlePrint}
-              className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5 active:scale-95"
-              title="Cetak dokumen resmi"
-            >
-              <Printer className="w-4 h-4" />
-              <span>Cetak PO</span>
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer ml-1"
-              title="Tutup Modal"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Banner Info Mode 2 Lembar Hemat Kertas */}
-        {printLayout === 'DOUBLE' && (
-          <div className="bg-emerald-50/90 border-b border-emerald-100 px-5 py-2 flex items-center justify-between text-[11px] text-emerald-800 no-print">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold flex items-center gap-1 text-emerald-900">
-                <Copy className="w-3.5 h-3.5 text-emerald-600" />
-                Mode 2 Lembar Aktif:
-              </span>
-              <span>
-                1 lembar kertas A4 otomatis memuat 2 salinan (Lembar 1: Arsip SPPG & Lembar 2: Rekanan)
-                lengkap dengan batas gunting di tengah.
-              </span>
-            </div>
-            <span className="text-[10px] bg-emerald-200/70 text-emerald-900 px-2 py-0.5 rounded font-medium shrink-0">
-              Hemat Kertas 50%
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-6xl w-full max-h-[94vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* Header Modal Sederhana & Bersih */}
+        <div className="px-5 sm:px-6 py-3.5 border-b border-slate-200 bg-white flex items-center justify-between gap-3 shrink-0 no-print">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <h2 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+              Nota Pesanan Bahan Makanan & Operasional
+            </h2>
+            <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+              {formData.poNumber}
             </span>
           </div>
-        )}
 
-        {/* Modal Body - Sesuai Format Kertas Excel Badan Gizi Nasional */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100/70 flex justify-center">
-          <div
-            id="print-nota-paper"
-            className={`w-full max-w-[850px] ${
-              printLayout === 'SINGLE'
-                ? 'bg-white text-black p-8 sm:p-12 rounded-xl shadow-md border border-slate-300 min-h-[1050px]'
-                : 'flex flex-col gap-3.5'
-            }`}
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+            title="Tutup Modal"
           >
-            {printLayout === 'SINGLE' ? (
-              // Mode Standar: 1 Lembar Penuh A4
-              renderNotaCard(undefined, false, false)
-            ) : (
-              // Mode Hemat Kertas: 2 Lembar per Halaman (Atas & Bawah)
-              <>
-                {/* Salinan 1: Bagian Atas */}
-                {renderNotaCard('Lembar 1: Arsip SPPG / Pembeli', true, false)}
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-                {/* Garis Potong / Perforasi Gunting */}
-                <div className="py-1.5 flex items-center justify-center gap-2 text-[10px] text-slate-500 font-mono select-none cut-line-print">
-                  <Scissors className="w-3.5 h-3.5 rotate-90 shrink-0 text-slate-500" />
-                  <span className="border-b border-dashed border-slate-400 flex-1" />
-                  <span className="px-2.5 py-0.5 rounded bg-slate-100 border border-slate-300 text-slate-700 text-[9.5px] font-medium tracking-tight">
-                    Potong di sini (Batas Gunting Kertas A5)
-                  </span>
-                  <span className="border-b border-dashed border-slate-400 flex-1" />
-                  <Scissors className="w-3.5 h-3.5 -rotate-90 shrink-0 text-slate-500" />
+        {/* Konten Modal: Preview Kertas di Kiri, Panel Aksi & CTA di Kanan */}
+        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-slate-100/70">
+          {/* Sisi Kiri: Pratinjau Kertas Dokumen Nota (Scrollable) */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 flex justify-center">
+            <div
+              id="print-nota-paper"
+              className={`w-full max-w-[850px] ${
+                printLayout === 'SINGLE'
+                  ? 'bg-white text-black p-8 sm:p-12 rounded-xl shadow-md border border-slate-300 min-h-[1050px]'
+                  : 'flex flex-col gap-3.5'
+              }`}
+            >
+              {printLayout === 'SINGLE' ? (
+                // Mode Standar: 1 Lembar Penuh A4
+                renderNotaCard(undefined, false, false)
+              ) : (
+                // Mode Hemat Kertas: 2 Lembar per Halaman (Atas & Bawah)
+                <>
+                  {/* Salinan 1: Bagian Atas */}
+                  {renderNotaCard('Lembar 1: Arsip SPPG / Pembeli', true, false)}
+
+                  {/* Garis Potong / Perforasi Gunting */}
+                  <div className="py-1.5 flex items-center justify-center gap-2 text-[10px] text-slate-500 font-mono select-none cut-line-print">
+                    <Scissors className="w-3.5 h-3.5 rotate-90 shrink-0 text-slate-500" />
+                    <span className="border-b border-dashed border-slate-400 flex-1" />
+                    <span className="px-2.5 py-0.5 rounded bg-slate-100 border border-slate-300 text-slate-700 text-[9.5px] font-medium tracking-tight">
+                      Potong di sini (Batas Gunting Kertas A5)
+                    </span>
+                    <span className="border-b border-dashed border-slate-400 flex-1" />
+                    <Scissors className="w-3.5 h-3.5 -rotate-90 shrink-0 text-slate-500" />
+                  </div>
+
+                  {/* Salinan 2: Bagian Bawah */}
+                  {renderNotaCard('Lembar 2: Pihak Rekanan / Supplier', true, true)}
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Sisi Kanan: Panel Kontrol & Aksi Dokumen Sederhana (no-print) */}
+          <div className="w-full lg:w-72 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 p-5 flex flex-col justify-between shrink-0 no-print overflow-y-auto">
+            <div className="space-y-5">
+              {/* Pilihan Format Cetak */}
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-2">
+                  Format Cetak Kertas
+                </label>
+                <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-lg border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setPrintLayout('SINGLE')}
+                    className={`py-1.5 px-2 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      printLayout === 'SINGLE'
+                        ? 'bg-white text-slate-900 shadow-2xs font-semibold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Cetak 1 lembar A4 penuh standar"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>1 Lembar</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrintLayout('DOUBLE')}
+                    className={`py-1.5 px-2 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      printLayout === 'DOUBLE'
+                        ? 'bg-emerald-600 text-white shadow-2xs font-semibold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Hemat kertas: 1 lembar A4 untuk 2 salinan"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>2 Lembar</span>
+                  </button>
                 </div>
+                <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                  {printLayout === 'DOUBLE'
+                    ? '1 lembar A4 memuat 2 salinan (SPPG & Rekanan) lengkap dengan batas potong.'
+                    : '1 lembar A4 penuh standar format resmi Badan Gizi Nasional.'}
+                </p>
+              </div>
 
-                {/* Salinan 2: Bagian Bawah */}
-                {renderNotaCard('Lembar 2: Pihak Rekanan / Supplier', true, true)}
-              </>
+              <div className="h-px bg-slate-200" />
+
+              {/* Aksi Dokumen */}
+              <div className="space-y-2.5">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Aksi Dokumen
+                </label>
+
+                {/* Primary CTA: Cetak Dokumen PO */}
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-2 active:scale-98"
+                  title="Cetak dokumen resmi"
+                >
+                  <Printer className="w-4 h-4 text-emerald-100" />
+                  <span>Cetak Dokumen PO</span>
+                </button>
+
+                {/* Simpan Perubahan */}
+                <button
+                  type="button"
+                  onClick={handleSaveOnly}
+                  className="w-full py-2 px-3.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-2xs"
+                  title="Simpan perubahan data nota"
+                >
+                  <Save className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Simpan Perubahan</span>
+                </button>
+
+                {/* Toggle Pool Cetak */}
+                {onTogglePool && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated: PurchaseOrderNota = {
+                        ...formData,
+                        approvedBy: signerName,
+                      };
+                      onSaveNota(updated);
+                      onTogglePool(updated.id);
+                      if (!isInPool) {
+                        toast.success(`Nota ${formData.poNumber} dimasukkan ke pool antrean cetak.`, 'Pool Cetak');
+                      } else {
+                        toast.info(`Nota ${formData.poNumber} dikeluarkan dari pool cetak.`, 'Pool Cetak');
+                      }
+                      setSaveToast(true);
+                      setTimeout(() => setSaveToast(false), 2000);
+                    }}
+                    className={`w-full py-2 px-3.5 rounded-lg border text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-2xs ${
+                      isInPool
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+                        : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                    }`}
+                    title={isInPool ? 'Keluarkan nota ini dari pool antrean cetak' : 'Tampung nota ini ke pool antrean cetak'}
+                  >
+                    <Layers className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{isInPool ? 'Keluarkan dari Pool' : 'Masuk Pool Cetak'}</span>
+                  </button>
+                )}
+
+                {/* Shortcut Buka Antrean Pool jika ada */}
+                {onOpenBatchPool && poolCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated: PurchaseOrderNota = {
+                        ...formData,
+                        approvedBy: signerName,
+                      };
+                      onSaveNota(updated);
+                      onOpenBatchPool();
+                    }}
+                    className="w-full py-2 px-3.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    title="Buka antrean pool cetak gabungan"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Buka Pool Cetak ({poolCount})</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Aksi Hapus (Destructive di Bawah) */}
+            {onDeleteNota && (
+              <div className="pt-4 mt-6 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => onDeleteNota(formData)}
+                  className="w-full py-2 px-3.5 rounded-lg border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 hover:border-rose-300 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  title="Hapus Nota PO ini dari sistem"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Hapus Nota PO</span>
+                </button>
+              </div>
             )}
           </div>
         </div>

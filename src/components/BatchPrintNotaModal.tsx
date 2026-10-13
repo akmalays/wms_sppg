@@ -340,9 +340,6 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
                 <div>1. Harga sudah termasuk ongkos kirim (ongkir).</div>
                 <div>2. Apabila barang yang diterima tidak sesuai atau rusak, maka pihak supplier akan mengganti barang tersebut sesuai kesepakatan</div>
                 <div>3. Pengiriman barang dilakukan sesuai jadwal yang telah ditentukan oleh pihak pembeli.</div>
-                {nota.notes && (
-                  <div className="pt-0.5 text-slate-700 italic">Catatan tambahan: {nota.notes}</div>
-                )}
               </div>
             </div>
 
