@@ -24,14 +24,27 @@ import { RegisterPage } from './components/RegisterPage';
 import { LandingPage } from './components/LandingPage';
 import { UserManagementModule } from './components/UserManagementModule';
 import { WebsiteCmsModule } from './components/WebsiteCmsModule';
+import { DailyMenuPublicPage } from './components/DailyMenuPublicPage';
 import { warehouseDb } from './db/storage';
 
-const getIsDashboardRoute = (): boolean => {
-  if (typeof window === 'undefined') return false;
+export type AppRouteType = 'DASHBOARD' | 'MENU_TODAY' | 'LANDING';
+
+export const getAppRoute = (): AppRouteType => {
+  if (typeof window === 'undefined') return 'LANDING';
   const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
   const hash = window.location.hash.toLowerCase().replace(/\/+$/, '');
 
-  return (
+  if (
+    path === '/menu-mbg-hari-ini' ||
+    path.startsWith('/menu-mbg-hari-ini/') ||
+    hash === '#/menu-mbg-hari-ini' ||
+    hash.startsWith('#/menu-mbg-hari-ini/') ||
+    hash === '#menu-mbg-hari-ini'
+  ) {
+    return 'MENU_TODAY';
+  }
+
+  if (
     path === '/dashboard' ||
     path.startsWith('/dashboard/') ||
     path === '/login' ||
@@ -42,13 +55,17 @@ const getIsDashboardRoute = (): boolean => {
     hash === '#/login' ||
     hash.startsWith('#/login/') ||
     hash === '#login'
-  );
+  ) {
+    return 'DASHBOARD';
+  }
+
+  return 'LANDING';
 };
 
 const MainLayout: React.FC = () => {
   const { currentUser, isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [isDashboardRoute, setIsDashboardRoute] = useState<boolean>(getIsDashboardRoute);
+  const [currentRoute, setCurrentRoute] = useState<AppRouteType>(getAppRoute);
   const [authView, setAuthView] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
   const [dataVersion, setDataVersion] = useState<number>(0);
   const [selectedExpenseSupplierId, setSelectedExpenseSupplierId] = useState<string | undefined>(undefined);
@@ -56,7 +73,7 @@ const MainLayout: React.FC = () => {
   // Sync state when browser URL changes (back/forward navigation or hash change)
   React.useEffect(() => {
     const handleLocationChange = () => {
-      setIsDashboardRoute(getIsDashboardRoute());
+      setCurrentRoute(getAppRoute());
     };
     window.addEventListener('popstate', handleLocationChange);
     window.addEventListener('hashchange', handleLocationChange);
@@ -85,7 +102,7 @@ const MainLayout: React.FC = () => {
     } catch {
       window.location.hash = '/dashboard';
     }
-    setIsDashboardRoute(true);
+    setCurrentRoute('DASHBOARD');
   };
 
   const navigateToHome = () => {
@@ -94,7 +111,16 @@ const MainLayout: React.FC = () => {
     } catch {
       window.location.hash = '';
     }
-    setIsDashboardRoute(false);
+    setCurrentRoute('LANDING');
+  };
+
+  const navigateToMenuToday = () => {
+    try {
+      window.history.pushState(null, '', '/menu-mbg-hari-ini');
+    } catch {
+      window.location.hash = '/menu-mbg-hari-ini';
+    }
+    setCurrentRoute('MENU_TODAY');
   };
 
   const handleNavigateToSupplierExpense = (supplierId: string) => {
@@ -102,9 +128,13 @@ const MainLayout: React.FC = () => {
     setActiveTab('tools_forms');
   };
 
-  // 1. Jika rute BUKAN /dashboard: Tampilkan Halaman Utama Publik (Landing Page)
-  // Tidak ada tombol login untuk umum sehingga publik tidak dapat masuk sembarangan
-  if (!isDashboardRoute) {
+  // 1. Rute Khusus Akses QR Code Publik: /menu-mbg-hari-ini
+  if (currentRoute === 'MENU_TODAY') {
+    return <DailyMenuPublicPage onBackToHome={navigateToHome} />;
+  }
+
+  // 2. Rute Beranda Umum (Landing Page Utama)
+  if (currentRoute === 'LANDING') {
     return (
       <LandingPage
         isStaffLoggedIn={isAuthenticated}

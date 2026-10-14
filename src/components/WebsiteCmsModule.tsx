@@ -5,6 +5,9 @@ import {
   MenuSlideItem,
   VisualStudyItem,
   HeroDocumentationSlide,
+  IngredientNutritionInfo,
+  PortionTierConfig,
+  WebsiteMenuTodayConfig,
   DEFAULT_WEBSITE_CONFIG,
   getWebsiteConfig,
   saveWebsiteConfig,
@@ -14,6 +17,7 @@ import {
   VIDEO_PRESETS,
   IMAGE_PRESETS
 } from '../db/websiteConfigStorage';
+import QRCode from 'qrcode';
 import { compressImageToWebP } from '../utils/imageCompressor';
 import {
   Globe,
@@ -49,7 +53,13 @@ import {
   Download,
   UploadCloud,
   RefreshCw,
-  HardDrive
+  HardDrive,
+  QrCode,
+  Printer,
+  Copy,
+  PlusCircle,
+  Apple,
+  Share2
 } from 'lucide-react';
 
 interface WebsiteCmsModuleProps {
@@ -58,7 +68,7 @@ interface WebsiteCmsModuleProps {
 
 export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLanding }) => {
   const [config, setConfig] = useState<WebsiteConfig>(getWebsiteConfig);
-  const [activeTab, setActiveTab] = useState<'hero' | 'menu' | 'visual'>('hero');
+  const [activeTab, setActiveTab] = useState<'hero' | 'menu' | 'visual' | 'menu_today'>('hero');
   const [isSavedAlert, setIsSavedAlert] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
@@ -96,6 +106,20 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   const menuFileRef = useRef<HTMLInputElement>(null);
   const visualFileRef = useRef<HTMLInputElement>(null);
 
+  // State untuk Menu Hari Ini & QR Code
+  const [editingIngredient, setEditingIngredient] = useState<IngredientNutritionInfo | null>(null);
+  const [isIngredientModalOpen, setIsIngredientModalOpen] = useState(false);
+  const [ingredientImagePreview, setIngredientImagePreview] = useState<string>('');
+  const [isUploadingIngredientImg, setIsUploadingIngredientImg] = useState(false);
+  const ingredientFileRef = useRef<HTMLInputElement>(null);
+
+  const [isUploadingTodayMenuPhoto, setIsUploadingTodayMenuPhoto] = useState(false);
+  const todayMenuPhotoFileRef = useRef<HTMLInputElement>(null);
+
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  const [copiedQrLink, setCopiedQrLink] = useState(false);
+  const [isPrintStickerModalOpen, setIsPrintStickerModalOpen] = useState(false);
+
   // Ambil data terbaru dari cloud saat modul pertama kali dibuka
   useEffect(() => {
     let isMounted = true;
@@ -106,6 +130,23 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
       }
     });
     return () => { isMounted = false; };
+  }, []);
+
+  // Generate QR Code data URL untuk halaman publik menu hari ini
+  useEffect(() => {
+    const targetUrl = `${window.location.origin}/menu-mbg-hari-ini`;
+    QRCode.toDataURL(targetUrl, {
+      width: 360,
+      margin: 2,
+      color: {
+        dark: '#064e3b',
+        light: '#ffffff'
+      }
+    }).then(url => {
+      setQrCodeDataUrl(url);
+    }).catch(err => {
+      console.error('Failed to generate QR Code data URL', err);
+    });
   }, []);
 
   const showNotification = (msg: string) => {
@@ -697,6 +738,165 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
     }));
   };
 
+  // Helper & Handler untuk Menu MBG Hari Ini & QR Code
+  const handleCopyQrLink = () => {
+    const targetUrl = `${window.location.origin}/menu-mbg-hari-ini`;
+    navigator.clipboard.writeText(targetUrl);
+    setCopiedQrLink(true);
+    setTimeout(() => setCopiedQrLink(false), 2200);
+    showNotification('Tautan URL publik /menu-mbg-hari-ini berhasil disalin!');
+  };
+
+  const handleDownloadQrPng = () => {
+    if (!qrCodeDataUrl) return;
+    const a = document.createElement('a');
+    a.href = qrCodeDataUrl;
+    a.download = `qr-code-menu-mbg-${new Date().toISOString().slice(0, 10)}.png`;
+    a.click();
+    showNotification('File gambar QR Code berhasil diunduh (PNG).');
+  };
+
+  const handleUploadTodayMenuPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploadingTodayMenuPhoto(true);
+      const result = await uploadCmsMedia(file, 'menu');
+      setConfig(prev => ({
+        ...prev,
+        menuToday: {
+          ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+          imageUrl: result.url
+        }
+      }));
+      if (result.isCloudStorage) {
+        showNotification(`Foto menu hari ini diunggah ke cloud (${result.finalSizeKb} KB)!`);
+      } else {
+        showNotification('Foto menu hari ini disimpan.');
+      }
+    } catch {
+      alert('Gagal mengunggah foto menu.');
+    } finally {
+      setIsUploadingTodayMenuPhoto(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const handleOpenAddIngredient = () => {
+    const newId = `ing-${Date.now()}`;
+    const newIng: IngredientNutritionInfo = {
+      id: newId,
+      name: '',
+      category: 'Sayuran & Sop',
+      portionSmall: '50 gram (1 porsi kecil)',
+      portionLarge: '75 gram (1 porsi besar)',
+      imageUrl: IMAGE_PRESETS[3]?.url || '',
+      nutritionHighlight: 'Vitamin & Mineral Alami',
+      healthBenefits: 'Mendukung daya tahan tubuh, konsentrasi belajar, dan pemenuhan gizi anak.',
+      supplier: 'Kelompok Tani Sayur Tumpang',
+      notes: 'Bahan pangan lokal segar tanpa pengawet'
+    };
+    setEditingIngredient(newIng);
+    setIngredientImagePreview(newIng.imageUrl);
+    setIsIngredientModalOpen(true);
+  };
+
+  const handleOpenEditIngredient = (item: IngredientNutritionInfo) => {
+    setEditingIngredient({ ...item });
+    setIngredientImagePreview(item.imageUrl);
+    setIsIngredientModalOpen(true);
+  };
+
+  const handleSaveIngredient = () => {
+    if (!editingIngredient) return;
+    if (!editingIngredient.name.trim()) {
+      alert('Nama bahan pangan wajib diisi.');
+      return;
+    }
+
+    const curMenuToday = config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+    const curIngredients = curMenuToday.ingredients || [];
+    const exists = curIngredients.some(i => i.id === editingIngredient.id);
+    const updatedIngredients = exists
+      ? curIngredients.map(i => i.id === editingIngredient.id ? editingIngredient : i)
+      : [...curIngredients, editingIngredient];
+
+    setConfig(prev => ({
+      ...prev,
+      menuToday: {
+        ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+        ingredients: updatedIngredients
+      }
+    }));
+
+    setIsIngredientModalOpen(false);
+    setEditingIngredient(null);
+    showNotification(`Bahan "${editingIngredient.name}" berhasil disimpan!`);
+  };
+
+  const handleDeleteIngredient = (id: string) => {
+    const curMenuToday = config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+    if (curMenuToday.ingredients.length <= 1) {
+      alert('Minimal harus ada 1 bahan pangan dalam daftar menu hari ini.');
+      return;
+    }
+    if (window.confirm('Hapus bahan pangan ini dari sajian menu hari ini?')) {
+      setConfig(prev => {
+        const c = prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+        return {
+          ...prev,
+          menuToday: {
+            ...c,
+            ingredients: c.ingredients.filter(i => i.id !== id)
+          }
+        };
+      });
+      showNotification('Bahan pangan dihapus.');
+    }
+  };
+
+  const handleMoveIngredient = (idx: number, direction: 'up' | 'down') => {
+    const curMenuToday = config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+    const items = [...curMenuToday.ingredients];
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= items.length) return;
+    const temp = items[idx];
+    items[idx] = items[targetIdx];
+    items[targetIdx] = temp;
+    setConfig(prev => ({
+      ...prev,
+      menuToday: {
+        ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+        ingredients: items
+      }
+    }));
+  };
+
+  const handleUploadIngredientPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploadingIngredientImg(true);
+      const result = await uploadCmsMedia(file, 'menu');
+      setIngredientImagePreview(result.url);
+      if (editingIngredient) {
+        setEditingIngredient(prev => prev ? { ...prev, imageUrl: result.url } : null);
+      }
+      if (result.isCloudStorage) {
+        showNotification(`Foto bahan diunggah (${result.finalSizeKb} KB)!`);
+      } else {
+        showNotification('Foto bahan disimpan secara lokal.');
+      }
+    } catch {
+      alert('Gagal mengunggah foto bahan.');
+    } finally {
+      setIsUploadingIngredientImg(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* 1. Header Konsol CMS */}
@@ -790,6 +990,19 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
           >
             <ImageIcon className={`w-4 h-4 ${activeTab === 'visual' ? 'text-emerald-200' : 'text-slate-500'}`} />
             <span>Kajian Visual Lapangan ({config.visualStudy.items.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('menu_today')}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'menu_today'
+                ? 'bg-emerald-800 text-white shadow-xs'
+                : 'bg-slate-100 hover:bg-slate-200/80 text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <QrCode className={`w-4 h-4 ${activeTab === 'menu_today' ? 'text-emerald-200' : 'text-slate-500'}`} />
+            <span>Menu Hari Ini & QR Code</span>
           </button>
         </div>
       </div>
@@ -1293,10 +1506,17 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-white/20 backdrop-blur-xs text-white border border-white/30">
                     {config.hero.heroBadge}
                   </span>
-                  <h4 className="font-serif-display text-base font-bold text-white leading-tight drop-shadow-xs line-clamp-2">
-                    {config.hero.heroTitle}
+                  <h4 className="font-display text-base font-bold text-white leading-tight drop-shadow-xs">
+                    {config.hero.heroTitle.includes('Menu MBG Disiapkan Setiap Hari') ? (
+                      <>
+                        <span>{config.hero.heroTitle.replace('Menu MBG Disiapkan Setiap Hari', '').trim()} </span>
+                        <span className="text-[#86efac]">Menu MBG Disiapkan Setiap Hari</span>
+                      </>
+                    ) : (
+                      config.hero.heroTitle
+                    )}
                   </h4>
-                  <p className="text-[11px] text-slate-200 line-clamp-2 drop-shadow-xs leading-relaxed">
+                  <p className="text-[11px] text-slate-200 line-clamp-3 drop-shadow-xs leading-relaxed">
                     {config.hero.heroSubtitle}
                   </p>
                   <div className="flex items-center gap-2 pt-1">
@@ -1697,6 +1917,906 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
           </div>
         </div>
       )}
+
+      {/* 4. KONTEN TAB 4: MENU MBG HARI INI & QR CODE */}
+      {activeTab === 'menu_today' && (() => {
+        const menuToday = config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+        const targetPublicUrl = `${window.location.origin}/menu-mbg-hari-ini`;
+
+        return (
+          <div className="space-y-6">
+            {/* Kartu Hub QR Code & Akses Cepat */}
+            <div className="bg-gradient-to-br from-emerald-900 via-emerald-800 to-slate-900 rounded-2xl p-6 text-white shadow-md border border-emerald-700/40">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+                  <div className="p-3 bg-white rounded-xl shadow-lg shrink-0">
+                    {qrCodeDataUrl ? (
+                      <img src={qrCodeDataUrl} alt="QR Code Menu Hari Ini" className="w-28 h-28 object-contain" />
+                    ) : (
+                      <div className="w-28 h-28 flex items-center justify-center text-slate-400 text-xs">
+                        Membuat QR...
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2 text-center sm:text-left">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-700/60 border border-emerald-500/40 text-[11px] font-semibold text-emerald-100">
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>Akses Scan Meja & Nampan Makan Siswa</span>
+                    </div>
+                    <h3 className="font-display text-lg font-bold text-white tracking-tight">
+                      Halaman Publik: /menu-mbg-hari-ini
+                    </h3>
+                    <p className="text-xs text-emerald-100/90 max-w-xl leading-relaxed">
+                      QR Code ini dapat ditempel di meja ruang makan sekolah, mading, atau nampan saji. Ketika siswa atau orang tua melakukan pemindaian (scan), mereka langsung diarahkan ke rincian menu, gramatur porsi besar/kecil, serta kandungan nutrisi dari tiap bahan pangan.
+                    </p>
+                    <div className="pt-1 flex items-center justify-center sm:justify-start gap-2 text-xs">
+                      <code className="px-2.5 py-1 rounded bg-black/30 border border-white/10 font-mono text-[11px] text-emerald-200 select-all">
+                        {targetPublicUrl}
+                      </code>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tombol Aksi QR Code */}
+                <div className="flex flex-wrap sm:flex-col gap-2 shrink-0 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => window.open('/menu-mbg-hari-ini', '_blank')}
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-950 font-semibold text-xs transition-colors cursor-pointer shadow-xs"
+                  >
+                    <ExternalLink className="w-4 h-4 text-emerald-700" />
+                    <span>Buka Halaman Publik</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyQrLink}
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-800/80 hover:bg-emerald-700 border border-emerald-600/50 text-white font-medium text-xs transition-colors cursor-pointer"
+                  >
+                    {copiedQrLink ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
+                    <span>{copiedQrLink ? 'Tautan Disalin!' : 'Salin Tautan'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadQrPng}
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-800/80 hover:bg-emerald-700 border border-emerald-600/50 text-white font-medium text-xs transition-colors cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Unduh PNG</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsPrintStickerModalOpen(true)}
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 border border-emerald-500 text-white font-semibold text-xs transition-colors cursor-pointer"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Cetak Stiker Meja</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Form Pengaturan Konten Menu Hari Ini */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Kolom Kiri: Info Utama & Foto Menu */}
+              <div className="lg:col-span-7 space-y-6">
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
+                        <UtensilsCrossed className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="font-display text-sm font-bold text-slate-900">
+                          Identitas & Foto Sajian Menu Hari Ini
+                        </h3>
+                        <p className="text-[11px] text-slate-500">
+                          Informasi yang tampil di bagian atas halaman saat QR code di-scan
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Tanggal Sajian Menu
+                      </label>
+                      <input
+                        type="text"
+                        value={menuToday.dateText}
+                        onChange={e => setConfig(prev => ({
+                          ...prev,
+                          menuToday: {
+                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                            dateText: e.target.value
+                          }
+                        }))}
+                        placeholder="Contoh: Rabu, 15 Oktober 2026"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Label Badge Status
+                      </label>
+                      <input
+                        type="text"
+                        value={menuToday.badge || ''}
+                        onChange={e => setConfig(prev => ({
+                          ...prev,
+                          menuToday: {
+                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                            badge: e.target.value
+                          }
+                        }))}
+                        placeholder="Contoh: Menu Hari Ini • Segar & Halal"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Judul Sajian Menu
+                    </label>
+                    <input
+                      type="text"
+                      value={menuToday.menuTitle}
+                      onChange={e => setConfig(prev => ({
+                        ...prev,
+                        menuToday: {
+                          ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                          menuTitle: e.target.value
+                        }
+                      }))}
+                      placeholder="Contoh: Nasi Ayam Ungkep Bumbu Kuning & Sop Sayur Segar"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Subjudul / Penjelasan Ringkas
+                    </label>
+                    <input
+                      type="text"
+                      value={menuToday.menuSubtitle}
+                      onChange={e => setConfig(prev => ({
+                        ...prev,
+                        menuToday: {
+                          ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                          menuSubtitle: e.target.value
+                        }
+                      }))}
+                      placeholder="Contoh: Siklus Hari Ke-3 | Standar Nutrisi BGN & UPT Puskesmas Tumpang"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Foto Menu Hari Ini */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Foto Sajian Menu Hari Ini
+                    </label>
+                    <div className="flex flex-col sm:flex-row items-start gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50/50">
+                      <div className="w-36 h-24 rounded-lg overflow-hidden border border-slate-300 bg-slate-200 shrink-0 shadow-2xs">
+                        <img
+                          src={menuToday.imageUrl}
+                          alt="Foto Menu Hari Ini"
+                          className="w-full h-full object-cover"
+                          onError={e => {
+                            (e.currentTarget as HTMLImageElement).src = IMAGE_PRESETS[1].url;
+                          }}
+                        />
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <input
+                          type="file"
+                          ref={todayMenuPhotoFileRef}
+                          accept="image/*"
+                          onChange={handleUploadTodayMenuPhoto}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => todayMenuPhotoFileRef.current?.click()}
+                          disabled={isUploadingTodayMenuPhoto}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold cursor-pointer shadow-2xs"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>{isUploadingTodayMenuPhoto ? 'Memproses...' : 'Unggah Foto Baru (WebP)'}</span>
+                        </button>
+                        <div className="text-[11px] text-slate-500">
+                          Pilihan cepat preset foto sajian:
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {IMAGE_PRESETS.map(p => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => {
+                                setConfig(prev => ({
+                                  ...prev,
+                                  menuToday: {
+                                    ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                                    imageUrl: p.url
+                                  }
+                                }));
+                              }}
+                              className={`px-2 py-0.5 rounded text-[10px] border transition-colors cursor-pointer ${
+                                menuToday.imageUrl === p.url
+                                  ? 'bg-emerald-700 text-white border-emerald-700'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              {p.label.split('(')[0]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Deskripsi Sajian
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={menuToday.description}
+                      onChange={e => setConfig(prev => ({
+                        ...prev,
+                        menuToday: {
+                          ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                          description: e.target.value
+                        }
+                      }))}
+                      placeholder="Penjelasan menu, pengolahan higienis, dan cita rasa..."
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Peringatan Alergen / Keamanan Pangan
+                      </label>
+                      <input
+                        type="text"
+                        value={menuToday.allergensWarning || ''}
+                        onChange={e => setConfig(prev => ({
+                          ...prev,
+                          menuToday: {
+                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                            allergensWarning: e.target.value
+                          }
+                        }))}
+                        placeholder="Contoh: Mengandung kedelai. Bebas susu sapi & kacang tanah."
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Status Verifikasi QC & Gizi
+                      </label>
+                      <input
+                        type="text"
+                        value={menuToday.qcStatus || ''}
+                        onChange={e => setConfig(prev => ({
+                          ...prev,
+                          menuToday: {
+                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                            qcStatus: e.target.value
+                          }
+                        }))}
+                        placeholder="Contoh: Terverifikasi Ahli Gizi SPPG • Lolos Uji Organoleptik"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Ringkasan Makronutrisi Sajian */}
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+                  <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-display text-sm font-bold text-slate-900">
+                        Kandungan Gizi Makro Rata-Rata
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Akumulasi nutrisi per porsi standar rekomendasi Badan Gizi Nasional
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Kalori Rata-Rata</label>
+                      <input
+                        type="text"
+                        value={menuToday.energySummary.caloriesAvg}
+                        onChange={e => setConfig(prev => ({
+                          ...prev,
+                          menuToday: {
+                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                            energySummary: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).energySummary,
+                              caloriesAvg: e.target.value
+                            }
+                          }
+                        }))}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Protein Rata-Rata</label>
+                      <input
+                        type="text"
+                        value={menuToday.energySummary.proteinAvg}
+                        onChange={e => setConfig(prev => ({
+                          ...prev,
+                          menuToday: {
+                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                            energySummary: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).energySummary,
+                              proteinAvg: e.target.value
+                            }
+                          }
+                        }))}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Karbohidrat Rata-Rata</label>
+                      <input
+                        type="text"
+                        value={menuToday.energySummary.carbsAvg}
+                        onChange={e => setConfig(prev => ({
+                          ...prev,
+                          menuToday: {
+                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                            energySummary: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).energySummary,
+                              carbsAvg: e.target.value
+                            }
+                          }
+                        }))}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Lemak Sehat</label>
+                      <input
+                        type="text"
+                        value={menuToday.energySummary.fatAvg}
+                        onChange={e => setConfig(prev => ({
+                          ...prev,
+                          menuToday: {
+                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                            energySummary: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).energySummary,
+                              fatAvg: e.target.value
+                            }
+                          }
+                        }))}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Serat Pangan</label>
+                      <input
+                        type="text"
+                        value={menuToday.energySummary.fiberAvg}
+                        onChange={e => setConfig(prev => ({
+                          ...prev,
+                          menuToday: {
+                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                            energySummary: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).energySummary,
+                              fiberAvg: e.target.value
+                            }
+                          }
+                        }))}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-800"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Kolom Kanan: Porsi Kecil vs Porsi Besar */}
+              <div className="lg:col-span-5 space-y-6">
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
+                  <div className="pb-3 border-b border-slate-100">
+                    <h3 className="font-display text-sm font-bold text-slate-900">
+                      Standar Porsi: Porsi Kecil vs Porsi Besar
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Pengaturan takaran yang berubah secara interaktif pada tombol toggle di halaman publik
+                    </p>
+                  </div>
+
+                  {/* Porsi Kecil */}
+                  <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/40 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-900">1. Konfigurasi Porsi Kecil</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-200 text-emerald-800 font-semibold">
+                        PAUD & SD 1-3
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <label className="block text-[11px] text-slate-600 mb-0.5">Label Kategori</label>
+                        <input
+                          type="text"
+                          value={menuToday.portionSmall.tierName}
+                          onChange={e => setConfig(prev => ({
+                            ...prev,
+                            menuToday: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                              portionSmall: {
+                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
+                                tierName: e.target.value
+                              }
+                            }
+                          }))}
+                          className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-slate-600 mb-0.5">Total Gramatur</label>
+                        <input
+                          type="text"
+                          value={menuToday.portionSmall.totalGramature}
+                          onChange={e => setConfig(prev => ({
+                            ...prev,
+                            menuToday: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                              portionSmall: {
+                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
+                                totalGramature: e.target.value
+                              }
+                            }
+                          }))}
+                          className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="text-xs">
+                      <label className="block text-[11px] text-slate-600 mb-0.5">Target Kalori</label>
+                      <input
+                        type="text"
+                        value={menuToday.portionSmall.targetCalories}
+                        onChange={e => setConfig(prev => ({
+                          ...prev,
+                          menuToday: {
+                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                            portionSmall: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
+                              targetCalories: e.target.value
+                            }
+                          }
+                        }))}
+                        className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-1.5 text-xs">
+                      <div>
+                        <label className="block text-[10px] text-slate-500 mb-0.5">Protein</label>
+                        <input
+                          type="text"
+                          value={menuToday.portionSmall.proteinGrams}
+                          onChange={e => setConfig(prev => ({
+                            ...prev,
+                            menuToday: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                              portionSmall: {
+                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
+                                proteinGrams: e.target.value
+                              }
+                            }
+                          }))}
+                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-500 mb-0.5">Karbo</label>
+                        <input
+                          type="text"
+                          value={menuToday.portionSmall.carbGrams}
+                          onChange={e => setConfig(prev => ({
+                            ...prev,
+                            menuToday: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                              portionSmall: {
+                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
+                                carbGrams: e.target.value
+                              }
+                            }
+                          }))}
+                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-500 mb-0.5">Lemak</label>
+                        <input
+                          type="text"
+                          value={menuToday.portionSmall.fatGrams}
+                          onChange={e => setConfig(prev => ({
+                            ...prev,
+                            menuToday: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                              portionSmall: {
+                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
+                                fatGrams: e.target.value
+                              }
+                            }
+                          }))}
+                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-500 mb-0.5">Serat</label>
+                        <input
+                          type="text"
+                          value={menuToday.portionSmall.fiberGrams}
+                          onChange={e => setConfig(prev => ({
+                            ...prev,
+                            menuToday: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                              portionSmall: {
+                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
+                                fiberGrams: e.target.value
+                              }
+                            }
+                          }))}
+                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="text-xs">
+                      <label className="block text-[11px] text-slate-600 mb-0.5">Uraian / Pedoman Porsi Kecil</label>
+                      <textarea
+                        rows={2}
+                        value={menuToday.portionSmall.description}
+                        onChange={e => setConfig(prev => ({
+                          ...prev,
+                          menuToday: {
+                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                            portionSmall: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
+                              description: e.target.value
+                            }
+                          }
+                        }))}
+                        className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Porsi Besar */}
+                  <div className="p-4 rounded-xl border border-sky-200 bg-sky-50/40 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-sky-900">2. Konfigurasi Porsi Besar</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-sky-200 text-sky-800 font-semibold">
+                        SD 4-6 & SMP
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <label className="block text-[11px] text-slate-600 mb-0.5">Label Kategori</label>
+                        <input
+                          type="text"
+                          value={menuToday.portionLarge.tierName}
+                          onChange={e => setConfig(prev => ({
+                            ...prev,
+                            menuToday: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                              portionLarge: {
+                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
+                                tierName: e.target.value
+                              }
+                            }
+                          }))}
+                          className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-slate-600 mb-0.5">Total Gramatur</label>
+                        <input
+                          type="text"
+                          value={menuToday.portionLarge.totalGramature}
+                          onChange={e => setConfig(prev => ({
+                            ...prev,
+                            menuToday: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                              portionLarge: {
+                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
+                                totalGramature: e.target.value
+                              }
+                            }
+                          }))}
+                          className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="text-xs">
+                      <label className="block text-[11px] text-slate-600 mb-0.5">Target Kalori</label>
+                      <input
+                        type="text"
+                        value={menuToday.portionLarge.targetCalories}
+                        onChange={e => setConfig(prev => ({
+                          ...prev,
+                          menuToday: {
+                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                            portionLarge: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
+                              targetCalories: e.target.value
+                            }
+                          }
+                        }))}
+                        className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-1.5 text-xs">
+                      <div>
+                        <label className="block text-[10px] text-slate-500 mb-0.5">Protein</label>
+                        <input
+                          type="text"
+                          value={menuToday.portionLarge.proteinGrams}
+                          onChange={e => setConfig(prev => ({
+                            ...prev,
+                            menuToday: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                              portionLarge: {
+                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
+                                proteinGrams: e.target.value
+                              }
+                            }
+                          }))}
+                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-500 mb-0.5">Karbo</label>
+                        <input
+                          type="text"
+                          value={menuToday.portionLarge.carbGrams}
+                          onChange={e => setConfig(prev => ({
+                            ...prev,
+                            menuToday: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                              portionLarge: {
+                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
+                                carbGrams: e.target.value
+                              }
+                            }
+                          }))}
+                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-500 mb-0.5">Lemak</label>
+                        <input
+                          type="text"
+                          value={menuToday.portionLarge.fatGrams}
+                          onChange={e => setConfig(prev => ({
+                            ...prev,
+                            menuToday: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                              portionLarge: {
+                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
+                                fatGrams: e.target.value
+                              }
+                            }
+                          }))}
+                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-500 mb-0.5">Serat</label>
+                        <input
+                          type="text"
+                          value={menuToday.portionLarge.fiberGrams}
+                          onChange={e => setConfig(prev => ({
+                            ...prev,
+                            menuToday: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                              portionLarge: {
+                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
+                                fiberGrams: e.target.value
+                              }
+                            }
+                          }))}
+                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="text-xs">
+                      <label className="block text-[11px] text-slate-600 mb-0.5">Uraian / Pedoman Porsi Besar</label>
+                      <textarea
+                        rows={2}
+                        value={menuToday.portionLarge.description}
+                        onChange={e => setConfig(prev => ({
+                          ...prev,
+                          menuToday: {
+                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                            portionLarge: {
+                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
+                              description: e.target.value
+                            }
+                          }
+                        }))}
+                        className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Komposisi Bahan & Manfaat Kesehatan */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div>
+                  <h3 className="font-display text-sm font-bold text-slate-900">
+                    Bahan Pangan, Kandungan Gizi & Manfaat Kesehatan ({menuToday.ingredients.length} Bahan)
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Rincian tiap komponen makanan yang ditampilkan dengan foto, takaran gramatur, dan manfaat kognitif bagi anak
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleOpenAddIngredient}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tambah Bahan Pangan</span>
+                </button>
+              </div>
+
+              {/* Grid Kartu Bahan */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {menuToday.ingredients.map((item, idx) => (
+                  <div
+                    key={item.id}
+                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/40 hover:bg-white hover:border-emerald-300 transition-all space-y-3"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0">
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          className="w-full h-full object-cover"
+                          onError={e => {
+                            (e.currentTarget as HTMLImageElement).src = IMAGE_PRESETS[1].url;
+                          }}
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 capitalize">
+                            {item.category.replace('_', ' ')}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-400">#{idx + 1}</span>
+                        </div>
+                        <h4 className="font-semibold text-xs text-slate-900 truncate mt-1">
+                          {item.name}
+                        </h4>
+                        <div className="text-[10px] text-slate-500 mt-0.5">
+                          Pemasok: {item.supplier || 'Mitra Lokal SPPG'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Takaran Porsi */}
+                    <div className="grid grid-cols-2 gap-2 text-[10px] bg-white p-2 rounded-lg border border-slate-100">
+                      <div>
+                        <span className="text-slate-400 block">Porsi Kecil:</span>
+                        <span className="font-medium text-slate-800">{item.portionSmall}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block">Porsi Besar:</span>
+                        <span className="font-medium text-slate-800">{item.portionLarge}</span>
+                      </div>
+                    </div>
+
+                    {/* Manfaat Kesehatan & Kandungan Gizi */}
+                    <div className="space-y-1.5 text-[11px]">
+                      <div>
+                        <span className="text-[10px] font-semibold text-emerald-800 block">Kandungan Gizi:</span>
+                        <span className="text-[11px] text-slate-700 font-medium">
+                          {item.nutritionHighlight}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-semibold text-emerald-800 block">Manfaat:</span>
+                        <p className="text-[11px] text-slate-600 line-clamp-2 leading-tight">
+                          {item.healthBenefits}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Tombol Aksi Bahan */}
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleMoveIngredient(idx, 'up')}
+                          disabled={idx === 0}
+                          className="p-1 rounded hover:bg-slate-200 text-slate-500 disabled:opacity-30 cursor-pointer"
+                          title="Naikkan urutan"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5 rotate-90" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveIngredient(idx, 'down')}
+                          disabled={idx === menuToday.ingredients.length - 1}
+                          className="p-1 rounded hover:bg-slate-200 text-slate-500 disabled:opacity-30 cursor-pointer"
+                          title="Turunkan urutan"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5 rotate-90" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditIngredient(item)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-medium cursor-pointer"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteIngredient(item.id)}
+                          className="p-1 rounded hover:bg-rose-100 text-rose-600 cursor-pointer"
+                          title="Hapus bahan"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Bottom Save Bar */}
+            <div className="flex items-center justify-between p-4 bg-emerald-50 rounded-2xl border border-emerald-200">
+              <div className="text-xs text-emerald-900">
+                <span className="font-bold">Perubahan Tersimpan Sementara:</span> Klik simpan untuk menerapkan ke website publik dan database cloud.
+              </div>
+              <button
+                type="button"
+                onClick={handleSaveAll}
+                disabled={isCloudSaving}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-75 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer border border-emerald-600"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isCloudSaving ? 'Menyimpan...' : 'Simpan Semua Perubahan'}</span>
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 5. MODAL FORM: EDIT / TAMBAH SLIDE MENU */}
       {isMenuModalOpen && editingMenuSlide && (
@@ -2282,6 +3402,305 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer"
                 >
                   Terapkan Foto Slide
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8. MODAL FORM: EDIT / TAMBAH BAHAN PANGAN MENU HARI INI */}
+      {isIngredientModalOpen && editingIngredient && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                  <Apple className="w-4 h-4" />
+                </div>
+                <h4 className="font-display text-sm font-bold text-slate-900">
+                  {editingIngredient.name ? `Edit Bahan: ${editingIngredient.name}` : 'Tambah Bahan Pangan Baru'}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsIngredientModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Foto Bahan */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Foto Bahan Pangan
+                </label>
+                <div className="flex items-start gap-3">
+                  <div className="w-24 h-20 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 shrink-0">
+                    {ingredientImagePreview ? (
+                      <img src={ingredientImagePreview} alt="Preview Bahan" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-400 text-[10px]">
+                        Belum ada foto
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <input
+                      type="file"
+                      ref={ingredientFileRef}
+                      accept="image/*"
+                      onChange={handleUploadIngredientPhoto}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => ingredientFileRef.current?.click()}
+                      disabled={isUploadingIngredientImg}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-semibold cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{isUploadingIngredientImg ? 'Memproses...' : 'Unggah Foto Bahan'}</span>
+                    </button>
+                    <div className="text-[10px] text-slate-500">
+                      Pilihan foto preset:
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {IMAGE_PRESETS.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setIngredientImagePreview(p.url);
+                            setEditingIngredient(prev => prev ? { ...prev, imageUrl: p.url } : null);
+                          }}
+                          className={`px-2 py-0.5 rounded text-[10px] border cursor-pointer ${
+                            ingredientImagePreview === p.url
+                              ? 'bg-emerald-700 text-white border-emerald-700'
+                              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {p.label.split('(')[0]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Nama & Kategori Bahan */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Nama Bahan Pangan</label>
+                  <input
+                    type="text"
+                    value={editingIngredient.name}
+                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, name: e.target.value } : null)}
+                    placeholder="Contoh: Ayam Ungkep Bumbu Kuning"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Kategori Gizi Bahan</label>
+                  <select
+                    value={editingIngredient.category}
+                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, category: e.target.value as any } : null)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 cursor-pointer"
+                  >
+                    <option value="karbohidrat">Karbohidrat (Nasi, Ubi, Kentang)</option>
+                    <option value="protein_hewani">Protein Hewani (Ayam, Ikan, Telur, Daging)</option>
+                    <option value="protein_nabati">Protein Nabati (Tempe, Tahu, Kacang)</option>
+                    <option value="sayuran">Sayuran (Wortel, Buncis, Bayam, Sop)</option>
+                    <option value="buah">Buah-buahan (Pisang, Jeruk, Semangka)</option>
+                    <option value="pelengkap">Pelengkap (Susu, Biji-bijian)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Takaran Porsi Kecil vs Porsi Besar */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-2.5 rounded-lg border border-emerald-200 bg-emerald-50/50">
+                  <label className="block font-semibold text-emerald-900 mb-1">Takaran Porsi Kecil (PAUD & SD 1-3)</label>
+                  <input
+                    type="text"
+                    value={editingIngredient.portionSmall}
+                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, portionSmall: e.target.value } : null)}
+                    placeholder="Contoh: 50 gram (1 potong sedang)"
+                    className="w-full px-2.5 py-1.5 rounded border border-slate-300 text-slate-800 bg-white"
+                  />
+                </div>
+                <div className="p-2.5 rounded-lg border border-sky-200 bg-sky-50/50">
+                  <label className="block font-semibold text-sky-900 mb-1">Takaran Porsi Besar (SD 4-6 & SMP)</label>
+                  <input
+                    type="text"
+                    value={editingIngredient.portionLarge}
+                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, portionLarge: e.target.value } : null)}
+                    placeholder="Contoh: 80 gram (1 potong dada/paha)"
+                    className="w-full px-2.5 py-1.5 rounded border border-slate-300 text-slate-800 bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Nilai Gizi Utama & Highlight */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Kandungan Gizi Utama (Highlight)
+                </label>
+                <input
+                  type="text"
+                  value={editingIngredient.nutritionHighlight}
+                  onChange={e => setEditingIngredient(prev => prev ? { ...prev, nutritionHighlight: e.target.value } : null)}
+                  placeholder="Contoh: Protein hewani murni, Vitamin B12, Zink, Zat Besi"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                />
+              </div>
+
+              {/* Manfaat Kesehatan */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Manfaat Kesehatan & Belajar Anak
+                </label>
+                <textarea
+                  rows={2}
+                  value={editingIngredient.healthBenefits}
+                  onChange={e => setEditingIngredient(prev => prev ? { ...prev, healthBenefits: e.target.value } : null)}
+                  placeholder="Contoh: Mendukung perkembangan massa otot anak, menjaga fokus belajar di kelas, dan mencegah anemia."
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                />
+              </div>
+
+              {/* Pemasok & Catatan */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Asal / Pemasok Bahan</label>
+                  <input
+                    type="text"
+                    value={editingIngredient.supplier}
+                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, supplier: e.target.value } : null)}
+                    placeholder="Contoh: Kemitraan Peternak Unggas Tumpang"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Catatan Tambahan (Opsional)</label>
+                  <input
+                    type="text"
+                    value={editingIngredient.notes || ''}
+                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, notes: e.target.value } : null)}
+                    placeholder="Contoh: Diungkep perlahan tanpa minyak berlebih"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                  />
+                </div>
+              </div>
+
+              {/* Tombol Aksi */}
+              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsIngredientModalOpen(false)}
+                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveIngredient}
+                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer"
+                >
+                  Simpan Bahan
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 9. MODAL / PRINT VIEW: CETAK STIKER MEJA QR CODE */}
+      {isPrintStickerModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                  <Printer className="w-4 h-4" />
+                </div>
+                <h4 className="font-display text-sm font-bold text-slate-900">
+                  Cetak Stiker QR Code Meja & Nampan
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPrintStickerModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Preview Stiker yang siap diprint */}
+            <div
+              id="qr-sticker-printable"
+              className="p-5 rounded-2xl border-2 border-dashed border-emerald-500 bg-emerald-50/30 text-center space-y-3"
+            >
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-800 text-white text-[10px] font-bold">
+                SPPG MLG TUMPANG JERU
+              </div>
+              <h4 className="font-display text-sm font-bold text-slate-900">
+                MENU MAKAN BERGIZI GRATIS
+              </h4>
+              <p className="text-[11px] text-slate-600 font-medium">
+                Scan QR Code untuk melihat foto sajian, gramatur porsi besar/kecil & rincian gizi hari ini:
+              </p>
+
+              <div className="flex justify-center py-1">
+                <div className="p-2.5 bg-white rounded-xl shadow-md border border-slate-200 inline-block">
+                  {qrCodeDataUrl ? (
+                    <img src={qrCodeDataUrl} alt="QR Code" className="w-44 h-44 object-contain" />
+                  ) : (
+                    <div className="w-44 h-44 flex items-center justify-center text-xs text-slate-400">
+                      Memuat QR...
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-[10px] text-slate-500 font-mono">
+                {window.location.origin}/menu-mbg-hari-ini
+              </div>
+
+              <div className="text-[10px] text-emerald-800 font-semibold bg-white/80 p-2 rounded-lg border border-emerald-200/60">
+                Porsi Kecil: PAUD & SD 1-3 | Porsi Besar: SD 4-6 & SMP
+              </div>
+            </div>
+
+            <div className="pt-4 mt-4 border-t border-slate-200 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setIsPrintStickerModalOpen(false)}
+                className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs cursor-pointer"
+              >
+                Tutup
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadQrPng}
+                  className="px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 font-semibold text-xs cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Unduh PNG</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.print();
+                  }}
+                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs cursor-pointer inline-flex items-center gap-1.5 shadow-xs"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Cetak Stiker</span>
                 </button>
               </div>
             </div>

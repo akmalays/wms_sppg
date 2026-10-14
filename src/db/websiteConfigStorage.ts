@@ -3,6 +3,11 @@ import trayImg2 from '../assets/tray_double_1.jpg';
 import trayImg3 from '../assets/tray_double_2.jpg';
 import posterMenuImg from '../assets/poster-single.jpg';
 import posterDoubleImg from '../assets/poster-double.jpg';
+import nasiPutihBowlImg from '../assets/nasi_putih_bowl.jpg';
+import ayamBumbuKuningImg from '../assets/ayam_bumbu_kuning.jpg';
+import tempeBacemImg from '../assets/tempe_bacem.jpg';
+import sayurSopImg from '../assets/sayur_sop.jpg';
+import buahPisangImg from '../assets/buah_pisang.jpg';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { compressImageToWebP } from '../utils/imageCompressor';
 
@@ -85,10 +90,59 @@ export interface WebsiteVisualStudyConfig {
   items: VisualStudyItem[];
 }
 
+export interface IngredientNutritionInfo {
+  id: string;
+  name: string;
+  category: string;
+  portionSmall: string;
+  portionLarge: string;
+  imageUrl: string;
+  nutritionHighlight: string;
+  healthBenefits: string;
+  supplier: string;
+  notes?: string;
+}
+
+export interface PortionTierConfig {
+  tierName: string;
+  targetCalories: string;
+  totalGramature: string;
+  description: string;
+  proteinGrams: string;
+  carbGrams: string;
+  fatGrams: string;
+  fiberGrams: string;
+}
+
+export interface WebsiteMenuTodayConfig {
+  dateText: string;
+  menuTitle: string;
+  menuSubtitle: string;
+  badge?: string;
+  description: string;
+  imageUrl: string;
+  energySummary: {
+    caloriesAvg: string;
+    proteinAvg: string;
+    carbsAvg: string;
+    fatAvg: string;
+    fiberAvg: string;
+    calciumAvg: string;
+    ironAvg: string;
+  };
+  portionSmall: PortionTierConfig;
+  portionLarge: PortionTierConfig;
+  allergensWarning: string;
+  qcStatus: string;
+  qrTargetUrl: string;
+  ingredients: IngredientNutritionInfo[];
+}
+
 export interface WebsiteConfig {
   hero: WebsiteHeroConfig;
   menuSlider: WebsiteMenuSliderConfig;
   visualStudy: WebsiteVisualStudyConfig;
+  menuToday: WebsiteMenuTodayConfig;
   lastUpdated: string;
 }
 
@@ -158,24 +212,24 @@ export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = {
         poster: trayImg3
       }
     ],
-    heroBadge: 'Satuan Pelayanan Pemenuhan Gizi Kabupaten Malang',
-    heroTitle: 'Ketertelusuran Rantai Pangan & Standar Gizi Harian untuk Generasi Penerus',
-    heroSubtitle: 'Dari penimbangan bahan segar petani lokal Tumpang pada pukul 04.00 pagi, pengolahan dapur bersuhu terkontrol, hingga distribusi wadah bersekat SUS 304 sebelum bel istirahat sekolah berbunyi.',
-    primaryCtaText: 'Lihat Siklus Menu MBG',
+    heroBadge: 'Satuan Pelayanan Pemenuhan Gizi (SPPG)',
+    heroTitle: 'Dari Dapur SPPG Tumpang Jeru, Menu MBG Disiapkan Setiap Hari',
+    heroSubtitle: 'Mulai dari penerimaan bahan pangan, proses pengolahan di dapur, hingga pengiriman makanan ke sekolah, setiap tahap menjadi bagian dari pelaksanaan Program Makan Bergizi Gratis di Tumpang Jeru.',
+    primaryCtaText: 'Lihat Menu MBG',
     primaryCtaLink: '#siklus-menu',
-    secondaryCtaText: 'Alur Operasional 04.00 WIB',
+    secondaryCtaText: 'Jadwal Operasional',
     secondaryCtaLink: '#alur-pagi',
     autoSlidePhotos: true,
     photoSlideInterval: 4,
     photoSlides: [
       {
         id: 'hero-photo-1',
-        title: 'Sajian Nampan 5 Sekat SUS 304',
-        category: 'Standar Wadah Higienis',
-        description: 'Pemisahan higienis antar lauk tanpa risiko bercampur kuah. Wadah stainless steel SUS 304 standar food-grade.',
+        title: 'Nasi, Ayam Kecap, Tempe, Sayur, dan Buah',
+        category: 'Menu Hari Ini',
+        description: 'Menu ini disajikan sesuai standar gizi dengan porsi yang sesuai untuk anak sekolah.',
         imageUrl: trayImg1,
-        badge: 'SUS 304 Food-Grade',
-        targetGrams: '475 gram',
+        badge: 'Menu Hari Ini',
+        targetGrams: '± 450 gram',
       },
       {
         id: 'hero-photo-2',
@@ -305,6 +359,107 @@ export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = {
       }
     ]
   },
+  menuToday: {
+    dateText: 'Rabu, 14 Oktober 2026',
+    menuTitle: 'Nasi Putih, Ayam Bumbu Kuning, Sayur Sop, Tempe Bacem, dan Pisang',
+    menuSubtitle: 'Paket Menu Bergizi Lengkap Standar Nasional SPPG Jeru',
+    description: 'Sajian makanan higienis harian yang disusun oleh ahli gizi untuk memenuhi sepertiga kebutuhan energi dan protein harian anak sekolah secara proporsional.',
+    imageUrl: trayImg1,
+    energySummary: {
+      caloriesAvg: '585 kkal',
+      proteinAvg: '26 g',
+      carbsAvg: '82 g',
+      fatAvg: '15 g',
+      fiberAvg: '6.5 g',
+      calciumAvg: '190 mg',
+      ironAvg: '3.4 mg'
+    },
+    portionSmall: {
+      tierName: 'Porsi Kecil (PAUD & SD Kelas 1–3)',
+      targetCalories: '465 kkal',
+      totalGramature: '± 360 gram',
+      description: 'Disesuaikan dengan kapasitas lambung dan kebutuhan metabolisme anak usia 5–9 tahun.',
+      proteinGrams: '19 g',
+      carbGrams: '68 g',
+      fatGrams: '12 g',
+      fiberGrams: '4.8 g'
+    },
+    portionLarge: {
+      tierName: 'Porsi Besar (SD Kelas 4–6 & SMP)',
+      targetCalories: '685 kkal',
+      totalGramature: '± 490 gram',
+      description: 'Diperkaya kalori dan protein ekstra guna menopang percepatan pertumbuhan pubertas dan aktivitas fisik aktif.',
+      proteinGrams: '29 g',
+      carbGrams: '96 g',
+      fatGrams: '17 g',
+      fiberGrams: '7.8 g'
+    },
+    allergensWarning: 'Bebas Kacang Tanah • Halal 100% • Wadah Food-Grade SUS 304',
+    qcStatus: 'Lolos Uji Sensoris Organoleptik & Suhu Inti Masak ≥ 75°C',
+    qrTargetUrl: '/menu-mbg-hari-ini',
+    ingredients: [
+      {
+        id: 'ing-1',
+        name: 'Nasi Putih Pulen Lokal',
+        category: 'Karbohidrat',
+        portionSmall: '100 gram',
+        portionLarge: '150 gram',
+        imageUrl: nasiPutihBowlImg,
+        nutritionHighlight: 'Energi 175 kkal • Karbohidrat 40g',
+        healthBenefits: 'Sumber glukosa murni dan energi utama otak anak, menjaga konsentrasi belajar tetap prima di dalam kelas.',
+        supplier: 'Poktan Sri Rejeki, Malangsuko Tumpang',
+        notes: 'Beras pandanwangi lokal bebas bahan pemutih sintetis.'
+      },
+      {
+        id: 'ing-2',
+        name: 'Ayam Ungkep Bumbu Kuning',
+        category: 'Protein Hewani',
+        portionSmall: '50 gram',
+        portionLarge: '75 gram',
+        imageUrl: ayamBumbuKuningImg,
+        nutritionHighlight: 'Protein 22g • Zat Besi 1.8mg',
+        healthBenefits: 'Asam amino esensial untuk pembentukan otot, pertumbuhan sel darah merah, serta kurkumin kunyit sebagai anti-inflamasi alami.',
+        supplier: 'UD Sumber Tani, Pakis Malang',
+        notes: 'Daging ayam segar dipotong higienis bersertifikasi halal.'
+      },
+      {
+        id: 'ing-3',
+        name: 'Tempe Bacem Tradisional',
+        category: 'Protein Nabati',
+        portionSmall: '35 gram',
+        portionLarge: '50 gram',
+        imageUrl: tempeBacemImg,
+        nutritionHighlight: 'Protein 9g • Kalsium 75mg • Probiotik',
+        healthBenefits: 'Kedelai fermentasi kaya bakteri baik untuk saluran cerna anak, serta membantu penguatan tulang dan gigi.',
+        supplier: 'Sentra Tempe Krajan, Desa Jeru',
+        notes: 'Diolah dengan gula aren asli tanpa pemanis buatan.'
+      },
+      {
+        id: 'ing-4',
+        name: 'Sayur Sop Wortel, Buncis & Kubis',
+        category: 'Sayuran',
+        portionSmall: '60 gram',
+        portionLarge: '90 gram',
+        imageUrl: sayurSopImg,
+        nutritionHighlight: 'Serat 3.5g • Vitamin A 420mcg • Kalium',
+        healthBenefits: 'Beta-karoten untuk kesehatan mata anak, serat alami mencegah sembelit, dan kuah kaldu menjaga hidrasi sel.',
+        supplier: 'Kelompok Tani Jeru & Poncokusumo',
+        notes: 'Sayur segar dipetik sore hari dan dimasak subuh hari.'
+      },
+      {
+        id: 'ing-5',
+        name: 'Buah Pisang Mas Lokal',
+        category: 'Buah',
+        portionSmall: '1 buah (± 60g)',
+        portionLarge: '1 buah (± 85g)',
+        imageUrl: buahPisangImg,
+        nutritionHighlight: 'Kalium 360mg • Vitamin C 11mg',
+        healthBenefits: 'Elektrolit alami untuk memulihkan energi setelah jam olahraga, serta memicu produksi hormon bahagia secara alami.',
+        supplier: 'Mitra Petani Buah Malang',
+        notes: 'Buah segar matang alami tanpa karbit kimiawi.'
+      }
+    ]
+  },
   lastUpdated: new Date().toISOString()
 };
 
@@ -337,6 +492,63 @@ function normalizeConfig(parsed: Partial<WebsiteConfig> | null | undefined): Web
 
   const primaryVideoUrl = normalizedVideos[0]?.url || DEFAULT_WEBSITE_CONFIG.hero.videoUrl;
 
+  // Migrasi otomatis dari wording bawaan lama ke wording standar terkini
+  const effectiveHeroTitle = (parsedHero.heroTitle === 'Ketertelusuran Rantai Pangan & Standar Gizi Harian untuk Generasi Penerus' || !parsedHero.heroTitle)
+    ? DEFAULT_WEBSITE_CONFIG.hero.heroTitle
+    : parsedHero.heroTitle;
+
+  const effectiveHeroBadge = (parsedHero.heroBadge === 'Satuan Pelayanan Pemenuhan Gizi Kabupaten Malang' || !parsedHero.heroBadge)
+    ? DEFAULT_WEBSITE_CONFIG.hero.heroBadge
+    : parsedHero.heroBadge;
+
+  const effectiveHeroSubtitle = (parsedHero.heroSubtitle?.includes('penimbangan bahan segar petani lokal Tumpang') || !parsedHero.heroSubtitle)
+    ? DEFAULT_WEBSITE_CONFIG.hero.heroSubtitle
+    : parsedHero.heroSubtitle;
+
+  const effectivePrimaryCta = (parsedHero.primaryCtaText === 'Lihat Siklus Menu MBG' || !parsedHero.primaryCtaText)
+    ? DEFAULT_WEBSITE_CONFIG.hero.primaryCtaText
+    : parsedHero.primaryCtaText;
+
+  const effectiveSecondaryCta = (parsedHero.secondaryCtaText === 'Alur Operasional 04.00 WIB' || !parsedHero.secondaryCtaText)
+    ? DEFAULT_WEBSITE_CONFIG.hero.secondaryCtaText
+    : parsedHero.secondaryCtaText;
+
+  const normalizedPhotoSlides = ((Array.isArray(parsedHero.photoSlides) && parsedHero.photoSlides.length > 0)
+    ? parsedHero.photoSlides
+    : DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []).map(slide => {
+      if (slide.id === 'hero-photo-1' && slide.title === 'Sajian Nampan 5 Sekat SUS 304') {
+        return {
+          ...slide,
+          title: 'Nasi, Ayam Kecap, Tempe, Sayur, dan Buah',
+          category: 'Menu Hari Ini',
+          badge: 'Menu Hari Ini',
+          targetGrams: '± 450 gram',
+          description: 'Menu ini disajikan sesuai standar gizi dengan porsi yang sesuai untuk anak sekolah.'
+        };
+      }
+      return slide;
+    });
+
+  const normalizedMenuToday: WebsiteMenuTodayConfig = parsed.menuToday ? {
+    ...DEFAULT_WEBSITE_CONFIG.menuToday,
+    ...parsed.menuToday,
+    energySummary: {
+      ...DEFAULT_WEBSITE_CONFIG.menuToday.energySummary,
+      ...(parsed.menuToday.energySummary || {})
+    },
+    portionSmall: {
+      ...DEFAULT_WEBSITE_CONFIG.menuToday.portionSmall,
+      ...(parsed.menuToday.portionSmall || {})
+    },
+    portionLarge: {
+      ...DEFAULT_WEBSITE_CONFIG.menuToday.portionLarge,
+      ...(parsed.menuToday.portionLarge || {})
+    },
+    ingredients: (Array.isArray(parsed.menuToday.ingredients) && parsed.menuToday.ingredients.length > 0)
+      ? parsed.menuToday.ingredients
+      : DEFAULT_WEBSITE_CONFIG.menuToday.ingredients
+  } : DEFAULT_WEBSITE_CONFIG.menuToday;
+
   return {
     hero: {
       ...DEFAULT_WEBSITE_CONFIG.hero,
@@ -344,9 +556,12 @@ function normalizeConfig(parsed: Partial<WebsiteConfig> | null | undefined): Web
       backgroundType: parsedHero.backgroundType || 'video',
       videoUrl: primaryVideoUrl,
       videos: normalizedVideos,
-      photoSlides: (Array.isArray(parsedHero.photoSlides) && parsedHero.photoSlides.length > 0)
-        ? parsedHero.photoSlides
-        : DEFAULT_WEBSITE_CONFIG.hero.photoSlides,
+      heroBadge: effectiveHeroBadge,
+      heroTitle: effectiveHeroTitle,
+      heroSubtitle: effectiveHeroSubtitle,
+      primaryCtaText: effectivePrimaryCta,
+      secondaryCtaText: effectiveSecondaryCta,
+      photoSlides: normalizedPhotoSlides,
       autoSlidePhotos: parsedHero.autoSlidePhotos ?? DEFAULT_WEBSITE_CONFIG.hero.autoSlidePhotos,
       photoSlideInterval: parsedHero.photoSlideInterval || DEFAULT_WEBSITE_CONFIG.hero.photoSlideInterval
     },
@@ -364,6 +579,7 @@ function normalizeConfig(parsed: Partial<WebsiteConfig> | null | undefined): Web
         ? parsed.visualStudy.items
         : DEFAULT_WEBSITE_CONFIG.visualStudy.items
     },
+    menuToday: normalizedMenuToday,
     lastUpdated: parsed.lastUpdated || new Date().toISOString()
   };
 }
