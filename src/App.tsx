@@ -66,6 +66,19 @@ const MainLayout: React.FC = () => {
     };
   }, []);
 
+  // Listen for realtime cloud synchronization and storage mutations
+  React.useEffect(() => {
+    const handleSync = () => {
+      setDataVersion(v => v + 1);
+    };
+    window.addEventListener('sppg_storage_items_changed', handleSync);
+    window.addEventListener('sppg_warehouse_sync', handleSync);
+    return () => {
+      window.removeEventListener('sppg_storage_items_changed', handleSync);
+      window.removeEventListener('sppg_warehouse_sync', handleSync);
+    };
+  }, []);
+
   const navigateToDashboard = () => {
     try {
       window.history.pushState(null, '', '/dashboard');

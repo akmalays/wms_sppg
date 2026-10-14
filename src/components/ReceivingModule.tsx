@@ -331,6 +331,19 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
   );
   const purchaseOrders = useMemo(() => warehouseDb.getPurchaseOrders(), [dataVersion]);
 
+  // Sinkronisasi realtime otomatis saat ada perubahan di database Supabase Cloud
+  useEffect(() => {
+    const handleSync = () => {
+      setDataVersion(v => v + 1);
+    };
+    window.addEventListener('sppg_storage_items_changed', handleSync);
+    window.addEventListener('sppg_warehouse_sync', handleSync);
+    return () => {
+      window.removeEventListener('sppg_storage_items_changed', handleSync);
+      window.removeEventListener('sppg_warehouse_sync', handleSync);
+    };
+  }, []);
+
   // Post-input CTA prompt state
   const [justSavedPrompt, setJustSavedPrompt] = useState<{
     title: string;

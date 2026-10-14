@@ -41,6 +41,7 @@ import {
 import { getRomanMonth, getYearFromDate } from '../utils/poNumberGenerator';
 import { angkaTerbilang } from '../utils/numberToWords';
 import { removeFromPrintPool } from '../utils/poPrintPool';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 const STORAGE_KEYS = {
   ITEMS: 'sppg_items_v1',
@@ -1480,7 +1481,24 @@ function getStored<T>(key: string, fallback: T): T {
   }
 }
 
+// Hanya simpan sesi/konfigurasi non-operasional ke localStorage.
+// Seluruh data operasional gudang (barang, stok, supplier, PO, transaksi, dll) disimpan langsung ke Supabase Cloud.
 function setStored<T>(key: string, data: T): void {
+  const OPERATIONAL_KEYS = new Set([
+    STORAGE_KEYS.ITEMS,
+    STORAGE_KEYS.SUPPLIERS,
+    STORAGE_KEYS.RECEIVINGS,
+    STORAGE_KEYS.TRANSACTIONS,
+    STORAGE_KEYS.OPNAMES,
+    STORAGE_KEYS.EQUIPMENT,
+    STORAGE_KEYS.NONFOOD_EXPENSES,
+    STORAGE_KEYS.MENU_ORDERS,
+    STORAGE_KEYS.WASTE_LOGS,
+    STORAGE_KEYS.PURCHASE_ORDERS,
+  ]);
+  if (OPERATIONAL_KEYS.has(key)) {
+    return;
+  }
   try {
     localStorage.setItem(key, JSON.stringify(data));
   } catch (e) {
@@ -1488,29 +1506,272 @@ function setStored<T>(key: string, data: T): void {
   }
 }
 
+// ==============================================================================
+// SUPABASE CLOUD MAPPING HELPERS
+// ==============================================================================
+
+export function mapItemToSupabase(item: ItemMaster) {
+  return {
+    id: item.id,
+    name: item.name,
+    item_type: item.itemType || 'FOOD_CARRYING_STOCK',
+    category: item.category,
+    subcategory: item.subcategory || null,
+    base_unit: item.baseUnit,
+    minimum_stock: Number(item.minimumStock) || 0,
+    reorder_point: Number(item.reorderPoint) || 0,
+    current_stock: Number(item.currentStock) || 0,
+    location_id: item.location || 'Gudang Utama',
+    expiry_tracking_enabled: Boolean(item.expiryTrackingEnabled),
+    is_active: item.isActive !== false,
+    notes: item.notes || null,
+    last_movement_date: item.lastMovementDate ? new Date(item.lastMovementDate).toISOString() : null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mapSupabaseToItem(row: any): ItemMaster {
+  return {
+    id: row.id,
+    name: row.name,
+    itemType: row.item_type || 'FOOD_CARRYING_STOCK',
+    category: row.category || 'Sembako',
+    subcategory: row.subcategory || undefined,
+    baseUnit: row.base_unit || 'Kg',
+    minimumStock: Number(row.minimum_stock) || 0,
+    reorderPoint: Number(row.reorder_point) || 0,
+    currentStock: Number(row.current_stock) || 0,
+    location: row.location_id || 'Gudang Utama',
+    expiryTrackingEnabled: Boolean(row.expiry_tracking_enabled),
+    isActive: Boolean(row.is_active),
+    notes: row.notes || undefined,
+    lastMovementDate: row.last_movement_date ? String(row.last_movement_date).slice(0, 10) : undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function mapSupplierToSupabase(s: Supplier) {
+  return {
+    id: s.id,
+    name: s.name,
+    contact_person: s.contactPerson || '',
+    phone: s.phone || '',
+    address: s.address || '',
+    supply_category: s.supplyCategory || 'Umum',
+    is_active: s.isActive !== false,
+    notes: s.notes || null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mapSupabaseToSupplier(row: any): Supplier {
+  return {
+    id: row.id,
+    name: row.name,
+    contactPerson: row.contact_person || '',
+    phone: row.phone || '',
+    address: row.address || '',
+    supplyCategory: row.supply_category || 'Umum',
+    isActive: Boolean(row.is_active),
+    notes: row.notes || undefined,
+  };
+}
+
+export function mapPoToSupabase(po: PurchaseOrderNota) {
+  return {
+    id: po.id,
+    po_number: po.poNumber,
+    date: po.date || new Date().toISOString().slice(0, 10),
+    delivery_date: po.deliveryDate || po.date,
+    supplier_name: po.supplierName,
+    status: po.status || 'DRAFT',
+    items: po.items || [],
+    subtotal: Number(po.subtotal) || 0,
+    shipping_cost: Number(po.shippingCost) || 0,
+    grand_total: Number(po.grandTotal) || 0,
+    payment_method: po.paymentMethod || 'Tempo',
+    notes: po.notes || null,
+    created_by: po.createdBy || null,
+    approved_by: po.approvedBy || null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mapSupabaseToPo(row: any): PurchaseOrderNota {
+  return {
+    id: row.id,
+    poNumber: row.po_number,
+    date: row.date,
+    deliveryDate: row.delivery_date || row.date,
+    supplierName: row.supplier_name,
+    status: row.status as any,
+    items: Array.isArray(row.items) ? row.items : [],
+    subtotal: Number(row.subtotal) || 0,
+    shippingCost: Number(row.shipping_cost) || 0,
+    grandTotal: Number(row.grand_total) || 0,
+    paymentMethod: row.payment_method || 'Tempo',
+    notes: row.notes || '',
+    createdBy: row.created_by || undefined,
+    approvedBy: row.approved_by || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function mapExpenseToSupabase(e: NonFoodExpense) {
+  return {
+    id: e.id,
+    date: e.date || new Date().toISOString().slice(0, 10),
+    category: e.category,
+    description: e.itemName || 'Pengeluaran Non-Food',
+    nominal: Number(e.totalCost || 0),
+    pic: e.pic || 'Akmal',
+    item_name: e.itemName,
+    quantity: typeof e.quantity === 'number' ? e.quantity : parseFloat(String(e.quantity)) || 1,
+    unit: e.unit || '',
+    unit_price: Number(e.unitPrice || 0),
+    total_cost: Number(e.totalCost || 0),
+    department: e.department || '',
+    time: e.time || '',
+    volunteer: e.volunteer || '',
+    notes: e.notes || null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mapSupabaseToExpense(row: any): NonFoodExpense {
+  return {
+    id: row.id,
+    date: row.date,
+    itemName: row.item_name || row.description || '',
+    category: row.category as any,
+    quantity: row.quantity !== null ? Number(row.quantity) : 1,
+    unit: row.unit || '',
+    unitPrice: Number(row.unit_price) || 0,
+    totalCost: Number(row.total_cost) || Number(row.nominal) || 0,
+    department: row.department as any,
+    time: row.time || '',
+    volunteer: row.volunteer || '',
+    pic: row.pic,
+    notes: row.notes || undefined,
+    createdAt: row.created_at,
+  };
+}
+
+export function mapReceivingToSupabase(doc: ReceivingDocument) {
+  return {
+    id: doc.id,
+    date: doc.date || new Date().toISOString().slice(0, 10),
+    arrival_time: doc.arrivalTime || '08:00',
+    supplier_id: doc.supplierId,
+    supplier_name: doc.supplierName || null,
+    delivery_note_no: doc.deliveryNoteNo || null,
+    receiver_id: doc.receiverId || 'USR-003',
+    receiver_name: doc.receiverName || 'Akmal',
+    receiver_role: doc.receiverRole || 'ADMIN',
+    status: doc.status || 'VERIFIED_POSTED',
+    notes: doc.notes || null,
+    supplier_signature: doc.supplierSignature || null,
+    receiver_signature: doc.receiverSignature || null,
+    documentation_photos: doc.documentationPhotos || null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mapLineToSupabase(line: any, docId: string) {
+  return {
+    id: line.id || `GRL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    document_id: docId,
+    item_id: line.itemId,
+    item_name: line.itemName,
+    category: line.category,
+    quantity: Number(line.quantity) || 1,
+    unit: line.unit,
+    condition_note: line.conditionNote || null,
+    batch_number: line.batchNumber || null,
+    expiry_date: line.expiryDate || null,
+  };
+}
+
+export function mapTxToSupabase(tx: InventoryTransaction) {
+  return {
+    id: tx.id,
+    timestamp: tx.timestamp ? new Date(tx.timestamp).toISOString() : new Date().toISOString(),
+    item_id: tx.itemId,
+    item_name: tx.itemName,
+    item_type: tx.itemType,
+    category: tx.category,
+    location_id: tx.location || 'Gudang Utama',
+    quantity: Number(tx.quantity) || 0,
+    unit: tx.unit,
+    transaction_type: tx.transactionType,
+    reference_document: tx.referenceDocument,
+    user_id: tx.userId || 'USR-003',
+    user_name: tx.userName || 'Akmal',
+    user_role: tx.userRole || 'ADMIN',
+    balance_after: Number(tx.balanceAfter) || 0,
+    notes: tx.notes || null,
+  };
+}
+
+export function purgeLocalStorageOperationalData(): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  const OPERATIONAL_STORAGE_KEYS = [
+    STORAGE_KEYS.ITEMS,
+    STORAGE_KEYS.SUPPLIERS,
+    STORAGE_KEYS.RECEIVINGS,
+    STORAGE_KEYS.TRANSACTIONS,
+    STORAGE_KEYS.OPNAMES,
+    STORAGE_KEYS.EQUIPMENT,
+    STORAGE_KEYS.AUDIT_LOGS,
+    STORAGE_KEYS.NONFOOD_EXPENSES,
+    STORAGE_KEYS.PURCHASE_ORDERS,
+    STORAGE_KEYS.MENU_ORDERS,
+    STORAGE_KEYS.WASTE_LOGS,
+    STORAGE_KEYS.BENEFICIARIES,
+    'sppg_master_items_cleared_v2',
+    'sppg_transactions_cleared_v1',
+    'sppg_clean_real_suppliers_v3',
+    'sppg_auto_clean_transactions_20261001',
+    'sppg_items',
+    'sppg_receivings',
+    'sppg_transactions',
+    'sppg_suppliers',
+  ];
+  OPERATIONAL_STORAGE_KEYS.forEach(k => {
+    try {
+      localStorage.removeItem(k);
+    } catch {}
+  });
+}
+
 class WarehouseDatabase {
-  private items: ItemMaster[];
-  private suppliers: Supplier[];
-  private receivings: ReceivingDocument[];
-  private transactions: InventoryTransaction[];
-  private opnames: StockOpnameSession[];
-  private equipment: EquipmentItem[];
-  private auditLogs: AuditLog[];
-  private nonFoodExpenses: NonFoodExpense[];
-  private menuOrders: MenuOrder[];
-  private wasteLogs: WasteLog[];
-  private todos: DailyTodoItem[];
-  private employees: Employee[];
-  private attendanceLogs: EmployeeAttendance[];
-  private users: User[];
-  private purchaseOrders: PurchaseOrderNota[];
-  private schoolBeneficiaries: SchoolBeneficiaryAllocation[];
+  private items: ItemMaster[] = [];
+  private suppliers: Supplier[] = [];
+  private receivings: ReceivingDocument[] = [];
+  private transactions: InventoryTransaction[] = [];
+  private opnames: StockOpnameSession[] = [];
+  private equipment: EquipmentItem[] = [];
+  private auditLogs: AuditLog[] = [];
+  private nonFoodExpenses: NonFoodExpense[] = [];
+  private menuOrders: MenuOrder[] = [];
+  private wasteLogs: WasteLog[] = [];
+  private todos: DailyTodoItem[] = [];
+  private employees: Employee[] = [];
+  private attendanceLogs: EmployeeAttendance[] = [];
+  private users: User[] = [];
+  private purchaseOrders: PurchaseOrderNota[] = [];
+  private schoolBeneficiaries: SchoolBeneficiaryAllocation[] = [];
+  private isCloudInitialized = false;
+  private realtimeChannel: any = null;
 
   constructor() {
-    const isTransactionsCleared = localStorage.getItem('sppg_transactions_cleared_v1') === 'true';
+    // 1. Bersihkan seluruh data operasional dari localStorage sesuai instruksi
+    purgeLocalStorageOperationalData();
 
+    // 2. Akun & Otentikasi (tetap dipertahankan untuk login lokal)
     this.users = getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
-    // Ensure all 5 standard SPPG operational accounts exist and are up to date
     INITIAL_USERS.forEach(initUser => {
       const idx = this.users.findIndex(u => u.id === initUser.id || u.email.toLowerCase() === initUser.email.toLowerCase());
       if (idx >= 0) {
@@ -1524,7 +1785,6 @@ class WarehouseDatabase {
         this.users.push(initUser);
       }
     });
-
     setStored(STORAGE_KEYS.USERS, this.users);
 
     const passwords = getStored<Record<string, string>>('sppg_user_passwords_v1', {});
@@ -1545,188 +1805,313 @@ class WarehouseDatabase {
       localStorage.setItem('sppg_active_user_role', 'ADMIN');
     }
 
-    const isMasterCleared = localStorage.getItem('sppg_master_items_cleared_v2') === 'true';
-    if (!isMasterCleared) {
-      localStorage.setItem('sppg_master_items_cleared_v2', 'true');
-      this.items = [];
-      setStored(STORAGE_KEYS.ITEMS, []);
-    } else {
-      this.items = getStored<ItemMaster[]>(STORAGE_KEYS.ITEMS, []);
-    }
-    this.suppliers = getStored<Supplier[]>(STORAGE_KEYS.SUPPLIERS, INITIAL_SUPPLIERS);
-    this.cleanAndSyncRealSuppliers();
-    this.receivings = getStored<ReceivingDocument[]>(STORAGE_KEYS.RECEIVINGS, isTransactionsCleared ? [] : INITIAL_RECEIVINGS);
-    
-    // Auto-migrate delivery order receiving signatures and receiver names to Akmal (Admin Gudang)
-    let receivingsUpdated = false;
-    this.receivings = this.receivings.map(r => {
-      if (
-        r.receiverName === 'Ahmad Fauzi' ||
-        r.receiverName === 'Andi Pratama' ||
-        r.receiverName === 'Siti Rahma' ||
-        r.receiverRole === 'ASLAP' ||
-        (r.receiverSignature && !r.receiverSignature.includes('Admin'))
-      ) {
-        receivingsUpdated = true;
-        return {
-          ...r,
-          receiverId: 'USR-003',
-          receiverName: 'Akmal',
-          receiverRole: 'ADMIN',
-          receiverSignature: 'VERIFIED: Akmal (Admin Gudang)',
-        };
-      }
-      return r;
-    });
-    if (receivingsUpdated) {
-      setStored(STORAGE_KEYS.RECEIVINGS, this.receivings);
+    // 3. Fallback in-memory arrays sebelum data live dari Supabase Cloud selesai dimuat
+    this.items = [];
+    this.suppliers = [...INITIAL_SUPPLIERS];
+    this.receivings = [];
+    this.transactions = [];
+    this.opnames = [];
+    this.equipment = [...INITIAL_EQUIPMENT];
+    this.auditLogs = [];
+    this.nonFoodExpenses = [];
+    this.purchaseOrders = [];
+    this.menuOrders = [];
+    this.wasteLogs = [];
+    this.todos = [...INITIAL_TODOS];
+    this.employees = [...REAL_EMPLOYEES];
+    this.attendanceLogs = [...REAL_ATTENDANCE_LOGS];
+    this.schoolBeneficiaries = [...DEFAULT_SCHOOL_BENEFICIARIES];
+
+    // 4. Inisialisasi Cloud Supabase & Realtime Subscription
+    this.initCloudAndRealtime();
+  }
+
+  private async initCloudAndRealtime(): Promise<void> {
+    if (this.isCloudInitialized) return;
+    this.isCloudInitialized = true;
+
+    if (!isSupabaseConfigured()) {
+      console.warn('Supabase credentials belum terkonfigurasi. Berjalan dalam in-memory mode.');
+      return;
     }
 
-    this.transactions = getStored<InventoryTransaction[]>(STORAGE_KEYS.TRANSACTIONS, isTransactionsCleared ? [] : INITIAL_TRANSACTIONS);
-    
-    // Auto-migrate transactions recorded by Akmal to ADMIN role
-    let txUpdated = false;
-    this.transactions = this.transactions.map(tx => {
-      if (tx.userName === 'Akmal' && tx.userRole !== 'ADMIN') {
-        txUpdated = true;
-        return {
-          ...tx,
-          userId: 'USR-003',
-          userRole: 'ADMIN',
-        };
-      }
-      return tx;
-    });
-    if (txUpdated) {
-      setStored(STORAGE_KEYS.TRANSACTIONS, this.transactions);
-    }
+    await this.loadFromSupabase();
+    this.initRealtimeSubscriptions();
+  }
 
-    // Ensure rich default consumption transactions are present only if not deliberately cleared
-    if (!isTransactionsCleared) {
-      const hasSembakoConsumption = this.transactions.some(
-        t => t.transactionType === 'ISSUE_CONSUMPTION' && (t.category === 'Sembako' || t.itemName.toLowerCase().includes('beras'))
-      );
-      if (!hasSembakoConsumption && this.transactions.length > 0) {
-        const extraTxs = INITIAL_TRANSACTIONS.filter(t => t.id > 'TX-2026-0004');
-        this.transactions = [...this.transactions, ...extraTxs];
-        setStored(STORAGE_KEYS.TRANSACTIONS, this.transactions);
+  public async loadFromSupabase(): Promise<void> {
+    try {
+      // 1. Master Barang
+      const { data: dbItems, error: itemsErr } = await supabase
+        .from('item_master')
+        .select('*')
+        .order('name', { ascending: true });
+      if (!itemsErr && dbItems) {
+        this.items = dbItems.map(mapSupabaseToItem);
       }
-    }
 
-    this.opnames = getStored<StockOpnameSession[]>(STORAGE_KEYS.OPNAMES, isTransactionsCleared ? [] : INITIAL_OPNAMES);
-    this.equipment = getStored<EquipmentItem[]>(STORAGE_KEYS.EQUIPMENT, INITIAL_EQUIPMENT);
-    this.auditLogs = getStored<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS);
-    this.nonFoodExpenses = getStored<NonFoodExpense[]>(STORAGE_KEYS.NONFOOD_EXPENSES, isTransactionsCleared ? [] : INITIAL_NONFOOD_EXPENSES);
-    
-    // Auto-migrate non-food expenses / daily shopping PIC to Akmal
-    let nonFoodUpdated = false;
-    this.nonFoodExpenses = this.nonFoodExpenses.map(exp => {
-      if (exp.pic === 'Ahmad Fauzi' || exp.pic === 'Andi Pratama' || exp.recordedBy === 'Ahmad Fauzi' || exp.recordedBy === 'Andi Pratama') {
-        nonFoodUpdated = true;
-        return {
-          ...exp,
-          pic: 'Akmal',
-          recordedBy: 'Akmal',
-        };
+      // 2. Master Rekanan Supplier
+      const { data: dbSuppliers, error: supErr } = await supabase
+        .from('suppliers')
+        .select('*')
+        .order('id', { ascending: true });
+      if (!supErr && dbSuppliers && dbSuppliers.length > 0) {
+        this.suppliers = dbSuppliers.map(mapSupabaseToSupplier);
       }
-      return exp;
-    });
-    if (nonFoodUpdated) {
-      setStored(STORAGE_KEYS.NONFOOD_EXPENSES, this.nonFoodExpenses);
-    }
 
-    this.purchaseOrders = getStored<PurchaseOrderNota[]>(STORAGE_KEYS.PURCHASE_ORDERS, isTransactionsCleared ? [] : INITIAL_PURCHASE_ORDERS);
-    
-    // Auto-migrate legacy PO numbers and ensure Ka SPPG is Rizky
-    let poNeedsMigration = false;
-    this.purchaseOrders = this.purchaseOrders.map((po, idx) => {
-      let updatedPo = { ...po };
-      if (!updatedPo.poNumber || updatedPo.poNumber.startsWith('PO/SPPG-JT/') || !updatedPo.poNumber.includes('NP/SPPG')) {
-        poNeedsMigration = true;
-        const seq = 134 + idx;
-        const roman = getRomanMonth(updatedPo.date || '2026-09-28');
-        const yr = getYearFromDate(updatedPo.date || '2026-09-28');
-        updatedPo.poNumber = `NO. NP/SPPG/${seq}/${roman}/${yr}`;
+      // 3. Nota Pesanan / Purchase Orders
+      const { data: dbPos, error: poErr } = await supabase
+        .from('purchase_orders')
+        .select('*')
+        .order('date', { ascending: false });
+      if (!poErr && dbPos) {
+        this.purchaseOrders = dbPos.map(mapSupabaseToPo);
       }
-      if (!updatedPo.approvedBy || updatedPo.approvedBy.includes('Siti Rahma')) {
-        poNeedsMigration = true;
-        updatedPo.approvedBy = 'Rizky Iman Ramdhan, S.Pd';
+
+      // 4. Pengeluaran Belanja / Non-Food Expenses
+      const { data: dbExpenses, error: expErr } = await supabase
+        .from('non_food_expenses')
+        .select('*')
+        .order('date', { ascending: false });
+      if (!expErr && dbExpenses) {
+        this.nonFoodExpenses = dbExpenses.map(mapSupabaseToExpense);
       }
-      return updatedPo;
-    });
-    if (poNeedsMigration) {
-      setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
-    }
 
-    this.menuOrders = getStored<MenuOrder[]>(STORAGE_KEYS.MENU_ORDERS, isTransactionsCleared ? [] : INITIAL_MENU_ORDERS);
-    if (!isTransactionsCleared && (!this.menuOrders.some(m => m.id === 'ORD-2026-006') || (this.menuOrders.find(m => m.id === 'ORD-2026-005')?.poArrivalItems?.length || 0) < 20)) {
-      this.menuOrders = INITIAL_MENU_ORDERS;
-      setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
-    }
-    
-    this.wasteLogs = getStored<WasteLog[]>(STORAGE_KEYS.WASTE_LOGS, isTransactionsCleared ? [] : INITIAL_WASTE_LOGS);
-    if (!isTransactionsCleared && !this.wasteLogs.some(w => w.id === 'WST-025')) {
-      const existingIds = new Set(this.wasteLogs.map(w => w.id));
-      const missing = INITIAL_WASTE_LOGS.filter(w => !existingIds.has(w.id));
-      if (missing.length > 0) {
-        this.wasteLogs = [...this.wasteLogs, ...missing];
-        setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
+      // 5. Dokumen Penerimaan Barang (Receiving Documents) & Detail Baris
+      const { data: dbReceivings, error: recErr } = await supabase
+        .from('receiving_documents')
+        .select('*, receiving_lines(*)')
+        .order('date', { ascending: false });
+      if (!recErr && dbReceivings) {
+        this.receivings = dbReceivings.map((row: any) => ({
+          id: row.id,
+          date: row.date,
+          arrivalTime: row.arrival_time,
+          supplierId: row.supplier_id,
+          supplierName: row.supplier_name || '',
+          deliveryNoteNo: row.delivery_note_no || '',
+          receiverId: row.receiver_id || 'USR-003',
+          receiverName: row.receiver_name || 'Akmal',
+          receiverRole: row.receiver_role || 'ADMIN',
+          status: row.status || 'VERIFIED_POSTED',
+          notes: row.notes || undefined,
+          supplierSignature: row.supplier_signature || undefined,
+          receiverSignature: row.receiver_signature || undefined,
+          documentationPhotos: row.documentation_photos || undefined,
+          createdAt: row.created_at,
+          lines: Array.isArray(row.receiving_lines)
+            ? row.receiving_lines.map((l: any) => ({
+                id: l.id,
+                itemId: l.item_id,
+                itemName: l.item_name,
+                category: l.category,
+                quantity: Number(l.quantity) || 1,
+                unit: l.unit,
+                conditionNote: l.condition_note || undefined,
+                batchNumber: l.batch_number || undefined,
+                expiryDate: l.expiry_date || undefined,
+              }))
+            : [],
+        }));
       }
-    }
 
-    // Auto-trigger clean transactions if requested for fresh testing
-    const autoCleanKey = 'sppg_auto_clean_transactions_20261001';
-    if (localStorage.getItem(autoCleanKey) !== 'done') {
-      this.clearTransactionsOnly();
-      localStorage.setItem(autoCleanKey, 'done');
-    }
-    this.todos = getStored<DailyTodoItem[]>(STORAGE_KEYS.TODOS, INITIAL_TODOS);
-    let todosUpdated = false;
-    this.todos = this.todos.map(t => {
-      const initMatch = INITIAL_TODOS.find(it => it.id === t.id);
-      let targetTime = t.targetTime || initMatch?.targetTime || (t.session === 'Pagi' ? '07:00' : t.session === 'Siang' ? '11:00' : t.session === 'Sore' ? '15:00' : '08:00');
-      let assignedRole = t.assignedRole || initMatch?.assignedRole;
-      let assignedUserName = t.assignedUserName || initMatch?.assignedUserName;
-      let assignedUserId = t.assignedUserId || initMatch?.assignedUserId;
-      let completedBy = t.completedBy;
+      // 6. Buku Kas Masuk/Keluar Logistik (Inventory Transactions)
+      const { data: dbTxs, error: txErr } = await supabase
+        .from('inventory_transactions')
+        .select('*')
+        .order('timestamp', { ascending: false })
+        .limit(500);
+      if (!txErr && dbTxs) {
+        this.transactions = dbTxs.map((row: any) => ({
+          id: row.id,
+          timestamp: row.timestamp ? new Date(row.timestamp).toISOString().slice(0, 16).replace('T', ' ') : '',
+          itemId: row.item_id,
+          itemName: row.item_name,
+          itemType: row.item_type,
+          category: row.category,
+          location: row.location_id,
+          quantity: Number(row.quantity),
+          unit: row.unit,
+          transactionType: row.transaction_type,
+          referenceDocument: row.reference_document,
+          userId: row.user_id,
+          userName: row.user_name,
+          userRole: row.user_role,
+          balanceAfter: Number(row.balance_after),
+          notes: row.notes || undefined,
+        }));
+      }
 
-      // ASLAP tasks belong to Andi Pratama, NOT Akmal
-      if (assignedRole === 'ASLAP' || initMatch?.assignedRole === 'ASLAP') {
-        assignedUserName = 'Andi Pratama';
-        assignedUserId = 'USR-004';
-        if (completedBy && completedBy.includes('Akmal (ASLAP)')) {
-          completedBy = completedBy.replace('Akmal (ASLAP)', 'Andi Pratama (ASLAP)');
+      // 7. Inventaris Alat & Perlengkapan
+      const { data: dbEq, error: eqErr } = await supabase
+        .from('equipment_items')
+        .select('*');
+      if (!eqErr && dbEq && dbEq.length > 0) {
+        this.equipment = dbEq.map((e: any) => ({
+          id: e.id,
+          name: e.name,
+          category: e.category,
+          condition: e.condition,
+          status: e.status,
+          location: e.location_id,
+          lastInspectedDate: e.last_inspected_date || new Date().toISOString().slice(0, 10),
+          notes: e.notes || undefined,
+        }));
+      }
+
+      // 8. Order Menu SPPG
+      const { data: dbMenus, error: menuErr } = await supabase
+        .from('menu_orders')
+        .select('*')
+        .order('date', { ascending: false });
+      if (!menuErr && dbMenus && dbMenus.length > 0) {
+        this.menuOrders = dbMenus.map((m: any) => ({
+          id: m.id,
+          date: m.date,
+          day: m.day,
+          menuName: m.menu_name,
+          targetPortions: Number(m.target_portions) || 0,
+          status: m.status || 'DRAFT',
+          items: Array.isArray(m.items) ? m.items : [],
+          poArrivalItems: Array.isArray(m.po_arrival_items) ? m.po_arrival_items : [],
+          totalEstimatedCost: Number(m.total_estimated_cost) || 0,
+          notes: m.notes || undefined,
+        }));
+      }
+
+      // Beritahu seluruh komponen bahwa data cloud telah siap
+      this.notifyAllChanged();
+    } catch (err) {
+      console.error('Gagal mengambil data operasional dari Supabase Cloud:', err);
+    }
+  }
+
+  private initRealtimeSubscriptions(): void {
+    if (this.realtimeChannel || !isSupabaseConfigured()) return;
+
+    this.realtimeChannel = supabase
+      .channel('sppg_warehouse_realtime_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'item_master' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const newItem = mapSupabaseToItem(payload.new);
+          if (!this.items.some(i => i.id === newItem.id)) {
+            this.items.push(newItem);
+          }
+        } else if (payload.eventType === 'UPDATE') {
+          const updatedItem = mapSupabaseToItem(payload.new);
+          const idx = this.items.findIndex(i => i.id === updatedItem.id);
+          if (idx >= 0) this.items[idx] = updatedItem;
+          else this.items.push(updatedItem);
+        } else if (payload.eventType === 'DELETE') {
+          const delId = payload.old.id;
+          this.items = this.items.filter(i => i.id !== delId);
         }
-        todosUpdated = true;
-      }
-
-      // ADMIN tasks belong to Akmal (USR-003)
-      if (assignedRole === 'ADMIN' || initMatch?.assignedRole === 'ADMIN') {
-        if (assignedUserName === 'Hendra Wijaya') {
-          assignedUserName = 'Akmal';
-          assignedUserId = 'USR-003';
-          todosUpdated = true;
+        this.notifyAllChanged();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, (payload) => {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          const sup = mapSupabaseToSupplier(payload.new);
+          const idx = this.suppliers.findIndex(s => s.id === sup.id);
+          if (idx >= 0) this.suppliers[idx] = sup;
+          else this.suppliers.push(sup);
+        } else if (payload.eventType === 'DELETE') {
+          this.suppliers = this.suppliers.filter(s => s.id !== payload.old.id);
         }
-      }
-
-      return {
-        ...t,
-        targetTime,
-        assignedRole,
-        assignedUserId,
-        assignedUserName,
-        completedBy,
-      };
-    });
-    if (todosUpdated || this.todos.some(t => !t.targetTime)) {
-      setStored(STORAGE_KEYS.TODOS, this.todos);
-    }
-    this.employees = getStored<Employee[]>(STORAGE_KEYS.EMPLOYEES, REAL_EMPLOYEES);
-    this.attendanceLogs = getStored<EmployeeAttendance[]>(STORAGE_KEYS.ATTENDANCE, REAL_ATTENDANCE_LOGS);
-    this.schoolBeneficiaries = getStored<SchoolBeneficiaryAllocation[]>(
-      STORAGE_KEYS.BENEFICIARIES,
-      DEFAULT_SCHOOL_BENEFICIARIES
-    );
+        this.notifyAllChanged();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_orders' }, (payload) => {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          const po = mapSupabaseToPo(payload.new);
+          const idx = this.purchaseOrders.findIndex(p => p.id === po.id);
+          if (idx >= 0) this.purchaseOrders[idx] = po;
+          else this.purchaseOrders.unshift(po);
+        } else if (payload.eventType === 'DELETE') {
+          this.purchaseOrders = this.purchaseOrders.filter(p => p.id !== payload.old.id);
+        }
+        this.notifyAllChanged();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'non_food_expenses' }, (payload) => {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          const exp = mapSupabaseToExpense(payload.new);
+          const idx = this.nonFoodExpenses.findIndex(e => e.id === exp.id);
+          if (idx >= 0) this.nonFoodExpenses[idx] = exp;
+          else this.nonFoodExpenses.unshift(exp);
+        } else if (payload.eventType === 'DELETE') {
+          this.nonFoodExpenses = this.nonFoodExpenses.filter(e => e.id !== payload.old.id);
+        }
+        this.notifyAllChanged();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'receiving_documents' }, async () => {
+        const { data: dbRecs } = await supabase
+          .from('receiving_documents')
+          .select('*, receiving_lines(*)')
+          .order('date', { ascending: false });
+        if (dbRecs) {
+          this.receivings = dbRecs.map((row: any) => ({
+            id: row.id,
+            date: row.date,
+            arrivalTime: row.arrival_time,
+            supplierId: row.supplier_id,
+            supplierName: row.supplier_name || '',
+            deliveryNoteNo: row.delivery_note_no || '',
+            receiverId: row.receiver_id || 'USR-003',
+            receiverName: row.receiver_name || 'Akmal',
+            receiverRole: row.receiver_role || 'ADMIN',
+            status: row.status || 'VERIFIED_POSTED',
+            notes: row.notes || undefined,
+            supplierSignature: row.supplier_signature || undefined,
+            receiverSignature: row.receiver_signature || undefined,
+            documentationPhotos: row.documentation_photos || undefined,
+            createdAt: row.created_at,
+            lines: Array.isArray(row.receiving_lines)
+              ? row.receiving_lines.map((l: any) => ({
+                  id: l.id,
+                  itemId: l.item_id,
+                  itemName: l.item_name,
+                  category: l.category,
+                  quantity: Number(l.quantity) || 1,
+                  unit: l.unit,
+                  conditionNote: l.condition_note || undefined,
+                  batchNumber: l.batch_number || undefined,
+                  expiryDate: l.expiry_date || undefined,
+                }))
+              : [],
+          }));
+          this.notifyAllChanged();
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_transactions' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const row = payload.new;
+          const newTx: InventoryTransaction = {
+            id: row.id,
+            timestamp: row.timestamp ? new Date(row.timestamp).toISOString().slice(0, 16).replace('T', ' ') : '',
+            itemId: row.item_id,
+            itemName: row.item_name,
+            itemType: row.item_type,
+            category: row.category,
+            location: row.location_id,
+            quantity: Number(row.quantity),
+            unit: row.unit,
+            transactionType: row.transaction_type,
+            referenceDocument: row.reference_document,
+            userId: row.user_id,
+            userName: row.user_name,
+            userRole: row.user_role,
+            balanceAfter: Number(row.balance_after),
+            notes: row.notes || undefined,
+          };
+          if (!this.transactions.some(t => t.id === newTx.id)) {
+            this.transactions.unshift(newTx);
+          }
+          this.notifyAllChanged();
+        }
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Supabase Realtime] Berhasil terhubung ke realtime sinkronisasi data gudang.');
+        }
+      });
   }
 
   public getSchoolBeneficiaries(): SchoolBeneficiaryAllocation[] {
@@ -1845,10 +2230,16 @@ class WarehouseDatabase {
     setStored(STORAGE_KEYS.AUDIT_LOGS, this.auditLogs);
   }
 
-  public notifyItemsChanged(): void {
+  public notifyAllChanged(): void {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('sppg_storage_items_changed'));
+      window.dispatchEvent(new CustomEvent('sppg_warehouse_sync'));
+      window.dispatchEvent(new Event('storage'));
     }
+  }
+
+  public notifyItemsChanged(): void {
+    this.notifyAllChanged();
   }
 
   // --- ATOMIC RECEIVING POSTING ---
@@ -1938,10 +2329,33 @@ class WarehouseDatabase {
 
     this.receivings.unshift(savedDoc);
 
-    // Save states
-    setStored(STORAGE_KEYS.ITEMS, this.items);
-    setStored(STORAGE_KEYS.RECEIVINGS, this.receivings);
-    setStored(STORAGE_KEYS.TRANSACTIONS, this.transactions);
+    // Save directly to Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('receiving_documents').insert(mapReceivingToSupabase(savedDoc)).then(({ error }) => {
+        if (error) console.error('Supabase receiving doc insert error:', error);
+      });
+      supabase.from('receiving_lines').insert(newLines.map(l => mapLineToSupabase(l, savedDoc.id))).then(({ error }) => {
+        if (error) console.error('Supabase receiving lines insert error:', error);
+      });
+      const newTxs = this.transactions.filter(t => t.referenceDocument === docId);
+      if (newTxs.length > 0) {
+        supabase.from('inventory_transactions').insert(newTxs.map(mapTxToSupabase)).then(({ error }) => {
+          if (error) console.error('Supabase receiving transactions error:', error);
+        });
+      }
+      for (const line of newLines) {
+        const item = this.getItemById(line.itemId);
+        if (item) {
+          supabase.from('item_master').update({
+            current_stock: item.currentStock,
+            last_movement_date: item.lastMovementDate ? new Date(item.lastMovementDate).toISOString() : new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq('id', item.id).then();
+        }
+      }
+    }
+
+    this.notifyAllChanged();
 
     this.logAudit(
       user,
@@ -2009,8 +2423,19 @@ class WarehouseDatabase {
 
     this.transactions.unshift(tx);
 
-    setStored(STORAGE_KEYS.ITEMS, this.items);
-    setStored(STORAGE_KEYS.TRANSACTIONS, this.transactions);
+    // Save directly to Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('inventory_transactions').insert(mapTxToSupabase(tx)).then(({ error }) => {
+        if (error) console.error('Supabase consumption transaction error:', error);
+      });
+      supabase.from('item_master').update({
+        current_stock: newStock,
+        last_movement_date: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('id', item.id).then();
+    }
+
+    this.notifyAllChanged();
 
     this.logAudit(
       user,
@@ -2189,9 +2614,27 @@ class WarehouseDatabase {
 
     this.opnames[opIndex] = updatedSession;
 
-    setStored(STORAGE_KEYS.ITEMS, this.items);
-    setStored(STORAGE_KEYS.OPNAMES, this.opnames);
-    setStored(STORAGE_KEYS.TRANSACTIONS, this.transactions);
+    // Save directly to Supabase Cloud
+    if (isSupabaseConfigured()) {
+      for (const opItem of session.items) {
+        if (opItem.variance !== 0) {
+          const item = this.getItemById(opItem.itemId);
+          if (item) {
+            supabase.from('item_master').update({
+              current_stock: item.currentStock,
+              last_movement_date: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }).eq('id', item.id).then();
+          }
+        }
+      }
+      const newTxs = this.transactions.filter(t => t.referenceDocument === session.id);
+      if (newTxs.length > 0) {
+        supabase.from('inventory_transactions').insert(newTxs.map(mapTxToSupabase)).then();
+      }
+    }
+
+    this.notifyAllChanged();
 
     this.logAudit(
       approver,
@@ -2222,7 +2665,7 @@ class WarehouseDatabase {
       this.logAudit(user, 'ITEM_MASTER_CREATED', 'ITEM_MASTER', item.id, `Menambahkan item baru: ${item.name} (${item.category}).`);
 
       if (item.currentStock > 0) {
-        this.transactions.push({
+        const initTx: InventoryTransaction = {
           id: `TX-INIT-${Date.now().toString().slice(-6)}`,
           timestamp: new Date().toISOString(),
           itemId: item.id,
@@ -2239,8 +2682,11 @@ class WarehouseDatabase {
           userRole: user.role,
           notes: 'Saldo stok awal saat registrasi item custom di Master Barang',
           balanceAfter: item.currentStock,
-        });
-        setStored(STORAGE_KEYS.TRANSACTIONS, this.transactions);
+        };
+        this.transactions.unshift(initTx);
+        if (isSupabaseConfigured()) {
+          supabase.from('inventory_transactions').insert(mapTxToSupabase(initTx)).then();
+        }
       }
     } else {
       const idx = this.items.findIndex(i => i.id === item.id);
@@ -2249,8 +2695,14 @@ class WarehouseDatabase {
       this.logAudit(user, 'ITEM_MASTER_UPDATED', 'ITEM_MASTER', item.id, `Memperbarui data item: ${item.name}.`);
     }
 
-    setStored(STORAGE_KEYS.ITEMS, this.items);
-    this.notifyItemsChanged();
+    // Direct save to Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('item_master').upsert(mapItemToSupabase(item)).then(({ error }) => {
+        if (error) console.error('Supabase item upsert error:', error);
+      });
+    }
+
+    this.notifyAllChanged();
     return item;
   }
 
@@ -2259,16 +2711,29 @@ class WarehouseDatabase {
     if (idx < 0) throw new Error('Item master tidak ditemukan.');
     const deletedItem = this.items[idx];
     this.items.splice(idx, 1);
-    setStored(STORAGE_KEYS.ITEMS, this.items);
-    this.notifyItemsChanged();
+
+    // Direct delete from Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('item_master').delete().eq('id', itemId).then(({ error }) => {
+        if (error) console.error('Supabase item delete error:', error);
+      });
+    }
+
+    this.notifyAllChanged();
     this.logAudit(user, 'ITEM_MASTER_DELETED', 'ITEM_MASTER', itemId, `Menghapus master item: ${deletedItem.name} (${deletedItem.id}).`);
   }
 
   public clearAllItems(user?: User): void {
-    localStorage.setItem('sppg_master_items_cleared_v2', 'true');
     this.items = [];
-    setStored(STORAGE_KEYS.ITEMS, []);
-    this.notifyItemsChanged();
+
+    // Direct delete all from Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('item_master').delete().neq('id', '___').then(({ error }) => {
+        if (error) console.error('Supabase clear items error:', error);
+      });
+    }
+
+    this.notifyAllChanged();
     this.logAudit(
       user || { id: 'USR-003', name: 'Akmal', email: 'akmal@sppg.id', role: 'ADMIN' },
       'ITEM_MASTER_DELETED',
@@ -2284,8 +2749,15 @@ class WarehouseDatabase {
     const item = this.items[idx];
     item.isActive = !item.isActive;
     item.updatedAt = new Date().toISOString();
-    setStored(STORAGE_KEYS.ITEMS, this.items);
-    this.notifyItemsChanged();
+
+    // Direct update to Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('item_master').update({ is_active: item.isActive, updated_at: item.updatedAt }).eq('id', itemId).then(({ error }) => {
+        if (error) console.error('Supabase toggle item error:', error);
+      });
+    }
+
+    this.notifyAllChanged();
     this.logAudit(user, 'ITEM_MASTER_UPDATED', 'ITEM_MASTER', itemId, `Mengubah status item ${item.name} menjadi ${item.isActive ? 'Aktif' : 'Nonaktif'}.`);
     return item;
   }
@@ -2325,8 +2797,14 @@ class WarehouseDatabase {
       saved.push(itemToSave);
     }
 
-    setStored(STORAGE_KEYS.ITEMS, this.items);
-    this.notifyItemsChanged();
+    // Direct batch upsert to Supabase Cloud
+    if (isSupabaseConfigured() && saved.length > 0) {
+      supabase.from('item_master').upsert(saved.map(mapItemToSupabase)).then(({ error }) => {
+        if (error) console.error('Supabase items batch upsert error:', error);
+      });
+    }
+
+    this.notifyAllChanged();
     this.logAudit(
       user,
       'ITEMS_BATCH_SAVED',
@@ -2408,8 +2886,6 @@ class WarehouseDatabase {
     });
 
     this.suppliers = cleaned;
-    setStored(STORAGE_KEYS.SUPPLIERS, this.suppliers);
-    localStorage.setItem(FLAG, '1');
   }
 
   public saveSupplier(supplier: Supplier, user: User, isNew: boolean): Supplier {
@@ -2431,7 +2907,14 @@ class WarehouseDatabase {
       this.logAudit(user, 'SUPPLIER_UPDATED', 'SUPPLIER', supplier.id, `Memperbarui data supplier: ${supplier.name}.`);
     }
 
-    setStored(STORAGE_KEYS.SUPPLIERS, this.suppliers);
+    // Direct save to Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('suppliers').upsert(mapSupplierToSupabase(supplier)).then(({ error }) => {
+        if (error) console.error('Supabase supplier upsert error:', error);
+      });
+    }
+
+    this.notifyAllChanged();
     return supplier;
   }
 
@@ -2440,7 +2923,15 @@ class WarehouseDatabase {
     if (idx < 0) throw new Error('Supplier tidak ditemukan.');
     const deletedName = this.suppliers[idx].name;
     this.suppliers.splice(idx, 1);
-    setStored(STORAGE_KEYS.SUPPLIERS, this.suppliers);
+
+    // Direct delete from Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('suppliers').delete().eq('id', supplierId).then(({ error }) => {
+        if (error) console.error('Supabase supplier delete error:', error);
+      });
+    }
+
+    this.notifyAllChanged();
     this.logAudit(user, 'SUPPLIER_DELETED', 'SUPPLIER', supplierId, `Menghapus data supplier: ${deletedName}.`);
   }
 
@@ -2496,7 +2987,21 @@ class WarehouseDatabase {
       this.logAudit(user, 'EQUIPMENT_UPDATED', 'EQUIPMENT', equipment.id, `Memperbarui data alat: ${equipment.name}.`);
     }
 
-    setStored(STORAGE_KEYS.EQUIPMENT, this.equipment);
+    // Direct save to Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('equipment_items').upsert({
+        id: equipment.id,
+        name: equipment.name,
+        category: equipment.category,
+        condition: equipment.condition,
+        status: equipment.status,
+        location_id: equipment.location,
+        last_inspected_date: equipment.lastInspectedDate,
+        notes: equipment.notes || null,
+        updated_at: new Date().toISOString(),
+      }).then();
+    }
+    this.notifyAllChanged();
     return equipment;
   }
 
@@ -2516,7 +3021,15 @@ class WarehouseDatabase {
       createdAt: new Date().toISOString(),
     };
     this.nonFoodExpenses.unshift(newExpense);
-    setStored(STORAGE_KEYS.NONFOOD_EXPENSES, this.nonFoodExpenses);
+
+    // Direct save to Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('non_food_expenses').upsert(mapExpenseToSupabase(newExpense)).then(({ error }) => {
+        if (error) console.error('Supabase expense upsert error:', error);
+      });
+    }
+
+    this.notifyAllChanged();
 
     this.logAudit(
       user,
@@ -2532,7 +3045,15 @@ class WarehouseDatabase {
     const idx = this.nonFoodExpenses.findIndex(e => e.id === id);
     if (idx < 0) return false;
     const deleted = this.nonFoodExpenses.splice(idx, 1)[0];
-    setStored(STORAGE_KEYS.NONFOOD_EXPENSES, this.nonFoodExpenses);
+
+    // Direct delete from Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('non_food_expenses').delete().eq('id', id).then(({ error }) => {
+        if (error) console.error('Supabase expense delete error:', error);
+      });
+    }
+
+    this.notifyAllChanged();
     this.logAudit(
       user,
       'NONFOOD_EXPENSE_DELETED',
@@ -2562,7 +3083,14 @@ class WarehouseDatabase {
       this.nonFoodExpenses.unshift(newExpense);
     }
 
-    setStored(STORAGE_KEYS.NONFOOD_EXPENSES, this.nonFoodExpenses);
+    // Direct batch upsert to Supabase Cloud
+    if (isSupabaseConfigured() && created.length > 0) {
+      supabase.from('non_food_expenses').upsert(created.map(mapExpenseToSupabase)).then(({ error }) => {
+        if (error) console.error('Supabase batch expenses upsert error:', error);
+      });
+    }
+
+    this.notifyAllChanged();
     this.logAudit(
       user,
       'NONFOOD_EXPENSES_BATCH_RECORDED',
@@ -2596,12 +3124,24 @@ class WarehouseDatabase {
 
   public savePurchaseOrder(order: PurchaseOrderNota, user?: User): PurchaseOrderNota {
     const idx = this.purchaseOrders.findIndex(p => p.id === order.id);
+    const updatedPoData = idx >= 0
+      ? { ...order, updatedAt: new Date().toISOString() }
+      : { ...order, createdAt: order.createdAt || new Date().toISOString() };
+
     if (idx >= 0) {
-      this.purchaseOrders[idx] = { ...order, updatedAt: new Date().toISOString() };
+      this.purchaseOrders[idx] = updatedPoData;
     } else {
-      this.purchaseOrders.unshift({ ...order, createdAt: order.createdAt || new Date().toISOString() });
+      this.purchaseOrders.unshift(updatedPoData);
     }
-    setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
+
+    // Direct save to Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('purchase_orders').upsert(mapPoToSupabase(updatedPoData)).then(({ error }) => {
+        if (error) console.error('Supabase PO upsert error:', error);
+      });
+    }
+
+    this.notifyAllChanged();
 
     if (user) {
       this.logAudit(
@@ -2612,14 +3152,20 @@ class WarehouseDatabase {
         `Nota Pesanan / PO ${order.poNumber} untuk ${order.supplierName} total Rp ${order.grandTotal.toLocaleString('id-ID')}`
       );
     }
-    return order;
+    return updatedPoData;
   }
 
   public deletePurchaseOrder(id: string, user?: User): boolean {
     const idx = this.purchaseOrders.findIndex(p => p.id === id);
     if (idx < 0) return false;
     const deleted = this.purchaseOrders.splice(idx, 1)[0];
-    setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
+
+    // Direct delete from Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('purchase_orders').delete().eq('id', id).then(({ error }) => {
+        if (error) console.error('Supabase PO delete error:', error);
+      });
+    }
 
     try {
       removeFromPrintPool(deleted.id);
@@ -2634,9 +3180,10 @@ class WarehouseDatabase {
         mOrder.poArrivalItems = mOrder.poArrivalItems.filter(
           it => !poItemNames.includes(it.itemName.trim().toLowerCase())
         );
-        setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
       }
     }
+
+    this.notifyAllChanged();
 
     if (user) {
       this.logAudit(user, 'PO_DELETED', 'RECEIVING', id, `Menghapus Nota Pesanan ${deleted.poNumber}`);
@@ -2691,14 +3238,18 @@ class WarehouseDatabase {
     };
 
     this.receivings.unshift(receivingDoc);
-    setStored(STORAGE_KEYS.RECEIVINGS, this.receivings);
+
+    // Save receiving doc to Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('receiving_documents').insert(mapReceivingToSupabase(receivingDoc)).then();
+      supabase.from('receiving_lines').insert(receivingLines.map(l => mapLineToSupabase(l, receivingId))).then();
+    }
 
     // 2. Auto-update Inventory Stock & Transactions if selected
     if (metadata.autoUpdateStock !== false) {
       weighedItems.forEach(itemInput => {
         if (itemInput.actualQty <= 0) return;
 
-        // Check if item exists in this.items
         let targetItem = this.items.find(
           i => (itemInput.itemId && i.id === itemInput.itemId) ||
                i.name.trim().toLowerCase() === itemInput.name.trim().toLowerCase()
@@ -2706,7 +3257,6 @@ class WarehouseDatabase {
 
         let itemToUpdate: ItemMaster;
         if (!targetItem) {
-          // Auto create SKU in master items so stock is safely tracked
           const newSku = `ITM-${Date.now().toString().slice(-5)}-${Math.floor(Math.random() * 100)}`;
           itemToUpdate = {
             id: newSku,
@@ -2728,13 +3278,11 @@ class WarehouseDatabase {
           itemToUpdate = targetItem;
         }
 
-        // Increment stock
         const newStock = Math.round((itemToUpdate.currentStock + itemInput.actualQty) * 100) / 100;
         itemToUpdate.currentStock = newStock;
         itemToUpdate.updatedAt = nowIso;
         itemToUpdate.lastMovementDate = todayStr;
 
-        // Record Ledger Transaction
         const tx: InventoryTransaction = {
           id: `TX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`,
           timestamp: `${nowIso.slice(0, 10)} ${arrivalTime}`,
@@ -2754,13 +3302,15 @@ class WarehouseDatabase {
           balanceAfter: newStock,
         };
         this.transactions.unshift(tx);
-      });
 
-      setStored(STORAGE_KEYS.ITEMS, this.items);
-      setStored(STORAGE_KEYS.TRANSACTIONS, this.transactions);
+        if (isSupabaseConfigured()) {
+          supabase.from('item_master').upsert(mapItemToSupabase(itemToUpdate)).then();
+          supabase.from('inventory_transactions').insert(mapTxToSupabase(tx)).then();
+        }
+      });
     }
 
-    // 3. Auto-record to Non-Food / Food Expense Report (Laporan Pengeluaran)
+    // 3. Auto-record to Non-Food / Food Expense Report
     const expenseIds: string[] = [];
     if (metadata.autoRecordExpense !== false) {
       weighedItems.forEach((itemInput, idx) => {
@@ -2786,12 +3336,14 @@ class WarehouseDatabase {
         };
         expenseIds.push(expId);
         this.nonFoodExpenses.unshift(newExpense);
-      });
 
-      setStored(STORAGE_KEYS.NONFOOD_EXPENSES, this.nonFoodExpenses);
+        if (isSupabaseConfigured()) {
+          supabase.from('non_food_expenses').upsert(mapExpenseToSupabase(newExpense)).then();
+        }
+      });
     }
 
-    // 4. Update the Purchase Order itself: mark as SELESAI and store real weighed figures
+    // 4. Update the Purchase Order itself: mark as SELESAI
     const updatedPoItems: PurchaseOrderItem[] = weighedItems.map(w => ({
       id: w.poiId,
       name: w.name,
@@ -2818,7 +3370,10 @@ class WarehouseDatabase {
     };
 
     this.purchaseOrders[poIndex] = updatedPo;
-    setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
+
+    if (isSupabaseConfigured()) {
+      supabase.from('purchase_orders').upsert(mapPoToSupabase(updatedPo)).then();
+    }
 
     // 5. Sync back to Menu Orders poArrivalItems if applicable
     const targetMenuOrderId = po.relatedMenuOrderId;
@@ -2852,7 +3407,8 @@ class WarehouseDatabase {
         }
       }
     });
-    setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+
+    this.notifyAllChanged();
 
     // 6. Audit Trail
     this.logAudit(
@@ -2870,7 +3426,6 @@ class WarehouseDatabase {
       receivingId,
     };
   }
-
 
   // --- MENU ORDERS ---
   public getMenuOrders(): MenuOrder[] {
@@ -3345,8 +3900,6 @@ class WarehouseDatabase {
   // Clear all transaction data (Receiving, PO, Transactions, Non-Food Expenses, Stock Opname, Menu, Waste)
   // and set stock of all item master to 0, but preserve Users, Suppliers, and Master Item Catalog
   public clearTransactionsOnly(): void {
-    localStorage.setItem('sppg_transactions_cleared_v1', 'true');
-
     this.receivings = [];
     this.transactions = [];
     this.nonFoodExpenses = [];
@@ -3361,14 +3914,15 @@ class WarehouseDatabase {
       currentStock: 0,
     }));
 
-    setStored(STORAGE_KEYS.RECEIVINGS, []);
-    setStored(STORAGE_KEYS.TRANSACTIONS, []);
-    setStored(STORAGE_KEYS.NONFOOD_EXPENSES, []);
-    setStored(STORAGE_KEYS.PURCHASE_ORDERS, []);
-    setStored(STORAGE_KEYS.OPNAMES, []);
-    setStored(STORAGE_KEYS.MENU_ORDERS, []);
-    setStored(STORAGE_KEYS.WASTE_LOGS, []);
-    setStored(STORAGE_KEYS.ITEMS, this.items);
+    // Direct clear on Supabase Cloud
+    if (isSupabaseConfigured()) {
+      supabase.from('receiving_lines').delete().neq('id', '___').then();
+      supabase.from('receiving_documents').delete().neq('id', '___').then();
+      supabase.from('inventory_transactions').delete().neq('id', '___').then();
+      supabase.from('non_food_expenses').delete().neq('id', '___').then();
+      supabase.from('purchase_orders').delete().neq('id', '___').then();
+      supabase.from('item_master').update({ current_stock: 0, updated_at: new Date().toISOString() }).neq('id', '___').then();
+    }
 
     // Clear PO print pool and PO sequence counter so fresh testing starts cleanly at 134
     try {
@@ -3377,6 +3931,8 @@ class WarehouseDatabase {
     } catch (e) {
       console.warn('Could not clear PO pool / state:', e);
     }
+
+    this.notifyAllChanged();
 
     this.logAudit(
       { id: 'SYS-001', name: 'System Admin', email: 'admin@sppg.id', role: 'SUPERADMIN' },
