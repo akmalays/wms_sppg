@@ -238,89 +238,88 @@ export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData 
 
       {/* QUICK BATCH CONSUMPTION MODAL */}
       {isBatchModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6 border border-slate-200 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center">
-                  <Utensils className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">Pencatatan Masak Cepat Harian Dapur SPPG MLG TUMPANG JERU</h3>
-                  <p className="text-[11px] text-slate-500">
-                    Masukkan jumlah bahan yang telah diolah hari ini ({selectedDate}). Sistem langsung menghitung sisa.
-                  </p>
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Pencatatan Masak Cepat Harian Dapur
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Masukkan jumlah bahan yang telah diolah hari ini ({selectedDate}). Sistem langsung menghitung sisa.
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsBatchModalOpen(false)}
-                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
                 title="Tutup dialog"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handlePostBatchConsumption} className="mt-4 space-y-4">
-              <div className="border border-slate-200 rounded-lg overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
-                    <tr>
-                      <th className="py-2.5 px-3">Bahan Makanan</th>
-                      <th className="py-2.5 px-3 text-right">Tersedia</th>
-                      <th className="py-2.5 px-3 w-36">Jumlah Diolah Masak</th>
-                      <th className="py-2.5 px-3">Satuan</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {dailyData.map(item => {
-                      const totalAvailable = item.openingBalance + item.receivedToday;
-                      return (
-                        <tr key={item.itemId} className="hover:bg-slate-50">
-                          <td className="py-2.5 px-3">
-                            <div className="font-semibold text-slate-800">{item.itemName}</div>
-                            <div className="text-[10px] text-slate-400">{item.category}</div>
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono text-slate-600">
-                            {totalAvailable}
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <input
-                              type="number"
-                              min="0"
-                              max={totalAvailable}
-                              step="any"
-                              value={batchInputs[item.itemId] ?? ''}
-                              onChange={e =>
-                                setBatchInputs(prev => ({
-                                  ...prev,
-                                  [item.itemId]: parseFloat(e.target.value) || 0,
-                                }))
-                              }
-                              className="w-full text-xs font-mono font-bold rounded border border-slate-300 p-1.5 text-slate-900 focus:ring-1 focus:ring-sky-500"
-                              placeholder="0"
-                            />
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-500 font-medium">{item.unit}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+            <form onSubmit={handlePostBatchConsumption} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-3">Bahan Makanan</th>
+                        <th className="py-2.5 px-3 text-right">Tersedia</th>
+                        <th className="py-2.5 px-3 w-36">Jumlah Diolah Masak</th>
+                        <th className="py-2.5 px-3">Satuan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {dailyData.map(item => {
+                        const totalAvailable = item.openingBalance + item.receivedToday;
+                        return (
+                          <tr key={item.itemId} className="hover:bg-slate-50">
+                            <td className="py-2.5 px-3">
+                              <div className="font-semibold text-slate-800">{item.itemName}</div>
+                              <div className="text-[10px] text-slate-400">{item.category}</div>
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono text-slate-600">
+                              {totalAvailable}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <input
+                                type="number"
+                                min="0"
+                                max={totalAvailable}
+                                step="any"
+                                value={batchInputs[item.itemId] ?? ''}
+                                onChange={e =>
+                                  setBatchInputs(prev => ({
+                                    ...prev,
+                                    [item.itemId]: parseFloat(e.target.value) || 0,
+                                  }))
+                                }
+                                className="w-full text-xs font-mono font-bold rounded border border-slate-300 p-1.5 text-slate-900 focus:ring-1 focus:ring-sky-500"
+                                placeholder="0"
+                              />
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-500 font-medium">{item.unit}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
-              <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
+              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsBatchModalOpen(false)}
-                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-5 py-2.5 font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-lg shadow-xs cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-5 py-2 font-bold text-white bg-sky-700 hover:bg-sky-800 rounded-xl shadow-2xs transition-colors cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   Posting Konsumsi Dapur Harian

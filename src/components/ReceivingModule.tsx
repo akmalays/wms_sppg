@@ -4253,18 +4253,13 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
             <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
               {/* Modal Header */}
               <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                    <Store className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-sm">
-                      Cetak Nota PO - {supplierNotaPrompt.supplierName} ({supplierNotaPrompt.clickedRecord.date})
-                    </h3>
-                    <p className="text-[11px] text-slate-500">
-                      Terdeteksi beberapa barang dari supplier yang sama pada tanggal {supplierNotaPrompt.clickedRecord.date}
-                    </p>
-                  </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">
+                    Cetak Nota PO - {supplierNotaPrompt.supplierName} ({supplierNotaPrompt.clickedRecord.date})
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Terdeteksi beberapa barang dari supplier yang sama pada tanggal {supplierNotaPrompt.clickedRecord.date}
+                  </p>
                 </div>
                 <button
                   type="button"

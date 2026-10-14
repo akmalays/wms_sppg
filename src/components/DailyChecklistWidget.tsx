@@ -519,143 +519,141 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
 
       {/* 5. Modal Tambah Jobdesk Baru */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
-                  <CheckSquare className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900">
-                    Tambah Jobdesk / Tugas Harian SPPG MLG TUMPANG JERU
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Tentukan target jam dan staf penanggung jawab tugas
-                  </p>
-                </div>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Tambah Jobdesk / Tugas Harian
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Tentukan target jam dan staf penanggung jawab tugas
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsAddModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleQuickAdd} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Uraian Butir Tugas <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newTitle}
-                  onChange={e => setNewTitle(e.target.value)}
-                  placeholder="Contoh: Pengecekan segel beras & uji organoleptik sayur bayam..."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
-                />
-              </div>
-
-              {/* Input Jam & Shift */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <form onSubmit={handleQuickAdd} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                    Target Jam (Jam Pelaksanaan) <span className="text-rose-500">*</span>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Uraian Butir Tugas <span className="text-rose-500">*</span>
                   </label>
                   <input
-                    type="time"
+                    type="text"
                     required
-                    value={newTargetTime}
-                    onChange={e => setNewTargetTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-slate-800 font-semibold"
+                    value={newTitle}
+                    onChange={e => setNewTitle(e.target.value)}
+                    placeholder="Contoh: Pengecekan segel beras & uji organoleptik sayur bayam..."
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
                   />
-                  <span className="text-[10px] text-slate-500 font-medium mt-0.5 block">
-                    Pengingat jam akan menyorot tugas pada jam ini
-                  </span>
+                </div>
+
+                {/* Input Jam & Shift */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                      Target Jam (Jam Pelaksanaan) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="time"
+                      required
+                      value={newTargetTime}
+                      onChange={e => setNewTargetTime(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-slate-800 font-semibold"
+                    />
+                    <span className="text-[10px] text-slate-500 font-medium mt-0.5 block">
+                      Pengingat jam akan menyorot tugas pada jam ini
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Tugaskan ke Staf Khusus
+                    </label>
+                    <select
+                      value={newAssignedUserId}
+                      onChange={e => setNewAssignedUserId(e.target.value)}
+                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer font-medium"
+                    >
+                      <option value="">Semua Staf (Bisa dikerjakan siapa saja)</option>
+                      {availableUsers.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Kategori</label>
+                    <select
+                      value={newCategory}
+                      onChange={e => setNewCategory(e.target.value as TodoCategory)}
+                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
+                    >
+                      <option value="Penerimaan & QC">Penerimaan & QC</option>
+                      <option value="Persiapan Dapur">Persiapan Dapur</option>
+                      <option value="Sanitasi & Kebersihan">Sanitasi & Kebersihan</option>
+                      <option value="Administrasi & Stok">Administrasi & Stok</option>
+                      <option value="Stock Opname">Stock Opname</option>
+                      <option value="Distribusi">Distribusi</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Prioritas</label>
+                    <select
+                      value={newPriority}
+                      onChange={e => setNewPriority(e.target.value as TodoPriority)}
+                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
+                    >
+                      <option value="Tinggi">Tinggi (Kritis)</option>
+                      <option value="Sedang">Sedang (Rutin)</option>
+                      <option value="Rendah">Rendah</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Shift / Sesi</label>
+                    <select
+                      value={newSession}
+                      onChange={e => setNewSession(e.target.value as any)}
+                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
+                    >
+                      <option value="Pagi">Pagi (05:00 - 09:00)</option>
+                      <option value="Siang">Siang (09:00 - 14:00)</option>
+                      <option value="Sore">Sore (14:00 - 18:00)</option>
+                      <option value="Harian">Fleksibel Harian</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    Tugaskan ke Staf Khusus
+                    Catatan SOP / Instruksi Khusus (Opsional)
                   </label>
-                  <select
-                    value={newAssignedUserId}
-                    onChange={e => setNewAssignedUserId(e.target.value)}
-                    className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer font-medium"
-                  >
-                    <option value="">Semua Staf (Bisa dikerjakan siapa saja)</option>
-                    {availableUsers.map(u => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} ({u.role})
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    type="text"
+                    value={newNotes}
+                    onChange={e => setNewNotes(e.target.value)}
+                    placeholder="Misal: Catat hasil di buku log dan laporkan ke Ka SPPG..."
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
+                  />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Kategori</label>
-                  <select
-                    value={newCategory}
-                    onChange={e => setNewCategory(e.target.value as TodoCategory)}
-                    className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                  >
-                    <option value="Penerimaan & QC">Penerimaan & QC</option>
-                    <option value="Persiapan Dapur">Persiapan Dapur</option>
-                    <option value="Sanitasi & Kebersihan">Sanitasi & Kebersihan</option>
-                    <option value="Administrasi & Stok">Administrasi & Stok</option>
-                    <option value="Stock Opname">Stock Opname</option>
-                    <option value="Distribusi">Distribusi</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Prioritas</label>
-                  <select
-                    value={newPriority}
-                    onChange={e => setNewPriority(e.target.value as TodoPriority)}
-                    className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                  >
-                    <option value="Tinggi">Tinggi (Kritis)</option>
-                    <option value="Sedang">Sedang (Rutin)</option>
-                    <option value="Rendah">Rendah</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Shift / Sesi</label>
-                  <select
-                    value={newSession}
-                    onChange={e => setNewSession(e.target.value as any)}
-                    className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                  >
-                    <option value="Pagi">Pagi (05:00 - 09:00)</option>
-                    <option value="Siang">Siang (09:00 - 14:00)</option>
-                    <option value="Sore">Sore (14:00 - 18:00)</option>
-                    <option value="Harian">Fleksibel Harian</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Catatan SOP / Instruksi Khusus (Opsional)
-                </label>
-                <input
-                  type="text"
-                  value={newNotes}
-                  onChange={e => setNewNotes(e.target.value)}
-                  placeholder="Misal: Catat hasil di buku log dan laporkan ke Ka SPPG..."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-2 shrink-0">
                 <label className="flex items-center gap-2 cursor-pointer text-slate-600 text-[11px]">
                   <input
                     type="checkbox"
@@ -663,20 +661,20 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
                     onChange={e => setSoundEnabled(e.target.checked)}
                     className="rounded text-emerald-600 focus:ring-emerald-500"
                   />
-                  Bunyikan nada konfirmasi saat simpan
+                  Bunyikan nada konfirmasi
                 </label>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setIsAddModalOpen(false)}
-                    className="px-4 py-2 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 font-semibold cursor-pointer"
+                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-200/60 text-xs font-semibold cursor-pointer transition-colors"
                   >
                     Batal
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-xs cursor-pointer"
+                    className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer"
                   >
                     Simpan Tugas
                   </button>

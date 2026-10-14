@@ -323,80 +323,88 @@ export const EquipmentModule: React.FC<EquipmentModuleProps> = ({ onRefreshData 
 
       {/* UPDATE CONDITION MODAL */}
       {updatingItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Wrench className="w-4 h-4 text-amber-600" />
-                Update Kondisi & Status Alat
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Update Kondisi & Status Alat
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Perbarui catatan inspeksi fisik dan status operasional perlengkapan
+                </p>
+              </div>
               <button
+                type="button"
                 onClick={() => setUpdatingItem(null)}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveCondition} className="mt-4 space-y-4 text-xs">
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="font-mono text-[11px] font-bold text-slate-500">{updatingItem.id}</div>
-                <div className="font-bold text-slate-900 text-sm">{updatingItem.name}</div>
-                <div className="text-slate-500 text-[11px] mt-0.5">{updatingItem.location}</div>
+            <form onSubmit={handleSaveCondition} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="font-mono text-[11px] font-bold text-slate-500">{updatingItem.id}</div>
+                  <div className="font-bold text-slate-900 text-sm">{updatingItem.name}</div>
+                  <div className="text-slate-500 text-[11px] mt-0.5">{updatingItem.location}</div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Kondisi Alat</label>
+                  <select
+                    value={newCondition}
+                    onChange={e => setNewCondition(e.target.value as EquipmentCondition)}
+                    className="w-full text-xs rounded-lg border border-slate-300 p-2 text-slate-800 font-semibold"
+                  >
+                    <option value="GOOD">GOOD (Baik, Siap Digunakan)</option>
+                    <option value="NEEDS_INSPECTION">NEEDS_INSPECTION (Perlu Pemeriksaan)</option>
+                    <option value="DAMAGED">DAMAGED (Rusak / Kendala Teknis)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Status Operasional</label>
+                  <select
+                    value={newStatus}
+                    onChange={e => setNewStatus(e.target.value as EquipmentStatus)}
+                    className="w-full text-xs rounded-lg border border-slate-300 p-2 text-slate-800 font-semibold"
+                  >
+                    <option value="ACTIVE">ACTIVE (Aktif)</option>
+                    <option value="IN_REPAIR">IN_REPAIR (Sedang Diservis)</option>
+                    <option value="LOST">LOST (Hilang)</option>
+                    <option value="RETIRED">RETIRED (Afkir / Dikeluarkan)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Catatan Inspeksi / Alasan Perubahan <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={conditionNotes}
+                    onChange={e => setConditionNotes(e.target.value)}
+                    placeholder="Jelaskan kondisi komponen atau tindak lanjut teknis..."
+                    className="w-full text-xs rounded-lg border border-slate-300 p-2 text-slate-800 focus:ring-1 focus:ring-amber-500"
+                    required
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Kondisi Alat</label>
-                <select
-                  value={newCondition}
-                  onChange={e => setNewCondition(e.target.value as EquipmentCondition)}
-                  className="w-full text-xs rounded-lg border border-slate-300 p-2 text-slate-800 font-semibold"
-                >
-                  <option value="GOOD">GOOD (Baik, Siap Digunakan)</option>
-                  <option value="NEEDS_INSPECTION">NEEDS_INSPECTION (Perlu Pemeriksaan)</option>
-                  <option value="DAMAGED">DAMAGED (Rusak / Kendala Teknis)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Status Operasional</label>
-                <select
-                  value={newStatus}
-                  onChange={e => setNewStatus(e.target.value as EquipmentStatus)}
-                  className="w-full text-xs rounded-lg border border-slate-300 p-2 text-slate-800 font-semibold"
-                >
-                  <option value="ACTIVE">ACTIVE (Aktif)</option>
-                  <option value="IN_REPAIR">IN_REPAIR (Sedang Diservis)</option>
-                  <option value="LOST">LOST (Hilang)</option>
-                  <option value="RETIRED">RETIRED (Afkir / Dikeluarkan)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Catatan Inspeksi / Alasan Perubahan <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  rows={3}
-                  value={conditionNotes}
-                  onChange={e => setConditionNotes(e.target.value)}
-                  placeholder="Jelaskan kondisi komponen atau tindak lanjut teknis..."
-                  className="w-full text-xs rounded-lg border border-slate-300 p-2 text-slate-800 focus:ring-1 focus:ring-amber-500"
-                  required
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setUpdatingItem(null)}
-                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs"
+                  className="px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl shadow-2xs transition-colors cursor-pointer"
                 >
                   Simpan & Catat di Audit
                 </button>

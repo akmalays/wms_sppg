@@ -437,7 +437,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       summaryMap[cat].items.push(item);
       const stock = Math.max(0, item.currentStock);
       summaryMap[cat].totalQty += stock;
-      const unitPrice = getItemEstimatedUnitPrice(item.name, cat);
+      const unitPrice = getItemEstimatedUnitPrice(item.name, cat, item.estimatedPrice);
       summaryMap[cat].totalValue += stock * unitPrice;
 
       const st = getItemStockStatus(item);
@@ -630,7 +630,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                     <tbody className="divide-y divide-slate-100">
                       {catSummary.items.map((item, itIdx) => {
                         const status = getItemStockStatus(item);
-                        const price = getItemEstimatedUnitPrice(item.name, catSummary.category);
+                        const price = getItemEstimatedUnitPrice(item.name, catSummary.category, item.estimatedPrice);
                         const totalVal = Math.max(0, item.currentStock) * price;
 
                         return (
@@ -826,14 +826,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
   const handleSubmitOpnameSession = (directApprove: boolean = false) => {
     if (countingItems.length === 0) {
-      alert('Tidak ada item dalam kategori yang dipilih untuk di-opname.');
+      showError('Tidak ada item dalam kategori yang dipilih untuk di-opname.', 'Validasi Form');
       return;
     }
 
     // Validate variances
     for (const item of countingItems) {
       if (item.variance !== 0 && (!item.reason || item.reason.trim().length === 0)) {
-        alert(`Item "${item.name}" memiliki selisih (${item.variance > 0 ? '+' : ''}${item.variance} ${item.unit}). Harap isi alasan selisih fisik.`);
+        showError(`Item "${item.name}" memiliki selisih (${item.variance > 0 ? '+' : ''}${item.variance} ${item.unit}). Harap isi alasan selisih fisik.`, 'Alasan Wajib Diisi');
         return;
       }
     }
@@ -855,13 +855,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
         warehouseDb.approveStockOpname(session.id, currentUser);
         showToast(`Stock Opname #${session.id} (${opnameCategoryFilter}) berhasil dibuat & langsung disetujui! Stok fisik telah diperbarui.`);
       } else {
-        showToast(`Sesi Stock Opname #${session.id} (${opnameCategoryFilter}) berhasil diajukan! Menunggu otorisasi manager.`);
+        showToast(`Sesi Stock Opname #${session.id} (${opnameCategoryFilter}) berhasil disimpan! Menunggu otorisasi manager.`);
       }
 
       setIsCreateOpnameModalOpen(false);
       refreshData();
     } catch (err: any) {
-      alert(err.message || 'Gagal membuat sesi stock opname.');
+      showError(err.message || 'Gagal membuat sesi stock opname.', 'Gagal Menyimpan');
     }
   };
 
@@ -931,7 +931,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       setAdjustingItem(null);
       refreshData();
     } catch (err: any) {
-      alert(err.message || 'Gagal menyesuaikan stok.');
+      showError(err.message || 'Gagal menyesuaikan stok.');
     }
   };
 
@@ -1092,7 +1092,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
   const handleExportMasterExcel = () => {
     if (filteredMasterItems.length === 0) {
-      alert('Tidak ada data master barang untuk diekspor.');
+      showError('Tidak ada data master barang untuk diekspor.');
       return;
     }
 
@@ -1178,7 +1178,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
   const handleParsePastedText = () => {
     if (!pasteRawText.trim()) {
-      alert('Silakan tempel teks data master barang dari Excel terlebih dahulu.');
+      showError('Silakan tempel teks data master barang dari Excel terlebih dahulu.');
       return;
     }
 
@@ -1231,9 +1231,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       setBatchRows(parsedRows);
       setBatchMode('GRID');
       setPasteRawText('');
-      alert(`Berhasil membaca ${parsedRows.length} baris barang dari Excel! Periksa dan simpan.`);
+      showToast(`Berhasil membaca ${parsedRows.length} baris barang dari Excel! Periksa dan simpan.`);
     } else {
-      alert('Tidak ada baris barang yang terdeteksi.');
+      showError('Tidak ada baris barang yang terdeteksi.');
     }
   };
 
@@ -1241,7 +1241,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
     e.preventDefault();
     const validRows = batchRows.filter(r => r.name.trim() !== '');
     if (validRows.length === 0) {
-      alert('Harap isi minimal 1 nama barang pada tabel.');
+      showError('Harap isi minimal 1 nama barang pada tabel.');
       return;
     }
 
@@ -1270,20 +1270,20 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       setIsBatchModalOpen(false);
       showToast(`Berhasil menyimpan ${validRows.length} master barang baru sekaligus!`);
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan batch barang.');
+      showError(err.message || 'Gagal menyimpan batch barang.');
     }
   };
 
   // Export Stock Data to Excel
   const handleExportStockExcel = () => {
     if (filteredItems.length === 0) {
-      alert('Tidak ada data stok untuk diekspor.');
+      showError('Tidak ada data stok untuk diekspor.');
       return;
     }
 
     const rows = filteredItems.map((item, idx) => {
       const cat = getDetailedItemCategory(item);
-      const price = getItemEstimatedUnitPrice(item.name, cat);
+      const price = getItemEstimatedUnitPrice(item.name, cat, item.estimatedPrice);
       return {
         No: idx + 1,
         'Kode SKU': item.id,
@@ -2281,12 +2281,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
-                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <ClipboardCheck className="w-5 h-5 text-emerald-600" />
-                  Formulir Pelaksanaan Stock Opname Fisik
+                <h3 className="text-base font-bold text-slate-900">
+                  Pelaksanaan Stock Opname Fisik
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Pilih kategori spesifik yang ingin di-audit. Masukkan hasil hitung fisik nyata di gudang.
+                  Pilih kategori yang diaudit dan masukkan hasil perhitungan fisik aktual di gudang.
                 </p>
               </div>
               <button
@@ -2302,16 +2301,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
             {/* Body */}
             <div className="p-6 overflow-y-auto space-y-4 flex-1">
               {/* Opname Parameters */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 p-4 bg-slate-50/80 rounded-xl border border-slate-200 text-xs">
                 {/* Kategori Selector */}
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Kategori Yang Di-Opname <span className="text-rose-500">*</span>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Kategori Barang
                   </label>
                   <select
                     value={opnameCategoryFilter}
                     onChange={e => handleOpnameCategoryChange(e.target.value as SppgCategory)}
-                    className="w-full text-xs font-bold border border-slate-300 rounded-lg p-2 bg-white text-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                    className="w-full text-xs font-medium border border-slate-200 rounded-lg p-2 bg-white text-slate-800 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 cursor-pointer transition-colors"
                   >
                     {SPPG_STOCK_CATEGORIES.map(c => (
                       <option key={c} value={c}>{c}</option>
@@ -2321,63 +2320,63 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
                 {/* Tanggal Opname */}
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Tanggal Pelaksanaan <span className="text-rose-500">*</span>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Tanggal Pelaksanaan
                   </label>
                   <input
                     type="date"
                     value={opnameFormDate}
                     onChange={e => setOpnameFormDate(e.target.value)}
-                    className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                    className="w-full text-xs border border-slate-200 rounded-lg p-2 bg-white text-slate-800 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 cursor-pointer transition-colors"
                   />
                 </div>
 
                 {/* Lokasi Gudang */}
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Lokasi / Area Gudang <span className="text-rose-500">*</span>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Lokasi Gudang
                   </label>
                   <input
                     type="text"
                     value={opnameFormLocation}
                     onChange={e => setOpnameFormLocation(e.target.value)}
-                    className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full text-xs border border-slate-200 rounded-lg p-2 bg-white text-slate-800 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-colors"
                   />
                 </div>
 
                 {/* Pemeriksa */}
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Petugas Pemeriksa (PIC)
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Petugas Pemeriksa
                   </label>
-                  <div className="w-full border border-slate-200 rounded-lg p-2 bg-slate-100 text-slate-700 font-semibold truncate">
+                  <div className="w-full border border-slate-200 rounded-lg p-2 bg-slate-100 text-slate-700 font-medium truncate">
                     {currentUser.name} ({currentUser.role})
                   </div>
                 </div>
 
                 {/* Keterangan */}
                 <div className="sm:col-span-2 lg:col-span-4">
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Catatan Sesi Opname
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Catatan Sesi
                   </label>
                   <input
                     type="text"
                     value={opnameFormNotes}
                     onChange={e => setOpnameFormNotes(e.target.value)}
-                    placeholder="Contoh: Audit fisik rutin mingguan bahan basah dapur..."
-                    className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="Catatan audit atau kondisi fisik gudang (opsional)..."
+                    className="w-full text-xs border border-slate-200 rounded-lg p-2 bg-white text-slate-800 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-colors"
                   />
                 </div>
               </div>
 
               {/* Items Counting Table */}
               <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 flex items-center justify-between text-xs">
-                  <div className="font-bold text-slate-800">
-                    Daftar Barang Untuk Dihitung Fisik ({countingItems.length} Item pada Kategori: {opnameCategoryFilter})
+                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
+                  <div className="font-semibold text-slate-800">
+                    Daftar Barang ({countingItems.length} item • {opnameCategoryFilter})
                   </div>
                   <div className="text-slate-500 text-[11px]">
-                    Tekan tombol <strong>Samakan</strong> jika stok fisik sama dengan stok sistem
+                    Gunakan tombol <strong>Samakan</strong> jika stok fisik sama dengan stok sistem
                   </div>
                 </div>
 
@@ -2385,60 +2384,64 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 sticky top-0 z-10">
                       <tr>
-                        <th className="py-2.5 px-3 w-10 text-center">#</th>
+                        <th className="py-2.5 px-3 w-12 text-center">#</th>
                         <th className="py-2.5 px-3 min-w-[200px]">Nama Barang & Kode</th>
                         <th className="py-2.5 px-3 w-28 text-right">Stok Sistem</th>
-                        <th className="py-2.5 px-3 w-44 text-center">Hitung Fisik Nyata</th>
+                        <th className="py-2.5 px-3 w-48 text-center">Fisik Aktual</th>
                         <th className="py-2.5 px-3 w-28 text-center">Selisih</th>
-                        <th className="py-2.5 px-3 min-w-[220px]">Alasan Selisih Fisik</th>
+                        <th className="py-2.5 px-3 min-w-[220px]">Alasan Selisih</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
+                    <tbody className="divide-y divide-slate-100">
                       {countingItems.map((item, idx) => {
                         const hasVariance = item.variance !== 0;
 
                         return (
-                          <tr key={item.itemId} className={hasVariance ? 'bg-amber-50/40' : 'hover:bg-slate-50/70'}>
+                          <tr key={item.itemId} className={hasVariance ? 'bg-amber-50/40' : 'hover:bg-slate-50/70 transition-colors'}>
                             <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
                               {idx + 1}
                             </td>
                             <td className="py-2.5 px-3">
-                              <div className="font-bold text-slate-900">{item.name}</div>
-                              <div className="text-[10px] text-slate-400 font-mono">{item.itemId} • {item.category}</div>
+                              <div className="font-semibold text-slate-900">{item.name}</div>
+                              <div className="text-[11px] text-slate-400 font-mono mt-0.5">{item.itemId} • {item.category}</div>
                             </td>
                             <td className="py-2.5 px-3 text-right">
-                              <span className="font-mono font-bold text-slate-700 text-sm">
+                              <span className="font-mono font-semibold text-slate-800 text-sm">
                                 {item.systemStock}
                               </span>{' '}
                               <span className="text-slate-500 font-normal">{item.unit}</span>
                             </td>
                             <td className="py-2.5 px-3">
                               <div className="flex items-center justify-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpnameStep(idx, -1)}
-                                  className="w-7 h-7 rounded border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs cursor-pointer"
-                                >
-                                  -
-                                </button>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  value={item.physicalCount}
-                                  onChange={e => handlePhysicalCountChange(idx, e.target.value)}
-                                  className="w-20 text-xs border border-slate-300 rounded px-2 py-1 text-center font-mono font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpnameStep(idx, 1)}
-                                  className="w-7 h-7 rounded border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs cursor-pointer"
-                                >
-                                  +
-                                </button>
+                                <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white shadow-2xs overflow-hidden">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpnameStep(idx, -1)}
+                                    className="w-7 h-7 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer text-sm font-semibold"
+                                    title="Kurangi 1"
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    value={item.physicalCount}
+                                    onChange={e => handlePhysicalCountChange(idx, e.target.value)}
+                                    className="w-16 h-7 text-xs text-center font-mono font-semibold text-slate-900 border-x border-slate-200 focus:outline-none focus:bg-emerald-50/50"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpnameStep(idx, 1)}
+                                    className="w-7 h-7 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer text-sm font-semibold"
+                                    title="Tambah 1"
+                                  >
+                                    +
+                                  </button>
+                                </div>
                                 <button
                                   type="button"
                                   onClick={() => handleOpnameMatch(idx)}
-                                  className="px-2 py-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 cursor-pointer"
+                                  className="h-7 px-2.5 text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200/80 transition-colors cursor-pointer"
                                   title="Samakan dengan stok sistem"
                                 >
                                   Samakan
@@ -2447,37 +2450,37 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                             </td>
                             <td className="py-2.5 px-3 text-center">
                               {item.variance === 0 ? (
-                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                                  0 (Cocok)
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600">
+                                  0 (Sesuai)
                                 </span>
                               ) : item.variance < 0 ? (
-                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 font-mono">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-50 border border-rose-200/60 text-rose-700 font-mono">
                                   {item.variance} {item.unit}
                                 </span>
                               ) : (
-                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 font-mono">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-sky-50 border border-sky-200/60 text-sky-700 font-mono">
                                   +{item.variance} {item.unit}
                                 </span>
                               )}
                             </td>
                             <td className="py-2.5 px-3">
                               {hasVariance ? (
-                                <div className="space-y-1">
+                                <div className="space-y-1.5">
                                   <input
                                     type="text"
                                     value={item.reason}
                                     onChange={e => handleOpnameReasonChange(idx, e.target.value)}
-                                    placeholder="Tulis alasan selisih..."
+                                    placeholder="Alasan selisih..."
                                     required
-                                    className="w-full text-xs border border-amber-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-900"
+                                    className="w-full text-xs border border-amber-300 rounded-lg px-2.5 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-amber-500 text-slate-900"
                                   />
                                   <div className="flex flex-wrap gap-1">
-                                    {['Susut alami', 'Rusak / kadaluarsa', 'Terpakai belum tercatat'].map(preset => (
+                                    {['Susut alami', 'Rusak / kadaluarsa', 'Belum tercatat'].map(preset => (
                                       <button
                                         key={preset}
                                         type="button"
                                         onClick={() => handleOpnameReasonChange(idx, preset)}
-                                        className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-1.5 py-0.2 rounded border border-slate-200 cursor-pointer"
+                                        className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200/80 transition-colors cursor-pointer"
                                       >
                                         {preset}
                                       </button>
@@ -2485,7 +2488,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                                   </div>
                                 </div>
                               ) : (
-                                <span className="text-slate-400 text-[11px] italic">Sesuai fisik</span>
+                                <span className="text-slate-400 text-xs">-</span>
                               )}
                             </td>
                           </tr>
@@ -2499,17 +2502,21 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
             {/* Footer Summary & Buttons */}
             <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-4 text-slate-600">
-                <span>Total Item: <strong>{countingItems.length}</strong></span>
-                <span className="text-emerald-700">Cocok: <strong>{countingItems.filter(i => i.variance === 0).length}</strong></span>
-                <span className="text-amber-700">Selisih: <strong>{countingItems.filter(i => i.variance !== 0).length}</strong></span>
+              <div className="flex items-center gap-3 text-slate-500 text-xs">
+                <span>Total: <strong className="text-slate-800">{countingItems.length}</strong> item</span>
+                <span>•</span>
+                <span className="text-emerald-700 font-medium"><strong>{countingItems.filter(i => i.variance === 0).length}</strong> sesuai</span>
+                <span>•</span>
+                <span className={countingItems.some(i => i.variance !== 0) ? 'text-amber-700 font-semibold' : 'text-slate-500'}>
+                  <strong>{countingItems.filter(i => i.variance !== 0).length}</strong> selisih
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setIsCreateOpnameModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer"
+                  className="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-100 rounded-lg font-medium transition-colors cursor-pointer"
                 >
                   Batal
                 </button>
@@ -2517,18 +2524,18 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 <button
                   type="button"
                   onClick={() => handleSubmitOpnameSession(false)}
-                  className="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg font-bold shadow-2xs transition-colors cursor-pointer"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium shadow-2xs transition-colors cursor-pointer"
                 >
-                  Simpan Sesi (Pending)
+                  Simpan Sesi Opname
                 </button>
 
                 {can('APPROVE_OPNAME') && (
                   <button
                     type="button"
                     onClick={() => handleSubmitOpnameSession(true)}
-                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-2xs transition-colors cursor-pointer"
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-medium shadow-2xs transition-colors cursor-pointer"
                   >
-                    Simpan & Langsung Setujui (Update Stok)
+                    Setujui & Terapkan Stok
                   </button>
                 )}
               </div>
@@ -2544,19 +2551,18 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white print:static print:z-auto">
           <div id="print-opname-modal-area" className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150 print:max-w-none print:max-h-none print:shadow-none print:border-none print:rounded-none">
             <div className="no-print px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-2">
-                <ClipboardCheck className="w-5 h-5 text-emerald-600" />
+              <div className="flex items-center gap-2.5">
                 <h3 className="text-base font-bold text-slate-900">
                   Berita Acara Hasil Stock Opname: {viewingOpname.id}
                 </h3>
                 <span
-                  className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border ${
+                  className={`px-2 py-0.5 rounded-md text-[11px] font-medium border ${
                     viewingOpname.status === 'APPROVED'
                       ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                       : 'bg-amber-50 text-amber-800 border-amber-200'
                   }`}
                 >
-                  {viewingOpname.status === 'APPROVED' ? 'DISETUJUI & TERCATAT' : 'MENUNGGU OTORISASI'}
+                  {viewingOpname.status === 'APPROVED' ? 'Disetujui' : 'Menunggu Otorisasi'}
                 </span>
               </div>
               <button
@@ -3177,8 +3183,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
-                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <TableProperties className="w-5 h-5 text-emerald-700" />
+                <h3 className="text-base font-bold text-slate-900">
                   Input Masal Master Barang Baru
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -3568,7 +3573,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                     Setujui & Terapkan Hasil Stock Opname?
                   </h3>
                   <p className="text-xs text-slate-500 mt-1">
-                    Sesi audit #{opnameSessionToApprove.id} ({opnameSessionToApprove.category})
+                    Sesi audit #{opnameSessionToApprove.id} ({opnameSessionToApprove.notes || opnameSessionToApprove.location})
                   </p>
                 </div>
                 <button

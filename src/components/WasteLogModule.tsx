@@ -2133,33 +2133,30 @@ export const WasteLogModule: React.FC = () => {
       {/* MODAL UTAMA: INPUT REKAP LIMBAH HARIAN (5 KATEGORI LANGSUNG)             */}
       {/* ========================================================================= */}
       {isDailyInputModalOpen && (
-        <div className="no-print fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
+        <div className="no-print fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
-                  <TableIcon className="w-5 h-5 text-emerald-700" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900">
-                    Input Rekap Limbah Harian (5 Kategori)
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Masukkan hasil penimbangan sisa makanan harian SPPG MLG TUMPANG JERU
-                  </p>
-                </div>
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Input Rekap Limbah Harian (5 Kategori)
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Masukkan hasil penimbangan sisa makanan harian SPPG MLG TUMPANG JERU
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsDailyInputModalOpen(false)}
                 className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveDailyNutrition} className="space-y-4 text-xs">
+            <form onSubmit={handleSaveDailyNutrition} className="flex-1 flex flex-col min-h-0 overflow-hidden text-xs">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4">
               {/* Tanggal & Hari */}
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
                 <div>
@@ -2205,8 +2202,7 @@ export const WasteLogModule: React.FC = () => {
               {/* Bantuan Kalkulator Persentase (Bisa Dibuka/Tutup) */}
               <div className="border border-emerald-200 rounded-xl bg-emerald-50/50 p-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-emerald-950 flex items-center gap-1.5">
-                    <Calculator className="w-3.5 h-3.5 text-emerald-700" />
+                  <span className="font-semibold text-emerald-950">
                     Kalkulator Estimasi dari Total Bobot (Opsional)
                   </span>
                   <button
@@ -2408,18 +2404,20 @@ export const WasteLogModule: React.FC = () => {
                 />
               </div>
 
+              </div>
+
               {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsDailyInputModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Simpan Rekap Harian</span>
@@ -2434,32 +2432,29 @@ export const WasteLogModule: React.FC = () => {
       {/* MODAL 2: KALKULATOR KOMPOSISI PIRING BERGIZI                              */}
       {/* ========================================================================= */}
       {isCalcModalOpen && (
-        <div className="no-print fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
-                  <Calculator className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900">
-                    Kalkulator Komposisi Sisa Piring SPPG MLG TUMPANG JERU
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Hitung proporsi gizi sisa makanan piring siswa berdasarkan total timbangan
-                  </p>
-                </div>
+        <div className="no-print fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Kalkulator Komposisi Sisa Piring SPPG MLG TUMPANG JERU
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Hitung proporsi gizi sisa makanan piring siswa berdasarkan total timbangan
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsCalcModalOpen(false)}
                 className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-4 text-xs">
+            <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Tanggal</label>
@@ -2573,75 +2568,77 @@ export const WasteLogModule: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setIsCalcModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-                >
-                  Tutup
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Simpan hasil hitungan ke database
-                    const dayName = getIndonesianDay(calcDate);
-                    const itemsToSave: {
-                      category: NutritionCategoryType;
-                      quantity: number;
-                      unit: string;
-                      disposalMethod: DisposalMethod;
-                      notes?: string;
-                    }[] = [
-                      {
-                        category: 'karbohidrat',
-                        quantity: Number(((customShares.karbohidrat / 100) * calcTotalWeight).toFixed(2)),
-                        unit: 'Kg',
-                        disposalMethod: calcDisposal,
-                        notes: `Hitungan otomatis menu ${calcMenuName}`,
-                      },
-                      {
-                        category: 'sayur',
-                        quantity: Number(((customShares.sayur / 100) * calcTotalWeight).toFixed(2)),
-                        unit: 'Kg',
-                        disposalMethod: calcDisposal,
-                        notes: `Hitungan otomatis menu ${calcMenuName}`,
-                      },
-                      {
-                        category: 'protein hewani',
-                        quantity: Number(((customShares.proteinHewani / 100) * calcTotalWeight).toFixed(2)),
-                        unit: 'Kg',
-                        disposalMethod: calcDisposal,
-                        notes: `Hitungan otomatis menu ${calcMenuName}`,
-                      },
-                      {
-                        category: 'protein nabati',
-                        quantity: Number(((customShares.proteinNabati / 100) * calcTotalWeight).toFixed(2)),
-                        unit: 'Kg',
-                        disposalMethod: calcDisposal,
-                        notes: `Hitungan otomatis menu ${calcMenuName}`,
-                      },
-                      {
-                        category: 'buah',
-                        quantity: Number(((customShares.buah / 100) * calcTotalWeight).toFixed(2)),
-                        unit: 'Kg',
-                        disposalMethod: calcDisposal,
-                        notes: `Hitungan otomatis menu ${calcMenuName}`,
-                      },
-                    ];
+            </div>
 
-                    warehouseDb.saveDailyNutritionLog(calcDate, dayName, itemsToSave, currentUser);
-                    refreshLogs();
-                    setIsCalcModalOpen(false);
-                    setSuccessNotice(`Berhasil menyimpan 5 rincian limbah hasil hitungan (${calcTotalWeight} kg) untuk tanggal ${formatSheetDate(calcDate)}!`);
-                    setTimeout(() => setSuccessNotice(''), 6000);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs cursor-pointer"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Simpan Hasil ke Rekap Harian</span>
-                </button>
-              </div>
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsCalcModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // Simpan hasil hitungan ke database
+                  const dayName = getIndonesianDay(calcDate);
+                  const itemsToSave: {
+                    category: NutritionCategoryType;
+                    quantity: number;
+                    unit: string;
+                    disposalMethod: DisposalMethod;
+                    notes?: string;
+                  }[] = [
+                    {
+                      category: 'karbohidrat',
+                      quantity: Number(((customShares.karbohidrat / 100) * calcTotalWeight).toFixed(2)),
+                      unit: 'Kg',
+                      disposalMethod: calcDisposal,
+                      notes: `Hitungan otomatis menu ${calcMenuName}`,
+                    },
+                    {
+                      category: 'sayur',
+                      quantity: Number(((customShares.sayur / 100) * calcTotalWeight).toFixed(2)),
+                      unit: 'Kg',
+                      disposalMethod: calcDisposal,
+                      notes: `Hitungan otomatis menu ${calcMenuName}`,
+                    },
+                    {
+                      category: 'protein hewani',
+                      quantity: Number(((customShares.proteinHewani / 100) * calcTotalWeight).toFixed(2)),
+                      unit: 'Kg',
+                      disposalMethod: calcDisposal,
+                      notes: `Hitungan otomatis menu ${calcMenuName}`,
+                    },
+                    {
+                      category: 'protein nabati',
+                      quantity: Number(((customShares.proteinNabati / 100) * calcTotalWeight).toFixed(2)),
+                      unit: 'Kg',
+                      disposalMethod: calcDisposal,
+                      notes: `Hitungan otomatis menu ${calcMenuName}`,
+                    },
+                    {
+                      category: 'buah',
+                      quantity: Number(((customShares.buah / 100) * calcTotalWeight).toFixed(2)),
+                      unit: 'Kg',
+                      disposalMethod: calcDisposal,
+                      notes: `Hitungan otomatis menu ${calcMenuName}`,
+                    },
+                  ];
+
+                  warehouseDb.saveDailyNutritionLog(calcDate, dayName, itemsToSave, currentUser);
+                  refreshLogs();
+                  setIsCalcModalOpen(false);
+                  setSuccessNotice(`Berhasil menyimpan 5 rincian limbah hasil hitungan (${calcTotalWeight} kg) untuk tanggal ${formatSheetDate(calcDate)}!`);
+                  setTimeout(() => setSuccessNotice(''), 6000);
+                }}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Simpan Hasil ke Rekap Harian</span>
+              </button>
             </div>
           </div>
         </div>
@@ -2651,32 +2648,30 @@ export const WasteLogModule: React.FC = () => {
       {/* MODAL 3: INPUT BATCH NON-GIZI                                            */}
       {/* ========================================================================= */}
       {isBatchModalOpen && (
-        <div className="no-print fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-3xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center">
-                  <Layers className="w-5 h-5 text-teal-700" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900">
-                    Input Batch Limbah Non-Gizi / Preparasi Dapur
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Catat limbah preparasi, kupasan, kemasan, atau bahan rusak
-                  </p>
-                </div>
+        <div className="no-print fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Input Batch Limbah Non-Gizi / Preparasi Dapur
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Catat limbah preparasi, kupasan, kemasan, atau bahan rusak
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsBatchModalOpen(false)}
                 className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveBatch} className="flex-1 flex flex-col min-h-0 text-xs">
+            <form onSubmit={handleSaveBatch} className="flex-1 flex flex-col min-h-0 overflow-hidden text-xs">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4">
               <div className="flex items-center gap-3 mb-3 shrink-0">
                 <label className="font-semibold text-slate-700">Tanggal Penimbangan:</label>
                 <input
@@ -2827,17 +2822,20 @@ export const WasteLogModule: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 shrink-0">
+              </div>
+
+              {/* Action Buttons */}
+              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsBatchModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold rounded-lg bg-teal-700 hover:bg-teal-800 text-white shadow-xs cursor-pointer"
+                  className="px-5 py-2.5 text-xs font-bold rounded-lg bg-teal-700 hover:bg-teal-800 text-white shadow-2xs transition-colors cursor-pointer"
                 >
                   Simpan Semua Baris Batch
                 </button>
@@ -2851,22 +2849,30 @@ export const WasteLogModule: React.FC = () => {
       {/* MODAL 4: PENCATATAN TUNGGAL                                              */}
       {/* ========================================================================= */}
       {isSingleModalOpen && (
-        <div className="no-print fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
-              <h4 className="text-sm font-bold text-slate-900">
-                Pencatatan Insiden Limbah Tunggal
-              </h4>
+        <div className="no-print fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Pencatatan Insiden Limbah Tunggal
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Catat insiden limbah sisa makanan, bahan rusak, atau kemasan non-organik
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsSingleModalOpen(false)}
                 className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleRecordWaste} className="space-y-4 text-xs">
+            <form onSubmit={handleRecordWaste} className="flex-1 flex flex-col min-h-0 overflow-hidden text-xs">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Tanggal</label>
@@ -2977,17 +2983,20 @@ export const WasteLogModule: React.FC = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              </div>
+
+              {/* Action Buttons */}
+              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsSingleModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs cursor-pointer"
+                  className="px-5 py-2.5 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
                 >
                   Simpan Catatan
                 </button>
@@ -3005,18 +3014,13 @@ export const WasteLogModule: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header Controls */}
             <div className="px-6 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                  <Printer className="w-4 h-4 text-emerald-700" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">
-                    Pratinjau Cetak Laporan Rekapitulasi Limbah
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Format dokumen resmi SPPG • Mengikuti filter aktif ({activeDateRange.label})
-                  </p>
-                </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Pratinjau Cetak Laporan Rekapitulasi Limbah
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Format dokumen resmi SPPG • Mengikuti filter aktif ({activeDateRange.label})
+                </p>
               </div>
 
               <div className="flex items-center gap-2">

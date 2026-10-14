@@ -1160,7 +1160,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             list.push({
               uniqueKey: `gr-${doc.id}-${lineIdx}-${c}`,
               id: line.itemId || `ITEM-${lineIdx + 1}`,
-              batchLotNo: line.batchLotNo || `LOT-${doc.id.replace('GR-', '')}-${String(lineIdx + 1).padStart(2, '0')}`,
+              batchLotNo: line.batchNumber || (line as any).batchLotNo || `LOT-${doc.id.replace('GR-', '')}-${String(lineIdx + 1).padStart(2, '0')}`,
               name: line.itemName,
               category: matchedItem?.category || (wet ? 'Bahan Basah' : 'Bahan Kering'),
               warehouseType: wet ? 'GUDANG_BASAH' : 'GUDANG_KERING',
@@ -1176,7 +1176,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               unit: line.unit,
               qcStatus: tagQcStatus,
               inspector: tagInspectorName,
-              notes: copies > 1 ? `Wadah ${c} dari ${copies}` : (line.notes || ''),
+              notes: copies > 1 ? `Wadah ${c} dari ${copies}` : (line.conditionNote || (line as any).notes || ''),
               copyIndex: c,
               totalCopies: copies,
             });

@@ -1060,158 +1060,164 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
       {/* MODAL: TAMBAH TUGAS HARIAN BARU */}
       {/* ========================================================================= */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <Plus className="w-4 h-4 text-emerald-600" />
-                Tambah Butir Tugas Ceklis Harian
-              </h3>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Tambah Butir Tugas Ceklis Harian
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Tentukan uraian tugas SOP, kategori, prioritas, dan staf penanggung jawab
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsAddModalOpen(false)}
-                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors cursor-pointer"
                 title="Tutup dialog"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleAddTodo} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Uraian Butir Tugas <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newTitle}
-                  onChange={e => setNewTitle(e.target.value)}
-                  placeholder="Contoh: Kalibrasi timbangan digital & cek sanitizer lantai..."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleAddTodo} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Kategori</label>
-                  <select
-                    value={newCategory}
-                    onChange={e => setNewCategory(e.target.value as TodoCategory)}
-                    className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                  >
-                    <option value="Penerimaan & QC">Penerimaan & QC</option>
-                    <option value="Persiapan Dapur">Persiapan Dapur</option>
-                    <option value="Sanitasi & Kebersihan">Sanitasi & Kebersihan</option>
-                    <option value="Administrasi & Stok">Administrasi & Stok</option>
-                    <option value="Stock Opname">Stock Opname</option>
-                    <option value="Distribusi">Distribusi</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Prioritas</label>
-                  <select
-                    value={newPriority}
-                    onChange={e => setNewPriority(e.target.value as TodoPriority)}
-                    className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                  >
-                    <option value="Tinggi">Tinggi</option>
-                    <option value="Sedang">Sedang</option>
-                    <option value="Rendah">Rendah</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                    Target Jam <span className="text-rose-500">*</span>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Uraian Butir Tugas <span className="text-rose-500">*</span>
                   </label>
                   <input
-                    type="time"
+                    type="text"
                     required
-                    value={newTargetTime}
-                    onChange={e => setNewTargetTime(e.target.value)}
-                    className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-mono font-semibold text-slate-800"
+                    value={newTitle}
+                    onChange={e => setNewTitle(e.target.value)}
+                    placeholder="Contoh: Kalibrasi timbangan digital & cek sanitizer lantai..."
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
                   />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Kategori</label>
+                    <select
+                      value={newCategory}
+                      onChange={e => setNewCategory(e.target.value as TodoCategory)}
+                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
+                    >
+                      <option value="Penerimaan & QC">Penerimaan & QC</option>
+                      <option value="Persiapan Dapur">Persiapan Dapur</option>
+                      <option value="Sanitasi & Kebersihan">Sanitasi & Kebersihan</option>
+                      <option value="Administrasi & Stok">Administrasi & Stok</option>
+                      <option value="Stock Opname">Stock Opname</option>
+                      <option value="Distribusi">Distribusi</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Prioritas</label>
+                    <select
+                      value={newPriority}
+                      onChange={e => setNewPriority(e.target.value as TodoPriority)}
+                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
+                    >
+                      <option value="Tinggi">Tinggi</option>
+                      <option value="Sedang">Sedang</option>
+                      <option value="Rendah">Rendah</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                      Target Jam <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="time"
+                      required
+                      value={newTargetTime}
+                      onChange={e => setNewTargetTime(e.target.value)}
+                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-mono font-semibold text-slate-800"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Tugaskan ke Staf
+                    </label>
+                    <select
+                      value={newAssignedUserId}
+                      onChange={e => setNewAssignedUserId(e.target.value)}
+                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
+                    >
+                      <option value="">Semua Staf (Umum)</option>
+                      {availableUsers?.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Shift / Sesi</label>
+                    <select
+                      value={newSession}
+                      onChange={e => setNewSession(e.target.value as any)}
+                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
+                    >
+                      <option value="Pagi">Pagi (05:00 - 09:00)</option>
+                      <option value="Siang">Siang (09:00 - 14:00)</option>
+                      <option value="Sore">Sore (14:00 - 18:00)</option>
+                      <option value="Harian">Fleksibel Harian</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Penugasan Peran Standar</label>
+                    <select
+                      value={newAssignedRole}
+                      onChange={e => setNewAssignedRole(e.target.value as any)}
+                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
+                    >
+                      <option value="ALL">Semua Petugas (Umum)</option>
+                      <option value="ASLAP">Aslap (QC / Lapangan)</option>
+                      <option value="ADMIN">Admin Gudang</option>
+                      <option value="AKUNTAN">Akuntan / Finance</option>
+                      <option value="KA_SPPG">Kepala SPPG</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    Tugaskan ke Staf
+                    Catatan SOP / Instruksi Khusus (Opsional)
                   </label>
-                  <select
-                    value={newAssignedUserId}
-                    onChange={e => setNewAssignedUserId(e.target.value)}
-                    className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                  >
-                    <option value="">Semua Staf (Umum)</option>
-                    {availableUsers?.map(u => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} ({u.role})
-                      </option>
-                    ))}
-                  </select>
+                  <textarea
+                    rows={2}
+                    value={newNotes}
+                    onChange={e => setNewNotes(e.target.value)}
+                    placeholder="Catatan parameter pemeriksaan, nomor form rujukan, dll..."
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
+                  ></textarea>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Shift / Sesi</label>
-                  <select
-                    value={newSession}
-                    onChange={e => setNewSession(e.target.value as any)}
-                    className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                  >
-                    <option value="Pagi">Pagi (05:00 - 09:00)</option>
-                    <option value="Siang">Siang (09:00 - 14:00)</option>
-                    <option value="Sore">Sore (14:00 - 18:00)</option>
-                    <option value="Harian">Fleksibel Harian</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Penugasan Peran Standar</label>
-                  <select
-                    value={newAssignedRole}
-                    onChange={e => setNewAssignedRole(e.target.value as any)}
-                    className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                  >
-                    <option value="ALL">Semua Petugas (Umum)</option>
-                    <option value="ASLAP">Aslap (QC / Lapangan)</option>
-                    <option value="ADMIN">Admin Gudang</option>
-                    <option value="AKUNTAN">Akuntan / Finance</option>
-                    <option value="KA_SPPG">Kepala SPPG</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Catatan SOP / Instruksi Khusus (Opsional)
-                </label>
-                <textarea
-                  rows={2}
-                  value={newNotes}
-                  onChange={e => setNewNotes(e.target.value)}
-                  placeholder="Catatan parameter pemeriksaan, nomor form rujukan, dll..."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
-                ></textarea>
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-3.5 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 text-xs font-semibold cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-200/60 text-xs font-semibold cursor-pointer transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
                 >
                   Simpan Tugas
                 </button>

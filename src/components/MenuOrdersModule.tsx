@@ -3195,32 +3195,30 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       {/* MODAL 1: INPUT & EDIT MENU HARI INI                                       */}
       {/* ========================================================================= */}
       {isMenuModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] flex flex-col">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
-                  <UtensilsCrossed className="w-5 h-5 text-emerald-700" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900">
-                    {editingMenuOrderId ? 'Edit Menu & Porsi' : 'Input Menu Hari Ini'}
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Catat menu reguler siswa, menu khusus balita/bumil (B3), dan total sasaran porsi
-                  </p>
-                </div>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {editingMenuOrderId ? 'Edit Menu & Porsi' : 'Input Menu Hari Ini'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Catat menu reguler siswa, menu khusus balita/bumil (B3), dan total sasaran porsi
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsMenuModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveMenuForm} className="flex-1 flex flex-col min-h-0 text-xs space-y-4 overflow-y-auto pr-1">
+            <form onSubmit={handleSaveMenuForm} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Tanggal Distribusi Menu</label>
@@ -3340,18 +3338,20 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 />
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 shrink-0">
+              </div>
+
+              {/* Action Buttons Sticky Footer */}
+              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsMenuModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl cursor-pointer transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Simpan Data Menu</span>
@@ -3366,14 +3366,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       {/* MODAL 2: INPUT & BUAT PO HARI INI                                         */}
       {/* ========================================================================= */}
       {isPoModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-4xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-200 mb-4 shrink-0">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
               <div>
-                <h4 className="text-sm font-semibold text-slate-900">
+                <h3 className="text-base font-bold text-slate-900">
                   Input & Buat Purchase Order (PO)
-                </h4>
+                </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Pencatatan daftar kebutuhan bahan baku (H-1) untuk menu harian
                 </p>
@@ -3381,66 +3381,65 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
               <button
                 type="button"
                 onClick={() => setIsPoModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
                 title="Tutup dialog"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Pilihan Order Menu & Tanggal PO */}
-            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs shrink-0">
-              <div className="sm:col-span-2">
-                <label className="block font-medium text-slate-700 mb-1">
-                  Menu Tujuan untuk PO:
-                </label>
-                <select
-                  value={selectedPoOrderId}
-                  onChange={e => {
-                    const newId = e.target.value;
-                    setSelectedPoOrderId(newId);
-                    const found = orders.find(o => o.id === newId);
-                    if (found && found.poArrivalItems && found.poArrivalItems.length > 0) {
-                      setPoFormRows(
-                        found.poArrivalItems.map(p => ({
-                          category: p.category || 'Bahan Makanan',
-                          itemName: p.itemName,
-                          qtyOrder: p.qtyOrder || '',
-                          qtyArrived: p.qtyArrived || '',
-                          supplier: p.supplier || '',
-                          arrivalTime: p.arrivalTime || '',
-                          pic: p.pic || currentUser.name,
-                          notes: p.notes || '',
-                        }))
-                      );
-                    }
-                  }}
-                  className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 font-medium text-slate-800 bg-white focus:outline-none focus:border-slate-400"
-                >
-                  {orders.map(ord => (
-                    <option key={ord.id} value={ord.id}>
-                      {ord.date} - {ord.menuTitle.slice(0, 45)}... ({ord.targetPortions} porsi)
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <form onSubmit={handleSavePoForm} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+                {/* Pilihan Order Menu & Tanggal PO */}
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs shrink-0">
+                  <div className="sm:col-span-2">
+                    <label className="block font-medium text-slate-700 mb-1">
+                      Menu Tujuan untuk PO:
+                    </label>
+                    <select
+                      value={selectedPoOrderId}
+                      onChange={e => {
+                        const newId = e.target.value;
+                        setSelectedPoOrderId(newId);
+                        const found = orders.find(o => o.id === newId);
+                        if (found && found.poArrivalItems && found.poArrivalItems.length > 0) {
+                          setPoFormRows(
+                            found.poArrivalItems.map(p => ({
+                              category: p.category || 'Bahan Makanan',
+                              itemName: p.itemName,
+                              qtyOrder: p.qtyOrder || '',
+                              qtyArrived: p.qtyArrived || '',
+                              supplier: p.supplier || '',
+                              arrivalTime: p.arrivalTime || '',
+                              pic: p.pic || currentUser.name,
+                              notes: p.notes || '',
+                            }))
+                          );
+                        }
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-medium text-slate-800 bg-white focus:outline-none focus:border-slate-400"
+                    >
+                      {orders.map(ord => (
+                        <option key={ord.id} value={ord.id}>
+                          {ord.date} - {ord.menuTitle.slice(0, 45)}... ({ord.targetPortions} porsi)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div>
-                <label className="block font-medium text-slate-700 mb-1">
-                  Tanggal PO (H-1):
-                </label>
-                <input
-                  type="text"
-                  placeholder="Contoh: 2026-09-19"
-                  value={poFormDate}
-                  onChange={e => setPoFormDate(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-slate-800 bg-white font-mono focus:outline-none focus:border-slate-400"
-                />
-              </div>
-            </div>
-
-            {/* Form Tabel Bahan PO */}
-            <form onSubmit={handleSavePoForm} className="flex-1 flex flex-col min-h-0 text-xs space-y-3 overflow-hidden">
+                  <div>
+                    <label className="block font-medium text-slate-700 mb-1">
+                      Tanggal PO (H-1):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: 2026-09-19"
+                      value={poFormDate}
+                      onChange={e => setPoFormDate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-800 bg-white font-mono focus:outline-none focus:border-slate-400"
+                    />
+                  </div>
+                </div>
               <div className="flex items-center justify-between">
                 <span className="font-medium text-slate-700 text-xs">
                   Daftar Bahan PO ({poFormRows.length} item bahan):
@@ -3614,14 +3613,16 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 </div>
               </div>
 
-              {/* Action Buttons: Hapus PO (kiri), Batal & Generate PO (kanan) */}
-              <div className="flex items-center justify-between pt-3 border-t border-slate-200 shrink-0">
+              </div>
+
+              {/* Action Buttons Sticky Footer */}
+              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-2 shrink-0">
                 <div>
                   {selectedPoOrderId && (
                     <button
                       type="button"
                       onClick={() => handleDeletePoForOrder(selectedPoOrderId)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-rose-700 hover:text-rose-800 hover:bg-rose-50 border border-rose-200 rounded-lg transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-rose-700 hover:text-rose-800 hover:bg-rose-100/60 border border-rose-200 rounded-xl transition-colors cursor-pointer"
                       title="Batalkan & hapus PO resmi untuk menu ini"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -3634,14 +3635,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                   <button
                     type="button"
                     onClick={() => setIsPoModalOpen(false)}
-                    className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl border border-slate-200 transition-colors cursor-pointer"
                   >
                     Batal
                   </button>
                   <button
                     type="button"
                     onClick={handleSaveAndGenerateOfficialPo}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg bg-slate-900 hover:bg-slate-800 text-white shadow-xs transition-colors cursor-pointer active:scale-[0.99]"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-2xs transition-colors cursor-pointer active:scale-[0.99]"
                     title="Generate dan terbitkan PO resmi ke menu Input Barang & Belanja"
                   >
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -3657,32 +3658,30 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       {/* MODAL 3: INPUT & EDIT DATA PENERIMA MANFAAT                                */}
       {/* ========================================================================= */}
       {isBeneficiaryModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] flex flex-col">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-800 flex items-center justify-center">
-                  <Building2 className="w-5 h-5 text-indigo-700" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900">
-                    {editingBeneficiary ? 'Edit Data Penerima Manfaat' : 'Tambah Penerima Manfaat Baru'}
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Atur nama sekolah/lembaga, kuota jumlah porsi, serta kontak penanggung jawab (PIC)
-                  </p>
-                </div>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {editingBeneficiary ? 'Edit Data Penerima Manfaat' : 'Tambah Penerima Manfaat Baru'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Atur nama sekolah/lembaga, kuota jumlah porsi, serta kontak penanggung jawab (PIC)
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsBeneficiaryModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveBeneficiary} className="space-y-4 overflow-y-auto pr-1">
+            <form onSubmit={handleSaveBeneficiary} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -3828,17 +3827,20 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 />
               </div>
 
-              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+              </div>
+
+              {/* Action Buttons Sticky Footer */}
+              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsBeneficiaryModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white shadow-2xs transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white shadow-2xs transition-colors cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
                   <span>{editingBeneficiary ? 'Simpan Perubahan' : 'Simpan Penerima Manfaat'}</span>
@@ -3854,26 +3856,22 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       {/* ========================================================================= */}
       {isBeneficiaryPrintModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto no-print">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-5xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] flex flex-col">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center">
-                  <Printer className="w-5 h-5 text-blue-700" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900">
-                    Cetak Rekapitulasi Alokasi Porsi Harian Sekolah
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Format resmi siap cetak / simpan PDF standar Satuan Pelayanan Pemenuhan Gizi
-                  </p>
-                </div>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Cetak Rekapitulasi Alokasi Porsi Harian Sekolah
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Format resmi siap cetak / simpan PDF standar Satuan Pelayanan Pemenuhan Gizi
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
                 >
                   <Printer className="w-4 h-4 text-slate-200" />
                   <span>Cetak / Print PDF</span>
@@ -3881,7 +3879,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 <button
                   type="button"
                   onClick={() => setIsBeneficiaryPrintModalOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
                   title="Tutup dialog"
                 >
                   <X className="w-5 h-5" />
@@ -3890,7 +3888,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             </div>
 
             {/* Printable Paper Preview */}
-            <div className="flex-1 overflow-y-auto p-4 bg-slate-100 rounded-xl">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100">
               <div id="print-beneficiary-paper" className="bg-white p-6 sm:p-8 rounded-xl shadow-xs border border-slate-200 max-w-4xl mx-auto text-slate-900">
                 {/* Kop Surat Resmi */}
                 <div className="flex items-center justify-between border-b-2 border-slate-900 pb-3 mb-4">

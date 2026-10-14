@@ -502,6 +502,7 @@ export interface PurchaseOrderNota {
   status: PurchaseOrderStatus;
   items: PurchaseOrderItem[];
   subtotal: number;
+  shippingCost?: number;
   discount: number;
   tax: number;
   grandTotal: number;

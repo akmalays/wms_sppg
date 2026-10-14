@@ -810,118 +810,123 @@ export const UserManagementModule: React.FC = () => {
       {/* MODAL: EDIT USER */}
       {/* ========================================================================= */}
       {editingUser && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
-              <div className="flex items-center gap-2">
-                <Edit2 className="w-4 h-4 text-emerald-600" />
-                <h3 className="text-sm font-bold text-slate-800">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
                   Ubah Profil & Hak Akses Petugas
                 </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Atur peranan operasional, NIP, kontak, dan reset kata sandi
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setEditingUser(null)}
-                className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors cursor-pointer"
+                title="Tutup dialog"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEdit} className="p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Email Akun (Tetap)
-                </label>
-                <input
-                  type="email"
-                  disabled
-                  value={editingUser.email}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Nama Petugas <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editName}
-                  onChange={e => setEditName(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 text-slate-800"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSaveEdit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    NIP Petugas
+                    Email Akun (Tetap)
+                  </label>
+                  <input
+                    type="email"
+                    disabled
+                    value={editingUser.email}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Nama Petugas <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
-                    value={editNip}
-                    onChange={e => setEditNip(e.target.value)}
-                    placeholder="1995..."
+                    required
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
                     className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 text-slate-800"
                   />
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      NIP Petugas
+                    </label>
+                    <input
+                      type="text"
+                      value={editNip}
+                      onChange={e => setEditNip(e.target.value)}
+                      placeholder="1995..."
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      No. WhatsApp
+                    </label>
+                    <input
+                      type="tel"
+                      value={editPhone}
+                      onChange={e => setEditPhone(e.target.value)}
+                      placeholder="0812..."
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 text-slate-800"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    No. WhatsApp
+                    Peran / Penugasan <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={editRole}
+                    onChange={e => setEditRole(e.target.value as UserRole)}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 bg-white text-slate-800 cursor-pointer"
+                  >
+                    <option value="SUPERADMIN">Superadmin - Akses Penuh Sistem & Audit</option>
+                    <option value="KA_SPPG">Ka SPPG - Kepala Unit Pelayanan</option>
+                    <option value="ADMIN">Admin Gudang - Stok & Operasional</option>
+                    <option value="ASLAP">Aslap - Penerimaan & QC Dapur</option>
+                    <option value="AKUNTAN">Akuntan - Mutasi & Keuangan</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Reset Kata Sandi Baru <span className="text-[10px] text-slate-400">(Kosongkan jika tidak diganti)</span>
                   </label>
                   <input
-                    type="tel"
-                    value={editPhone}
-                    onChange={e => setEditPhone(e.target.value)}
-                    placeholder="0812..."
+                    type="password"
+                    value={editNewPassword}
+                    onChange={e => setEditNewPassword(e.target.value)}
+                    placeholder="Masukkan kata sandi baru (min. 6 karakter)..."
                     className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 text-slate-800"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Peran / Penugasan <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  value={editRole}
-                  onChange={e => setEditRole(e.target.value as UserRole)}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 bg-white text-slate-800 cursor-pointer"
-                >
-                  <option value="SUPERADMIN">Superadmin - Akses Penuh Sistem & Audit</option>
-                  <option value="KA_SPPG">Ka SPPG - Kepala Unit Pelayanan</option>
-                  <option value="ADMIN">Admin Gudang - Stok & Operasional</option>
-                  <option value="ASLAP">Aslap - Penerimaan & QC Dapur</option>
-                  <option value="AKUNTAN">Akuntan - Mutasi & Keuangan</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Reset Kata Sandi Baru <span className="text-[10px] text-slate-400">(Kosongkan jika tidak diganti)</span>
-                </label>
-                <input
-                  type="password"
-                  value={editNewPassword}
-                  onChange={e => setEditNewPassword(e.target.value)}
-                  placeholder="Masukkan kata sandi baru (min. 6 karakter)..."
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 text-slate-800"
-                />
-              </div>
-
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+              <div className="px-6 py-3.5 flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 shrink-0">
                 <button
                   type="button"
                   onClick={() => setEditingUser(null)}
-                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-800 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-2xs cursor-pointer"
+                  className="px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl shadow-2xs transition-colors cursor-pointer"
                 >
                   Simpan Perubahan
                 </button>

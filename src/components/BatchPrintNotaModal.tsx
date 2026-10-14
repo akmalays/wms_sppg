@@ -480,24 +480,19 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
 
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[94vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Modal Header */}
-        <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3 shrink-0 no-print">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center shadow-2xs">
-              <Layers className="w-5 h-5 text-emerald-600" />
+        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3 shrink-0 no-print">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-slate-900">
+                Pool Antrean Cetak Nota Pesanan (PO)
+              </h2>
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                {poolNotas.length} Nota Ditampung
+              </span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-slate-900">
-                  Pool Antrean Cetak Nota Pesanan (PO)
-                </h2>
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  {poolNotas.length} Nota Ditampung
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500">
-                Penggabungan cetak otomatis: 1 lembar kertas A4 memuat 2 nota berbeda (Atas & Bawah)
-              </p>
-            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Penggabungan cetak otomatis: 1 lembar kertas A4 memuat 2 nota berbeda (Atas & Bawah)
+            </p>
           </div>
 
           {/* Quick Actions */}

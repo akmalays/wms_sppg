@@ -2234,18 +2234,13 @@ export const EmployeeAttendanceModule: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center">
-                  <UserCheck className="w-5 h-5 text-emerald-700" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Presensi Cepat 1-Klik - SPPG MLG TUMPANG JERU
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Tanggal Operasional: <strong className="text-slate-700 font-semibold">{selectedDate}</strong> • Total {quickRows.length} staf aktif
-                  </p>
-                </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Presensi Cepat 1-Klik - SPPG MLG TUMPANG JERU
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Tanggal Operasional: <strong className="text-slate-700 font-semibold">{selectedDate}</strong> • Total {quickRows.length} staf aktif
+                </p>
               </div>
 
               <div className="flex items-center gap-2">
@@ -2583,18 +2578,13 @@ export const EmployeeAttendanceModule: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto no-print">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
-                  <Users className="w-5 h-5 text-emerald-700" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    {editingEmployeeId ? 'Ubah Data Karyawan' : 'Tambah Karyawan Baru'}
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
-                  </p>
-                </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {editingEmployeeId ? 'Ubah Data Karyawan' : 'Tambah Karyawan Baru'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
+                </p>
               </div>
               <button
                 type="button"
@@ -2884,18 +2874,13 @@ export const EmployeeAttendanceModule: React.FC = () => {
           <div className={`bg-slate-50 rounded-2xl shadow-2xl border border-slate-200 ${attPrintMode === 'RANGE' ? 'max-w-[96vw]' : 'max-w-5xl'} w-full max-h-[96vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150`}>
             {/* Header Modal */}
             <div className="px-6 py-4 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                  <Printer className="w-5 h-5 text-emerald-700" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Pratinjau Cetak Laporan Presensi Karyawan
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU) • Format resmi kop dinas & rekapitulasi per divisi
-                  </p>
-                </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Pratinjau Cetak Laporan Presensi Karyawan
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Satuan Pelayanan Pemenuhan Gizi (SPPG Tumpang Jeru) • Format resmi kop dinas & rekapitulasi per divisi
+                </p>
               </div>
 
               <div className="flex items-center gap-2">
@@ -3123,18 +3108,13 @@ export const EmployeeAttendanceModule: React.FC = () => {
           <div className="bg-slate-50 rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[96vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Header Modal */}
             <div className="px-6 py-4 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                  <Users className="w-5 h-5 text-emerald-700" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Pratinjau Cetak Data Induk / Master Karyawan
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU) • Format resmi kop dinas & rincian per divisi
-                  </p>
-                </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Pratinjau Cetak Data Induk / Master Karyawan
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Satuan Pelayanan Pemenuhan Gizi (SPPG Tumpang Jeru) • Format resmi kop dinas & rincian per divisi
+                </p>
               </div>
 
               <div className="flex items-center gap-2">

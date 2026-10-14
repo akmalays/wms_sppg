@@ -35,21 +35,16 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
     >
       <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/80">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm">
-              GR
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-slate-900">{document.id}</h3>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                <CheckCircle2 className="w-3 h-3" />
+                {document.status}
+              </span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-800">{document.id}</h3>
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                  <CheckCircle2 className="w-3 h-3" />
-                  {document.status}
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">Bukti Fisik Penerimaan Barang SPPG MLG TUMPANG JERU</p>
-            </div>
+            <p className="text-xs text-slate-500 mt-0.5">Bukti Fisik Penerimaan Barang (Good Receipt)</p>
           </div>
           <div className="flex items-center gap-2">
             <button
