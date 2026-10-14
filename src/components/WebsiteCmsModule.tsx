@@ -4,14 +4,13 @@ import {
   HeroVideoItem,
   MenuSlideItem,
   VisualStudyItem,
+  HeroDocumentationSlide,
+  DEFAULT_WEBSITE_CONFIG,
   getWebsiteConfig,
   saveWebsiteConfig,
   saveWebsiteConfigToCloud,
   fetchWebsiteConfigFromCloud,
   uploadCmsMedia,
-  exportWebsiteConfigAsJson,
-  importWebsiteConfigFromJson,
-  resetWebsiteConfigToDefault,
   VIDEO_PRESETS,
   IMAGE_PRESETS
 } from '../db/websiteConfigStorage';
@@ -63,12 +62,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   const [isSavedAlert, setIsSavedAlert] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
-  // Cloud Sync & Storage States
-  const [cloudStatus, setCloudStatus] = useState<'synced' | 'local' | 'syncing'>('local');
   const [isCloudSaving, setIsCloudSaving] = useState(false);
-  const [isSyncingFromCloud, setIsSyncingFromCloud] = useState(false);
-  const [showSqlGuide, setShowSqlGuide] = useState(false);
-  const jsonFileInputRef = useRef<HTMLInputElement>(null);
 
   // State untuk editing Menu Slide
   const [editingMenuSlide, setEditingMenuSlide] = useState<MenuSlideItem | null>(null);
@@ -89,6 +83,13 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   const newHeroVideoFileRef = useRef<HTMLInputElement>(null);
   const editingHeroVideoFileRef = useRef<HTMLInputElement>(null);
 
+  // State untuk Dokumentasi Slide Foto Hero (Kotak Kanan) & Modal
+  const [editingHeroSlide, setEditingHeroSlide] = useState<HeroDocumentationSlide | null>(null);
+  const [isHeroSlideModalOpen, setIsHeroSlideModalOpen] = useState(false);
+  const [heroSlideImagePreview, setHeroSlideImagePreview] = useState<string>('');
+  const [isUploadingHeroSlideImg, setIsUploadingHeroSlideImg] = useState(false);
+  const heroSlideFileRef = useRef<HTMLInputElement>(null);
+
   // Video preview testing
   const [isVideoUploading, setIsVideoUploading] = useState(false);
   const videoFileRef = useRef<HTMLInputElement>(null);
@@ -102,9 +103,6 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
       if (!isMounted) return;
       if (res.fromCloud) {
         setConfig(res.config);
-        setCloudStatus('synced');
-      } else {
-        setCloudStatus('local');
       }
     });
     return () => { isMounted = false; };
@@ -120,59 +118,11 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
     setIsCloudSaving(true);
     try {
       const res = await saveWebsiteConfigToCloud(config);
-      setCloudStatus(res.isCloudSynced ? 'synced' : 'local');
       showNotification(res.message);
     } catch {
       showNotification('Konfigurasi disimpan di cache lokal browser.');
     } finally {
       setIsCloudSaving(false);
-    }
-  };
-
-  const handleManualSyncCloud = async () => {
-    setIsSyncingFromCloud(true);
-    try {
-      const res = await fetchWebsiteConfigFromCloud();
-      if (res.fromCloud) {
-        setConfig(res.config);
-        setCloudStatus('synced');
-        showNotification('Berhasil menarik konfigurasi terbaru dari Database Supabase Cloud!');
-      } else {
-        setCloudStatus('local');
-        showNotification(res.error ? `Info Cloud: ${res.error}` : 'Menggunakan konfigurasi lokal browser.');
-      }
-    } finally {
-      setIsSyncingFromCloud(false);
-    }
-  };
-
-  const handleExportJson = () => {
-    exportWebsiteConfigAsJson();
-    showNotification('Berkas JSON konfigurasi website berhasil diunduh sebagai cadangan.');
-  };
-
-  const handleImportJsonFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const imported = await importWebsiteConfigFromJson(file);
-      setConfig(imported);
-      showNotification('Konfigurasi website berhasil dipulihkan dari berkas JSON cadangan!');
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Gagal membaca berkas JSON cadangan.');
-    } finally {
-      if (e.target) e.target.value = '';
-    }
-  };
-
-  const handleResetToDefault = () => {
-    const confirmReset = window.confirm(
-      'Kembalikan seluruh foto menu, dokumentasi kajian visual, dan video hero ke setelan bawaan pabrik SPPG?'
-    );
-    if (confirmReset) {
-      const resetConfig = resetWebsiteConfigToDefault();
-      setConfig(resetConfig);
-      showNotification('Pengaturan website berhasil di-reset ke setelan awal.');
     }
   };
 
@@ -369,6 +319,122 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
     });
 
     showNotification(`Preset "${newVid.title}" ditambahkan ke playlist loop video!`);
+  };
+
+  // Hero Photo Slides CRUD Handlers (Dokumentasi Kotak Kanan Landing Page)
+  const handleOpenAddHeroSlide = () => {
+    const newSlide: HeroDocumentationSlide = {
+      id: `hero-photo-${Date.now()}`,
+      title: 'Sajian Nampan MBG Bersekat SUS 304',
+      category: 'Standar Wadah Higienis',
+      description: 'Pemisahan higienis antar lauk tanpa risiko bercampur kuah. Wadah stainless steel SUS 304 standar food-grade.',
+      imageUrl: IMAGE_PRESETS[2].url,
+      badge: 'SUS 304 Food-Grade',
+      targetGrams: '475 gram'
+    };
+    setEditingHeroSlide(newSlide);
+    setHeroSlideImagePreview(newSlide.imageUrl);
+    setIsHeroSlideModalOpen(true);
+  };
+
+  const handleOpenEditHeroSlide = (slide: HeroDocumentationSlide) => {
+    setEditingHeroSlide({ ...slide });
+    setHeroSlideImagePreview(slide.imageUrl);
+    setIsHeroSlideModalOpen(true);
+  };
+
+  const handleSaveHeroSlide = () => {
+    if (!editingHeroSlide) return;
+    if (!editingHeroSlide.title.trim()) {
+      alert('Judul foto dokumentasi wajib diisi.');
+      return;
+    }
+
+    const updatedSlide: HeroDocumentationSlide = {
+      ...editingHeroSlide,
+      imageUrl: heroSlideImagePreview || editingHeroSlide.imageUrl
+    };
+
+    setConfig(prev => {
+      const currentSlides = prev.hero.photoSlides && prev.hero.photoSlides.length > 0
+        ? prev.hero.photoSlides
+        : (DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []);
+      const exists = currentSlides.some(s => s.id === updatedSlide.id);
+      const slides = exists
+        ? currentSlides.map(s => s.id === updatedSlide.id ? updatedSlide : s)
+        : [...currentSlides, updatedSlide];
+      return {
+        ...prev,
+        hero: {
+          ...prev.hero,
+          photoSlides: slides
+        }
+      };
+    });
+
+    setIsHeroSlideModalOpen(false);
+    setEditingHeroSlide(null);
+    showNotification(`Slide foto "${updatedSlide.title}" berhasil diperbarui! Klik Simpan Semua Perubahan.`);
+  };
+
+  const handleDeleteHeroSlide = (id: string) => {
+    const currentSlides = config.hero.photoSlides && config.hero.photoSlides.length > 0
+      ? config.hero.photoSlides
+      : (DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []);
+    if (currentSlides.length <= 1) {
+      alert('Minimal harus ada 1 slide foto dokumentasi yang aktif di kotak hero.');
+      return;
+    }
+    if (window.confirm('Hapus slide foto dokumentasi ini dari kotak hero landing page?')) {
+      setConfig(prev => ({
+        ...prev,
+        hero: {
+          ...prev.hero,
+          photoSlides: (prev.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []).filter(s => s.id !== id)
+        }
+      }));
+      showNotification('Slide foto dokumentasi hero dihapus.');
+    }
+  };
+
+  const handleMoveHeroSlide = (idx: number, direction: 'up' | 'down') => {
+    const currentSlides = [...(config.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || [])];
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= currentSlides.length) return;
+    const temp = currentSlides[idx];
+    currentSlides[idx] = currentSlides[targetIdx];
+    currentSlides[targetIdx] = temp;
+    setConfig(prev => ({
+      ...prev,
+      hero: {
+        ...prev.hero,
+        photoSlides: currentSlides
+      }
+    }));
+  };
+
+  const handleUploadHeroSlideImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploadingHeroSlideImg(true);
+      const result = await uploadCmsMedia(file, 'hero');
+      setHeroSlideImagePreview(result.url);
+      if (editingHeroSlide) {
+        setEditingHeroSlide(prev => prev ? { ...prev, imageUrl: result.url } : null);
+      }
+      if (result.isCloudStorage) {
+        showNotification(`Foto berhasil diunggah ke Supabase Storage (${result.finalSizeKb} KB)!`);
+      } else {
+        showNotification(result.warning || 'Foto disimpan secara lokal di browser.');
+      }
+    } catch {
+      alert('Gagal mengunggah foto slide hero.');
+    } finally {
+      setIsUploadingHeroSlideImg(false);
+      if (e.target) e.target.value = '';
+    }
   };
 
   // Video Upload Handler Legacy (Fallback)
@@ -634,233 +700,96 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   return (
     <div className="space-y-6">
       {/* 1. Header Konsol CMS */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex items-start sm:items-center gap-3.5">
-            <div className="w-12 h-12 rounded-xl bg-[#0f172a] text-white flex items-center justify-center shrink-0 shadow-xs border border-slate-700">
-              <Globe className="w-6 h-6 text-cyan-400" />
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-emerald-900/10 text-emerald-800 flex items-center justify-center shrink-0 border border-emerald-900/15">
+              <Globe className="w-6 h-6 text-emerald-700" />
             </div>
             <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                  CMS Landing Page SPPG
-                </span>
-
-                {/* Indikator Status Cloud Database / Storage */}
-                {cloudStatus === 'synced' ? (
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5 shadow-2xs">
-                    <Cloud className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Supabase Cloud Terhubung</span>
-                  </span>
-                ) : (
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1.5 shadow-2xs">
-                    <HardDrive className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Penyimpanan Lokal Browser (Offline-Ready)</span>
-                  </span>
-                )}
-
-                <span className="text-xs text-slate-400 flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-slate-400" />
-                  Diperbarui: {new Date(config.lastUpdated).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
-                </span>
-              </div>
-              <h2 className="font-display text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-1">
-                Pengaturan Konten & Visual Website Publik
+              <h2 className="font-display text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                Pengaturan Konten Website Publik
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Kustomisasi video latar belakang hero, rotasi slide foto menu makanan bergizi, dan galeri kajian visual nampan.
+              <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
+                Kelola video latar belakang hero, rotasi slide foto nampan MBG, dan galeri kajian visual operasional.
               </p>
             </div>
           </div>
 
           {/* Action Toolbar */}
-          <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+          <div className="flex items-center gap-2.5 self-start sm:self-auto shrink-0">
             {onViewLanding && (
               <button
                 type="button"
                 onClick={onViewLanding}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold transition-colors cursor-pointer border border-slate-200 shadow-2xs"
-                title="Buka website publik untuk melihat tampilan secara langsung"
+                className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 text-xs font-semibold transition-colors cursor-pointer border border-slate-200 shadow-2xs"
+                title="Buka pratinjau website publik"
               >
-                <Eye className="w-3.5 h-3.5 text-blue-600" />
-                <span>Ke Website</span>
-                <ExternalLink className="w-3 h-3 text-slate-400" />
+                <Eye className="w-4 h-4 text-emerald-700" />
+                <span>Lihat Website</span>
+                <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
               </button>
             )}
 
             <button
               type="button"
-              onClick={handleManualSyncCloud}
-              disabled={isSyncingFromCloud}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors cursor-pointer border border-slate-200 shadow-2xs"
-              title="Tarik konfigurasi terbaru dari database cloud Supabase"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isSyncingFromCloud ? 'animate-spin' : ''}`} />
-              <span>{isSyncingFromCloud ? 'Sinkron...' : 'Sinkron Cloud'}</span>
-            </button>
-
-            {/* Input File Tersembunyi untuk Impor JSON */}
-            <input
-              type="file"
-              ref={jsonFileInputRef}
-              accept=".json"
-              onChange={handleImportJsonFile}
-              className="hidden"
-            />
-
-            <button
-              type="button"
-              onClick={handleExportJson}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors cursor-pointer border border-slate-200 shadow-2xs"
-              title="Unduh konfigurasi website saat ini sebagai berkas file JSON cadangan"
-            >
-              <Download className="w-3.5 h-3.5 text-slate-500" />
-              <span>Ekspor JSON</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => jsonFileInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors cursor-pointer border border-slate-200 shadow-2xs"
-              title="Pulihkan konfigurasi dari berkas file JSON cadangan"
-            >
-              <UploadCloud className="w-3.5 h-3.5 text-slate-500" />
-              <span>Impor JSON</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleResetToDefault}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 text-xs font-medium transition-colors cursor-pointer border border-slate-200 shadow-2xs"
-              title="Reset ke setelan bawaan foto & video"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset</span>
-            </button>
-
-            <button
-              type="button"
               onClick={handleSaveAll}
               disabled={isCloudSaving}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-75 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer border border-blue-500"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-75 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer border border-emerald-600 active:scale-[0.99]"
             >
               <Save className="w-4 h-4" />
-              <span>{isCloudSaving ? 'Menyimpan Cloud...' : 'Simpan Semua Perubahan'}</span>
+              <span>{isCloudSaving ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
             </button>
           </div>
         </div>
-
-        {/* Banner Penjelasan Arsitektur Database & Object Storage */}
-        <div className="mt-4 p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs text-slate-600">
-          <div className="flex items-start gap-2.5">
-            <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
-              <Database className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <span className="font-semibold text-slate-900">Arsitektur Penyimpanan Media Modern:</span>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Foto menu & dokumentasi otomatis dikompresi ke <strong>WebP</strong> dan diunggah ke <strong>Supabase Object Storage (sppg-assets)</strong>. Video hero disarankan berformat MP4 ringkas/CDN. Database PostgreSQL hanya menyimpan metadata & URL publik sehingga database tetap ringan, aman, dan secepat kilat.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowSqlGuide(prev => !prev)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-semibold shrink-0 cursor-pointer shadow-2xs transition-colors self-start md:self-auto"
-          >
-            <Info className="w-3.5 h-3.5 text-blue-600" />
-            <span>{showSqlGuide ? 'Tutup Panduan SQL' : 'Lihat Skema SQL Supabase'}</span>
-          </button>
-        </div>
-
-        {/* Panel Panduan SQL Supabase (Bisa disalin untuk Dashboard Supabase) */}
-        {showSqlGuide && (
-          <div className="mt-3 p-4 bg-slate-900 text-slate-200 rounded-xl border border-slate-800 text-xs space-y-2.5 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-cyan-400 font-semibold flex items-center gap-1.5">
-                <Database className="w-3.5 h-3.5 text-cyan-400" />
-                supabase/migrations/20261007000001_website_cms_and_storage.sql
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(`-- TABEL CMS & STORAGE BUCKET
-CREATE TABLE IF NOT EXISTS public.website_cms_config (
-    id TEXT PRIMARY KEY DEFAULT 'default',
-    config JSONB NOT NULL,
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_by TEXT DEFAULT 'admin'
-);
-ALTER TABLE public.website_cms_config ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Public can view website config" ON public.website_cms_config FOR SELECT TO anon, authenticated USING (true);
-CREATE POLICY "Allow manage website config" ON public.website_cms_config FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES ('sppg-assets', 'sppg-assets', true, 52428800, ARRAY['image/webp', 'image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/webm'])
-ON CONFLICT (id) DO UPDATE SET public = true;
-
-CREATE POLICY "Public can view sppg-assets" ON storage.objects FOR SELECT TO anon, authenticated USING (bucket_id = 'sppg-assets');
-CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, authenticated WITH CHECK (bucket_id = 'sppg-assets');`);
-                  alert('Kode SQL berhasil disalin ke clipboard! Silakan tempel (paste) di SQL Editor Supabase Anda.');
-                }}
-                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-semibold cursor-pointer"
-              >
-                Salin Skrip SQL
-              </button>
-            </div>
-            <p className="text-[11px] text-slate-400">
-              Jalankan perintah SQL ini di menu <strong>SQL Editor</strong> di dashboard Supabase proyek Anda untuk membuat tabel <code className="text-cyan-300">public.website_cms_config</code> dan bucket <code className="text-cyan-300">sppg-assets</code> secara otomatis.
-            </p>
-          </div>
-        )}
 
         {/* Notifikasi Toast Tersimpan */}
         {isSavedAlert && (
-          <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
+          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span className="font-semibold">{saveMessage}</span>
           </div>
         )}
 
         {/* Tab Navigasi Sub-Modul */}
-        <div className="mt-6 flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
           <button
             type="button"
             onClick={() => setActiveTab('hero')}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'hero'
-                ? 'bg-[#0f172a] text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                ? 'bg-emerald-800 text-white shadow-xs'
+                : 'bg-slate-100 hover:bg-slate-200/80 text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Video className={`w-4 h-4 ${activeTab === 'hero' ? 'text-cyan-400' : 'text-slate-500'}`} />
+            <Video className={`w-4 h-4 ${activeTab === 'hero' ? 'text-emerald-200' : 'text-slate-500'}`} />
             <span>Hero & Video Background</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('menu')}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'menu'
-                ? 'bg-[#0f172a] text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                ? 'bg-emerald-800 text-white shadow-xs'
+                : 'bg-slate-100 hover:bg-slate-200/80 text-slate-600 hover:text-slate-900'
             }`}
           >
-            <UtensilsCrossed className={`w-4 h-4 ${activeTab === 'menu' ? 'text-cyan-400' : 'text-slate-500'}`} />
-            <span>Foto Menu & Auto-Slide ({config.menuSlider.slides.length} Menu)</span>
+            <UtensilsCrossed className={`w-4 h-4 ${activeTab === 'menu' ? 'text-emerald-200' : 'text-slate-500'}`} />
+            <span>Foto Menu MBG ({config.menuSlider.slides.length})</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('visual')}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'visual'
-                ? 'bg-[#0f172a] text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                ? 'bg-emerald-800 text-white shadow-xs'
+                : 'bg-slate-100 hover:bg-slate-200/80 text-slate-600 hover:text-slate-900'
             }`}
           >
-            <ImageIcon className={`w-4 h-4 ${activeTab === 'visual' ? 'text-cyan-400' : 'text-slate-500'}`} />
-            <span>Kajian Visual Lapangan ({config.visualStudy.items.length} Dokumentasi)</span>
+            <ImageIcon className={`w-4 h-4 ${activeTab === 'visual' ? 'text-emerald-200' : 'text-slate-500'}`} />
+            <span>Kajian Visual Lapangan ({config.visualStudy.items.length})</span>
           </button>
         </div>
       </div>
@@ -873,15 +802,15 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
             <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
                     <Video className="w-4 h-4" />
                   </div>
                   <div>
                     <h3 className="font-display text-sm font-bold text-slate-900">
-                      Tipe Latar Belakang Hero Section
+                      Format Latar Hero
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      Pilih apakah hero menggunakan video gerak sinematik loop atau foto statis
+                      Tampilan utama halaman depan: video gerak sinematik atau foto statis
                     </p>
                   </div>
                 </div>
@@ -892,7 +821,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     onClick={() => setConfig(prev => ({ ...prev, hero: { ...prev.hero, backgroundType: 'video' } }))}
                     className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
                       config.hero.backgroundType === 'video'
-                        ? 'bg-[#0f172a] text-white shadow-xs'
+                        ? 'bg-[#0c3123] text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -904,7 +833,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     onClick={() => setConfig(prev => ({ ...prev, hero: { ...prev.hero, backgroundType: 'image' } }))}
                     className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
                       config.hero.backgroundType === 'image'
-                        ? 'bg-[#0f172a] text-white shadow-xs'
+                        ? 'bg-[#0c3123] text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -919,18 +848,17 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-100">
                   <div>
                     <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <span>Daftar Playlist Video Hero (Putar Bergantian / Loop)</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-100 text-blue-800 font-semibold">
+                      <span>Playlist Video Hero (Looping Otomatis)</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-900 font-semibold">
                         {(config.hero.videos || []).length} Video
                       </span>
                     </h4>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Saat video selesai diputar, website otomatis memutar video berikutnya secara berulang (looping).
+                      Video diputar berurutan secara otomatis berkesinambungan.
                     </p>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {/* Input File Tersembunyi untuk Upload Video Baru ke Playlist */}
                     <input
                       type="file"
                       ref={newHeroVideoFileRef}
@@ -943,18 +871,18 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                       type="button"
                       onClick={() => newHeroVideoFileRef.current?.click()}
                       disabled={isUploadingHeroVideo}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-75 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                      title="Unggah file MP4 langsung ke Cloud Storage dan tambahkan ke loop"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:opacity-75 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                      title="Unggah file MP4 langsung ke penyimpanan cloud"
                     >
                       <Upload className="w-3.5 h-3.5" />
-                      <span>{isUploadingHeroVideo ? 'Mengunggah...' : 'Upload Video Baru'}</span>
+                      <span>{isUploadingHeroVideo ? 'Mengunggah...' : 'Upload Video'}</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={handleOpenAddHeroVideo}
                       className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium border border-slate-200 transition-colors cursor-pointer"
-                      title="Tambah tautan video manual atau preset"
+                      title="Tambah tautan video manual"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Tambah URL</span>
@@ -970,7 +898,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                       className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className="w-6 h-6 rounded-lg bg-[#0f172a] text-cyan-400 font-mono text-xs font-bold flex items-center justify-center shrink-0">
+                        <span className="w-6 h-6 rounded-lg bg-[#0c3123] text-emerald-300 font-mono text-xs font-bold flex items-center justify-center shrink-0">
                           #{idx + 1}
                         </span>
                         <div className="w-16 h-11 rounded-lg bg-slate-900 border border-slate-300 overflow-hidden shrink-0 flex items-center justify-center relative">
@@ -1011,7 +939,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                         <button
                           type="button"
                           onClick={() => handleOpenEditHeroVideo(vid)}
-                          className="p-1.5 rounded hover:bg-blue-100 text-blue-600 transition-colors cursor-pointer"
+                          className="p-1.5 rounded hover:bg-emerald-100 text-emerald-800 transition-colors cursor-pointer"
                           title="Edit video ini"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -1030,12 +958,12 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                 </div>
 
                 {/* Pengaturan Looping & Waktu Transisi Playlist */}
-                <div className="p-3.5 rounded-xl bg-slate-100/80 border border-slate-200 space-y-3">
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                      <span className="font-bold text-xs text-slate-800">Mode Transisi & Looping Video:</span>
+                      <span className="font-bold text-xs text-slate-800">Mode Transisi Video:</span>
                       <p className="text-[11px] text-slate-500">
-                        Atur kapan video berganti ke urutan berikutnya di hero section.
+                        Atur interval pergantian video latar belakang.
                       </p>
                     </div>
 
@@ -1048,7 +976,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                           videoIntervalSeconds: parseInt(e.target.value, 10)
                         }
                       }))}
-                      className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 font-medium"
+                      className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                     >
                       <option value={0}>Transisi Alami saat Video Berakhir (onEnded)</option>
                       <option value={8}>Otomatis Tiap 8 Detik</option>
@@ -1058,10 +986,10 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     </select>
                   </div>
 
-                  {/* Tambah Cepat Preset HD ke Playlist */}
+                  {/* Preset Video Rekomendasi */}
                   <div className="pt-2 border-t border-slate-200">
                     <span className="text-[11px] font-semibold text-slate-600 block mb-1.5">
-                      Tambah Cepat Video HD Dapur ke Playlist:
+                      Pilihan Video Operasional Dapur:
                     </span>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {VIDEO_PRESETS.map((vp) => {
@@ -1075,17 +1003,17 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                             className={`p-2 rounded-lg text-left border text-[11px] transition-all cursor-pointer ${
                               isAlreadyAdded
                                 ? 'bg-emerald-50 border-emerald-300 text-emerald-800 opacity-80'
-                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-blue-400'
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-emerald-50/50 hover:border-emerald-300'
                             }`}
                           >
                             <div className="font-bold flex items-center justify-between">
-                              <span>{vp.label.split(':')[0]}</span>
+                              <span className="truncate">{vp.label.split(':')[0]}</span>
                               {isAlreadyAdded ? (
-                                <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-0.5">
-                                  <Check className="w-3 h-3" /> Ada di List
+                                <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-0.5 shrink-0">
+                                  <Check className="w-3 h-3" /> Ada
                                 </span>
                               ) : (
-                                <Plus className="w-3 h-3 text-blue-600" />
+                                <Plus className="w-3 h-3 text-emerald-700 shrink-0" />
                               )}
                             </div>
                             <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">{vp.description}</p>
@@ -1101,11 +1029,11 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
               <div className="pt-3 border-t border-slate-100 space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Sliders className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Tingkat Kegelapan Lapisan Overlay ({Math.round(config.hero.videoOverlayOpacity * 100)}%)</span>
+                    <Sliders className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Lapisan Overlay Gelap ({Math.round(config.hero.videoOverlayOpacity * 100)}%)</span>
                   </label>
-                  <span className="text-[11px] font-medium text-slate-500 font-mono">
-                    Rekomendasi: 60% – 75% agar teks terbaca jelas
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Standar: 60% – 75%
                   </span>
                 </div>
                 <input
@@ -1118,65 +1046,221 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     ...prev,
                     hero: { ...prev.hero, videoOverlayOpacity: parseFloat(e.target.value) }
                   }))}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-700"
                 />
                 <div className="flex justify-between text-[10px] text-slate-400">
-                  <span>20% (Lebih Terang Video)</span>
-                  <span>55% (Seimbang)</span>
-                  <span>85% (Maksimal Kontras Teks)</span>
+                  <span>20% (Terang)</span>
+                  <span>55% (Sedang)</span>
+                  <span>85% (Kontras Tinggi)</span>
                 </div>
               </div>
 
               {/* Teks & Judul Hero Section */}
               <div className="pt-3 border-t border-slate-100 space-y-3">
-                <h4 className="text-xs font-bold text-slate-800">Kustomisasi Teks & Narasi Hero</h4>
+                <h4 className="text-xs font-bold text-slate-800">Teks & Narasi Hero</h4>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Badge Atas</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Badge Teks</label>
                   <input
                     type="text"
                     value={config.hero.heroBadge}
                     onChange={e => setConfig(prev => ({ ...prev, hero: { ...prev.hero, heroBadge: e.target.value } }))}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800"
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Judul Utama (Headline)</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Judul Utama</label>
                   <input
                     type="text"
                     value={config.hero.heroTitle}
                     onChange={e => setConfig(prev => ({ ...prev, hero: { ...prev.hero, heroTitle: e.target.value } }))}
-                    className="w-full px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-800"
+                    className="w-full px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Paragraf Narasi</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Deskripsi Narasi</label>
                   <textarea
                     rows={3}
                     value={config.hero.heroSubtitle}
                     onChange={e => setConfig(prev => ({ ...prev, hero: { ...prev.hero, heroSubtitle: e.target.value } }))}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800"
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Kolom Kanan: Pratinjau Langsung Video Hero */}
-          <div className="lg:col-span-5 space-y-4">
-            <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-md sticky top-24">
-              <div className="p-3 bg-slate-800/90 border-b border-slate-700 flex items-center justify-between text-xs text-slate-200">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="font-semibold">Simulasi Tampilan Hero Publik</span>
+            {/* Card Kustomisasi Dokumentasi Slide Foto Hero (Kotak Kanan Landing Page) */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
+                    <ImageIcon className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <span>Slide Foto Hero (Kotak Kanan)</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-900 font-semibold">
+                        {(config.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []).length} Foto
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Foto operasional & sajian nampan yang tampil bergantian di sisi kanan hero
+                    </p>
+                  </div>
                 </div>
-                <span className="font-mono text-[11px] text-cyan-400">16:9 Cinema View</span>
+
+                <button
+                  type="button"
+                  onClick={handleOpenAddHeroSlide}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer self-start sm:self-auto shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tambah Foto Slide</span>
+                </button>
               </div>
 
-              {/* Layar Simulasi Hero dengan Video & Teks */}
-              <div className="relative aspect-16/10 overflow-hidden bg-slate-950 flex flex-col justify-end p-5 text-white">
+              {/* Pengaturan Auto-Slide & Durasi Detik */}
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setConfig(prev => ({
+                      ...prev,
+                      hero: {
+                        ...prev.hero,
+                        autoSlidePhotos: !(prev.hero.autoSlidePhotos ?? true)
+                      }
+                    }))}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                      (config.hero.autoSlidePhotos ?? true) ? 'bg-emerald-700' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        (config.hero.autoSlidePhotos ?? true) ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <div>
+                    <span className="font-bold text-xs text-slate-800 block">
+                      Auto-Slide Foto: {(config.hero.autoSlidePhotos ?? true) ? 'Aktif' : 'Non-Aktif'}
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Berganti foto secara berkala otomatis
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <span className="text-xs text-slate-600 font-medium">Interval:</span>
+                  <select
+                    value={config.hero.photoSlideInterval || 4}
+                    onChange={e => setConfig(prev => ({
+                      ...prev,
+                      hero: {
+                        ...prev.hero,
+                        photoSlideInterval: parseInt(e.target.value, 10)
+                      }
+                    }))}
+                    className="px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                  >
+                    <option value={3}>3 Detik</option>
+                    <option value={4}>4 Detik</option>
+                    <option value={5}>5 Detik</option>
+                    <option value={6}>6 Detik</option>
+                    <option value={8}>8 Detik</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Daftar Foto Slide */}
+              <div className="space-y-2.5">
+                {(config.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []).map((slide, idx) => (
+                  <div
+                    key={slide.id || idx}
+                    className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="w-6 h-6 rounded-lg bg-[#0c3123] text-emerald-300 font-mono text-xs font-bold flex items-center justify-center shrink-0">
+                        #{idx + 1}
+                      </span>
+                      <div className="w-16 h-12 rounded-lg bg-slate-900 border border-slate-300 overflow-hidden shrink-0 relative">
+                        <img src={slide.imageUrl} alt={slide.title} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h5 className="font-bold text-xs text-slate-900 truncate">
+                            {slide.title}
+                          </h5>
+                          {slide.badge && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-900 font-medium shrink-0">
+                              {slide.badge}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
+                          {slide.description}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0 self-end sm:self-center">
+                      <button
+                        type="button"
+                        onClick={() => handleMoveHeroSlide(idx, 'up')}
+                        disabled={idx === 0}
+                        className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 text-slate-600 transition-colors cursor-pointer"
+                        title="Geser ke atas"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5 rotate-90" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveHeroSlide(idx, 'down')}
+                        disabled={idx === (config.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []).length - 1}
+                        className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 text-slate-600 transition-colors cursor-pointer"
+                        title="Geser ke bawah"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5 rotate-90" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditHeroSlide(slide)}
+                        className="p-1.5 rounded hover:bg-emerald-100 text-emerald-800 transition-colors cursor-pointer"
+                        title="Edit slide foto ini"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteHeroSlide(slide.id)}
+                        className="p-1.5 rounded hover:bg-rose-100 text-rose-600 transition-colors cursor-pointer"
+                        title="Hapus foto dari slide"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Kolom Kanan: Pratinjau Tampilan Hero */}
+          <div className="lg:col-span-5 space-y-4">
+            <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-md sticky top-24 space-y-4 p-4">
+              <div className="flex items-center justify-between text-xs text-slate-200 pb-2 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <span className="font-semibold text-slate-100">Pratinjau Hero Section</span>
+                </div>
+                <span className="text-[11px] font-medium text-emerald-400">Live View</span>
+              </div>
+
+              {/* Layar Simulasi Background Hero dengan Video & Teks */}
+              <div className="relative aspect-16/10 overflow-hidden rounded-xl bg-slate-950 flex flex-col justify-end p-5 text-white border border-slate-800">
                 {/* Background Video atau Image */}
                 {config.hero.backgroundType === 'video' && (config.hero.videos?.[0]?.url || config.hero.videoUrl) ? (
                   <video
@@ -1226,9 +1310,40 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                 </div>
               </div>
 
-              <div className="p-3 bg-slate-900 text-[11px] text-slate-400 border-t border-slate-800 flex items-center justify-between">
-                <span>Format video: Auto-loop, Muted, Inline</span>
-                <span className="text-cyan-400">Status: Siap Ditayangkan</span>
+              {/* Simulasi Kotak Kanan: Dokumentasi Slide Foto */}
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between text-xs text-slate-300">
+                  <div className="flex items-center gap-1.5 font-semibold text-emerald-400">
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    <span>Slide Foto Operasional (Kotak Kanan)</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    Auto: {(config.hero.autoSlidePhotos ?? true) ? `${config.hero.photoSlideInterval || 4}s` : 'Manual'}
+                  </span>
+                </div>
+
+                <div className="relative aspect-4/3 rounded-lg overflow-hidden border border-slate-700 bg-slate-900">
+                  <img
+                    src={(config.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || [])[0]?.imageUrl || IMAGE_PRESETS[2].url}
+                    alt="Pratinjau Slide Foto"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute top-2 left-2 bg-black/80 text-white text-[10px] font-medium px-2 py-0.5 rounded border border-slate-700 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#4ade80]" />
+                    <span>{(config.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || [])[0]?.badge || 'SUS 304 Food-Grade'}</span>
+                  </div>
+                  <div className="absolute top-2 right-2 bg-black/80 text-white text-[10px] font-mono px-1.5 py-0.5 rounded border border-white/20">
+                    1 / {(config.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []).length}
+                  </div>
+                  <div className="absolute bottom-2 left-2 right-2 bg-slate-900/90 p-2 rounded-md border border-slate-700 text-left">
+                    <div className="text-[11px] font-bold text-white truncate">
+                      {(config.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || [])[0]?.title || 'Sajian Nampan SUS 304'}
+                    </div>
+                    <div className="text-[10px] text-slate-300 line-clamp-1 mt-0.5">
+                      {(config.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || [])[0]?.description}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1243,11 +1358,11 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
               <div>
                 <h3 className="font-display text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <Sliders className="w-4 h-4 text-blue-600" />
-                  <span>Pengaturan Auto-Slide Menu MBG</span>
+                  <Sliders className="w-4 h-4 text-emerald-700" />
+                  <span>Pengaturan Rotasi Menu MBG</span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Atur pergeseran otomatis dan durasi pergantian foto menu di landing page
+                  Atur perputaran carousel dan durasi pergantian menu di halaman depan
                 </p>
               </div>
 
@@ -1261,10 +1376,10 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                       ...prev,
                       menuSlider: { ...prev.menuSlider, autoSlide: e.target.checked }
                     }))}
-                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                    className="w-4 h-4 text-emerald-700 rounded border-slate-300 focus:ring-emerald-600 accent-emerald-700 cursor-pointer"
                   />
                   <span className="text-xs font-semibold text-slate-800">
-                    Auto-Slide {config.menuSlider.autoSlide ? 'Aktif' : 'Nonaktif'}
+                    Rotasi {config.menuSlider.autoSlide ? 'Aktif' : 'Nonaktif'}
                   </span>
                 </label>
 
@@ -1277,7 +1392,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                       ...prev,
                       menuSlider: { ...prev.menuSlider, intervalSeconds: parseInt(e.target.value, 10) }
                     }))}
-                    className="font-bold text-blue-600 bg-transparent focus:outline-none cursor-pointer"
+                    className="font-bold text-emerald-800 bg-transparent focus:outline-none cursor-pointer"
                   >
                     <option value={3}>3 Detik</option>
                     <option value={4}>4 Detik</option>
@@ -1297,7 +1412,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                       ...prev,
                       menuSlider: { ...prev.menuSlider, pauseOnHover: e.target.checked }
                     }))}
-                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                    className="w-4 h-4 text-emerald-700 rounded border-slate-300 focus:ring-emerald-600 accent-emerald-700 cursor-pointer"
                   />
                   <span className="text-slate-700 font-medium">Jeda Saat Kursor Di Atas Menu</span>
                 </label>
@@ -1308,7 +1423,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Judul Seksi Menu di Landing Page
+                  Judul Seksi di Halaman Depan
                 </label>
                 <input
                   type="text"
@@ -1317,13 +1432,13 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     ...prev,
                     menuSlider: { ...prev.menuSlider, sectionTitle: e.target.value }
                   }))}
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Subjudul / Keterangan Seksi
+                  Subjudul Seksi
                 </label>
                 <input
                   type="text"
@@ -1332,7 +1447,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     ...prev,
                     menuSlider: { ...prev.menuSlider, sectionSubtitle: e.target.value }
                   }))}
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                 />
               </div>
             </div>
@@ -1342,17 +1457,17 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-display text-base font-bold text-slate-900">
-                Koleksi Slide Menu Harian MBG ({config.menuSlider.slides.length} Menu)
+                Koleksi Menu Harian MBG ({config.menuSlider.slides.length} Menu)
               </h3>
               <p className="text-xs text-slate-500">
-                Foto dan resep ini akan berputar otomatis secara bergantian pada carousel di website
+                Foto dan resep berganti bergantian pada carousel website
               </p>
             </div>
 
             <button
               type="button"
               onClick={handleOpenAddMenu}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Tambah Foto Menu Baru</span>
@@ -1372,7 +1487,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     alt={slide.title}
                     className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
                   />
-                  <div className="absolute top-3 left-3 bg-[#0f172a]/90 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-lg border border-slate-700">
+                  <div className="absolute top-3 left-3 bg-[#0c3123]/95 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-lg border border-emerald-700/50">
                     {slide.day}
                   </div>
                   <div className="absolute top-3 right-3 bg-white/95 text-slate-900 text-[10px] font-bold px-2 py-0.5 rounded-lg shadow-xs">
@@ -1383,10 +1498,10 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                 {/* Deskripsi Menu */}
                 <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
                   <div>
-                    <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                    <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200/50 px-2 py-0.5 rounded">
                       {slide.category}
                     </span>
-                    <h4 className="font-display text-sm font-bold text-slate-900 mt-1 line-clamp-1">
+                    <h4 className="font-display text-sm font-bold text-slate-900 mt-1.5 line-clamp-1">
                       {slide.title}
                     </h4>
                     <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
@@ -1421,7 +1536,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                         type="button"
                         onClick={() => handleOpenEditMenu(slide)}
                         title="Edit Menu"
-                        className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 cursor-pointer"
+                        className="p-1.5 rounded-lg hover:bg-emerald-50 text-emerald-700 cursor-pointer"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
@@ -1449,18 +1564,18 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
               <div>
                 <h3 className="font-display text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <ImageIcon className="w-4 h-4 text-blue-600" />
-                  <span>Pengaturan Seksi Kajian Visual Lapangan</span>
+                  <ImageIcon className="w-4 h-4 text-emerald-700" />
+                  <span>Pengaturan Kajian Visual Lapangan</span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Foto riil dokumentasi nampan 5 sekat, pengemasan boks ganda, dan standar higienitas SPPG
+                  Dokumentasi nampan 5 sekat, pengemasan boks ganda, dan standar higienitas SPPG
                 </p>
               </div>
 
               <button
                 type="button"
                 onClick={handleOpenAddVisual}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer self-start sm:self-auto"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer self-start sm:self-auto"
               >
                 <Plus className="w-4 h-4" />
                 <span>Tambah Dokumentasi Visual Baru</span>
@@ -1470,7 +1585,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Judul Seksi di Landing Page
+                  Judul Seksi di Halaman Depan
                 </label>
                 <input
                   type="text"
@@ -1479,7 +1594,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     ...prev,
                     visualStudy: { ...prev.visualStudy, sectionTitle: e.target.value }
                   }))}
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                 />
               </div>
 
@@ -1494,7 +1609,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     ...prev,
                     visualStudy: { ...prev.visualStudy, sectionSubtitle: e.target.value }
                   }))}
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                 />
               </div>
             </div>
@@ -1513,7 +1628,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     className="w-full h-full object-cover"
                   />
                   {item.badge && (
-                    <div className="absolute top-3 left-3 bg-[#111915]/90 text-emerald-300 text-[10px] font-semibold px-2 py-0.5 rounded-md border border-slate-700">
+                    <div className="absolute top-3 left-3 bg-[#0c3123]/90 text-emerald-300 text-[10px] font-semibold px-2 py-0.5 rounded-md border border-emerald-700/50">
                       {item.badge}
                     </div>
                   )}
@@ -1524,10 +1639,10 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
 
                 <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
                   <div>
-                    <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">
+                    <span className="text-[10px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200/50 px-2 py-0.5 rounded inline-block">
                       {item.category}
                     </span>
-                    <h4 className="font-display text-sm font-bold text-slate-900 mt-0.5">
+                    <h4 className="font-display text-sm font-bold text-slate-900 mt-1">
                       {item.title}
                     </h4>
                     <p className="text-xs text-slate-500 mt-1 line-clamp-3 leading-relaxed">
@@ -1562,7 +1677,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                         type="button"
                         onClick={() => handleOpenEditVisual(item)}
                         title="Edit Dokumentasi"
-                        className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 cursor-pointer"
+                        className="p-1.5 rounded-lg hover:bg-emerald-50 text-emerald-700 cursor-pointer"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
@@ -1589,11 +1704,11 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
                   <UtensilsCrossed className="w-4 h-4" />
                 </div>
                 <h4 className="font-display text-sm font-bold text-slate-900">
-                  {editingMenuSlide.id.startsWith('menu-') ? 'Edit Foto & Resep Menu MBG' : 'Tambah Menu Baru'}
+                  {editingMenuSlide.id.startsWith('menu-') ? 'Edit Menu MBG' : 'Tambah Menu Baru'}
                 </h4>
               </div>
               <button
@@ -1633,13 +1748,13 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                       type="button"
                       onClick={() => menuFileRef.current?.click()}
                       disabled={isUploadingMenuImg}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-semibold cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-semibold cursor-pointer"
                     >
                       <Upload className="w-3.5 h-3.5" />
-                      <span>{isUploadingMenuImg ? 'Mengompres...' : 'Unggah Foto dari Perangkat (WebP Otomatis)'}</span>
+                      <span>{isUploadingMenuImg ? 'Memproses...' : 'Unggah Foto dari Perangkat'}</span>
                     </button>
                     <div className="text-[11px] text-slate-500">
-                      Atau pilih dari preset poster resmi:
+                      Pilihan foto preset:
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {IMAGE_PRESETS.map(p => (
@@ -1652,7 +1767,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                           }}
                           className={`px-2 py-0.5 rounded text-[10px] border transition-colors cursor-pointer ${
                             menuImagePreview === p.url
-                              ? 'bg-blue-600 text-white border-blue-600'
+                              ? 'bg-emerald-700 text-white border-emerald-700'
                               : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                           }`}
                         >
@@ -1672,7 +1787,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     type="text"
                     value={editingMenuSlide.title}
                     onChange={e => setEditingMenuSlide(prev => prev ? { ...prev, title: e.target.value } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -1680,7 +1795,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                   <select
                     value={editingMenuSlide.day}
                     onChange={e => setEditingMenuSlide(prev => prev ? { ...prev, day: e.target.value } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 cursor-pointer"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 cursor-pointer focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                   >
                     <option value="Senin">Senin</option>
                     <option value="Selasa">Selasa</option>
@@ -1700,7 +1815,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     type="text"
                     value={editingMenuSlide.category}
                     onChange={e => setEditingMenuSlide(prev => prev ? { ...prev, category: e.target.value } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -1709,7 +1824,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     type="text"
                     value={editingMenuSlide.calories}
                     onChange={e => setEditingMenuSlide(prev => prev ? { ...prev, calories: e.target.value } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -1721,7 +1836,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                   rows={3}
                   value={editingMenuSlide.description}
                   onChange={e => setEditingMenuSlide(prev => prev ? { ...prev, description: e.target.value } : null)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                 />
               </div>
 
@@ -1736,7 +1851,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                 <button
                   type="button"
                   onClick={handleSaveMenuSlide}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer"
                 >
                   Terapkan Slide
                 </button>
@@ -1796,13 +1911,13 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                       type="button"
                       onClick={() => visualFileRef.current?.click()}
                       disabled={isUploadingVisualImg}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-semibold cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-semibold cursor-pointer"
                     >
                       <Upload className="w-3.5 h-3.5" />
-                      <span>{isUploadingVisualImg ? 'Mengompres...' : 'Unggah Foto Baru (WebP Otomatis)'}</span>
+                      <span>{isUploadingVisualImg ? 'Memproses...' : 'Unggah Foto Baru'}</span>
                     </button>
                     <div className="text-[11px] text-slate-500">
-                      Atau pilih foto arsip unit:
+                      Pilihan foto arsip unit:
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {IMAGE_PRESETS.slice(2).map(p => (
@@ -1815,7 +1930,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                           }}
                           className={`px-2 py-0.5 rounded text-[10px] border transition-colors cursor-pointer ${
                             visualImagePreview === p.url
-                              ? 'bg-blue-600 text-white border-blue-600'
+                              ? 'bg-emerald-700 text-white border-emerald-700'
                               : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                           }`}
                         >
@@ -1835,7 +1950,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     type="text"
                     value={editingVisualItem.title}
                     onChange={e => setEditingVisualItem(prev => prev ? { ...prev, title: e.target.value } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -1844,7 +1959,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     type="text"
                     value={editingVisualItem.category}
                     onChange={e => setEditingVisualItem(prev => prev ? { ...prev, category: e.target.value } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -1858,7 +1973,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     value={editingVisualItem.badge || ''}
                     onChange={e => setEditingVisualItem(prev => prev ? { ...prev, badge: e.target.value } : null)}
                     placeholder="Contoh: Food-Grade SUS 304"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -1867,7 +1982,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     type="text"
                     value={editingVisualItem.date || ''}
                     onChange={e => setEditingVisualItem(prev => prev ? { ...prev, date: e.target.value } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                   />
                 </div>
               </div>
@@ -1879,7 +1994,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                   rows={3}
                   value={editingVisualItem.description}
                   onChange={e => setEditingVisualItem(prev => prev ? { ...prev, description: e.target.value } : null)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                 />
               </div>
 
@@ -1894,7 +2009,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                 <button
                   type="button"
                   onClick={handleSaveVisualItem}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer"
                 >
                   Terapkan Dokumentasi
                 </button>
@@ -1909,7 +2024,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
                   <Video className="w-4 h-4" />
                 </div>
                 <h4 className="font-display text-sm font-bold text-slate-900">
@@ -1933,7 +2048,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                   value={editingHeroVideo.title}
                   onChange={e => setEditingHeroVideo(prev => prev ? { ...prev, title: e.target.value } : null)}
                   placeholder="Contoh: Dapur Pukul 04.00 WIB & Sayuran Segar"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                 />
               </div>
 
@@ -1947,7 +2062,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                     value={editingHeroVideo.url}
                     onChange={e => setEditingHeroVideo(prev => prev ? { ...prev, url: e.target.value } : null)}
                     placeholder="https://.../video.mp4"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-slate-800"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                   />
                   <div className="flex items-center gap-2">
                     <input
@@ -1961,7 +2076,7 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                       type="button"
                       onClick={() => editingHeroVideoFileRef.current?.click()}
                       disabled={isUploadingHeroVideo}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold cursor-pointer"
                     >
                       <Upload className="w-3.5 h-3.5" />
                       <span>{isUploadingHeroVideo ? 'Mengunggah...' : 'Pilih Berkas MP4 dari Laptop'}</span>
@@ -1996,9 +2111,177 @@ CREATE POLICY "Allow upload sppg-assets" ON storage.objects FOR INSERT TO anon, 
                 <button
                   type="button"
                   onClick={handleSaveHeroVideo}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer"
                 >
                   Simpan Video
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8. MODAL FORM: EDIT / TAMBAH DOKUMENTASI SLIDE FOTO HERO (KOTAK KANAN) */}
+      {isHeroSlideModalOpen && editingHeroSlide && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                  <ImageIcon className="w-4 h-4" />
+                </div>
+                <h4 className="font-display text-sm font-bold text-slate-900">
+                  {editingHeroSlide.id.startsWith('hero-photo-') ? 'Edit Slide Foto Dokumentasi Hero' : 'Tambah Slide Foto Baru'}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsHeroSlideModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Foto Dokumentasi Upload / Preview */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Foto Dokumentasi Nampan / Operasional
+                </label>
+                <div className="flex items-start gap-3">
+                  <div className="w-28 h-24 rounded-xl bg-slate-900 overflow-hidden border border-slate-200 shrink-0">
+                    {heroSlideImagePreview ? (
+                      <img src={heroSlideImagePreview} alt="Preview Foto Hero" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-500 text-[10px]">
+                        Belum ada foto
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <input
+                      type="file"
+                      ref={heroSlideFileRef}
+                      accept="image/*"
+                      onChange={handleUploadHeroSlideImage}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => heroSlideFileRef.current?.click()}
+                      disabled={isUploadingHeroSlideImg}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-semibold cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{isUploadingHeroSlideImg ? 'Mengompresi & Mengunggah...' : 'Unggah Foto Baru (Auto WebP)'}</span>
+                    </button>
+                    <p className="text-[10px] text-slate-500">
+                      Disarankan rasio 4:3 beresolusi tajam (otomatis dikompresi WebP untuk pemuatan instan).
+                    </p>
+                  </div>
+                </div>
+
+                {/* Preset Pilihan Cepat */}
+                <div className="mt-2 pt-2 border-t border-slate-100">
+                  <span className="text-[10px] font-semibold text-slate-500 block mb-1">Atau pilih dari foto preset:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {IMAGE_PRESETS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setHeroSlideImagePreview(p.url);
+                          setEditingHeroSlide(prev => prev ? { ...prev, imageUrl: p.url } : null);
+                        }}
+                        className={`px-2 py-1 rounded text-[10px] font-medium border cursor-pointer ${
+                          heroSlideImagePreview === p.url
+                            ? 'bg-emerald-100 border-emerald-400 text-emerald-900 font-bold'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {p.label.split('(')[0]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Judul & Kategori */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Judul Dokumentasi</label>
+                  <input
+                    type="text"
+                    value={editingHeroSlide.title}
+                    onChange={e => setEditingHeroSlide(prev => prev ? { ...prev, title: e.target.value } : null)}
+                    placeholder="Contoh: Sajian Nampan 5 Sekat SUS 304"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Kategori / Standar Aspek</label>
+                  <input
+                    type="text"
+                    value={editingHeroSlide.category}
+                    onChange={e => setEditingHeroSlide(prev => prev ? { ...prev, category: e.target.value } : null)}
+                    placeholder="Contoh: Standar Wadah Higienis"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                  />
+                </div>
+              </div>
+
+              {/* Badge & Target Gramatur */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Label Badge Pojok Kiri</label>
+                  <input
+                    type="text"
+                    value={editingHeroSlide.badge || ''}
+                    onChange={e => setEditingHeroSlide(prev => prev ? { ...prev, badge: e.target.value } : null)}
+                    placeholder="Contoh: SUS 304 Food-Grade"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Target Gramatur / Takaran Porsi</label>
+                  <input
+                    type="text"
+                    value={editingHeroSlide.targetGrams || ''}
+                    onChange={e => setEditingHeroSlide(prev => prev ? { ...prev, targetGrams: e.target.value } : null)}
+                    placeholder="Contoh: 475 gram"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                  />
+                </div>
+              </div>
+
+              {/* Keterangan */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Uraian / Keterangan Singkat</label>
+                <textarea
+                  rows={3}
+                  value={editingHeroSlide.description}
+                  onChange={e => setEditingHeroSlide(prev => prev ? { ...prev, description: e.target.value } : null)}
+                  placeholder="Keterangan standar operasional wadah, gramatur, atau penyajian..."
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                />
+              </div>
+
+              {/* Aksi Modal */}
+              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsHeroSlideModalOpen(false)}
+                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveHeroSlide}
+                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer"
+                >
+                  Terapkan Foto Slide
                 </button>
               </div>
             </div>

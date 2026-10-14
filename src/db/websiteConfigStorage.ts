@@ -28,6 +28,16 @@ export interface VisualStudyItem {
   badge?: string;
 }
 
+export interface HeroDocumentationSlide {
+  id: string;
+  title: string;
+  category: string;
+  description: string;
+  imageUrl: string;
+  badge?: string;
+  targetGrams?: string;
+}
+
 export interface HeroVideoItem {
   id: string;
   title: string;
@@ -52,6 +62,10 @@ export interface WebsiteHeroConfig {
   primaryCtaLink: string;
   secondaryCtaText: string;
   secondaryCtaLink: string;
+  // Dokumentasi Slide Foto Hero (Auto-slide di kotak kanan)
+  photoSlides?: HeroDocumentationSlide[];
+  autoSlidePhotos?: boolean;
+  photoSlideInterval?: number; // detik
 }
 
 export interface WebsiteMenuSliderConfig {
@@ -150,7 +164,47 @@ export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = {
     primaryCtaText: 'Lihat Siklus Menu MBG',
     primaryCtaLink: '#siklus-menu',
     secondaryCtaText: 'Alur Operasional 04.00 WIB',
-    secondaryCtaLink: '#alur-pagi'
+    secondaryCtaLink: '#alur-pagi',
+    autoSlidePhotos: true,
+    photoSlideInterval: 4,
+    photoSlides: [
+      {
+        id: 'hero-photo-1',
+        title: 'Sajian Nampan 5 Sekat SUS 304',
+        category: 'Standar Wadah Higienis',
+        description: 'Pemisahan higienis antar lauk tanpa risiko bercampur kuah. Wadah stainless steel SUS 304 standar food-grade.',
+        imageUrl: trayImg1,
+        badge: 'SUS 304 Food-Grade',
+        targetGrams: '475 gram',
+      },
+      {
+        id: 'hero-photo-2',
+        title: 'Kesiapan Wadah Ganda Boks Termal',
+        category: 'Rantai Suhu Terjaga',
+        description: 'Penimbangan gramatur presisi sebelum dimasukkan ke boks insulasi tertutup untuk menjaga kehangatan hidangan.',
+        imageUrl: trayImg2,
+        badge: 'Insulasi Termal',
+        targetGrams: '460 gram',
+      },
+      {
+        id: 'hero-photo-3',
+        title: 'Penataan Warna & Keseimbangan Gizi',
+        category: 'Variasi Porsi Seimbang',
+        description: 'Kombinasi warna alami sayur, lauk protein, buah, dan nasi pulen dirancang menarik secara visual untuk nafsu makan anak.',
+        imageUrl: trayImg3,
+        badge: 'AKG Seimbang',
+        targetGrams: '450 gram',
+      },
+      {
+        id: 'hero-photo-4',
+        title: 'Sajian Porsi Lengkap MBG SPPG Jeru',
+        category: 'Paket Menu Harian',
+        description: 'Nasi pulen, ayam ungkep rempah, tempe bacem kedelai lokal, sop sayur segar, buah semangka, dan susu pasteurisasi.',
+        imageUrl: posterMenuImg,
+        badge: '1/3 AKG Harian',
+        targetGrams: '470 gram',
+      },
+    ]
   },
   menuSlider: {
     autoSlide: true,
@@ -289,7 +343,12 @@ function normalizeConfig(parsed: Partial<WebsiteConfig> | null | undefined): Web
       ...parsedHero,
       backgroundType: parsedHero.backgroundType || 'video',
       videoUrl: primaryVideoUrl,
-      videos: normalizedVideos
+      videos: normalizedVideos,
+      photoSlides: (Array.isArray(parsedHero.photoSlides) && parsedHero.photoSlides.length > 0)
+        ? parsedHero.photoSlides
+        : DEFAULT_WEBSITE_CONFIG.hero.photoSlides,
+      autoSlidePhotos: parsedHero.autoSlidePhotos ?? DEFAULT_WEBSITE_CONFIG.hero.autoSlidePhotos,
+      photoSlideInterval: parsedHero.photoSlideInterval || DEFAULT_WEBSITE_CONFIG.hero.photoSlideInterval
     },
     menuSlider: {
       ...DEFAULT_WEBSITE_CONFIG.menuSlider,

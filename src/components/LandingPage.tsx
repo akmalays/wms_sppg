@@ -8,10 +8,12 @@ import {
   getWebsiteConfig,
   fetchWebsiteConfigFromCloud,
   WEBSITE_CONFIG_UPDATED_EVENT,
+  DEFAULT_WEBSITE_CONFIG,
   WebsiteConfig
 } from '../db/websiteConfigStorage';
 import {
   Lock,
+  LayoutDashboard,
   ArrowRight,
   ShieldCheck,
   Building2,
@@ -124,15 +126,36 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 }) => {
   const [selectedTraySection, setSelectedTraySection] = useState<TraySectionInfo>(TRAY_SECTIONS[0]);
   const [config, setConfig] = useState<WebsiteConfig>(getWebsiteConfig);
-  const [isMuted, setIsMuted] = useState(true);
   const [currentMenuSlide, setCurrentMenuSlide] = useState(0);
   const [isMenuPaused, setIsMenuPaused] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const cardVideoRef = useRef<HTMLVideoElement>(null);
-  const [cardMediaView, setCardMediaView] = useState<'video' | 'photo'>('video');
-  const [isCardVideoPlaying, setIsCardVideoPlaying] = useState(true);
 
-  // Multi-Video Playlist & Loop Management
+  // Hero Photo Slides Carousel (Dokumentasi Lapangan Kotak Kanan)
+  const heroPhotoSlides = (config.hero.photoSlides && config.hero.photoSlides.length > 0)
+    ? config.hero.photoSlides
+    : (DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []);
+
+  const [currentHeroPhotoIndex, setCurrentHeroPhotoIndex] = useState(0);
+  const [isHeroPhotoPaused, setIsHeroPhotoPaused] = useState(false);
+  const activeHeroPhotoIndex = heroPhotoSlides.length > 0
+    ? (currentHeroPhotoIndex % heroPhotoSlides.length)
+    : 0;
+  const currentHeroPhoto = heroPhotoSlides[activeHeroPhotoIndex] || heroPhotoSlides[0];
+
+  // Timer auto-slide foto hero kotak kanan
+  useEffect(() => {
+    const isAutoSlide = config.hero.autoSlidePhotos ?? true;
+    if (!isAutoSlide || isHeroPhotoPaused || heroPhotoSlides.length <= 1) return;
+
+    const intervalTime = Math.max(2, config.hero.photoSlideInterval || 4) * 1000;
+    const timer = setInterval(() => {
+      setCurrentHeroPhotoIndex(prev => (prev + 1) % heroPhotoSlides.length);
+    }, intervalTime);
+
+    return () => clearInterval(timer);
+  }, [config.hero.autoSlidePhotos, config.hero.photoSlideInterval, isHeroPhotoPaused, heroPhotoSlides.length]);
+
+  // Multi-Video Playlist & Loop Management untuk Video Latar Belakang Hero
   const videoList = (config.hero.videos && config.hero.videos.length > 0)
     ? config.hero.videos
     : (config.hero.videoUrl ? [{ id: 'vid-1', title: 'Video Hero Utama', url: config.hero.videoUrl, poster: config.hero.videoPoster }] : []);
@@ -141,19 +164,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const activeVideoIndex = videoList.length > 0 ? (currentVideoIndex % videoList.length) : 0;
   const activeVideo = videoList[activeVideoIndex];
 
-  // Handler loop otomatis saat video selesai diputar (seamless transition ke video berikutnya)
+  // Handler loop otomatis saat video latar selesai diputar
   const handleVideoEnded = () => {
     if (videoList.length > 1) {
       setCurrentVideoIndex(prev => (prev + 1) % videoList.length);
-    } else {
-      if (videoRef.current) {
-        videoRef.current.currentTime = 0;
-        videoRef.current.play().catch(() => {});
-      }
-      if (cardVideoRef.current) {
-        cardVideoRef.current.currentTime = 0;
-        cardVideoRef.current.play().catch(() => {});
-      }
+    } else if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.play().catch(() => {});
     }
   };
 
@@ -164,49 +181,31 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     }
   };
 
-  const toggleCardVideoPlayback = () => {
-    const el = cardVideoRef.current;
-    if (!el) return;
-    if (el.paused) {
-      el.play().then(() => setIsCardVideoPlaying(true)).catch(() => {});
-    } else {
-      el.pause();
-      setIsCardVideoPlaying(false);
-    }
-  };
-
-  // Pastikan browser modern (Chrome, Safari, iOS) mengizinkan autoplay tanpa terhalang
+  // Pastikan browser modern mengizinkan autoplay video latar belakang secara otomatis
   useEffect(() => {
-    const playTarget = (el: HTMLVideoElement | null) => {
-      if (!el || !activeVideo?.url) return;
-      el.muted = isMuted;
-      el.defaultMuted = true;
-      try {
-        el.setAttribute('muted', '');
-      } catch {
-        // Abaikan jika tidak didukung
-      }
+    const el = videoRef.current;
+    if (!el || !activeVideo?.url) return;
+    el.muted = true;
+    el.defaultMuted = true;
+    try {
+      el.setAttribute('muted', '');
+    } catch {
+      // Abaikan jika tidak didukung
+    }
 
-      const playPromise = el.play();
-      if (playPromise !== undefined) {
-        playPromise.catch((err) => {
-          console.warn('Autoplay ditunda oleh kebijakan browser (menunggu interaksi pertama):', err);
-        });
-      }
-    };
+    const playPromise = el.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        console.warn('Autoplay latar belakang ditunda oleh kebijakan browser:', err);
+      });
+    }
+  }, [activeVideoIndex, activeVideo?.url]);
 
-    playTarget(videoRef.current);
-    playTarget(cardVideoRef.current);
-  }, [activeVideoIndex, activeVideo?.url, isMuted]);
-
-  // Listener untuk memulai autoplay jika browser menahan video sampai ada interaksi klik pertama
+  // Listener untuk memulai autoplay jika browser menahan pemutaran
   useEffect(() => {
     const handleFirstUserInteraction = () => {
       if (videoRef.current && videoRef.current.paused) {
         videoRef.current.play().catch(() => {});
-      }
-      if (cardVideoRef.current && cardVideoRef.current.paused && isCardVideoPlaying) {
-        cardVideoRef.current.play().catch(() => {});
       }
     };
 
@@ -216,7 +215,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       window.removeEventListener('click', handleFirstUserInteraction);
       window.removeEventListener('touchstart', handleFirstUserInteraction);
     };
-  }, [isCardVideoPlaying]);
+  }, []);
 
   // Timer auto-switch jika pengguna mengaktifkan interval pergantian detik (> 0)
   useEffect(() => {
@@ -262,53 +261,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   return (
     <div className="min-h-screen bg-[#faf8f4] text-[#1c2420] font-sans selection:bg-[#d8eedf] selection:text-[#0c3123] antialiased">
-      {/* 1. Bar Resmi Kenegaraan */}
-      <div className="bg-[#111915] text-[#9ba8a0] text-xs py-2 px-4 sm:px-6 lg:px-8 border-b border-[#222e27]">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#34d399]" />
-            <span className="font-semibold text-slate-100">
-              Badan Gizi Nasional Republik Indonesia
-            </span>
-            <span className="text-[#3b4b42] hidden sm:inline">•</span>
-            <span className="text-[#9ba8a0] hidden sm:inline">
-              Program Pemenuhan Gizi Nasional
-            </span>
-          </div>
-          <div className="flex items-center gap-4 text-[11px] text-[#86948b]">
-            <span>Satuan Pelayanan: SPPG MLG TUMPANG JERU</span>
-            <span className="text-[#3b4b42] hidden md:inline">•</span>
-            <span className="hidden md:inline font-mono">Kode Satuan: SPPG-001/MLG</span>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Banner Pratinjau Petugas Logged In */}
-      {isStaffLoggedIn && (
-        <div className="bg-[#0b291d] text-[#bbf7d0] text-xs py-2.5 px-4 sm:px-6 lg:px-8 border-b border-[#164e37]">
-          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#4ade80] animate-pulse" />
-              <span>
-                Pratinjau Publik Aktif • Anda sedang masuk sebagai{' '}
-                <strong className="text-white font-semibold">{staffName || 'Petugas'}</strong>
-              </span>
-            </div>
-            {onReturnToDashboard && (
-              <button
-                type="button"
-                onClick={onReturnToDashboard}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-white text-[#0b291d] font-semibold hover:bg-[#f0fdf4] transition-colors cursor-pointer text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-              >
-                <span>Kembali ke Dashboard WMS</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 3. Header Navigasi Editorial */}
+      {/* Header Navigasi Editorial */}
       <header className="sticky top-0 z-30 bg-[#faf8f4]/95 backdrop-blur-md border-b border-[#e5dfd3]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4">
           {/* Logo & Identitas SPPG */}
@@ -359,14 +312,33 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           {/* Status Layanan Publik / Tombol Dashboard untuk Staf */}
           <div className="flex items-center gap-2.5">
             {isStaffLoggedIn && onReturnToDashboard ? (
-              <button
-                type="button"
-                onClick={onReturnToDashboard}
-                className="inline-flex items-center gap-2 h-9 px-4 rounded-lg text-xs font-semibold text-white bg-[#0c3123] hover:bg-[#134431] active:bg-[#071f16] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0c3123]"
-              >
-                <Lock className="w-3.5 h-3.5 text-[#86efac]" />
-                <span>Kembali ke Dashboard WMS</span>
-              </button>
+              <div className="relative group flex items-center">
+                <button
+                  type="button"
+                  onClick={onReturnToDashboard}
+                  className="w-10 h-10 rounded-xl bg-[#0c3123] hover:bg-[#134431] active:bg-[#071f16] text-white flex items-center justify-center transition-all shadow-xs cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0c3123] border border-[#1e5842]/40"
+                  aria-label="Kembali ke Dashboard WMS"
+                  title="Kembali ke Dashboard WMS"
+                >
+                  <LayoutDashboard className="w-4 h-4 text-[#86efac]" />
+                </button>
+
+                {/* Tooltip */}
+                <div
+                  role="tooltip"
+                  className="absolute right-0 top-full mt-2 hidden group-hover:flex group-focus-within:flex flex-col items-end z-50 pointer-events-none animate-in fade-in zoom-in-95 duration-150"
+                >
+                  <div className="bg-slate-900 text-white px-3 py-1.5 rounded-lg shadow-xl text-xs font-medium whitespace-nowrap flex items-center gap-2 border border-slate-700/60">
+                    <span className="font-semibold text-white">Kembali ke Dashboard WMS</span>
+                    {staffName && (
+                      <>
+                        <span className="text-slate-500">•</span>
+                        <span className="text-emerald-400 font-normal">{staffName}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#ecf7f0] text-[#0c3123] border border-[#c4e5ce]">
                 <span className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse" />
@@ -387,7 +359,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               key={`bg-${activeVideo.url}`}
               src={activeVideo.url}
               autoPlay
-              muted={isMuted}
+              muted
               loop={videoList.length <= 1}
               playsInline
               preload="auto"
@@ -450,54 +422,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   <span>{config.hero.secondaryCtaText || 'Alur Operasional 04.00 WIB'}</span>
                 </a>
 
-                {/* Kontrol Multi-Video Playlist & Suara */}
-                {config.hero.backgroundType === 'video' && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* Indikator Looping Playlist jika terdapat lebih dari 1 video */}
-                    {videoList.length > 1 && (
-                      <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-black/40 hover:bg-black/60 text-white text-xs font-medium border border-white/20 backdrop-blur-md shadow-xs">
-                        <button
-                          type="button"
-                          onClick={() => setCurrentVideoIndex(prev => (prev - 1 + videoList.length) % videoList.length)}
-                          className="p-1 hover:text-emerald-300 transition-colors cursor-pointer"
-                          title="Video Sebelumnya"
-                        >
-                          <ChevronLeft className="w-3.5 h-3.5" />
-                        </button>
-                        <span className="font-semibold text-emerald-300">
-                          Video {activeVideoIndex + 1}/{videoList.length}
-                        </span>
-                        <span className="text-slate-300 hidden sm:inline truncate max-w-[140px] md:max-w-[200px]">
-                          {activeVideo?.title || 'Video Hero'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setCurrentVideoIndex(prev => (prev + 1) % videoList.length)}
-                          className="p-1 hover:text-emerald-300 transition-colors cursor-pointer"
-                          title="Video Berikutnya"
-                        >
-                          <ChevronRight className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Tombol Kontrol Suara Video */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (videoRef.current) {
-                          videoRef.current.muted = !videoRef.current.muted;
-                          setIsMuted(videoRef.current.muted);
-                        }
-                      }}
-                      title={isMuted ? 'Nyalakan audio video latar' : 'Bisukan audio video latar'}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-3 rounded-xl bg-black/40 hover:bg-black/60 text-white text-xs font-medium border border-white/20 backdrop-blur-md transition-colors cursor-pointer shadow-xs"
-                    >
-                      {isMuted ? <VolumeX className="w-4 h-4 text-slate-300" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
-                      <span className="hidden sm:inline">{isMuted ? 'Hening' : 'Suara Aktif'}</span>
-                    </button>
-                  </div>
-                )}
               </div>
 
               {/* Nilai Utama Rantai Pasok */}
@@ -527,69 +451,26 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
             </div>
 
-            {/* Visual Nyata Makanan & Lembar Data */}
+            {/* Visual Dokumentasi Operasional: Dokumentasi Slide Foto (Auto Slide & Kustomisasi) */}
             <div className="lg:col-span-5">
-              <div className={`rounded-2xl p-3.5 border shadow-xl backdrop-blur-md transition-all ${
-                config.hero.backgroundType === 'video'
-                  ? 'bg-slate-900/85 border-slate-700/80 shadow-black/30'
-                  : 'bg-white border-[#ded7c8]'
-              }`}>
-                {/* Frame Media Utama: Pemutar Video atau Foto Sajian */}
+              <div
+                className={`rounded-2xl p-3.5 border shadow-xl backdrop-blur-md transition-all ${
+                  config.hero.backgroundType === 'video'
+                    ? 'bg-slate-900/85 border-slate-700/80 shadow-black/30'
+                    : 'bg-white border-[#ded7c8]'
+                }`}
+                onMouseEnter={() => setIsHeroPhotoPaused(true)}
+                onMouseLeave={() => setIsHeroPhotoPaused(false)}
+              >
+                {/* Frame Foto Utama dengan Auto-Slide & Navigasi */}
                 <div className="relative overflow-hidden rounded-xl bg-slate-950 aspect-4/3 border border-slate-700/60 shadow-inner group">
-                  {config.hero.backgroundType === 'video' && activeVideo?.url && cardMediaView === 'video' ? (
-                    <>
-                      <video
-                        ref={cardVideoRef}
-                        key={`card-${activeVideo.url}`}
-                        src={activeVideo.url}
-                        autoPlay
-                        muted={isMuted}
-                        loop={videoList.length <= 1}
-                        playsInline
-                        preload="auto"
-                        onEnded={handleVideoEnded}
-                        onError={handleVideoError}
-                        poster={activeVideo.poster || config.hero.videoPoster || trayImg1}
-                        className="w-full h-full object-cover object-center"
-                        onPlay={() => setIsCardVideoPlaying(true)}
-                        onPause={() => setIsCardVideoPlaying(false)}
-                      />
-                      {/* Kontrol Overlay Pemutar Video saat Kursor Diarahkan */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3.5 pointer-events-auto">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-semibold text-white/95 bg-black/70 px-2 py-1 rounded-md backdrop-blur-xs truncate max-w-[200px]">
-                            {activeVideo.title || 'Video Hero'}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (cardVideoRef.current) {
-                                cardVideoRef.current.muted = !cardVideoRef.current.muted;
-                                setIsMuted(cardVideoRef.current.muted);
-                              }
-                            }}
-                            className="p-1.5 rounded-lg bg-black/70 hover:bg-black/90 text-white transition-colors cursor-pointer"
-                            title={isMuted ? 'Nyalakan Audio Video' : 'Bisukan Audio Video'}
-                          >
-                            {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
-                          </button>
-                        </div>
-                        <div className="flex items-center justify-center">
-                          <button
-                            type="button"
-                            onClick={toggleCardVideoPlayback}
-                            className="w-12 h-12 rounded-full bg-emerald-600/90 hover:bg-emerald-500 text-white flex items-center justify-center shadow-lg transition-transform hover:scale-105 cursor-pointer"
-                            title={isCardVideoPlaying ? 'Jeda Pemutaran' : 'Lanjutkan Pemutaran'}
-                          >
-                            {isCardVideoPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
-                          </button>
-                        </div>
-                        <div className="flex items-center justify-between text-[10px] text-slate-300">
-                          <span>Video {activeVideoIndex + 1} dari {videoList.length}</span>
-                          <span className="text-emerald-400 font-mono">1080p Dokumentasi Aktif</span>
-                        </div>
-                      </div>
-                    </>
+                  {currentHeroPhoto ? (
+                    <img
+                      key={currentHeroPhoto.id || activeHeroPhotoIndex}
+                      src={currentHeroPhoto.imageUrl}
+                      alt={currentHeroPhoto.title}
+                      className="w-full h-full object-cover object-center transition-all duration-700 ease-out group-hover:scale-105"
+                    />
                   ) : (
                     <img
                       src={trayImg1}
@@ -598,64 +479,95 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                     />
                   )}
 
-                  {/* Label Status Media */}
-                  <div className="absolute top-3 left-3 bg-[#111915]/90 text-white text-[11px] font-medium px-2.5 py-1 rounded-md border border-slate-700 flex items-center gap-1.5 shadow-sm pointer-events-none">
+                  {/* Gradient Overlay untuk Kontras Tag & Teks */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/35 pointer-events-none" />
+
+                  {/* Badge Kategori & Status di Pojok Kiri Atas */}
+                  <div className="absolute top-3 left-3 bg-[#111915]/90 text-white text-[11px] font-medium px-2.5 py-1 rounded-md border border-slate-700 flex items-center gap-1.5 shadow-sm pointer-events-none backdrop-blur-xs">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#4ade80] animate-pulse" />
-                    <span>
-                      {config.hero.backgroundType === 'video' && cardMediaView === 'video'
-                        ? 'Video Dokumentasi Lapangan'
-                        : 'Foto Dokumentasi Nyata'}
-                    </span>
+                    <span>{currentHeroPhoto?.badge || currentHeroPhoto?.category || 'Dokumentasi Lapangan'}</span>
                   </div>
 
-                  {/* Tombol Tab Beralih Video vs Foto Nampan */}
-                  {config.hero.backgroundType === 'video' && activeVideo?.url && (
-                    <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-black/80 p-0.5 rounded-lg border border-white/20 backdrop-blur-md z-10">
-                      <button
-                        type="button"
-                        onClick={() => setCardMediaView('video')}
-                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
-                          cardMediaView === 'video'
-                            ? 'bg-emerald-600 text-white font-bold'
-                            : 'text-slate-300 hover:text-white'
-                        }`}
-                        title="Tampilkan Video Dokumentasi Lapangan"
-                      >
-                        Video
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCardMediaView('photo')}
-                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer ${
-                          cardMediaView === 'photo'
-                            ? 'bg-emerald-600 text-white font-bold'
-                            : 'text-slate-300 hover:text-white'
-                        }`}
-                        title="Tampilkan Foto Nampan 5 Sekat"
-                      >
-                        Foto Nampan
-                      </button>
+                  {/* Counter Slide di Pojok Kanan Atas */}
+                  {heroPhotoSlides.length > 1 && (
+                    <div className="absolute top-3 right-3 bg-black/75 text-white/90 text-[11px] font-mono font-medium px-2 py-0.5 rounded-md border border-white/20 backdrop-blur-xs shadow-xs pointer-events-none">
+                      {activeHeroPhotoIndex + 1} / {heroPhotoSlides.length}
                     </div>
+                  )}
+
+                  {/* Tombol Navigasi Geser (Chevron Kiri & Kanan) */}
+                  {heroPhotoSlides.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentHeroPhotoIndex(prev => (prev - 1 + heroPhotoSlides.length) % heroPhotoSlides.length);
+                        }}
+                        className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 active:bg-black text-white flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 sm:opacity-0 focus:opacity-100 cursor-pointer border border-white/20 shadow-md backdrop-blur-xs"
+                        aria-label="Foto Sebelumnya"
+                        title="Foto Sebelumnya"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentHeroPhotoIndex(prev => (prev + 1) % heroPhotoSlides.length);
+                        }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 active:bg-black text-white flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 sm:opacity-0 focus:opacity-100 cursor-pointer border border-white/20 shadow-md backdrop-blur-xs"
+                        aria-label="Foto Berikutnya"
+                        title="Foto Berikutnya"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+
+                      {/* Pagination Indicator Dots di Bawah Foto */}
+                      <div className="absolute bottom-2.5 left-0 right-0 flex items-center justify-center gap-1.5 z-10 pointer-events-auto">
+                        {heroPhotoSlides.map((slide, idx) => (
+                          <button
+                            key={slide.id || idx}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCurrentHeroPhotoIndex(idx);
+                            }}
+                            className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                              idx === activeHeroPhotoIndex
+                                ? 'w-6 bg-emerald-400'
+                                : 'w-1.5 bg-white/50 hover:bg-white/80'
+                            }`}
+                            aria-label={`Lihat slide ${idx + 1}`}
+                            title={`Slide ${idx + 1}: ${slide.title}`}
+                          />
+                        ))}
+                      </div>
+                    </>
                   )}
                 </div>
 
-                <div className={`mt-3.5 p-3 rounded-lg border space-y-1 ${
+                {/* Deskripsi & Keterangan Slide Foto */}
+                <div className={`mt-3.5 p-3 rounded-lg border space-y-1 transition-all ${
                   config.hero.backgroundType === 'video'
                     ? 'bg-slate-800/90 border-slate-700 text-slate-200'
                     : 'bg-[#f7f4ec] border-[#e8e2d4]'
                 }`}>
                   <div className="flex items-center justify-between text-xs">
                     <span className={`font-bold ${config.hero.backgroundType === 'video' ? 'text-white' : 'text-[#141d18]'}`}>
-                      {cardMediaView === 'video' && activeVideo?.title
-                        ? activeVideo.title
-                        : 'Sajian Porsi Lengkap MBG'}
+                      {currentHeroPhoto?.title || 'Sajian Porsi Lengkap MBG'}
                     </span>
-                    <span className="font-mono text-[11px] text-emerald-400 font-bold">AKG 1/3 Harian</span>
+                    {currentHeroPhoto?.targetGrams && (
+                      <span className="font-mono text-[11px] text-emerald-400 font-bold">
+                        {currentHeroPhoto.targetGrams}
+                      </span>
+                    )}
                   </div>
                   <p className={`text-[11px] leading-relaxed ${
                     config.hero.backgroundType === 'video' ? 'text-slate-300' : 'text-[#55645c]'
                   }`}>
-                    Nasi pulen, ayam ungkep rempah, tempe bacem kedelai lokal, sayur sop segar, buah semangka, dan susu pasteurisasi.
+                    {currentHeroPhoto?.description || 'Dokumentasi standar porsi dan wadah bersekat food-grade SPPG Jeru.'}
                   </p>
                 </div>
               </div>

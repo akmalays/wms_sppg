@@ -491,7 +491,7 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
   {
     id: 'TODO-001',
     date: new Date().toISOString().split('T')[0],
-    title: 'Cek suhu & kelembaban cold storage / chiller (standar 2°C - 4°C)',
+    title: 'Pemeriksaan kebersihan dan kesiapan area penyimpanan bahan',
     category: 'Penerimaan & QC',
     priority: 'Tinggi',
     session: 'Pagi',
@@ -502,7 +502,7 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
     assignedRole: 'ASLAP',
     assignedUserId: 'USR-004',
     assignedUserName: 'Andi Pratama',
-    notes: 'Suhu tercatat 3.2°C, chiller berfungsi optimal tanpa bunga es.',
+    notes: 'Area penyimpanan bersih, higienis, dan siap untuk operasional.',
     createdAt: new Date().toISOString(),
   },
   {
@@ -519,7 +519,7 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
     assignedRole: 'ASLAP',
     assignedUserId: 'USR-004',
     assignedUserName: 'Andi Pratama',
-    notes: 'Kondisi segar, aroma normal, suhu daging 4°C saat tiba.',
+    notes: 'Kondisi segar, aroma normal, kualitas bahan prima saat tiba.',
     createdAt: new Date().toISOString(),
   },
   {
@@ -1824,7 +1824,18 @@ class WarehouseDatabase {
     this.purchaseOrders = [];
     this.menuOrders = [];
     this.wasteLogs = [];
-    this.todos = [...INITIAL_TODOS];
+    const loadedTodos = getStored<DailyTodoItem[]>(STORAGE_KEYS.TODOS, INITIAL_TODOS);
+    this.todos = (loadedTodos && loadedTodos.length > 0 ? loadedTodos : [...INITIAL_TODOS]).map(t => {
+      if (t.title.toLowerCase().includes('chiller') || t.title.toLowerCase().includes('cold storage')) {
+        return {
+          ...t,
+          title: 'Pemeriksaan kebersihan dan kesiapan area penyimpanan bahan',
+          notes: 'Area penyimpanan bersih, higienis, dan siap untuk operasional.',
+        };
+      }
+      return t;
+    });
+    setStored(STORAGE_KEYS.TODOS, this.todos);
     this.employees = [...REAL_EMPLOYEES];
     this.attendanceLogs = [...REAL_ATTENDANCE_LOGS];
     this.schoolBeneficiaries = [...DEFAULT_SCHOOL_BENEFICIARIES];

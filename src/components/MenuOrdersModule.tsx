@@ -1,17 +1,10 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { warehouseDb } from '../db/storage';
-import {
-  MenuOrder,
-  MenuOrderStatus,
-  MenuIngredientReq,
-  MenuPoArrivalItem,
-  SchoolBeneficiaryAllocation,
-  PurchaseOrderNota,
-  PurchaseOrderItem,
-} from '../types/warehouse';
-import { generateNextPoNumber } from '../utils/poNumberGenerator';
-import { angkaTerbilang } from './ToolsPrintModule';
+import React, {useState, useMemo, useRef, useEffect} from "react";
+import {useAuth} from "../context/AuthContext";
+import {useToast} from "../context/ToastContext";
+import {warehouseDb} from "../db/storage";
+import {MenuOrder, MenuOrderStatus, MenuIngredientReq, MenuPoArrivalItem, SchoolBeneficiaryAllocation, PurchaseOrderNota, PurchaseOrderItem} from "../types/warehouse";
+import {generateNextPoNumber} from "../utils/poNumberGenerator";
+import {angkaTerbilang} from "./ToolsPrintModule";
 import {
   UtensilsCrossed,
   Plus,
@@ -54,14 +47,14 @@ import {
   Phone,
   MoreHorizontal,
   Save,
-  RotateCcw
-} from 'lucide-react';
-import { exportMultiSheetExcel, exportToExcel } from '../lib/excelExport';
-import { SppgLogo } from './SppgLogo';
-import { DeliveryNotesSubModule } from './DeliveryNotesSubModule';
+  RotateCcw,
+} from "lucide-react";
+import {exportMultiSheetExcel, exportToExcel} from "../lib/excelExport";
+import {SppgLogo} from "./SppgLogo";
+import {DeliveryNotesSubModule} from "./DeliveryNotesSubModule";
 
-type PeriodType = 'WEEKLY' | 'MONTHLY' | 'DAILY' | 'ALL' | 'PRESET_SAMPLE';
-type SubTabType = 'MENU_ORDERS' | 'BENEFICIARIES' | 'DELIVERY_NOTES' | 'MASTER_BENEFICIARIES';
+type PeriodType = "WEEKLY" | "MONTHLY" | "DAILY" | "ALL" | "PRESET_SAMPLE";
+type SubTabType = "MENU_ORDERS" | "BENEFICIARIES" | "DELIVERY_NOTES" | "MASTER_BENEFICIARIES";
 
 const DEFAULT_MENU_PRICE_MAP: Record<string, number> = {
   beras: 14500,
@@ -95,7 +88,7 @@ const DEFAULT_MENU_PRICE_MAP: Record<string, number> = {
 
 function estimatePrice(itemName: string, customPrice?: number): number {
   if (customPrice && customPrice > 0) return customPrice;
-  const nameLower = (itemName || '').toLowerCase();
+  const nameLower = (itemName || "").toLowerCase();
   for (const [key, val] of Object.entries(DEFAULT_MENU_PRICE_MAP)) {
     if (nameLower.includes(key)) return val;
   }
@@ -103,8 +96,8 @@ function estimatePrice(itemName: string, customPrice?: number): number {
 }
 
 function parseNumericQuantity(qty: string | number): number {
-  if (typeof qty === 'number') return qty;
-  const clean = String(qty).replace(',', '.');
+  if (typeof qty === "number") return qty;
+  const clean = String(qty).replace(",", ".");
   const match = clean.match(/[\d.]+/);
   return match ? parseFloat(match[0]) : 0;
 }
@@ -115,7 +108,7 @@ function parseMenuDate(dateStr: string): Date | null {
 
   // If ISO YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}/.test(clean)) {
-    const parts = clean.slice(0, 10).split('-');
+    const parts = clean.slice(0, 10).split("-");
     const year = Number(parts[0]);
     const month = Number(parts[1]) - 1;
     const day = Number(parts[2]);
@@ -124,9 +117,19 @@ function parseMenuDate(dateStr: string): Date | null {
   }
 
   const monthMap: Record<string, number> = {
-    jan: 0, feb: 1, mar: 2, apr: 3,
-    mei: 4, jun: 5, jul: 6, agu: 7, ags: 7,
-    sep: 8, okt: 9, nov: 10, des: 11,
+    jan: 0,
+    feb: 1,
+    mar: 2,
+    apr: 3,
+    mei: 4,
+    jun: 5,
+    jul: 6,
+    agu: 7,
+    ags: 7,
+    sep: 8,
+    okt: 9,
+    nov: 10,
+    des: 11,
   };
 
   const match = clean.match(/(\d{1,2})\s+([a-z]{3,4})\s+(\d{4})/i);
@@ -144,11 +147,11 @@ function parseMenuDate(dateStr: string): Date | null {
 }
 
 const formatShortDate = (dateStr: string): string => {
-  if (!dateStr) return '-';
+  if (!dateStr) return "-";
   try {
     const d = parseMenuDate(dateStr);
     if (!d) return dateStr;
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
     const shortYear = String(d.getFullYear()).slice(-2);
     return `${d.getDate()}-${months[d.getMonth()]}-${shortYear}`;
   } catch {
@@ -159,11 +162,8 @@ const formatShortDate = (dateStr: string): string => {
 const formatIndonesianDate = (dateStr: string): string => {
   const d = parseMenuDate(dateStr);
   if (!d) return dateStr;
-  const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-  const months = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-  ];
+  const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+  const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
   return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 };
 
@@ -177,48 +177,83 @@ function parseDishItems(menuStr: string): ParsedDish[] {
   if (!menuStr) return [];
   const rawList = menuStr
     .split(/[,+;\n]/)
-    .map(s => s.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
 
-  return rawList.map(name => {
+  return rawList.map((name) => {
     const lower = name.toLowerCase();
-    let category = 'Pelengkap';
+    let category = "Pelengkap";
 
-    if (lower.includes('nasi') || lower.includes('karbo') || lower.includes('lontong') || lower.includes('mie') || lower.includes('bihun')) {
-      category = 'Karbohidrat Pokok';
-    } else if (lower.includes('ayam') || lower.includes('daging') || lower.includes('sapi') || lower.includes('ikan') || lower.includes('telur') || lower.includes('rolade') || lower.includes('nugget') || lower.includes('katsu') || lower.includes('semur') || lower.includes('woku')) {
-      category = 'Lauk Protein Hewani';
-    } else if (lower.includes('tahu') || lower.includes('tempe') || lower.includes('kacang') || lower.includes('mendoan')) {
-      category = 'Lauk Protein Nabati';
-    } else if (lower.includes('sayur') || lower.includes('sop') || lower.includes('sup') || lower.includes('tumis') || lower.includes('buncis') || lower.includes('wortel') || lower.includes('pokcoy') || lower.includes('pakcoy') || lower.includes('bayam') || lower.includes('lodeh') || lower.includes('steam') || lower.includes('jagung') || lower.includes('capcay')) {
-      category = 'Sayuran Berserat';
-    } else if (lower.includes('semangka') || lower.includes('melon') || lower.includes('pisang') || lower.includes('jeruk') || lower.includes('buah') || lower.includes('kelengkeng') || lower.includes('anggur') || lower.includes('pepaya') || lower.includes('apel')) {
-      category = 'Buah Segar';
-    } else if (lower.includes('susu') || lower.includes('puding') || lower.includes('snack')) {
-      category = 'Susu & Minuman Gizi';
+    if (lower.includes("nasi") || lower.includes("karbo") || lower.includes("lontong") || lower.includes("mie") || lower.includes("bihun")) {
+      category = "Karbohidrat Pokok";
+    } else if (
+      lower.includes("ayam") ||
+      lower.includes("daging") ||
+      lower.includes("sapi") ||
+      lower.includes("ikan") ||
+      lower.includes("telur") ||
+      lower.includes("rolade") ||
+      lower.includes("nugget") ||
+      lower.includes("katsu") ||
+      lower.includes("semur") ||
+      lower.includes("woku")
+    ) {
+      category = "Lauk Protein Hewani";
+    } else if (lower.includes("tahu") || lower.includes("tempe") || lower.includes("kacang") || lower.includes("mendoan")) {
+      category = "Lauk Protein Nabati";
+    } else if (
+      lower.includes("sayur") ||
+      lower.includes("sop") ||
+      lower.includes("sup") ||
+      lower.includes("tumis") ||
+      lower.includes("buncis") ||
+      lower.includes("wortel") ||
+      lower.includes("pokcoy") ||
+      lower.includes("pakcoy") ||
+      lower.includes("bayam") ||
+      lower.includes("lodeh") ||
+      lower.includes("steam") ||
+      lower.includes("jagung") ||
+      lower.includes("capcay")
+    ) {
+      category = "Sayuran Berserat";
+    } else if (
+      lower.includes("semangka") ||
+      lower.includes("melon") ||
+      lower.includes("pisang") ||
+      lower.includes("jeruk") ||
+      lower.includes("buah") ||
+      lower.includes("kelengkeng") ||
+      lower.includes("anggur") ||
+      lower.includes("pepaya") ||
+      lower.includes("apel")
+    ) {
+      category = "Buah Segar";
+    } else if (lower.includes("susu") || lower.includes("puding") || lower.includes("snack")) {
+      category = "Susu & Minuman Gizi";
     }
 
-    return { name, category };
+    return {name, category};
   });
 }
 
 // Template cepat untuk PO bahan standar SPPG
 const STANDARD_PO_TEMPLATES = [
-  { category: 'Protein', itemName: 'Ayam Potong', qtyOrder: '260 kg', qtyArrived: '260 kg', supplier: 'Ayam Segar Fajar', arrivalTime: '08.30', pic: 'Akmal' },
-  { category: 'Protein', itemName: 'Tahu Putih', qtyOrder: '520 pcs', qtyArrived: '520 pcs', supplier: 'Tahu Rio', arrivalTime: '09.30', pic: 'Akmal' },
-  { category: 'Sembako', itemName: 'Beras Mentari 25kg', qtyOrder: '7 sak', qtyArrived: '7 sak', supplier: 'Tumpang Grosir', arrivalTime: '14.00', pic: 'Akmal' },
-  { category: 'Sembako', itemName: 'Minyak Tropical 2L', qtyOrder: '12 pouch', qtyArrived: '12 pouch', supplier: 'Tumpang Grosir', arrivalTime: '14.00', pic: 'Akmal' },
-  { category: 'Sayur dan Buah', itemName: 'Buncis Segar', qtyOrder: '45 kg', qtyArrived: '45 kg', supplier: 'Sayur Segar Malang', arrivalTime: '07.30', pic: 'Akmal' },
-  { category: 'Sayur dan Buah', itemName: 'Wortel Manis', qtyOrder: '35 kg', qtyArrived: '35 kg', supplier: 'Sayur Segar Malang', arrivalTime: '07.30', pic: 'Akmal' },
-  { category: 'Sayur dan Buah', itemName: 'Semangka Non-Biji', qtyOrder: '180 kg', qtyArrived: '180 kg', supplier: 'Buah Segar Nusantara', arrivalTime: '10.00', pic: 'Akmal' },
-  { category: 'Bumbu', itemName: 'Bawang Putih Kating', qtyOrder: '8 kg', qtyArrived: '8 kg', supplier: 'Toko Bumbu Berkah', arrivalTime: '08.00', pic: 'Akmal' },
+  {category: "Protein", itemName: "Ayam Potong", qtyOrder: "260 kg", qtyArrived: "260 kg", supplier: "Ayam Segar Fajar", arrivalTime: "08.30", pic: "Akmal"},
+  {category: "Protein", itemName: "Tahu Putih", qtyOrder: "520 pcs", qtyArrived: "520 pcs", supplier: "Tahu Rio", arrivalTime: "09.30", pic: "Akmal"},
+  {category: "Sembako", itemName: "Beras Mentari 25kg", qtyOrder: "7 sak", qtyArrived: "7 sak", supplier: "Tumpang Grosir", arrivalTime: "14.00", pic: "Akmal"},
+  {category: "Sembako", itemName: "Minyak Tropical 2L", qtyOrder: "12 pouch", qtyArrived: "12 pouch", supplier: "Tumpang Grosir", arrivalTime: "14.00", pic: "Akmal"},
+  {category: "Sayur dan Buah", itemName: "Buncis Segar", qtyOrder: "45 kg", qtyArrived: "45 kg", supplier: "Sayur Segar Malang", arrivalTime: "07.30", pic: "Akmal"},
+  {category: "Sayur dan Buah", itemName: "Wortel Manis", qtyOrder: "35 kg", qtyArrived: "35 kg", supplier: "Sayur Segar Malang", arrivalTime: "07.30", pic: "Akmal"},
+  {category: "Sayur dan Buah", itemName: "Semangka Non-Biji", qtyOrder: "180 kg", qtyArrived: "180 kg", supplier: "Buah Segar Nusantara", arrivalTime: "10.00", pic: "Akmal"},
+  {category: "Bumbu", itemName: "Bawang Putih Kating", qtyOrder: "8 kg", qtyArrived: "8 kg", supplier: "Toko Bumbu Berkah", arrivalTime: "08.00", pic: "Akmal"},
 ];
 
 const getTodayIso = (): string => {
   const d = new Date();
   const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
 
@@ -226,33 +261,34 @@ interface MenuOrdersModuleProps {
   onNavigate?: (tab: string) => void;
 }
 
-export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }) => {
-  const { currentUser } = useAuth();
+export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) => {
+  const {currentUser} = useAuth();
+  const toast = useToast();
   const [orders, setOrders] = useState<MenuOrder[]>(() => warehouseDb.getMenuOrders());
-  const [activeSubTab, setActiveSubTab] = useState<SubTabType>('MENU_ORDERS');
+  const [activeSubTab, setActiveSubTab] = useState<SubTabType>("MENU_ORDERS");
 
   // Tanggal Hari Ini (otomatis sesuai jam sistem)
   const todayStr = useMemo(() => getTodayIso(), []);
 
   // Period filter states: DEFAULT KE HARI INI (DAILY)
-  const [periodType, setPeriodType] = useState<PeriodType>('DAILY');
+  const [periodType, setPeriodType] = useState<PeriodType>("DAILY");
   const [selectedDailyDate, setSelectedDailyDate] = useState<string>(todayStr);
-  const [startDate, setStartDate] = useState<string>('2026-09-20');
+  const [startDate, setStartDate] = useState<string>("2026-09-20");
   const [endDate, setEndDate] = useState<string>(todayStr);
   const [selectedMonth, setSelectedMonth] = useState<string>(todayStr.slice(0, 7)); // YYYY-MM
 
   // Filters for Tab 1 (Menu Orders)
-  const [selectedSession, setSelectedSession] = useState<string>('ALL');
-  const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSession, setSelectedSession] = useState<string>("ALL");
+  const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Filters for Tab 2 (Penerima Manfaat)
-  const [selectedBeneficiaryCategory, setSelectedBeneficiaryCategory] = useState<string>('ALL');
-  const [beneficiaryStatusFilter, setBeneficiaryStatusFilter] = useState<string>('ALL');
-  const [schoolSearchQuery, setSchoolSearchQuery] = useState('');
-  const [beneficiaryViewMode, setBeneficiaryViewMode] = useState<'REKAP_HARIAN' | 'DETAIL_HARIAN'>('REKAP_HARIAN');
-  const [beneficiaryPeriodPreset, setBeneficiaryPeriodPreset] = useState<'ALL_ORDERS' | 'LAST_7_DAYS' | 'THIS_MONTH' | 'CUSTOM'>('ALL_ORDERS');
-  const [beneficiaryStartDate, setBeneficiaryStartDate] = useState<string>('2026-09-20');
+  const [selectedBeneficiaryCategory, setSelectedBeneficiaryCategory] = useState<string>("ALL");
+  const [beneficiaryStatusFilter, setBeneficiaryStatusFilter] = useState<string>("ALL");
+  const [schoolSearchQuery, setSchoolSearchQuery] = useState("");
+  const [beneficiaryViewMode, setBeneficiaryViewMode] = useState<"REKAP_HARIAN" | "DETAIL_HARIAN">("REKAP_HARIAN");
+  const [beneficiaryPeriodPreset, setBeneficiaryPeriodPreset] = useState<"ALL_ORDERS" | "LAST_7_DAYS" | "THIS_MONTH" | "CUSTOM">("ALL_ORDERS");
+  const [beneficiaryStartDate, setBeneficiaryStartDate] = useState<string>("2026-09-20");
   const [beneficiaryEndDate, setBeneficiaryEndDate] = useState<string>(todayStr);
   const [beneficiarySelectedDate, setBeneficiarySelectedDate] = useState<string>(todayStr);
   const [dailyDraftPortions, setDailyDraftPortions] = useState<Record<string, number>>({});
@@ -260,39 +296,37 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
   const [isBeneficiaryPrintModalOpen, setIsBeneficiaryPrintModalOpen] = useState(false);
 
   // Master beneficiaries state (persisted via storage.ts)
-  const [beneficiaries, setBeneficiaries] = useState<SchoolBeneficiaryAllocation[]>(() =>
-    warehouseDb.getSchoolBeneficiaries()
-  );
+  const [beneficiaries, setBeneficiaries] = useState<SchoolBeneficiaryAllocation[]>(() => warehouseDb.getSchoolBeneficiaries());
 
   // Beneficiary Modal State (Edit & Create)
   const [isBeneficiaryModalOpen, setIsBeneficiaryModalOpen] = useState(false);
   const [editingBeneficiary, setEditingBeneficiary] = useState<SchoolBeneficiaryAllocation | null>(null);
-  const [beneficiaryFormId, setBeneficiaryFormId] = useState('');
-  const [beneficiaryFormName, setBeneficiaryFormName] = useState('');
-  const [beneficiaryFormCategory, setBeneficiaryFormCategory] = useState<string>('SD / MI');
+  const [beneficiaryFormId, setBeneficiaryFormId] = useState("");
+  const [beneficiaryFormName, setBeneficiaryFormName] = useState("");
+  const [beneficiaryFormCategory, setBeneficiaryFormCategory] = useState<string>("SD / MI");
   const [beneficiaryFormPortions, setBeneficiaryFormPortions] = useState<number>(300);
-  const [beneficiaryFormDeliveryTime, setBeneficiaryFormDeliveryTime] = useState('09.45 WIB');
-  const [beneficiaryFormContactPerson, setBeneficiaryFormContactPerson] = useState('');
-  const [beneficiaryFormPhone, setBeneficiaryFormPhone] = useState('');
-  const [beneficiaryFormStatus, setBeneficiaryFormStatus] = useState<'TERKIRIM' | 'DALAM_PERJALANAN' | 'SIAP_KIRIM' | 'DIJADWALKAN'>('DIJADWALKAN');
-  const [beneficiaryFormNotes, setBeneficiaryFormNotes] = useState('');
+  const [beneficiaryFormDeliveryTime, setBeneficiaryFormDeliveryTime] = useState("09.45 WIB");
+  const [beneficiaryFormContactPerson, setBeneficiaryFormContactPerson] = useState("");
+  const [beneficiaryFormPhone, setBeneficiaryFormPhone] = useState("");
+  const [beneficiaryFormStatus, setBeneficiaryFormStatus] = useState<"TERKIRIM" | "DALAM_PERJALANAN" | "SIAP_KIRIM" | "DIJADWALKAN">("DIJADWALKAN");
+  const [beneficiaryFormNotes, setBeneficiaryFormNotes] = useState("");
 
   // Filters for Tab 3 (Master Data Penerima Manfaat)
-  const [masterCategoryFilter, setMasterCategoryFilter] = useState<string>('ALL');
-  const [masterSearchQuery, setMasterSearchQuery] = useState<string>('');
+  const [masterCategoryFilter, setMasterCategoryFilter] = useState<string>("ALL");
+  const [masterSearchQuery, setMasterSearchQuery] = useState<string>("");
 
   // Expandable cards state for Menu Order items
   const [expandedOrderIds, setExpandedOrderIds] = useState<Record<string, boolean>>({
-    'ORD-2026-001': true,
-    'ORD-2026-002': true,
-    'ORD-2026-003': true,
-    'ORD-2026-004': true,
-    'ORD-2026-005': true,
-    'ORD-2026-006': true,
+    "ORD-2026-001": true,
+    "ORD-2026-002": true,
+    "ORD-2026-003": true,
+    "ORD-2026-004": true,
+    "ORD-2026-005": true,
+    "ORD-2026-006": true,
   });
 
   // Notification notice
-  const [successNotice, setSuccessNotice] = useState('');
+  const [successNotice, setSuccessNotice] = useState("");
 
   // Action Dropdowns
   const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
@@ -307,12 +341,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
         setIsPrintDropdownOpen(false);
       }
       const target = event.target as HTMLElement;
-      if (!target.closest('.order-action-menu-container')) {
+      if (!target.closest(".order-action-menu-container")) {
         setOpenOrderMenuId(null);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   // Navigasi Tanggal (Kemarin, Hari Ini, Besok)
@@ -320,25 +354,25 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     const cur = parseMenuDate(selectedDailyDate) || new Date();
     cur.setDate(cur.getDate() - 1);
     const y = cur.getFullYear();
-    const m = String(cur.getMonth() + 1).padStart(2, '0');
-    const d = String(cur.getDate()).padStart(2, '0');
+    const m = String(cur.getMonth() + 1).padStart(2, "0");
+    const d = String(cur.getDate()).padStart(2, "0");
     setSelectedDailyDate(`${y}-${m}-${d}`);
-    setPeriodType('DAILY');
+    setPeriodType("DAILY");
   };
 
   const handleNextDay = () => {
     const cur = parseMenuDate(selectedDailyDate) || new Date();
     cur.setDate(cur.getDate() + 1);
     const y = cur.getFullYear();
-    const m = String(cur.getMonth() + 1).padStart(2, '0');
-    const d = String(cur.getDate()).padStart(2, '0');
+    const m = String(cur.getMonth() + 1).padStart(2, "0");
+    const d = String(cur.getDate()).padStart(2, "0");
     setSelectedDailyDate(`${y}-${m}-${d}`);
-    setPeriodType('DAILY');
+    setPeriodType("DAILY");
   };
 
   const handleJumpToToday = () => {
     setSelectedDailyDate(todayStr);
-    setPeriodType('DAILY');
+    setPeriodType("DAILY");
   };
 
   const handleSetThisWeek = () => {
@@ -346,7 +380,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
     setStartDate(start.toISOString().slice(0, 10));
     setEndDate(end.toISOString().slice(0, 10));
-    setPeriodType('WEEKLY');
+    setPeriodType("WEEKLY");
   };
 
   const handleSetLastWeek = () => {
@@ -354,10 +388,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
     setStartDate(start.toISOString().slice(0, 10));
     setEndDate(end.toISOString().slice(0, 10));
-    setPeriodType('WEEKLY');
+    setPeriodType("WEEKLY");
   };
-
-
 
   // =========================================================================
   // MODAL 1: FORM INPUT / EDIT MENU HARI INI
@@ -366,122 +398,121 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
   const [editingMenuOrderId, setEditingMenuOrderId] = useState<string | null>(null);
 
   const [menuFormDate, setMenuFormDate] = useState(todayStr);
-  const [menuFormPoDate, setMenuFormPoDate] = useState('');
-  const [menuFormSession, setMenuFormSession] = useState<'Pagi' | 'Siang' | 'Snack'>('Siang');
-  const [menuFormTitle, setMenuFormTitle] = useState('');
-  const [menuFormDietB3, setMenuFormDietB3] = useState('');
+  const [menuFormPoDate, setMenuFormPoDate] = useState("");
+  const [menuFormSession, setMenuFormSession] = useState<"Pagi" | "Siang" | "Snack">("Siang");
+  const [menuFormTitle, setMenuFormTitle] = useState("");
+  const [menuFormDietB3, setMenuFormDietB3] = useState("");
   const [menuFormPortions, setMenuFormPortions] = useState<number>(3044);
-  const [menuFormStatus, setMenuFormStatus] = useState<MenuOrderStatus>('PLANNED');
-  const [menuFormChef, setMenuFormChef] = useState('Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU');
-  const [menuFormNotes, setMenuFormNotes] = useState('');
+  const [menuFormStatus, setMenuFormStatus] = useState<MenuOrderStatus>("PLANNED");
+  const [menuFormChef, setMenuFormChef] = useState("Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU");
+  const [menuFormNotes, setMenuFormNotes] = useState("");
 
   // =========================================================================
   // MODAL 2: FORM INPUT / EDIT PO HARI INI & KEDATANGAN BARANG
   // =========================================================================
   const [isPoModalOpen, setIsPoModalOpen] = useState(false);
-  const [selectedPoOrderId, setSelectedPoOrderId] = useState<string>('');
-  const [poFormDate, setPoFormDate] = useState('');
-  const [poFormRows, setPoFormRows] = useState<Array<{
-    category: string;
-    itemName: string;
-    qtyOrder: string;
-    qtyArrived: string;
-    supplier: string;
-    arrivalTime: string;
-    pic: string;
-    notes?: string;
-  }>>([]);
+  const [selectedPoOrderId, setSelectedPoOrderId] = useState<string>("");
+  const [poFormDate, setPoFormDate] = useState("");
+  const [poFormRows, setPoFormRows] = useState<
+    Array<{
+      category: string;
+      itemName: string;
+      qtyOrder: string;
+      qtyArrived: string;
+      supplier: string;
+      arrivalTime: string;
+      pic: string;
+      notes?: string;
+    }>
+  >([]);
 
   const refreshOrders = () => {
     setOrders(warehouseDb.getMenuOrders());
   };
 
   const toggleExpandOrder = (id: string) => {
-    setExpandedOrderIds(prev => ({ ...prev, [id]: !prev[id] }));
+    setExpandedOrderIds((prev) => ({...prev, [id]: !prev[id]}));
   };
 
   // Date range evaluation
   const effectiveDateRange = useMemo(() => {
-    if (periodType === 'PRESET_SAMPLE') {
-      const s = parseMenuDate('2026-09-20');
-      const e = parseMenuDate('2026-09-24');
-      return { start: s, end: e, label: 'Periode 20 - 24 Sep 2026 (Data Excel SPPG)' };
+    if (periodType === "PRESET_SAMPLE") {
+      const s = parseMenuDate("2026-09-20");
+      const e = parseMenuDate("2026-09-24");
+      return {start: s, end: e, label: "Periode 20 - 24 Sep 2026 (Data Excel SPPG)"};
     }
-    if (periodType === 'ALL') {
-      return { start: null, end: null, label: 'Semua Periode Tercatat' };
+    if (periodType === "ALL") {
+      return {start: null, end: null, label: "Semua Periode Tercatat"};
     }
-    if (periodType === 'DAILY') {
+    if (periodType === "DAILY") {
       const target = parseMenuDate(selectedDailyDate);
-      return { start: target, end: target, label: `Harian: ${selectedDailyDate}` };
+      return {start: target, end: target, label: `Harian: ${selectedDailyDate}`};
     }
-    if (periodType === 'WEEKLY') {
+    if (periodType === "WEEKLY") {
       const s = parseMenuDate(startDate);
       const e = parseMenuDate(endDate);
-      return { start: s, end: e, label: `Mingguan: ${startDate} s/d ${endDate}` };
+      return {start: s, end: e, label: `Mingguan: ${startDate} s/d ${endDate}`};
     }
-    if (periodType === 'MONTHLY') {
-      const [year, month] = selectedMonth.split('-').map(Number);
+    if (periodType === "MONTHLY") {
+      const [year, month] = selectedMonth.split("-").map(Number);
       const startOfMonth = new Date(year, month - 1, 1);
       const endOfMonth = new Date(year, month, 0);
-      const monthNames = [
-        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
-      ];
+      const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
       return {
         start: startOfMonth,
         end: endOfMonth,
-        label: `Bulan ${monthNames[month - 1] || ''} ${year}`,
+        label: `Bulan ${monthNames[month - 1] || ""} ${year}`,
       };
     }
-    return { start: null, end: null, label: 'Periode Kustom' };
+    return {start: null, end: null, label: "Periode Kustom"};
   }, [periodType, selectedDailyDate, startDate, endDate, selectedMonth]);
 
   // Filtered orders based on active period & filters
   const filteredOrders = useMemo(() => {
-    return orders.filter(ord => {
-      // 1. Period filter
-      if (effectiveDateRange.start && effectiveDateRange.end) {
-        const pDate = parseMenuDate(ord.date);
-        if (pDate) {
-          const itemTime = new Date(pDate.getFullYear(), pDate.getMonth(), pDate.getDate()).getTime();
-          const startTime = new Date(effectiveDateRange.start.getFullYear(), effectiveDateRange.start.getMonth(), effectiveDateRange.start.getDate()).getTime();
-          const endTime = new Date(effectiveDateRange.end.getFullYear(), effectiveDateRange.end.getMonth(), effectiveDateRange.end.getDate()).getTime();
-          if (itemTime < startTime || itemTime > endTime) {
-            return false;
+    return orders
+      .filter((ord) => {
+        // 1. Period filter
+        if (effectiveDateRange.start && effectiveDateRange.end) {
+          const pDate = parseMenuDate(ord.date);
+          if (pDate) {
+            const itemTime = new Date(pDate.getFullYear(), pDate.getMonth(), pDate.getDate()).getTime();
+            const startTime = new Date(effectiveDateRange.start.getFullYear(), effectiveDateRange.start.getMonth(), effectiveDateRange.start.getDate()).getTime();
+            const endTime = new Date(effectiveDateRange.end.getFullYear(), effectiveDateRange.end.getMonth(), effectiveDateRange.end.getDate()).getTime();
+            if (itemTime < startTime || itemTime > endTime) {
+              return false;
+            }
           }
         }
-      }
 
-      // 2. Session & Status filter
-      if (selectedSession !== 'ALL' && ord.mealSession !== selectedSession) return false;
-      if (selectedStatus !== 'ALL' && ord.status !== selectedStatus) return false;
+        // 2. Session & Status filter
+        if (selectedSession !== "ALL" && ord.mealSession !== selectedSession) return false;
+        if (selectedStatus !== "ALL" && ord.status !== selectedStatus) return false;
 
-      // 3. Search query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchTitle = ord.menuTitle.toLowerCase().includes(q);
-        const matchId = ord.id.toLowerCase().includes(q);
-        const matchChef = (ord.chefInCharge || '').toLowerCase().includes(q);
-        const matchB3 = (ord.specialDietB3 || '').toLowerCase().includes(q);
-        const matchNotes = (ord.notes || '').toLowerCase().includes(q);
-        const matchItems = (ord.poArrivalItems || []).some(
-          it => it.itemName.toLowerCase().includes(q) || it.supplier.toLowerCase().includes(q)
-        );
-        if (!matchTitle && !matchId && !matchChef && !matchB3 && !matchNotes && !matchItems) return false;
-      }
+        // 3. Search query
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const matchTitle = ord.menuTitle.toLowerCase().includes(q);
+          const matchId = ord.id.toLowerCase().includes(q);
+          const matchChef = (ord.chefInCharge || "").toLowerCase().includes(q);
+          const matchB3 = (ord.specialDietB3 || "").toLowerCase().includes(q);
+          const matchNotes = (ord.notes || "").toLowerCase().includes(q);
+          const matchItems = (ord.poArrivalItems || []).some((it) => it.itemName.toLowerCase().includes(q) || it.supplier.toLowerCase().includes(q));
+          if (!matchTitle && !matchId && !matchChef && !matchB3 && !matchNotes && !matchItems) return false;
+        }
 
-      return true;
-    }).sort((a, b) => {
-      const da = parseMenuDate(a.date)?.getTime() || 0;
-      const db = parseMenuDate(b.date)?.getTime() || 0;
-      return da - db;
-    });
+        return true;
+      })
+      .sort((a, b) => {
+        const da = parseMenuDate(a.date)?.getTime() || 0;
+        const db = parseMenuDate(b.date)?.getTime() || 0;
+        return da - db;
+      });
   }, [orders, effectiveDateRange, selectedSession, selectedStatus, searchQuery]);
 
   // Distinct dates in the active filtered orders
   const activeOrderDates = useMemo(() => {
     const setDates = new Set<string>();
-    filteredOrders.forEach(o => setDates.add(o.date));
+    filteredOrders.forEach((o) => setDates.add(o.date));
     return Array.from(setDates).sort((a, b) => {
       const da = parseMenuDate(a)?.getTime() || 0;
       const db = parseMenuDate(b)?.getTime() || 0;
@@ -502,17 +533,17 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     let totalEstimatedCost = 0;
     let totalArrivedKg = 0;
 
-    filteredOrders.forEach(o => {
+    filteredOrders.forEach((o) => {
       totalPortionsPlanned += o.targetPortions || 0;
-      if (o.status === 'DISTRIBUTED' || o.status === 'COMPLETED') {
+      if (o.status === "DISTRIBUTED" || o.status === "COMPLETED") {
         totalPortionsDistributed += o.targetPortions || 0;
       }
-      if (o.status === 'COOKING' || o.status === 'PREPPING') {
+      if (o.status === "COOKING" || o.status === "PREPPING") {
         inCooking++;
       }
       if (o.poArrivalItems) {
         totalPOItemsCount += o.poArrivalItems.length;
-        o.poArrivalItems.forEach(item => {
+        o.poArrivalItems.forEach((item) => {
           totalEstimatedCost += item.totalCost || 0;
           const parsed = parseNumericQuantity(item.qtyArrived || item.qtyOrder);
           totalArrivedKg += parsed;
@@ -536,19 +567,19 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
   // Filtered schools based on category, status and search for Tab 2
   const filteredSchools = useMemo(() => {
-    return masterSchools.filter(school => {
-      if (selectedBeneficiaryCategory !== 'ALL' && school.category !== selectedBeneficiaryCategory) {
+    return masterSchools.filter((school) => {
+      if (selectedBeneficiaryCategory !== "ALL" && school.category !== selectedBeneficiaryCategory) {
         return false;
       }
-      if (beneficiaryStatusFilter !== 'ALL' && (school.status || 'DIJADWALKAN') !== beneficiaryStatusFilter) {
+      if (beneficiaryStatusFilter !== "ALL" && (school.status || "DIJADWALKAN") !== beneficiaryStatusFilter) {
         return false;
       }
       if (schoolSearchQuery.trim()) {
         const q = schoolSearchQuery.toLowerCase();
         const matchName = school.schoolName.toLowerCase().includes(q);
-        const matchPic = (school.contactPerson || '').toLowerCase().includes(q);
-        const matchPhone = (school.phone || '').toLowerCase().includes(q);
-        const matchNotes = (school.notes || '').toLowerCase().includes(q);
+        const matchPic = (school.contactPerson || "").toLowerCase().includes(q);
+        const matchPhone = (school.phone || "").toLowerCase().includes(q);
+        const matchNotes = (school.notes || "").toLowerCase().includes(q);
         if (!matchName && !matchPic && !matchPhone && !matchNotes) return false;
       }
       return true;
@@ -557,17 +588,17 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
   // Filtered master beneficiaries for Tab 3 (Master Data)
   const filteredMasterBeneficiaries = useMemo(() => {
-    return masterSchools.filter(school => {
-      if (masterCategoryFilter !== 'ALL' && school.category !== masterCategoryFilter) {
+    return masterSchools.filter((school) => {
+      if (masterCategoryFilter !== "ALL" && school.category !== masterCategoryFilter) {
         return false;
       }
       if (masterSearchQuery.trim()) {
         const q = masterSearchQuery.toLowerCase();
-        const matchId = (school.id || '').toLowerCase().includes(q);
+        const matchId = (school.id || "").toLowerCase().includes(q);
         const matchName = school.schoolName.toLowerCase().includes(q);
-        const matchPic = (school.contactPerson || '').toLowerCase().includes(q);
-        const matchPhone = (school.phone || '').toLowerCase().includes(q);
-        const matchNotes = (school.notes || '').toLowerCase().includes(q);
+        const matchPic = (school.contactPerson || "").toLowerCase().includes(q);
+        const matchPhone = (school.phone || "").toLowerCase().includes(q);
+        const matchNotes = (school.notes || "").toLowerCase().includes(q);
         if (!matchId && !matchName && !matchPic && !matchPhone && !matchNotes) return false;
       }
       return true;
@@ -576,19 +607,19 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
   // Beneficiary category summary breakdown
   const beneficiaryCategoryStats = useMemo(() => {
-    const categories: Record<string, { category: string; portions: number; schoolCount: number }> = {
-      'SD / MI': { category: 'SD / MI', portions: 0, schoolCount: 0 },
-      'SMP / MTs': { category: 'SMP / MTs', portions: 0, schoolCount: 0 },
-      'PAUD / TK': { category: 'PAUD / TK', portions: 0, schoolCount: 0 },
-      'Ibu Hamil & Balita (B3)': { category: 'Ibu Hamil & Balita (B3)', portions: 0, schoolCount: 0 },
+    const categories: Record<string, {category: string; portions: number; schoolCount: number}> = {
+      "SD / MI": {category: "SD / MI", portions: 0, schoolCount: 0},
+      "SMP / MTs": {category: "SMP / MTs", portions: 0, schoolCount: 0},
+      "PAUD / TK": {category: "PAUD / TK", portions: 0, schoolCount: 0},
+      "Ibu Hamil & Balita (B3)": {category: "Ibu Hamil & Balita (B3)", portions: 0, schoolCount: 0},
     };
 
     let totalAllPortions = 0;
 
-    masterSchools.forEach(s => {
+    masterSchools.forEach((s) => {
       const cat = s.category;
       if (!categories[cat]) {
-        categories[cat] = { category: cat, portions: 0, schoolCount: 0 };
+        categories[cat] = {category: cat, portions: 0, schoolCount: 0};
       }
       categories[cat].portions += s.portionCount;
       categories[cat].schoolCount += 1;
@@ -606,15 +637,15 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
   const handleOpenAddBeneficiary = () => {
     setEditingBeneficiary(null);
     const nextNum = beneficiaries.length + 1;
-    setBeneficiaryFormId(`SCH-${String(nextNum).padStart(3, '0')}`);
-    setBeneficiaryFormName('');
-    setBeneficiaryFormCategory('SD / MI');
+    setBeneficiaryFormId(`SCH-${String(nextNum).padStart(3, "0")}`);
+    setBeneficiaryFormName("");
+    setBeneficiaryFormCategory("SD / MI");
     setBeneficiaryFormPortions(250);
-    setBeneficiaryFormDeliveryTime('09.45 WIB');
-    setBeneficiaryFormContactPerson('');
-    setBeneficiaryFormPhone('');
-    setBeneficiaryFormStatus('DIJADWALKAN');
-    setBeneficiaryFormNotes('');
+    setBeneficiaryFormDeliveryTime("09.45 WIB");
+    setBeneficiaryFormContactPerson("");
+    setBeneficiaryFormPhone("");
+    setBeneficiaryFormStatus("DIJADWALKAN");
+    setBeneficiaryFormNotes("");
     setIsBeneficiaryModalOpen(true);
   };
 
@@ -624,22 +655,22 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     setBeneficiaryFormName(b.schoolName);
     setBeneficiaryFormCategory(b.category);
     setBeneficiaryFormPortions(b.portionCount || 0);
-    setBeneficiaryFormDeliveryTime(b.deliveryTime || '09.45 WIB');
-    setBeneficiaryFormContactPerson(b.contactPerson || '');
-    setBeneficiaryFormPhone(b.phone || '');
-    setBeneficiaryFormStatus(b.status || 'DIJADWALKAN');
-    setBeneficiaryFormNotes(b.notes || '');
+    setBeneficiaryFormDeliveryTime(b.deliveryTime || "09.45 WIB");
+    setBeneficiaryFormContactPerson(b.contactPerson || "");
+    setBeneficiaryFormPhone(b.phone || "");
+    setBeneficiaryFormStatus(b.status || "DIJADWALKAN");
+    setBeneficiaryFormNotes(b.notes || "");
     setIsBeneficiaryModalOpen(true);
   };
 
   const handleSaveBeneficiary = (e: React.FormEvent) => {
     e.preventDefault();
     if (!beneficiaryFormName.trim()) {
-      alert('Nama sekolah atau lembaga penerima manfaat wajib diisi.');
+      toast.error("Nama sekolah atau lembaga penerima manfaat wajib diisi.", "Form Belum Lengkap");
       return;
     }
     if (Number(beneficiaryFormPortions) <= 0) {
-      alert('Jumlah porsi penerima manfaat harus lebih dari 0.');
+      toast.error("Jumlah porsi penerima manfaat harus lebih dari 0.", "Form Belum Lengkap");
       return;
     }
 
@@ -660,10 +691,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     setIsBeneficiaryModalOpen(false);
     setSuccessNotice(
       editingBeneficiary
-        ? `Data penerima manfaat "${itemToSave.schoolName}" berhasil diperbarui: ${itemToSave.portionCount.toLocaleString('id-ID')} porsi, PIC: ${itemToSave.contactPerson || '-'} (${itemToSave.phone || '-'}).`
-        : `Lembaga penerima manfaat baru "${itemToSave.schoolName}" berhasil ditambahkan.`
+        ? `Data penerima manfaat "${itemToSave.schoolName}" berhasil diperbarui: ${itemToSave.portionCount.toLocaleString("id-ID")} porsi, PIC: ${itemToSave.contactPerson || "-"} (${itemToSave.phone || "-"}).`
+        : `Lembaga penerima manfaat baru "${itemToSave.schoolName}" berhasil ditambahkan.`,
     );
-    setTimeout(() => setSuccessNotice(''), 6000);
+    setTimeout(() => setSuccessNotice(""), 6000);
   };
 
   const handleDeleteBeneficiary = (b: SchoolBeneficiaryAllocation) => {
@@ -671,12 +702,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       warehouseDb.deleteSchoolBeneficiary(b.id, currentUser || undefined);
       setBeneficiaries(warehouseDb.getSchoolBeneficiaries());
       setSuccessNotice(`Data penerima manfaat "${b.schoolName}" berhasil dihapus.`);
-      setTimeout(() => setSuccessNotice(''), 5000);
+      setTimeout(() => setSuccessNotice(""), 5000);
     }
   };
 
-  const handleQuickUpdateBeneficiaryStatus = (b: SchoolBeneficiaryAllocation, newStatus: SchoolBeneficiaryAllocation['status']) => {
-    const updated = { ...b, status: newStatus };
+  const handleQuickUpdateBeneficiaryStatus = (b: SchoolBeneficiaryAllocation, newStatus: SchoolBeneficiaryAllocation["status"]) => {
+    const updated = {...b, status: newStatus};
     warehouseDb.saveSchoolBeneficiary(updated, currentUser || undefined);
     setBeneficiaries(warehouseDb.getSchoolBeneficiaries());
   };
@@ -684,21 +715,17 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
   const handleExportMasterBeneficiariesExcel = () => {
     const rows = beneficiaries.map((b, idx) => ({
       No: idx + 1,
-      'ID Lembaga': b.id,
-      'Nama Sekolah / Lembaga': b.schoolName,
-      'Kategori Sasaran': b.category,
-      'Jumlah Alokasi Porsi': b.portionCount,
-      'Jadwal Kirim': b.deliveryTime || '-',
-      'Nama Kontak PIC': b.contactPerson || '-',
-      'Nomor HP / WA PIC': b.phone || '-',
-      'Status Operasional': b.status || 'DIJADWALKAN',
-      'Catatan / Titik Serah': b.notes || '-',
+      "ID Lembaga": b.id,
+      "Nama Sekolah / Lembaga": b.schoolName,
+      "Kategori Sasaran": b.category,
+      "Jumlah Alokasi Porsi": b.portionCount,
+      "Jadwal Kirim": b.deliveryTime || "-",
+      "Nama Kontak PIC": b.contactPerson || "-",
+      "Nomor HP / WA PIC": b.phone || "-",
+      "Status Operasional": b.status || "DIJADWALKAN",
+      "Catatan / Titik Serah": b.notes || "-",
     }));
-    exportToExcel(
-      rows,
-      `Master_Data_Penerima_Manfaat_SPPG_${new Date().toISOString().slice(0, 10)}.xlsx`,
-      'Master Penerima Manfaat'
-    );
+    exportToExcel(rows, `Master_Data_Penerima_Manfaat_SPPG_${new Date().toISOString().slice(0, 10)}.xlsx`, "Master Penerima Manfaat");
   };
 
   // =========================================================================
@@ -706,11 +733,11 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
   // =========================================================================
   // Sinkronisasi draf porsi saat tanggal terpilih atau orders berubah
   useEffect(() => {
-    const currentOrder = orders.find(o => o.date === beneficiarySelectedDate);
+    const currentOrder = orders.find((o) => o.date === beneficiarySelectedDate);
     const draft: Record<string, number> = {};
-    masterSchools.forEach(s => {
+    masterSchools.forEach((s) => {
       if (currentOrder && currentOrder.beneficiaryAllocations && currentOrder.beneficiaryAllocations.length > 0) {
-        const match = currentOrder.beneficiaryAllocations.find(b => b.id === s.id);
+        const match = currentOrder.beneficiaryAllocations.find((b) => b.id === s.id);
         draft[s.id] = match ? match.portionCount : s.portionCount;
       } else if (currentOrder) {
         const totalMaster = masterSchools.reduce((sum, item) => sum + item.portionCount, 0) || 3044;
@@ -725,11 +752,11 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
   // Simpan perubahan porsi harian pada tanggal terpilih
   const handleSaveDailyAllocations = () => {
-    const currentOrder = orders.find(o => o.date === beneficiarySelectedDate);
-    const updatedAllocations: SchoolBeneficiaryAllocation[] = masterSchools.map(s => ({
+    const currentOrder = orders.find((o) => o.date === beneficiarySelectedDate);
+    const updatedAllocations: SchoolBeneficiaryAllocation[] = masterSchools.map((s) => ({
       ...s,
       portionCount: Number(dailyDraftPortions[s.id] ?? s.portionCount),
-      status: currentOrder?.beneficiaryAllocations?.find(b => b.id === s.id)?.status || 'DIJADWALKAN',
+      status: currentOrder?.beneficiaryAllocations?.find((b) => b.id === s.id)?.status || "DIJADWALKAN",
     }));
 
     const totalPortions = updatedAllocations.reduce((sum, a) => sum + (Number(a.portionCount) || 0), 0);
@@ -746,11 +773,11 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       const newOrder: MenuOrder = {
         id: `ORD-${Date.now().toString().slice(-6)}`,
         date: beneficiarySelectedDate,
-        mealSession: 'Siang',
+        mealSession: "Siang",
         menuTitle: `Menu Harian - ${formatShortDate(beneficiarySelectedDate)}`,
         targetPortions: totalPortions,
         totalBeneficiaries: totalPortions,
-        status: 'PLANNED',
+        status: "PLANNED",
         beneficiaryAllocations: updatedAllocations,
         createdAt: new Date().toISOString(),
       };
@@ -759,14 +786,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
     setOrders(warehouseDb.getMenuOrders());
     setIsDailyDraftDirty(false);
-    setSuccessNotice(`Alokasi porsi harian untuk ${formatIndonesianDate(beneficiarySelectedDate)} berhasil disimpan (Total: ${totalPortions.toLocaleString('id-ID')} porsi).`);
-    setTimeout(() => setSuccessNotice(''), 6000);
+    setSuccessNotice(`Alokasi porsi harian untuk ${formatIndonesianDate(beneficiarySelectedDate)} berhasil disimpan (Total: ${totalPortions.toLocaleString("id-ID")} porsi).`);
+    setTimeout(() => setSuccessNotice(""), 6000);
   };
 
   const handleResetDailyAllocationsToMaster = () => {
     if (window.confirm(`Kembalikan alokasi porsi tanggal ${formatIndonesianDate(beneficiarySelectedDate)} ke standar master default?`)) {
       const draft: Record<string, number> = {};
-      masterSchools.forEach(s => {
+      masterSchools.forEach((s) => {
         draft[s.id] = s.portionCount;
       });
       setDailyDraftPortions(draft);
@@ -780,12 +807,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     if (!targetStr) return;
     const targetVal = parseInt(targetStr, 10);
     if (isNaN(targetVal) || targetVal <= 0) {
-      alert('Target porsi harus berupa angka positif.');
+      toast.warning("Target porsi harus berupa angka positif.", "Input Tidak Valid");
       return;
     }
     const ratio = targetVal / currentTotal;
     const newDraft: Record<string, number> = {};
-    masterSchools.forEach(s => {
+    masterSchools.forEach((s) => {
       const cur = dailyDraftPortions[s.id] ?? s.portionCount;
       newDraft[s.id] = Math.max(0, Math.round(cur * ratio));
     });
@@ -795,13 +822,13 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
   // Matriks rekapitulasi harian per sekolah across tanggal
   const dailyBeneficiaryMatrix = useMemo(() => {
-    const allOrderDates = Array.from(new Set(orders.map(o => o.date))).sort();
+    const allOrderDates = Array.from(new Set(orders.map((o) => o.date))).sort();
 
     let distinctDates: string[] = [];
 
-    if (beneficiaryPeriodPreset === 'ALL_ORDERS') {
+    if (beneficiaryPeriodPreset === "ALL_ORDERS") {
       distinctDates = allOrderDates.length > 0 ? allOrderDates : [todayStr];
-    } else if (beneficiaryPeriodPreset === 'LAST_7_DAYS') {
+    } else if (beneficiaryPeriodPreset === "LAST_7_DAYS") {
       const end = parseMenuDate(beneficiaryEndDate) || new Date();
       const datesArr: string[] = [];
       for (let i = 6; i >= 0; i--) {
@@ -810,13 +837,13 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
         datesArr.push(d.toISOString().slice(0, 10));
       }
       distinctDates = datesArr;
-    } else if (beneficiaryPeriodPreset === 'THIS_MONTH') {
+    } else if (beneficiaryPeriodPreset === "THIS_MONTH") {
       const curMonth = (parseMenuDate(beneficiaryEndDate) || new Date()).toISOString().slice(0, 7);
-      distinctDates = allOrderDates.filter(d => d.startsWith(curMonth));
+      distinctDates = allOrderDates.filter((d) => d.startsWith(curMonth));
       if (distinctDates.length === 0) distinctDates = allOrderDates;
     } else {
       // CUSTOM
-      distinctDates = allOrderDates.filter(d => d >= beneficiaryStartDate && d <= beneficiaryEndDate);
+      distinctDates = allOrderDates.filter((d) => d >= beneficiaryStartDate && d <= beneficiaryEndDate);
       if (distinctDates.length === 0 && beneficiaryStartDate && beneficiaryEndDate) {
         const s = parseMenuDate(beneficiaryStartDate);
         const e = parseMenuDate(beneficiaryEndDate);
@@ -836,34 +863,34 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     }
 
     const orderMap: Record<string, MenuOrder | undefined> = {};
-    distinctDates.forEach(d => {
-      orderMap[d] = orders.find(o => o.date === d);
+    distinctDates.forEach((d) => {
+      orderMap[d] = orders.find((o) => o.date === d);
     });
 
-    const visibleSchools = masterSchools.filter(school => {
-      if (selectedBeneficiaryCategory !== 'ALL' && school.category !== selectedBeneficiaryCategory) {
+    const visibleSchools = masterSchools.filter((school) => {
+      if (selectedBeneficiaryCategory !== "ALL" && school.category !== selectedBeneficiaryCategory) {
         return false;
       }
       if (schoolSearchQuery.trim()) {
         const q = schoolSearchQuery.toLowerCase();
         const matchName = school.schoolName.toLowerCase().includes(q);
-        const matchPic = (school.contactPerson || '').toLowerCase().includes(q);
-        const matchPhone = (school.phone || '').toLowerCase().includes(q);
+        const matchPic = (school.contactPerson || "").toLowerCase().includes(q);
+        const matchPhone = (school.phone || "").toLowerCase().includes(q);
         if (!matchName && !matchPic && !matchPhone) return false;
       }
       return true;
     });
 
-    const rows = visibleSchools.map(s => {
+    const rows = visibleSchools.map((s) => {
       const datePortions: Record<string, number> = {};
       let totalPeriod = 0;
       let activeDays = 0;
 
-      distinctDates.forEach(d => {
+      distinctDates.forEach((d) => {
         const order = orderMap[d];
         let p = 0;
         if (order && order.beneficiaryAllocations && order.beneficiaryAllocations.length > 0) {
-          const found = order.beneficiaryAllocations.find(b => b.id === s.id);
+          const found = order.beneficiaryAllocations.find((b) => b.id === s.id);
           p = found ? Number(found.portionCount) || 0 : 0;
         } else if (order) {
           const totalMaster = masterSchools.reduce((sum, item) => sum + item.portionCount, 0) || 3044;
@@ -893,12 +920,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     });
 
     const dateTotals: Record<string, number> = {};
-    distinctDates.forEach(d => {
+    distinctDates.forEach((d) => {
       dateTotals[d] = rows.reduce((sum, r) => sum + (r.datePortions[d] || 0), 0);
     });
 
     const grandTotal = rows.reduce((sum, r) => sum + r.totalPeriod, 0);
-    const activeDateCount = distinctDates.filter(d => (dateTotals[d] || 0) > 0).length;
+    const activeDateCount = distinctDates.filter((d) => (dateTotals[d] || 0) > 0).length;
     const avgDailyTotal = activeDateCount > 0 ? grandTotal / activeDateCount : 0;
 
     return {
@@ -911,56 +938,43 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       activeDateCount,
       schoolCount: rows.length,
     };
-  }, [
-    orders,
-    masterSchools,
-    beneficiaryPeriodPreset,
-    beneficiaryStartDate,
-    beneficiaryEndDate,
-    selectedBeneficiaryCategory,
-    schoolSearchQuery,
-    todayStr,
-  ]);
+  }, [orders, masterSchools, beneficiaryPeriodPreset, beneficiaryStartDate, beneficiaryEndDate, selectedBeneficiaryCategory, schoolSearchQuery, todayStr]);
 
   const handleExportBeneficiaryDailyRecap = () => {
     const exportData = dailyBeneficiaryMatrix.rows.map((r, idx) => {
       const rowObj: Record<string, any> = {
-        'No': idx + 1,
-        'Nama Sekolah / Lembaga': r.schoolName,
-        'Kategori': r.category,
+        No: idx + 1,
+        "Nama Sekolah / Lembaga": r.schoolName,
+        Kategori: r.category,
       };
-      dailyBeneficiaryMatrix.dates.forEach(d => {
+      dailyBeneficiaryMatrix.dates.forEach((d) => {
         rowObj[formatShortDate(d)] = r.datePortions[d] || 0;
       });
-      rowObj['Total Porsi Periode'] = r.totalPeriod;
-      rowObj['Rata-rata/Hari'] = Math.round(r.avgDaily);
-      rowObj['Jadwal Kirim'] = r.deliveryTime || '-';
-      rowObj['PIC'] = r.contactPerson || '-';
-      rowObj['No. Telepon'] = r.phone || '-';
+      rowObj["Total Porsi Periode"] = r.totalPeriod;
+      rowObj["Rata-rata/Hari"] = Math.round(r.avgDaily);
+      rowObj["Jadwal Kirim"] = r.deliveryTime || "-";
+      rowObj["PIC"] = r.contactPerson || "-";
+      rowObj["No. Telepon"] = r.phone || "-";
       return rowObj;
     });
 
     const summaryRow: Record<string, any> = {
-      'No': '',
-      'Nama Sekolah / Lembaga': 'TOTAL PORSI HARIAN SELURUH SEKOLAH',
-      'Kategori': '',
+      No: "",
+      "Nama Sekolah / Lembaga": "TOTAL PORSI HARIAN SELURUH SEKOLAH",
+      Kategori: "",
     };
-    dailyBeneficiaryMatrix.dates.forEach(d => {
+    dailyBeneficiaryMatrix.dates.forEach((d) => {
       summaryRow[formatShortDate(d)] = dailyBeneficiaryMatrix.dateTotals[d] || 0;
     });
-    summaryRow['Total Porsi Periode'] = dailyBeneficiaryMatrix.grandTotal;
-    summaryRow['Rata-rata/Hari'] = Math.round(dailyBeneficiaryMatrix.avgDailyTotal);
-    summaryRow['Jadwal Kirim'] = '';
-    summaryRow['PIC'] = '';
-    summaryRow['No. Telepon'] = '';
+    summaryRow["Total Porsi Periode"] = dailyBeneficiaryMatrix.grandTotal;
+    summaryRow["Rata-rata/Hari"] = Math.round(dailyBeneficiaryMatrix.avgDailyTotal);
+    summaryRow["Jadwal Kirim"] = "";
+    summaryRow["PIC"] = "";
+    summaryRow["No. Telepon"] = "";
 
     exportData.push(summaryRow);
 
-    exportToExcel(
-      exportData,
-      `Rekap_Porsi_Harian_Sekolah_SPPG_${beneficiaryStartDate}_sd_${beneficiaryEndDate}.xlsx`,
-      'Rekap Porsi Harian'
-    );
+    exportToExcel(exportData, `Rekap_Porsi_Harian_Sekolah_SPPG_${beneficiaryStartDate}_sd_${beneficiaryEndDate}.xlsx`, "Rekap Porsi Harian");
   };
 
   // =========================================================================
@@ -977,51 +991,49 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
   }
 
   const weeklyMaterialMatrix = useMemo(() => {
-    const groupOrder = ['protein hewani', 'protein nabati', 'sembako', 'sayur', 'buah', 'lain lain'];
+    const groupOrder = ["protein hewani", "protein nabati", "sembako", "sayur", "buah", "lain lain"];
     const mapRows: Record<string, MaterialMatrixRow> = {};
 
-    filteredOrders.forEach(ord => {
+    filteredOrders.forEach((ord) => {
       const dateKey = ord.date;
       const items = ord.poArrivalItems || [];
 
-      items.forEach(po => {
-        const rawName = (po.itemName || '').trim().toLowerCase();
+      items.forEach((po) => {
+        const rawName = (po.itemName || "").trim().toLowerCase();
         if (!rawName) return;
 
-        let catGroup = (po.category || '').toLowerCase();
-        if (catGroup.includes('protein')) {
-          if (rawName.includes('tahu') || rawName.includes('tempe')) {
-            catGroup = 'protein nabati';
+        let catGroup = (po.category || "").toLowerCase();
+        if (catGroup.includes("protein")) {
+          if (rawName.includes("tahu") || rawName.includes("tempe")) {
+            catGroup = "protein nabati";
           } else {
-            catGroup = 'protein hewani';
+            catGroup = "protein hewani";
           }
-        } else if (catGroup.includes('sembako')) {
-          catGroup = 'sembako';
-        } else if (catGroup.includes('sayur')) {
-          catGroup = 'sayur';
-        } else if (catGroup.includes('buah')) {
-          catGroup = 'buah';
+        } else if (catGroup.includes("sembako")) {
+          catGroup = "sembako";
+        } else if (catGroup.includes("sayur")) {
+          catGroup = "sayur";
+        } else if (catGroup.includes("buah")) {
+          catGroup = "buah";
         } else {
-          catGroup = 'lain lain';
+          catGroup = "lain lain";
         }
 
-        const rawQtyStr = po.qtyOrder || po.qtyArrived || '';
-        let detectedUnit = 'kg';
-        if (rawQtyStr.toLowerCase().includes('sak')) detectedUnit = 'sak';
-        else if (rawQtyStr.toLowerCase().includes('krat')) detectedUnit = 'krat';
-        else if (rawQtyStr.toLowerCase().includes('layah')) detectedUnit = 'layah';
-        else if (rawQtyStr.toLowerCase().includes('dus') || rawQtyStr.toLowerCase().includes('ktn') || rawQtyStr.toLowerCase().includes('karton')) detectedUnit = 'dus';
-        else if (rawQtyStr.toLowerCase().includes('pack') || rawQtyStr.toLowerCase().includes('bks')) detectedUnit = 'pack';
-        else if (rawQtyStr.toLowerCase().includes('bal')) detectedUnit = 'bal';
-        else if (rawQtyStr.toLowerCase().includes('pcs') || rawQtyStr.toLowerCase().includes('pc')) detectedUnit = 'pcs';
-        else if (rawQtyStr.toLowerCase().includes('ikat')) detectedUnit = 'ikat';
+        const rawQtyStr = po.qtyOrder || po.qtyArrived || "";
+        let detectedUnit = "kg";
+        if (rawQtyStr.toLowerCase().includes("sak")) detectedUnit = "sak";
+        else if (rawQtyStr.toLowerCase().includes("krat")) detectedUnit = "krat";
+        else if (rawQtyStr.toLowerCase().includes("layah")) detectedUnit = "layah";
+        else if (rawQtyStr.toLowerCase().includes("dus") || rawQtyStr.toLowerCase().includes("ktn") || rawQtyStr.toLowerCase().includes("karton")) detectedUnit = "dus";
+        else if (rawQtyStr.toLowerCase().includes("pack") || rawQtyStr.toLowerCase().includes("bks")) detectedUnit = "pack";
+        else if (rawQtyStr.toLowerCase().includes("bal")) detectedUnit = "bal";
+        else if (rawQtyStr.toLowerCase().includes("pcs") || rawQtyStr.toLowerCase().includes("pc")) detectedUnit = "pcs";
+        else if (rawQtyStr.toLowerCase().includes("ikat")) detectedUnit = "ikat";
 
         const numericVal = parseNumericQuantity(po.qtyOrder || po.qtyArrived);
 
         if (!mapRows[rawName]) {
-          const matchInv = inventoryItems.find(it =>
-            it.name.toLowerCase().includes(rawName) || rawName.includes(it.name.toLowerCase())
-          );
+          const matchInv = inventoryItems.find((it) => it.name.toLowerCase().includes(rawName) || rawName.includes(it.name.toLowerCase()));
 
           mapRows[rawName] = {
             categoryGroup: catGroup,
@@ -1029,7 +1041,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             dateValues: {},
             totalPeriod: 0,
             unit: detectedUnit,
-            warehouseStock: matchInv ? `${matchInv.currentStock} ${matchInv.baseUnit}` : 'Ada di Rak',
+            warehouseStock: matchInv ? `${matchInv.currentStock} ${matchInv.baseUnit}` : "Ada di Rak",
           };
         }
 
@@ -1048,9 +1060,9 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       return a.itemName.localeCompare(b.itemName);
     });
 
-    let curCat = '';
+    let curCat = "";
     let curNo = 0;
-    allRows.forEach(r => {
+    allRows.forEach((r) => {
       if (r.categoryGroup !== curCat) {
         curCat = r.categoryGroup;
         curNo++;
@@ -1069,7 +1081,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
   // =========================================================================
   const handleOpenCreateMenuModal = (overrideDate?: string | React.MouseEvent) => {
     setEditingMenuOrderId(null);
-    const targetDate = typeof overrideDate === 'string' && overrideDate ? overrideDate : (selectedDailyDate || todayStr);
+    const targetDate = typeof overrideDate === "string" && overrideDate ? overrideDate : selectedDailyDate || todayStr;
     setMenuFormDate(targetDate);
 
     // Auto H-1
@@ -1077,44 +1089,44 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     d.setDate(d.getDate() - 1);
     setMenuFormPoDate(d.toISOString().slice(0, 10));
 
-    setMenuFormSession('Siang');
-    setMenuFormTitle('');
-    setMenuFormDietB3('');
+    setMenuFormSession("Siang");
+    setMenuFormTitle("");
+    setMenuFormDietB3("");
     setMenuFormPortions(3044);
-    setMenuFormStatus('PLANNED');
-    setMenuFormChef('Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU');
-    setMenuFormNotes('');
+    setMenuFormStatus("PLANNED");
+    setMenuFormChef("Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU");
+    setMenuFormNotes("");
     setIsMenuModalOpen(true);
   };
 
   const handleOpenEditMenuModal = (order: MenuOrder) => {
     setEditingMenuOrderId(order.id);
     setMenuFormDate(order.date);
-    setMenuFormPoDate(order.poDate || '');
+    setMenuFormPoDate(order.poDate || "");
     setMenuFormSession(order.mealSession);
     setMenuFormTitle(order.menuTitle);
-    setMenuFormDietB3(order.specialDietB3 || '');
+    setMenuFormDietB3(order.specialDietB3 || "");
     setMenuFormPortions(order.targetPortions || 3044);
     setMenuFormStatus(order.status);
-    setMenuFormChef(order.chefInCharge || 'Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU');
-    setMenuFormNotes(order.notes || '');
+    setMenuFormChef(order.chefInCharge || "Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU");
+    setMenuFormNotes(order.notes || "");
     setIsMenuModalOpen(true);
   };
 
   const handleSaveMenuForm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!menuFormTitle.trim() || menuFormPortions <= 0) {
-      alert('Nama menu dan total porsi penerima manfaat wajib diisi.');
+      toast.error("Nama menu dan total porsi penerima manfaat wajib diisi.", "Form Belum Lengkap");
       return;
     }
 
     try {
       const isNew = !editingMenuOrderId;
       const orderId = editingMenuOrderId || `ORD-${Date.now().toString().slice(-6)}`;
-      const existing = editingMenuOrderId ? orders.find(o => o.id === editingMenuOrderId) : null;
+      const existing = editingMenuOrderId ? orders.find((o) => o.id === editingMenuOrderId) : null;
 
       const totalBasePortions = masterSchools.reduce((sum, s) => sum + (s.portionCount || 0), 0) || 3044;
-      const updatedAllocations = masterSchools.map(s => ({
+      const updatedAllocations = masterSchools.map((s) => ({
         ...s,
         portionCount: Math.round(s.portionCount * (menuFormPortions / totalBasePortions)),
       }));
@@ -1125,7 +1137,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
         poDate: menuFormPoDate.trim() || undefined,
         mealSession: menuFormSession,
         menuTitle: menuFormTitle.trim(),
-        menuDescription: existing?.menuDescription || '',
+        menuDescription: existing?.menuDescription || "",
         specialDietB3: menuFormDietB3.trim() || undefined,
         targetPortions: menuFormPortions,
         totalBeneficiaries: menuFormPortions,
@@ -1143,14 +1155,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
       if (isNew) {
         setSuccessNotice(
-          `Menu berhasil dicatat untuk tanggal ${orderToSave.date}: ${orderToSave.menuTitle} (${orderToSave.targetPortions} porsi). Kamu bisa langsung input PO bahan dengan tombol "+ Input PO Hari Ini".`
+          `Menu berhasil dicatat untuk tanggal ${orderToSave.date}: ${orderToSave.menuTitle} (${orderToSave.targetPortions} porsi). Kamu bisa langsung input PO bahan dengan tombol "+ Input PO Hari Ini".`,
         );
       } else {
         setSuccessNotice(`Berhasil memperbarui menu: ${orderToSave.menuTitle}.`);
       }
-      setTimeout(() => setSuccessNotice(''), 6000);
+      setTimeout(() => setSuccessNotice(""), 6000);
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan data menu.');
+      toast.error(err.message || "Gagal menyimpan data menu.", "Gagal Menyimpan");
     }
   };
 
@@ -1159,43 +1171,40 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
   // =========================================================================
   const handleOpenPoModal = (targetOrderId?: string) => {
     // Tentukan order mana yang akan diinput PO-nya
-    let targetOrder = targetOrderId ? orders.find(o => o.id === targetOrderId) : null;
+    let targetOrder = targetOrderId ? orders.find((o) => o.id === targetOrderId) : null;
 
     if (!targetOrder && orders.length > 0) {
       // Prioritaskan order pada tanggal aktif terpilih, lalu hari ini, lalu order pertama
-      targetOrder =
-        orders.find(o => o.date === selectedDailyDate) ||
-        orders.find(o => o.date === todayStr) ||
-        orders[0];
+      targetOrder = orders.find((o) => o.date === selectedDailyDate) || orders.find((o) => o.date === todayStr) || orders[0];
     }
 
     if (!targetOrder) {
-      alert('Belum ada menu yang tercatat. Silakan input menu terlebih dahulu dengan tombol "+ Input Menu Hari Ini".');
+      toast.warning('Belum ada menu yang tercatat. Silakan input menu terlebih dahulu dengan tombol "+ Input Menu Hari Ini".', "Menu Belum Ada");
       return;
     }
 
     setSelectedPoOrderId(targetOrder.id);
-    setPoFormDate(targetOrder.poDate || 'H-1');
+    setPoFormDate(targetOrder.poDate || "H-1");
 
     if (targetOrder.poArrivalItems && targetOrder.poArrivalItems.length > 0) {
       setPoFormRows(
-        targetOrder.poArrivalItems.map(p => ({
-          category: p.category || 'Bahan Makanan',
+        targetOrder.poArrivalItems.map((p) => ({
+          category: p.category || "Bahan Makanan",
           itemName: p.itemName,
-          qtyOrder: p.qtyOrder || '',
-          qtyArrived: p.qtyArrived || '',
-          supplier: p.supplier || '',
-          arrivalTime: p.arrivalTime || '',
-          pic: p.pic || 'Akmal',
-          notes: p.notes || '',
-        }))
+          qtyOrder: p.qtyOrder || "",
+          qtyArrived: p.qtyArrived || "",
+          supplier: p.supplier || "",
+          arrivalTime: p.arrivalTime || "",
+          pic: p.pic || "Akmal",
+          notes: p.notes || "",
+        })),
       );
     } else {
       // Default baris kosong atau default template
       setPoFormRows([
-        { category: 'Protein', itemName: 'Ayam Potong', qtyOrder: '260 kg', qtyArrived: '260 kg', supplier: 'Ayam Segar Fajar', arrivalTime: '08.30', pic: 'Akmal', notes: '' },
-        { category: 'Protein', itemName: 'Tahu Putih', qtyOrder: '520 pcs', qtyArrived: '520 pcs', supplier: 'Tahu Rio', arrivalTime: '09.30', pic: 'Akmal', notes: '' },
-        { category: 'Sembako', itemName: 'Beras Mentari 25kg', qtyOrder: '7 sak', qtyArrived: '7 sak', supplier: 'Tumpang Grosir', arrivalTime: '14.00', pic: 'Akmal', notes: '' },
+        {category: "Protein", itemName: "Ayam Potong", qtyOrder: "260 kg", qtyArrived: "260 kg", supplier: "Ayam Segar Fajar", arrivalTime: "08.30", pic: "Akmal", notes: ""},
+        {category: "Protein", itemName: "Tahu Putih", qtyOrder: "520 pcs", qtyArrived: "520 pcs", supplier: "Tahu Rio", arrivalTime: "09.30", pic: "Akmal", notes: ""},
+        {category: "Sembako", itemName: "Beras Mentari 25kg", qtyOrder: "7 sak", qtyArrived: "7 sak", supplier: "Tumpang Grosir", arrivalTime: "14.00", pic: "Akmal", notes: ""},
       ]);
     }
 
@@ -1214,53 +1223,61 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
     category: string,
     itemName: string,
     existingSupplier?: string,
-    suppliers: Array<{ id: string; name: string; supplyCategory?: string }> = []
+    suppliers: Array<{id: string; name: string; supplyCategory?: string}> = [],
   ): string => {
-    if (existingSupplier && existingSupplier.trim() && existingSupplier !== 'Pemasok Rekanan' && existingSupplier !== 'Pemasok Lokal') {
+    if (existingSupplier && existingSupplier.trim() && existingSupplier !== "Pemasok Rekanan" && existingSupplier !== "Pemasok Lokal") {
       return existingSupplier.trim();
     }
-    const cat = (category || '').toLowerCase();
-    const name = (itemName || '').toLowerCase();
+    const cat = (category || "").toLowerCase();
+    const name = (itemName || "").toLowerCase();
 
     if (suppliers && suppliers.length > 0) {
-      if (cat.includes('tahu') || cat.includes('tempe') || name.includes('tahu') || name.includes('tempe')) {
-        const match = suppliers.find(s => {
-          const full = `${s.name} ${s.supplyCategory || ''}`.toLowerCase();
-          return full.includes('tahu') || full.includes('tempe') || full.includes('rio');
+      if (cat.includes("tahu") || cat.includes("tempe") || name.includes("tahu") || name.includes("tempe")) {
+        const match = suppliers.find((s) => {
+          const full = `${s.name} ${s.supplyCategory || ""}`.toLowerCase();
+          return full.includes("tahu") || full.includes("tempe") || full.includes("rio");
         });
         if (match) return match.name;
       }
 
-      if (cat.includes('protein') || name.includes('ayam') || name.includes('daging') || name.includes('telur') || name.includes('unggas')) {
-        if (name.includes('daging') || name.includes('sapi')) {
-          const dagingMatch = suppliers.find(s => `${s.name} ${s.supplyCategory || ''}`.toLowerCase().includes('daging'));
+      if (cat.includes("protein") || name.includes("ayam") || name.includes("daging") || name.includes("telur") || name.includes("unggas")) {
+        if (name.includes("daging") || name.includes("sapi")) {
+          const dagingMatch = suppliers.find((s) => `${s.name} ${s.supplyCategory || ""}`.toLowerCase().includes("daging"));
           if (dagingMatch) return dagingMatch.name;
         }
-        const ayamMatch = suppliers.find(s => {
-          const full = `${s.name} ${s.supplyCategory || ''}`.toLowerCase();
-          return full.includes('ayam') || full.includes('fjr') || full.includes('fajar') || full.includes('protein');
+        const ayamMatch = suppliers.find((s) => {
+          const full = `${s.name} ${s.supplyCategory || ""}`.toLowerCase();
+          return full.includes("ayam") || full.includes("fjr") || full.includes("fajar") || full.includes("protein");
         });
         if (ayamMatch) return ayamMatch.name;
       }
 
-      if (cat.includes('sembako') || name.includes('beras') || name.includes('minyak') || name.includes('gula') || name.includes('tepung')) {
-        const sembakoMatch = suppliers.find(s => {
-          const full = `${s.name} ${s.supplyCategory || ''}`.toLowerCase();
-          return full.includes('tumpang') || full.includes('grosir') || full.includes('sembako');
+      if (cat.includes("sembako") || name.includes("beras") || name.includes("minyak") || name.includes("gula") || name.includes("tepung")) {
+        const sembakoMatch = suppliers.find((s) => {
+          const full = `${s.name} ${s.supplyCategory || ""}`.toLowerCase();
+          return full.includes("tumpang") || full.includes("grosir") || full.includes("sembako");
         });
         if (sembakoMatch) return sembakoMatch.name;
       }
 
-      if (cat.includes('sayur') || cat.includes('buah') || name.includes('sayur') || name.includes('buncis') || name.includes('wortel') || name.includes('semangka') || name.includes('buah')) {
-        const sayurMatch = suppliers.find(s => {
-          const full = `${s.name} ${s.supplyCategory || ''}`.toLowerCase();
-          return full.includes('fresh') || full.includes('sayur') || full.includes('buah') || full.includes('luber');
+      if (
+        cat.includes("sayur") ||
+        cat.includes("buah") ||
+        name.includes("sayur") ||
+        name.includes("buncis") ||
+        name.includes("wortel") ||
+        name.includes("semangka") ||
+        name.includes("buah")
+      ) {
+        const sayurMatch = suppliers.find((s) => {
+          const full = `${s.name} ${s.supplyCategory || ""}`.toLowerCase();
+          return full.includes("fresh") || full.includes("sayur") || full.includes("buah") || full.includes("luber");
         });
         if (sayurMatch) return sayurMatch.name;
       }
 
-      const directMatch = suppliers.find(s => {
-        const sCat = (s.supplyCategory || '').toLowerCase();
+      const directMatch = suppliers.find((s) => {
+        const sCat = (s.supplyCategory || "").toLowerCase();
         return sCat.includes(cat) || (cat && cat.includes(sCat));
       });
       if (directMatch) return directMatch.name;
@@ -1268,25 +1285,25 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       return suppliers[0].name;
     }
 
-    return 'Pemasok Rekanan';
+    return "Pemasok Rekanan";
   };
 
   const handleSaveAndGenerateOfficialPo = () => {
     if (!selectedPoOrderId) {
-      alert('Pilih menu tujuan untuk PO ini.');
+      toast.warning("Pilih menu tujuan untuk PO ini.", "Menu Belum Dipilih");
       return;
     }
 
-    const targetOrder = orders.find(o => o.id === selectedPoOrderId);
+    const targetOrder = orders.find((o) => o.id === selectedPoOrderId);
     if (!targetOrder) {
-      alert('Order menu tidak ditemukan.');
+      toast.error("Order menu tidak ditemukan.", "Menu Tidak Ditemukan");
       return;
     }
 
     try {
       const validItems: MenuPoArrivalItem[] = poFormRows
-        .filter(r => r.itemName.trim())
-        .map(r => {
+        .filter((r) => r.itemName.trim())
+        .map((r) => {
           const estimatedCost = parseNumericQuantity(r.qtyOrder || r.qtyArrived) * estimatePrice(r.itemName);
           const autoSupplier = resolveSupplierForItem(r.category, r.itemName, r.supplier, masterSuppliers);
           return {
@@ -1295,15 +1312,15 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             qtyOrder: r.qtyOrder.trim(),
             qtyArrived: (r.qtyArrived && r.qtyArrived.trim()) || r.qtyOrder.trim(),
             supplier: autoSupplier,
-            arrivalTime: (r.arrivalTime && r.arrivalTime.trim()) || '08.00',
+            arrivalTime: (r.arrivalTime && r.arrivalTime.trim()) || "08.00",
             pic: (r.pic && r.pic.trim()) || currentUser.name,
             totalCost: estimatedCost,
-            notes: r.notes || '',
+            notes: r.notes || "",
           };
         });
 
       if (validItems.length === 0) {
-        alert('Tambahkan minimal 1 item bahan untuk membuat PO.');
+        toast.warning("Tambahkan minimal 1 item bahan untuk membuat PO.", "Item PO Kosong");
         return;
       }
 
@@ -1321,8 +1338,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
       // 3. Kelompokkan bahan berdasarkan nama Supplier untuk dibuatkan PO resmi
       const itemsBySupplier = new Map<string, MenuPoArrivalItem[]>();
-      validItems.forEach(item => {
-        const suppName = item.supplier || 'Pemasok Rekanan';
+      validItems.forEach((item) => {
+        const suppName = item.supplier || "Pemasok Rekanan";
         if (!itemsBySupplier.has(suppName)) {
           itemsBySupplier.set(suppName, []);
         }
@@ -1336,9 +1353,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
       itemsBySupplier.forEach((supplierItems, supplierName) => {
         const suppObj = masterSuppliers.find(
-          s => s.name.toLowerCase() === supplierName.toLowerCase() ||
-               supplierName.toLowerCase().includes(s.name.toLowerCase()) ||
-               s.name.toLowerCase().includes(supplierName.toLowerCase())
+          (s) =>
+            s.name.toLowerCase() === supplierName.toLowerCase() ||
+            supplierName.toLowerCase().includes(s.name.toLowerCase()) ||
+            s.name.toLowerCase().includes(supplierName.toLowerCase()),
         );
 
         const nextPoNum = generateNextPoNumber(currentSeqList, poTargetDate);
@@ -1348,15 +1366,15 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
           const unitPrice = estimatePrice(sItem.itemName);
           const subtotal = sItem.totalCost && sItem.totalCost > 0 ? sItem.totalCost : Math.round(numQty * unitPrice);
 
-          const unitMatch = (sItem.qtyOrder || sItem.qtyArrived || '').match(/[a-zA-Z]+/g);
-          const unitStr = unitMatch ? unitMatch.join(' ') : 'Kg';
+          const unitMatch = (sItem.qtyOrder || sItem.qtyArrived || "").match(/[a-zA-Z]+/g);
+          const unitStr = unitMatch ? unitMatch.join(" ") : "Kg";
 
           return {
             id: `POI-${Date.now()}-${sIdx}`,
             name: sItem.itemName,
-            category: sItem.category || 'Bahan Makanan',
+            category: sItem.category || "Bahan Makanan",
             quantity: numQty,
-            unit: unitStr || 'Kg',
+            unit: unitStr || "Kg",
             unitPrice: unitPrice,
             subtotal: subtotal,
             notes: sItem.notes || (sItem.arrivalTime ? `Estimasi tiba: ${sItem.arrivalTime}` : undefined),
@@ -1372,11 +1390,11 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
           deliveryDate: poTargetDate,
           supplierId: suppObj?.id,
           supplierName: suppObj?.name || supplierName,
-          supplierContact: suppObj?.phone ? `${suppObj.phone} (${suppObj.contactPerson || 'PIC'})` : '',
-          supplierAddress: suppObj?.address || 'Malang, Jawa Timur',
-          paymentMethod: 'TRANSFER',
-          bankInfo: suppObj ? `Transfer Bank Rekening Resmi ${suppObj.name}` : '',
-          status: 'DISETUJUI',
+          supplierContact: suppObj?.phone ? `${suppObj.phone} (${suppObj.contactPerson || "PIC"})` : "",
+          supplierAddress: suppObj?.address || "Malang, Jawa Timur",
+          paymentMethod: "TRANSFER",
+          bankInfo: suppObj ? `Transfer Bank Rekening Resmi ${suppObj.name}` : "",
+          status: "DISETUJUI",
           items: poItems,
           subtotal: grandTotal,
           discount: 0,
@@ -1384,12 +1402,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
           grandTotal: grandTotal,
           terbilang: angkaTerbilang(grandTotal),
           notes: `PO dibuat otomatis dari Perencanaan Menu: ${targetOrder.menuTitle} (${targetOrder.targetPortions} porsi).`,
-          deliveryTerms: 'Pengiriman langsung ke Satuan Pelayanan Pemenuhan Gizi (SPPG) MLG TUMPANG JERU (Jam 12.00-15.00).',
+          deliveryTerms: "Pengiriman langsung ke Satuan Pelayanan Pemenuhan Gizi (SPPG) MLG TUMPANG JERU (Jam 12.00-15.00).",
           createdBy: currentUser.name,
-          createdByRole: currentUser.role === 'ADMIN' ? 'Admin Logistik' : currentUser.role,
-          approvedBy: 'Rizky Iman Ramdhan, S.Pd',
-          approvedByRole: 'Kepala SPPG MLG TUMPANG JERU',
-          supplierPic: suppObj?.contactPerson || 'Pihak Rekanan',
+          createdByRole: currentUser.role === "ADMIN" ? "Admin Logistik" : currentUser.role,
+          approvedBy: "Rizky Iman Ramdhan, S.Pd",
+          approvedByRole: "Kepala SPPG MLG TUMPANG JERU",
+          supplierPic: suppObj?.contactPerson || "Pihak Rekanan",
           relatedMenuOrderId: targetOrder.id,
           createdAt: new Date().toISOString(),
         };
@@ -1402,29 +1420,27 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       refreshOrders();
       setIsPoModalOpen(false);
 
-      const supplierNames = Array.from(itemsBySupplier.keys()).join(', ');
-      setSuccessNotice(
-        `Sukses! Berhasil generate ${generatedPos.length} Draft Nota PO Resmi untuk: ${supplierNames}. Data otomatis tersinkron ke modul "Input Barang & Belanja".`
-      );
-      setTimeout(() => setSuccessNotice(''), 7000);
+      const supplierNames = Array.from(itemsBySupplier.keys()).join(", ");
+      setSuccessNotice(`Sukses! Berhasil generate ${generatedPos.length} Draft Nota PO Resmi untuk: ${supplierNames}. Data otomatis tersinkron ke modul "Input Barang & Belanja".`);
+      setTimeout(() => setSuccessNotice(""), 7000);
     } catch (err: any) {
-      alert(err.message || 'Gagal generate Draft PO.');
+      toast.error(err.message || "Gagal generate Draft PO.", "Gagal Generate PO");
     }
   };
 
   const handleApplyPoTemplate = () => {
-    setPoFormRows(STANDARD_PO_TEMPLATES.map(t => ({ ...t, notes: '' })));
+    setPoFormRows(STANDARD_PO_TEMPLATES.map((t) => ({...t, notes: ""})));
   };
 
   const handleDeletePoForOrder = (orderId?: string) => {
     const targetId = orderId || selectedPoOrderId;
     if (!targetId) return;
 
-    const targetOrder = orders.find(o => o.id === targetId);
-    const orderTitle = targetOrder ? targetOrder.menuTitle : 'menu ini';
+    const targetOrder = orders.find((o) => o.id === targetId);
+    const orderTitle = targetOrder ? targetOrder.menuTitle : "menu ini";
 
     const confirmDelete = window.confirm(
-      `Apakah Anda yakin ingin membatalkan & menghapus seluruh PO resmi untuk menu "${orderTitle}"?\n\nPO ini akan otomatis terhapus dari sistem, modul Input Barang & Belanja, dan Ringkasan.`
+      `Apakah Anda yakin ingin membatalkan & menghapus seluruh PO resmi untuk menu "${orderTitle}"?\n\nPO ini akan otomatis terhapus dari sistem, modul Input Barang & Belanja, dan Ringkasan.`,
     );
 
     if (confirmDelete) {
@@ -1440,27 +1456,27 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       refreshOrders();
       setIsPoModalOpen(false);
       setSuccessNotice(`Berhasil membatalkan & menghapus ${deletedCount} PO resmi untuk "${orderTitle}".`);
-      setTimeout(() => setSuccessNotice(''), 4000);
+      setTimeout(() => setSuccessNotice(""), 4000);
     }
   };
 
   const handleSavePoForm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPoOrderId) {
-      alert('Pilih menu tujuan untuk PO ini.');
+      toast.warning("Pilih menu tujuan untuk PO ini.", "Menu Belum Dipilih");
       return;
     }
 
-    const targetOrder = orders.find(o => o.id === selectedPoOrderId);
+    const targetOrder = orders.find((o) => o.id === selectedPoOrderId);
     if (!targetOrder) {
-      alert('Order menu tidak ditemukan.');
+      toast.error("Order menu tidak ditemukan.", "Menu Tidak Ditemukan");
       return;
     }
 
     try {
       const validItems: MenuPoArrivalItem[] = poFormRows
-        .filter(r => r.itemName.trim())
-        .map(r => {
+        .filter((r) => r.itemName.trim())
+        .map((r) => {
           const estimatedCost = parseNumericQuantity(r.qtyOrder || r.qtyArrived) * estimatePrice(r.itemName);
           const autoSupplier = resolveSupplierForItem(r.category, r.itemName, r.supplier, masterSuppliers);
           return {
@@ -1469,10 +1485,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             qtyOrder: r.qtyOrder.trim(),
             qtyArrived: (r.qtyArrived && r.qtyArrived.trim()) || r.qtyOrder.trim(),
             supplier: autoSupplier,
-            arrivalTime: (r.arrivalTime && r.arrivalTime.trim()) || '08.00',
+            arrivalTime: (r.arrivalTime && r.arrivalTime.trim()) || "08.00",
             pic: (r.pic && r.pic.trim()) || currentUser.name,
             totalCost: estimatedCost,
-            notes: r.notes || '',
+            notes: r.notes || "",
           };
         });
 
@@ -1488,7 +1504,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
         refreshOrders();
         setIsPoModalOpen(false);
         setSuccessNotice(`Seluruh rincian PO untuk menu ${updatedOrder.menuTitle} telah dihapus.`);
-        setTimeout(() => setSuccessNotice(''), 4000);
+        setTimeout(() => setSuccessNotice(""), 4000);
         return;
       }
 
@@ -1501,12 +1517,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       warehouseDb.saveMenuOrder(updatedOrder, currentUser, false);
       refreshOrders();
       setIsPoModalOpen(false);
-      setSuccessNotice(
-        `Berhasil menyimpan ${validItems.length} item PO & timbangan kedatangan untuk menu tanggal ${updatedOrder.date}.`
-      );
-      setTimeout(() => setSuccessNotice(''), 5000);
+      setSuccessNotice(`Berhasil menyimpan ${validItems.length} item PO & timbangan kedatangan untuk menu tanggal ${updatedOrder.date}.`);
+      setTimeout(() => setSuccessNotice(""), 5000);
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan rincian PO.');
+      toast.error(err.message || "Gagal menyimpan rincian PO.", "Gagal Menyimpan");
     }
   };
 
@@ -1516,7 +1530,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       warehouseDb.deleteMenuOrder(orderId, currentUser);
       refreshOrders();
       setSuccessNotice(`Catatan menu "${menuTitle}" telah dihapus.`);
-      setTimeout(() => setSuccessNotice(''), 4000);
+      setTimeout(() => setSuccessNotice(""), 4000);
     }
   };
 
@@ -1526,25 +1540,25 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       warehouseDb.updateMenuOrderStatus(orderId, newStatus, currentUser);
       refreshOrders();
       setSuccessNotice(`Status menu order berhasil diperbarui.`);
-      setTimeout(() => setSuccessNotice(''), 3000);
+      setTimeout(() => setSuccessNotice(""), 3000);
     } catch (err: any) {
-      alert(err.message || 'Gagal memperbarui status order.');
+      toast.error(err.message || "Gagal memperbarui status order.", "Gagal Update Status");
     }
   };
 
   const getStatusBadge = (status: MenuOrderStatus) => {
     switch (status) {
-      case 'PLANNED':
-        return { label: 'Direncanakan', class: 'bg-slate-100 text-slate-700 border-slate-300' };
-      case 'PREPPING':
-        return { label: 'Persiapan Bahan', class: 'bg-amber-50 text-amber-800 border-amber-300' };
-      case 'COOKING':
-        return { label: 'Sedang Dimasak', class: 'bg-orange-50 text-orange-800 border-orange-300' };
-      case 'DISTRIBUTED':
-      case 'COMPLETED':
-        return { label: 'Terdistribusi Selesai', class: 'bg-emerald-50 text-emerald-800 border-emerald-300' };
-      case 'CANCELLED':
-        return { label: 'Dibatalkan', class: 'bg-rose-50 text-rose-800 border-rose-300' };
+      case "PLANNED":
+        return {label: "Direncanakan", class: "bg-slate-100 text-slate-700 border-slate-300"};
+      case "PREPPING":
+        return {label: "Persiapan Bahan", class: "bg-amber-50 text-amber-800 border-amber-300"};
+      case "COOKING":
+        return {label: "Sedang Dimasak", class: "bg-orange-50 text-orange-800 border-orange-300"};
+      case "DISTRIBUTED":
+      case "COMPLETED":
+        return {label: "Terdistribusi Selesai", class: "bg-emerald-50 text-emerald-800 border-emerald-300"};
+      case "CANCELLED":
+        return {label: "Dibatalkan", class: "bg-rose-50 text-rose-800 border-rose-300"};
     }
   };
 
@@ -1555,74 +1569,74 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       const items = ord.poArrivalItems || [];
       if (items.length === 0) {
         dailyOrderRows.push({
-          'No': ordIdx + 1,
-          'Total Penerima Manfaat': ord.totalBeneficiaries,
-          'Menu Reguler': ord.menuTitle,
-          'Menu B3': ord.specialDietB3 || '-',
-          'Tanggal': ord.date,
-          'Tanggal PO (H-1)': ord.poDate || '-',
-          'Kategori': '-',
-          'Nama Barang': '-',
-          'Qty PO': '-',
-          'Datang dan Timbang': '-',
-          'Supplier': '-',
-          'Jam Datang': '-',
-          'PIC': ord.chefInCharge || '-',
+          No: ordIdx + 1,
+          "Total Penerima Manfaat": ord.totalBeneficiaries,
+          "Menu Reguler": ord.menuTitle,
+          "Menu B3": ord.specialDietB3 || "-",
+          Tanggal: ord.date,
+          "Tanggal PO (H-1)": ord.poDate || "-",
+          Kategori: "-",
+          "Nama Barang": "-",
+          "Qty PO": "-",
+          "Datang dan Timbang": "-",
+          Supplier: "-",
+          "Jam Datang": "-",
+          PIC: ord.chefInCharge || "-",
         });
       } else {
         items.forEach((it, itIdx) => {
           dailyOrderRows.push({
-            'No': itIdx === 0 ? ordIdx + 1 : '',
-            'Total Penerima Manfaat': itIdx === 0 ? ord.totalBeneficiaries : '',
-            'Menu Reguler': itIdx === 0 ? ord.menuTitle : '',
-            'Menu B3': itIdx === 0 ? (ord.specialDietB3 || '-') : '',
-            'Tanggal': itIdx === 0 ? ord.date : '',
-            'Tanggal PO (H-1)': itIdx === 0 ? (ord.poDate || '-') : '',
-            'Kategori': it.category,
-            'Nama Barang': it.itemName,
-            'Qty PO': it.qtyOrder,
-            'Datang dan Timbang': it.qtyArrived,
-            'Supplier': it.supplier || '-',
-            'Jam Datang': it.arrivalTime || '-',
-            'PIC': it.pic || '-',
+            No: itIdx === 0 ? ordIdx + 1 : "",
+            "Total Penerima Manfaat": itIdx === 0 ? ord.totalBeneficiaries : "",
+            "Menu Reguler": itIdx === 0 ? ord.menuTitle : "",
+            "Menu B3": itIdx === 0 ? ord.specialDietB3 || "-" : "",
+            Tanggal: itIdx === 0 ? ord.date : "",
+            "Tanggal PO (H-1)": itIdx === 0 ? ord.poDate || "-" : "",
+            Kategori: it.category,
+            "Nama Barang": it.itemName,
+            "Qty PO": it.qtyOrder,
+            "Datang dan Timbang": it.qtyArrived,
+            Supplier: it.supplier || "-",
+            "Jam Datang": it.arrivalTime || "-",
+            PIC: it.pic || "-",
           });
         });
       }
     });
 
-    const matrixRows: Record<string, any>[] = weeklyMaterialMatrix.rows.map(r => {
+    const matrixRows: Record<string, any>[] = weeklyMaterialMatrix.rows.map((r) => {
       const obj: Record<string, any> = {
-        'No': r.no || '',
-        'Kategori': r.categoryGroup,
-        'Nama Barang': r.itemName,
+        No: r.no || "",
+        Kategori: r.categoryGroup,
+        "Nama Barang": r.itemName,
       };
-      weeklyMaterialMatrix.dates.forEach(d => {
-        obj[formatShortDate(d)] = r.dateValues[d] ?? '';
+      weeklyMaterialMatrix.dates.forEach((d) => {
+        obj[formatShortDate(d)] = r.dateValues[d] ?? "";
       });
-      obj['Total Pengeluaran'] = r.totalPeriod;
-      obj['Satuan'] = r.unit;
-      obj['Sisa Bahan Gudang'] = r.warehouseStock || '-';
+      obj["Total Pengeluaran"] = r.totalPeriod;
+      obj["Satuan"] = r.unit;
+      obj["Sisa Bahan Gudang"] = r.warehouseStock || "-";
       return obj;
     });
 
     const schoolRows = filteredSchools.map((s, idx) => ({
-      'No': idx + 1,
-      'Nama Sekolah / Titik Sasaran': s.schoolName,
-      'Kategori': s.category,
-      'Jumlah Porsi / Siswa': s.portionCount,
-      'Jadwal Kirim': s.deliveryTime || '-',
-      'PIC Sekolah': s.contactPerson || '-',
-      'No Telepon': s.phone || '-',
-      'Status': s.status || 'TERKIRIM',
+      No: idx + 1,
+      "Nama Sekolah / Titik Sasaran": s.schoolName,
+      Kategori: s.category,
+      "Jumlah Porsi / Siswa": s.portionCount,
+      "Jadwal Kirim": s.deliveryTime || "-",
+      "PIC Sekolah": s.contactPerson || "-",
+      "No Telepon": s.phone || "-",
+      Status: s.status || "TERKIRIM",
     }));
 
     exportMultiSheetExcel(
       [
-        { sheetName: 'Rekap Menu & PO Harian', data: dailyOrderRows },
-        { sheetName: 'Matriks Pengeluaran Bahan', data: matrixRows },
-        { sheetName: 'Penerima Manfaat Sekolah', data: schoolRows },
+        {sheetName: "Rekap Menu & PO Harian", data: dailyOrderRows},
+        {sheetName: "Matriks Pengeluaran Bahan", data: matrixRows},
+        {sheetName: "Penerima Manfaat Sekolah", data: schoolRows},
       ],
-      `Rekap_Menu_PO_PenerimaManfaat_SPPG_${new Date().toISOString().slice(0, 10)}.xlsx`
+      `Rekap_Menu_PO_PenerimaManfaat_SPPG_${new Date().toISOString().slice(0, 10)}.xlsx`,
     );
   };
 
@@ -1639,12 +1653,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       {/* Header Utama dengan 2 Tombol Aksi Mandiri */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">
-            Rekap Order Menu, PO Bahan & Penerima Manfaat Gizi
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5 font-medium">
-            Manajemen menu harian, pesanan PO H-1, timbangan riil, dan alokasi penerima manfaat.
-          </p>
+          <h1 className="text-xl font-bold text-slate-900">Rekap Order Menu, PO Bahan & Penerima Manfaat Gizi</h1>
+          <p className="text-xs text-slate-500 mt-0.5 font-medium">Manajemen menu harian, pesanan PO H-1, timbangan riil, dan alokasi penerima manfaat.</p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0" ref={actionDropdownRef}>
@@ -1654,10 +1664,9 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
               type="button"
               onClick={handleOpenCreateMenuModal}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-l-xl bg-emerald-700 hover:bg-emerald-800 text-white transition-colors cursor-pointer"
-              title="Input menu makanan bergizi hari ini"
-            >
+              title="Input menu makanan bergizi hari ini">
               <UtensilsCrossed className="w-4 h-4" />
-              <span>+ Input Menu</span>
+              <span> Input Menu</span>
             </button>
 
             <button
@@ -1667,17 +1676,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 setIsPrintDropdownOpen(false);
               }}
               className="inline-flex items-center px-2 py-2 text-xs font-bold rounded-r-xl bg-emerald-800 hover:bg-emerald-900 text-white border-l border-emerald-600/40 transition-colors cursor-pointer"
-              title="Pilihan input lainnya (PO Bahan)"
-            >
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isInputDropdownOpen ? 'rotate-180' : ''}`} />
+              title="Pilihan input lainnya (PO Bahan)">
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isInputDropdownOpen ? "rotate-180" : ""}`} />
             </button>
 
             {/* Dropdown Menu Input */}
             {isInputDropdownOpen && (
               <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
-                <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100">
-                  Pilihan Input
-                </div>
+                <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100">Pilihan Input</div>
 
                 <button
                   type="button"
@@ -1685,8 +1691,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                     setIsInputDropdownOpen(false);
                     handleOpenCreateMenuModal();
                   }}
-                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
-                >
+                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-emerald-50/60 flex items-center gap-2.5 transition-colors cursor-pointer">
                   <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
                     <UtensilsCrossed className="w-4 h-4 text-emerald-700" />
                   </div>
@@ -1702,8 +1707,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                     setIsInputDropdownOpen(false);
                     handleOpenPoModal();
                   }}
-                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-blue-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
-                >
+                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-blue-50/60 flex items-center gap-2.5 transition-colors cursor-pointer">
                   <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center shrink-0">
                     <PackagePlus className="w-4 h-4 text-blue-700" />
                   </div>
@@ -1725,29 +1729,25 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 setIsInputDropdownOpen(false);
               }}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-              title="Pilihan cetak menu atau laporan"
-            >
+              title="Pilihan cetak menu atau laporan">
               <Printer className="w-3.5 h-3.5 text-slate-600" />
               <span>Cetak</span>
-              <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-150 ${isPrintDropdownOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-150 ${isPrintDropdownOpen ? "rotate-180" : ""}`} />
             </button>
 
             {/* Dropdown Menu Cetak */}
             {isPrintDropdownOpen && (
               <div className="absolute right-0 top-full mt-2 w-60 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 animate-in fade-in zoom-in-95 duration-100">
-                <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100">
-                  Opsi Cetak
-                </div>
+                <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100">Opsi Cetak</div>
 
                 {onNavigate && (
                   <button
                     type="button"
                     onClick={() => {
                       setIsPrintDropdownOpen(false);
-                      onNavigate('menu_print');
+                      onNavigate("menu_print");
                     }}
-                    className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-purple-50/60 flex items-center gap-2.5 transition-colors cursor-pointer"
-                  >
+                    className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-purple-50/60 flex items-center gap-2.5 transition-colors cursor-pointer">
                     <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center shrink-0">
                       <Printer className="w-4 h-4 text-purple-700" />
                     </div>
@@ -1764,8 +1764,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                     setIsPrintDropdownOpen(false);
                     window.print();
                   }}
-                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer border-t border-slate-100"
-                >
+                  className="w-full px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer border-t border-slate-100">
                   <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
                     <Printer className="w-4 h-4 text-slate-600" />
                   </div>
@@ -1783,8 +1782,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             type="button"
             onClick={handleExportExcelAll}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-            title="Unduh seluruh data order, PO, dan matriks bahan ke Excel"
-          >
+            title="Unduh seluruh data order, PO, dan matriks bahan ke Excel">
             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
             <span>Ekspor Excel</span>
           </button>
@@ -1796,58 +1794,46 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
         <div className="flex flex-wrap bg-slate-100 p-1 rounded-lg text-xs font-semibold gap-1">
           <button
             type="button"
-            onClick={() => setActiveSubTab('MENU_ORDERS')}
+            onClick={() => setActiveSubTab("MENU_ORDERS")}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md transition-all cursor-pointer ${
-              activeSubTab === 'MENU_ORDERS'
-                ? 'bg-white text-emerald-900 shadow-2xs font-bold'
-                : 'text-slate-600 hover:text-slate-900 font-medium'
-            }`}
-          >
+              activeSubTab === "MENU_ORDERS" ? "bg-white text-emerald-900 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900 font-medium"
+            }`}>
             <UtensilsCrossed className="w-3.5 h-3.5 text-emerald-600" />
             <span>1. Input Menu & Buat PO</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveSubTab('BENEFICIARIES')}
+            onClick={() => setActiveSubTab("BENEFICIARIES")}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md transition-all cursor-pointer ${
-              activeSubTab === 'BENEFICIARIES'
-                ? 'bg-white text-blue-900 shadow-2xs font-bold'
-                : 'text-slate-600 hover:text-slate-900 font-medium'
-            }`}
-          >
+              activeSubTab === "BENEFICIARIES" ? "bg-white text-blue-900 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900 font-medium"
+            }`}>
             <GraduationCap className="w-3.5 h-3.5 text-blue-600" />
             <span>2. Penerima Manfaat</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveSubTab('DELIVERY_NOTES')}
+            onClick={() => setActiveSubTab("DELIVERY_NOTES")}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md transition-all cursor-pointer ${
-              activeSubTab === 'DELIVERY_NOTES'
-                ? 'bg-white text-indigo-900 shadow-2xs font-bold'
-                : 'text-slate-600 hover:text-slate-900 font-medium'
-            }`}
-          >
+              activeSubTab === "DELIVERY_NOTES" ? "bg-white text-indigo-900 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900 font-medium"
+            }`}>
             <Truck className="w-3.5 h-3.5 text-indigo-600" />
             <span>3. Surat Jalan Distribusi (3 Lembar)</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveSubTab('MASTER_BENEFICIARIES')}
+            onClick={() => setActiveSubTab("MASTER_BENEFICIARIES")}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md transition-all cursor-pointer ${
-              activeSubTab === 'MASTER_BENEFICIARIES'
-                ? 'bg-white text-purple-900 shadow-2xs font-bold'
-                : 'text-slate-600 hover:text-slate-900 font-medium'
-            }`}
-          >
+              activeSubTab === "MASTER_BENEFICIARIES" ? "bg-white text-purple-900 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900 font-medium"
+            }`}>
             <Building2 className="w-3.5 h-3.5 text-purple-600" />
             <span>4. Master Data Penerima Manfaat</span>
           </button>
         </div>
 
-        {activeSubTab === 'MENU_ORDERS' && (
+        {activeSubTab === "MENU_ORDERS" && (
           <div className="text-xs text-slate-500 font-medium px-2">
             Periode: <strong className="text-slate-800">{effectiveDateRange.label}</strong>
           </div>
@@ -1857,7 +1843,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       {/* ========================================================================= */}
       {/* TAB 1: REKAP HARIAN MENU & KEDATANGAN PO (FORMAT KARTU VISUAL MUDAH BACA) */}
       {/* ========================================================================= */}
-      {activeSubTab === 'MENU_ORDERS' && (
+      {activeSubTab === "MENU_ORDERS" && (
         <div className="space-y-4">
           {/* Filter Control Box: Standardized Period Filter */}
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
@@ -1873,11 +1859,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
                   <button
                     type="button"
-                    onClick={() => setPeriodType('DAILY')}
+                    onClick={() => setPeriodType("DAILY")}
                     className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                      periodType === 'DAILY' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
+                      periodType === "DAILY" ? "bg-white text-slate-900 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    }`}>
                     Harian
                   </button>
 
@@ -1885,29 +1870,26 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                     type="button"
                     onClick={handleSetThisWeek}
                     className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                      periodType === 'WEEKLY' ? 'bg-white text-emerald-800 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
+                      periodType === "WEEKLY" ? "bg-white text-emerald-800 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    }`}>
                     Mingguan
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setPeriodType('MONTHLY')}
+                    onClick={() => setPeriodType("MONTHLY")}
                     className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                      periodType === 'MONTHLY' ? 'bg-white text-blue-800 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
+                      periodType === "MONTHLY" ? "bg-white text-blue-800 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    }`}>
                     Bulanan
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setPeriodType('ALL')}
+                    onClick={() => setPeriodType("ALL")}
                     className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                      periodType === 'ALL' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
+                      periodType === "ALL" ? "bg-white text-slate-900 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    }`}>
                     Semua Tanggal
                   </button>
                 </div>
@@ -1915,14 +1897,13 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
               {/* Date Range Inputs */}
               <div className="flex flex-wrap items-center gap-2">
-                {periodType === 'DAILY' && (
+                {periodType === "DAILY" && (
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={handlePrevDay}
                       className="p-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer transition-colors"
-                      title="Hari Sebelumnya"
-                    >
+                      title="Hari Sebelumnya">
                       <ChevronLeft className="w-3.5 h-3.5" />
                     </button>
 
@@ -1931,9 +1912,9 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       <input
                         type="date"
                         value={selectedDailyDate}
-                        onChange={e => {
+                        onChange={(e) => {
                           setSelectedDailyDate(e.target.value);
-                          setPeriodType('DAILY');
+                          setPeriodType("DAILY");
                         }}
                         className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                       />
@@ -1943,8 +1924,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       type="button"
                       onClick={handleNextDay}
                       className="p-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer transition-colors"
-                      title="Hari Berikutnya"
-                    >
+                      title="Hari Berikutnya">
                       <ChevronRight className="w-3.5 h-3.5" />
                     </button>
 
@@ -1952,22 +1932,21 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       <button
                         type="button"
                         onClick={handleJumpToToday}
-                        className="px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 cursor-pointer transition-colors"
-                      >
+                        className="px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 cursor-pointer transition-colors">
                         Hari Ini
                       </button>
                     )}
                   </div>
                 )}
 
-                {periodType === 'WEEKLY' && (
+                {periodType === "WEEKLY" && (
                   <div className="flex items-center gap-2 text-xs">
                     <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
                       <span className="text-slate-500 font-medium">Dari:</span>
                       <input
                         type="date"
                         value={startDate}
-                        onChange={e => setStartDate(e.target.value)}
+                        onChange={(e) => setStartDate(e.target.value)}
                         className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                       />
                     </div>
@@ -1977,7 +1956,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       <input
                         type="date"
                         value={endDate}
-                        onChange={e => setEndDate(e.target.value)}
+                        onChange={(e) => setEndDate(e.target.value)}
                         className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                       />
                     </div>
@@ -1985,28 +1964,26 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       <button
                         type="button"
                         onClick={handleSetThisWeek}
-                        className="px-2 py-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 cursor-pointer"
-                      >
+                        className="px-2 py-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 cursor-pointer">
                         Minggu Ini
                       </button>
                       <button
                         type="button"
                         onClick={handleSetLastWeek}
-                        className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200 cursor-pointer"
-                      >
+                        className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200 cursor-pointer">
                         Minggu Lalu
                       </button>
                     </div>
                   </div>
                 )}
 
-                {periodType === 'MONTHLY' && (
+                {periodType === "MONTHLY" && (
                   <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
                     <span className="text-slate-500 font-medium">Pilih Bulan:</span>
                     <input
                       type="month"
                       value={selectedMonth}
-                      onChange={e => setSelectedMonth(e.target.value)}
+                      onChange={(e) => setSelectedMonth(e.target.value)}
                       className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
                     />
                   </div>
@@ -2028,12 +2005,9 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
               <div className="text-[11px] font-medium text-slate-500">Total Penerima Manfaat</div>
               <div className="text-xl font-bold text-emerald-700 mt-1 tabular-nums">
-                {stats.totalPortionsPlanned.toLocaleString('id-ID')}{' '}
-                <span className="text-xs font-normal text-slate-500">porsi</span>
+                {stats.totalPortionsPlanned.toLocaleString("id-ID")} <span className="text-xs font-normal text-slate-500">porsi</span>
               </div>
-              <div className="text-[10px] text-slate-400 mt-0.5">
-                {stats.totalPortionsDistributed.toLocaleString('id-ID')} porsi tersalurkan
-              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">{stats.totalPortionsDistributed.toLocaleString("id-ID")} porsi tersalurkan</div>
             </div>
 
             <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
@@ -2047,8 +2021,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
               <div className="text-[11px] font-medium text-slate-500">Total Bahan Ditimbang</div>
               <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
-                {stats.totalArrivedKg.toLocaleString('id-ID')}{' '}
-                <span className="text-xs font-normal text-slate-500">kg/satuan</span>
+                {stats.totalArrivedKg.toLocaleString("id-ID")} <span className="text-xs font-normal text-slate-500">kg/satuan</span>
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5">Hasil penimbangan riil di gudang</div>
             </div>
@@ -2059,9 +2032,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             <div className="flex flex-wrap items-center gap-2">
               <select
                 value={selectedStatus}
-                onChange={e => setSelectedStatus(e.target.value)}
-                className="px-2.5 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg text-slate-700 bg-white"
-              >
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="px-2.5 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg text-slate-700 bg-white">
                 <option value="ALL">Semua Status</option>
                 <option value="PLANNED">Direncanakan</option>
                 <option value="PREPPING">Persiapan Bahan</option>
@@ -2076,7 +2048,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 type="text"
                 placeholder="Cari nama menu, bahan PO, pemasok, PIC..."
                 value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1.5 w-64 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               />
             </div>
@@ -2088,18 +2060,15 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
               <UtensilsCrossed className="w-10 h-10 text-slate-300 mx-auto" />
               <div>
                 <h4 className="text-sm font-bold text-slate-800 mb-1">
-                  Belum ada jadwal menu untuk {periodType === 'DAILY' ? formatIndonesianDate(selectedDailyDate) : effectiveDateRange.label}
+                  Belum ada jadwal menu untuk {periodType === "DAILY" ? formatIndonesianDate(selectedDailyDate) : effectiveDateRange.label}
                 </h4>
-                <p className="text-slate-500 max-w-md mx-auto">
-                  Anda dapat langsung mencatat menu dan pesanan bahan PO untuk tanggal ini, atau kembali melihat jadwal hari ini.
-                </p>
+                <p className="text-slate-500 max-w-md mx-auto">Anda dapat langsung mencatat menu dan pesanan bahan PO untuk tanggal ini, atau kembali melihat jadwal hari ini.</p>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => handleOpenCreateMenuModal(selectedDailyDate)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
-                >
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer">
                   <Plus className="w-4 h-4" />
                   <span>Input Menu untuk Tanggal Ini</span>
                 </button>
@@ -2107,8 +2076,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                   <button
                     type="button"
                     onClick={handleJumpToToday}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
-                  >
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer">
                     <Calendar className="w-4 h-4 text-emerald-700" />
                     <span>Lihat Hari Ini ({formatShortDate(todayStr)})</span>
                   </button>
@@ -2125,30 +2093,20 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 const b3Dishes = order.specialDietB3 ? parseDishItems(order.specialDietB3) : [];
 
                 return (
-                  <div
-                    key={order.id}
-                    className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden transition-all"
-                  >
+                  <div key={order.id} className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden transition-all">
                     {/* Header Kartu Harian */}
                     <div className="p-4 bg-slate-50/90 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-200/80 text-slate-700">
-                            Hari {oIdx + 1}
-                          </span>
-                          <h3 className="text-sm font-bold text-slate-900">
-                            {formatIndonesianDate(order.date)}
-                          </h3>
-                          <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-md bg-white text-slate-700 border border-slate-200">
-                            PO: {order.poDate || 'H-1'}
-                          </span>
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-200/80 text-slate-700">Hari {oIdx + 1}</span>
+                          <h3 className="text-sm font-bold text-slate-900">{formatIndonesianDate(order.date)}</h3>
+                          <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-md bg-white text-slate-700 border border-slate-200">PO: {order.poDate || "H-1"}</span>
                           <div className="relative inline-flex items-center">
                             <select
                               value={order.status}
-                              onChange={e => handleQuickStatusChange(order.id, e.target.value as MenuOrderStatus)}
+                              onChange={(e) => handleQuickStatusChange(order.id, e.target.value as MenuOrderStatus)}
                               className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border cursor-pointer focus:outline-none appearance-none pr-5 transition-colors ${statusMeta.class}`}
-                              title="Klik untuk ubah status pengerjaan menu"
-                            >
+                              title="Klik untuk ubah status pengerjaan menu">
                               <option value="PLANNED">Direncanakan</option>
                               <option value="PREPPING">Persiapan Bahan</option>
                               <option value="COOKING">Sedang Dimasak</option>
@@ -2161,11 +2119,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
                         <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 mt-1.5">
                           <span>
-                            Target: <strong className="font-bold text-slate-900">{order.totalBeneficiaries?.toLocaleString('id-ID') || order.targetPortions.toLocaleString('id-ID')} porsi</strong>
+                            Target:{" "}
+                            <strong className="font-bold text-slate-900">
+                              {order.totalBeneficiaries?.toLocaleString("id-ID") || order.targetPortions.toLocaleString("id-ID")} porsi
+                            </strong>
                           </span>
                           <span className="text-slate-300">•</span>
                           <span>
-                            Penanggung Jawab: <span className="font-medium text-slate-800">{order.chefInCharge || 'Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU'}</span>
+                            Penanggung Jawab: <span className="font-medium text-slate-800">{order.chefInCharge || "Chef Joko Santoso & Tim Dapur SPPG MLG TUMPANG JERU"}</span>
                           </span>
                         </div>
                       </div>
@@ -2177,8 +2138,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                           type="button"
                           onClick={() => handleOpenEditMenuModal(order)}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 shadow-2xs transition-colors cursor-pointer"
-                          title="Edit susunan menu & target porsi"
-                        >
+                          title="Edit susunan menu & target porsi">
                           <Edit2 className="w-3.5 h-3.5 text-slate-500" />
                           <span>Edit Menu</span>
                         </button>
@@ -2188,10 +2148,9 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                           type="button"
                           onClick={() => handleOpenPoModal(order.id)}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-2xs transition-colors cursor-pointer"
-                          title="Kelola daftar bahan PO & supplier"
-                        >
+                          title="Kelola daftar bahan PO & supplier">
                           <PackagePlus className="w-3.5 h-3.5 text-slate-300" />
-                          <span>{poItems.length > 0 ? `Kelola PO (${poItems.length})` : 'Buat PO'}</span>
+                          <span>{poItems.length > 0 ? `Kelola PO (${poItems.length})` : "Buat PO"}</span>
                         </button>
 
                         {/* Menu Tindakan Lainnya (...) */}
@@ -2201,11 +2160,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                             onClick={() => setOpenOrderMenuId(openOrderMenuId === order.id ? null : order.id)}
                             className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
                               openOrderMenuId === order.id
-                                ? 'bg-slate-100 text-slate-800 border-slate-300'
-                                : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100 border-transparent'
+                                ? "bg-slate-100 text-slate-800 border-slate-300"
+                                : "text-slate-400 hover:text-slate-700 hover:bg-slate-100 border-transparent"
                             }`}
-                            title="Tindakan lainnya"
-                          >
+                            title="Tindakan lainnya">
                             <MoreHorizontal className="w-4 h-4" />
                           </button>
 
@@ -2218,8 +2176,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                                     setOpenOrderMenuId(null);
                                     handleDeletePoForOrder(order.id);
                                   }}
-                                  className="w-full text-left px-3 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
-                                >
+                                  className="w-full text-left px-3 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer">
                                   <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                                   <span>Hapus Draft PO</span>
                                 </button>
@@ -2230,8 +2187,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                                   setOpenOrderMenuId(null);
                                   handleDeleteOrder(order.id, order.menuTitle);
                                 }}
-                                className="w-full text-left px-3 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
-                              >
+                                className="w-full text-left px-3 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer">
                                 <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                                 <span>Hapus Menu Order</span>
                               </button>
@@ -2244,8 +2200,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                           type="button"
                           onClick={() => toggleExpandOrder(order.id)}
                           className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer ml-1"
-                          title={isExpanded ? 'Tutup Rincian' : 'Buka Rincian'}
-                        >
+                          title={isExpanded ? "Tutup Rincian" : "Buka Rincian"}>
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </button>
                       </div>
@@ -2257,14 +2212,11 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                         {/* SEKSI 1: KOMPOSISI OLAHAN MENU */}
                         <div className="bg-slate-50/70 rounded-xl p-4 border border-slate-200/80 space-y-3">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-900">
-                              Komposisi Menu Reguler (Siswa SD & SMP)
-                            </span>
+                            <span className="text-xs font-bold text-slate-900">Komposisi Menu Reguler (Siswa SD & SMP)</span>
                             <button
                               type="button"
                               onClick={() => handleOpenEditMenuModal(order)}
-                              className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer"
-                            >
+                              className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer">
                               <Edit2 className="w-3 h-3 text-slate-500" />
                               <span>Ubah Menu</span>
                             </button>
@@ -2274,16 +2226,9 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                           {regularDishes.length > 0 ? (
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                               {regularDishes.map((dish, dIdx) => (
-                                <div
-                                  key={dIdx}
-                                  className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between"
-                                >
-                                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tight">
-                                    {dish.category}
-                                  </span>
-                                  <span className="text-xs font-bold text-slate-900 mt-1 capitalize">
-                                    {dish.name}
-                                  </span>
+                                <div key={dIdx} className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tight">{dish.category}</span>
+                                  <span className="text-xs font-bold text-slate-900 mt-1 capitalize">{dish.name}</span>
                                 </div>
                               ))}
                             </div>
@@ -2293,24 +2238,17 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
 
                           {/* Menu Diet Khusus Balita & Bumil (B3) */}
                           <div className="pt-3 border-t border-slate-200/80">
-                            <div className="text-xs font-semibold text-slate-700 mb-2">
-                              Penyesuaian Menu Khusus Balita 3T & Ibu Hamil (B3):
-                            </div>
+                            <div className="text-xs font-semibold text-slate-700 mb-2">Penyesuaian Menu Khusus Balita 3T & Ibu Hamil (B3):</div>
                             {order.specialDietB3 ? (
                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                                 {b3Dishes.map((dish, bIdx) => (
-                                  <div
-                                    key={bIdx}
-                                    className="p-2.5 bg-white rounded-lg border border-slate-200 text-xs text-slate-800 font-medium capitalize"
-                                  >
+                                  <div key={bIdx} className="p-2.5 bg-white rounded-lg border border-slate-200 text-xs text-slate-800 font-medium capitalize">
                                     {dish.name}
                                   </div>
                                 ))}
                               </div>
                             ) : (
-                              <div className="text-xs text-slate-500 italic">
-                                Mengikuti menu reguler dengan penyesuaian porsi balita & ibu hamil.
-                              </div>
+                              <div className="text-xs text-slate-500 italic">Mengikuti menu reguler dengan penyesuaian porsi balita & ibu hamil.</div>
                             )}
                           </div>
 
@@ -2324,20 +2262,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                         {/* SEKSI 2: RINCIAN BAHAN PO */}
                         <div className="space-y-2.5">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-slate-900">
-                              Rincian Bahan PO
-                            </span>
-                            <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
-                              {poItems.length} Bahan
-                            </span>
+                            <span className="text-xs font-bold text-slate-900">Rincian Bahan PO</span>
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">{poItems.length} Bahan</span>
                           </div>
 
                           {/* List Bahan Table (Clean & Focused) */}
                           {poItems.length === 0 ? (
                             <div className="py-5 px-4 text-center rounded-xl bg-slate-50 border border-slate-200/80">
-                              <p className="text-xs text-slate-500">
-                                Belum ada rincian bahan PO yang tercatat untuk menu ini.
-                              </p>
+                              <p className="text-xs text-slate-500">Belum ada rincian bahan PO yang tercatat untuk menu ini.</p>
                             </div>
                           ) : (
                             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs">
@@ -2357,12 +2289,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                                       <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{pIdx + 1}</td>
                                       <td className="py-2.5 px-3 text-slate-600 font-medium">{item.category}</td>
                                       <td className="py-2.5 px-4 font-semibold text-slate-900">{item.itemName}</td>
-                                      <td className="py-2.5 px-4 text-slate-700 font-medium">
-                                        {item.supplier || 'Pemasok Rekanan'}
-                                      </td>
-                                      <td className="py-2.5 px-4 text-right font-mono font-semibold text-slate-900 tabular-nums">
-                                        {item.qtyOrder || item.qtyArrived || '-'}
-                                      </td>
+                                      <td className="py-2.5 px-4 text-slate-700 font-medium">{item.supplier || "Pemasok Rekanan"}</td>
+                                      <td className="py-2.5 px-4 text-right font-mono font-semibold text-slate-900 tabular-nums">{item.qtyOrder || item.qtyArrived || "-"}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -2383,46 +2311,39 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
       {/* ========================================================================= */}
       {/* TAB 2: PENERIMA MANFAAT & DISTRIBUSI HARIAN                               */}
       {/* ========================================================================= */}
-      {activeSubTab === 'BENEFICIARIES' && (
+      {activeSubTab === "BENEFICIARIES" && (
         <div className="space-y-4">
           {/* Sub-View Switcher & Top Actions */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
             <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
               <button
                 type="button"
-                onClick={() => setBeneficiaryViewMode('REKAP_HARIAN')}
+                onClick={() => setBeneficiaryViewMode("REKAP_HARIAN")}
                 className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
-                  beneficiaryViewMode === 'REKAP_HARIAN'
-                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
+                  beneficiaryViewMode === "REKAP_HARIAN" ? "bg-white text-slate-900 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
+                }`}>
                 <TableIcon className="w-3.5 h-3.5 text-blue-600" />
                 <span>Rekap Matriks Harian</span>
               </button>
               <button
                 type="button"
-                onClick={() => setBeneficiaryViewMode('DETAIL_HARIAN')}
+                onClick={() => setBeneficiaryViewMode("DETAIL_HARIAN")}
                 className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
-                  beneficiaryViewMode === 'DETAIL_HARIAN'
-                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
+                  beneficiaryViewMode === "DETAIL_HARIAN" ? "bg-white text-slate-900 shadow-2xs font-bold" : "text-slate-600 hover:text-slate-900"
+                }`}>
                 <Calendar className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Alokasi per Tanggal</span>
               </button>
             </div>
 
             <div className="flex items-center gap-2">
-              {beneficiaryViewMode === 'REKAP_HARIAN' && (
+              {beneficiaryViewMode === "REKAP_HARIAN" && (
                 <>
                   <button
                     type="button"
                     onClick={handleExportBeneficiaryDailyRecap}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                    title="Unduh tabel rekap porsi harian ke format Excel (.xlsx)"
-                  >
+                    title="Unduh tabel rekap porsi harian ke format Excel (.xlsx)">
                     <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Ekspor Excel</span>
                   </button>
@@ -2430,19 +2351,17 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                     type="button"
                     onClick={() => setIsBeneficiaryPrintModalOpen(true)}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                    title="Cetak format cetak resmi ber-Kop Surat SPPG"
-                  >
+                    title="Cetak format cetak resmi ber-Kop Surat SPPG">
                     <Printer className="w-3.5 h-3.5 text-slate-600" />
                     <span>Cetak Rekap</span>
                   </button>
                 </>
               )}
-              {beneficiaryViewMode === 'DETAIL_HARIAN' && isDailyDraftDirty && (
+              {beneficiaryViewMode === "DETAIL_HARIAN" && isDailyDraftDirty && (
                 <button
                   type="button"
                   onClick={handleSaveDailyAllocations}
-                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer animate-pulse"
-                >
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer animate-pulse">
                   <Save className="w-3.5 h-3.5" />
                   <span>Simpan Alokasi Hari Ini</span>
                 </button>
@@ -2451,7 +2370,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
           </div>
 
           {/* MODE 1: REKAP MATRIKS HARIAN */}
-          {beneficiaryViewMode === 'REKAP_HARIAN' && (
+          {beneficiaryViewMode === "REKAP_HARIAN" && (
             <div className="space-y-4">
               {/* Filter Tanggal & Kategori Bar */}
               <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs space-y-3">
@@ -2463,31 +2382,30 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                     </span>
                     <select
                       value={beneficiaryPeriodPreset}
-                      onChange={e => {
+                      onChange={(e) => {
                         const val = e.target.value as any;
                         setBeneficiaryPeriodPreset(val);
                       }}
-                      className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white"
-                    >
+                      className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white">
                       <option value="ALL_ORDERS">Semua Jadwal Menu ({orders.length} Hari)</option>
                       <option value="LAST_7_DAYS">7 Hari Terakhir</option>
                       <option value="THIS_MONTH">Bulan Berjalan ({todayStr.slice(0, 7)})</option>
                       <option value="CUSTOM">Rentang Tanggal Kustom...</option>
                     </select>
 
-                    {beneficiaryPeriodPreset === 'CUSTOM' && (
+                    {beneficiaryPeriodPreset === "CUSTOM" && (
                       <div className="flex items-center gap-1.5 text-xs">
                         <input
                           type="date"
                           value={beneficiaryStartDate}
-                          onChange={e => setBeneficiaryStartDate(e.target.value)}
+                          onChange={(e) => setBeneficiaryStartDate(e.target.value)}
                           className="px-2.5 py-1 border border-slate-300 rounded-lg text-slate-800 bg-white font-mono"
                         />
                         <span className="text-slate-400">s/d</span>
                         <input
                           type="date"
                           value={beneficiaryEndDate}
-                          onChange={e => setBeneficiaryEndDate(e.target.value)}
+                          onChange={(e) => setBeneficiaryEndDate(e.target.value)}
                           className="px-2.5 py-1 border border-slate-300 rounded-lg text-slate-800 bg-white font-mono"
                         />
                       </div>
@@ -2503,9 +2421,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                   <div className="flex flex-wrap items-center gap-2">
                     <select
                       value={selectedBeneficiaryCategory}
-                      onChange={e => setSelectedBeneficiaryCategory(e.target.value)}
-                      className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white"
-                    >
+                      onChange={(e) => setSelectedBeneficiaryCategory(e.target.value)}
+                      className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white">
                       <option value="ALL">Semua Kategori Sasaran</option>
                       <option value="SD / MI">Sekolah Dasar (SD / MI)</option>
                       <option value="SMP / MTs">Sekolah Menengah (SMP / MTs)</option>
@@ -2520,7 +2437,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       type="text"
                       placeholder="Cari nama sekolah, kontak, PIC..."
                       value={schoolSearchQuery}
-                      onChange={e => setSchoolSearchQuery(e.target.value)}
+                      onChange={(e) => setSchoolSearchQuery(e.target.value)}
                       className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1.5 w-64 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
@@ -2532,7 +2449,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
                   <div className="text-[11px] font-semibold text-slate-500">Total Porsi Periode Ini</div>
                   <div className="text-xl font-bold text-blue-900 mt-1 font-mono tabular-nums">
-                    {dailyBeneficiaryMatrix.grandTotal.toLocaleString('id-ID')} <span className="text-xs font-normal text-slate-500">porsi</span>
+                    {dailyBeneficiaryMatrix.grandTotal.toLocaleString("id-ID")} <span className="text-xs font-normal text-slate-500">porsi</span>
                   </div>
                   <div className="text-[10px] text-slate-400 mt-0.5">Akumulasi seluruh sekolah</div>
                 </div>
@@ -2540,7 +2457,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 <div className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs">
                   <div className="text-[11px] font-semibold text-slate-500">Rata-rata Porsi per Hari</div>
                   <div className="text-xl font-bold text-emerald-800 mt-1 font-mono tabular-nums">
-                    {Math.round(dailyBeneficiaryMatrix.avgDailyTotal).toLocaleString('id-ID')} <span className="text-xs font-normal text-slate-500">porsi/hari</span>
+                    {Math.round(dailyBeneficiaryMatrix.avgDailyTotal).toLocaleString("id-ID")} <span className="text-xs font-normal text-slate-500">porsi/hari</span>
                   </div>
                   <div className="text-[10px] text-slate-400 mt-0.5">Rata-rata kebutuhan dapur SPPG</div>
                 </div>
@@ -2569,41 +2486,25 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                     <thead>
                       <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold">
                         <th className="py-2.5 px-3 w-10 text-center sticky left-0 bg-slate-100 z-10 border-r border-slate-200">No</th>
-                        <th className="py-2.5 px-3 min-w-[200px] sticky left-10 bg-slate-100 z-10 border-r border-slate-200">
-                          Nama Sekolah / Lembaga
-                        </th>
+                        <th className="py-2.5 px-3 min-w-[200px] sticky left-10 bg-slate-100 z-10 border-r border-slate-200">Nama Sekolah / Lembaga</th>
                         <th className="py-2.5 px-2.5 w-24">Kategori</th>
-                        {dailyBeneficiaryMatrix.dates.map(dateKey => {
+                        {dailyBeneficiaryMatrix.dates.map((dateKey) => {
                           const order = dailyBeneficiaryMatrix.orderMap[dateKey];
                           const totalCol = dailyBeneficiaryMatrix.dateTotals[dateKey] || 0;
                           return (
-                            <th
-                              key={dateKey}
-                              className="py-2 px-2.5 min-w-[105px] text-center border-l border-slate-200/80 bg-slate-50/50"
-                            >
-                              <div className="font-mono text-[11px] text-slate-900 font-bold whitespace-nowrap">
-                                {formatShortDate(dateKey)}
-                              </div>
-                              <div className="text-[10px] font-mono text-emerald-800 font-semibold mt-0.5">
-                                {totalCol > 0 ? `${totalCol.toLocaleString('id-ID')} p` : '-'}
-                              </div>
+                            <th key={dateKey} className="py-2 px-2.5 min-w-[105px] text-center border-l border-slate-200/80 bg-slate-50/50">
+                              <div className="font-mono text-[11px] text-slate-900 font-bold whitespace-nowrap">{formatShortDate(dateKey)}</div>
+                              <div className="text-[10px] font-mono text-emerald-800 font-semibold mt-0.5">{totalCol > 0 ? `${totalCol.toLocaleString("id-ID")} p` : "-"}</div>
                               {order?.menuTitle && (
-                                <div
-                                  className="text-[9px] text-slate-400 truncate max-w-[95px] mx-auto mt-0.5"
-                                  title={order.menuTitle}
-                                >
-                                  {order.menuTitle.split(',')[0]}
+                                <div className="text-[9px] text-slate-400 truncate max-w-[95px] mx-auto mt-0.5" title={order.menuTitle}>
+                                  {order.menuTitle.split(",")[0]}
                                 </div>
                               )}
                             </th>
                           );
                         })}
-                        <th className="py-2.5 px-3 w-28 text-right border-l-2 border-slate-300 bg-slate-100/80">
-                          Total Periode
-                        </th>
-                        <th className="py-2.5 px-3 w-24 text-right border-l border-slate-200 bg-slate-100/80">
-                          Rata-rata
-                        </th>
+                        <th className="py-2.5 px-3 w-28 text-right border-l-2 border-slate-300 bg-slate-100/80">Total Periode</th>
+                        <th className="py-2.5 px-3 w-24 text-right border-l border-slate-200 bg-slate-100/80">Rata-rata</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -2619,33 +2520,27 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                             </div>
                           </td>
                           <td className="py-2.5 px-2.5">
-                            <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                              {row.category}
-                            </span>
+                            <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">{row.category}</span>
                           </td>
-                          {dailyBeneficiaryMatrix.dates.map(dateKey => {
+                          {dailyBeneficiaryMatrix.dates.map((dateKey) => {
                             const portion = row.datePortions[dateKey] || 0;
                             const isDiffFromMaster = portion > 0 && portion !== row.masterPortion;
                             return (
-                              <td
-                                key={dateKey}
-                                className="py-2 px-2 text-center font-mono border-l border-slate-100"
-                              >
+                              <td key={dateKey} className="py-2 px-2 text-center font-mono border-l border-slate-100">
                                 {portion > 0 ? (
                                   <button
                                     type="button"
                                     onClick={() => {
                                       setBeneficiarySelectedDate(dateKey);
-                                      setBeneficiaryViewMode('DETAIL_HARIAN');
+                                      setBeneficiaryViewMode("DETAIL_HARIAN");
                                     }}
                                     className={`px-2 py-0.5 rounded text-xs font-semibold tabular-nums cursor-pointer transition-colors ${
                                       isDiffFromMaster
-                                        ? 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
-                                        : 'bg-slate-50 text-slate-800 border border-slate-200 hover:bg-slate-100'
+                                        ? "bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100"
+                                        : "bg-slate-50 text-slate-800 border border-slate-200 hover:bg-slate-100"
                                     }`}
-                                    title={`Klik untuk lihat/ubah alokasi tanggal ${dateKey}`}
-                                  >
-                                    {portion.toLocaleString('id-ID')}
+                                    title={`Klik untuk lihat/ubah alokasi tanggal ${dateKey}`}>
+                                    {portion.toLocaleString("id-ID")}
                                   </button>
                                 ) : (
                                   <span className="text-slate-300 font-mono text-xs">-</span>
@@ -2654,10 +2549,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                             );
                           })}
                           <td className="py-2.5 px-3 text-right font-mono font-bold text-blue-900 border-l-2 border-slate-200 tabular-nums">
-                            {row.totalPeriod.toLocaleString('id-ID')} <span className="text-[10px] font-normal text-slate-400">p</span>
+                            {row.totalPeriod.toLocaleString("id-ID")} <span className="text-[10px] font-normal text-slate-400">p</span>
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-700 border-l border-slate-100 tabular-nums">
-                            {Math.round(row.avgDaily).toLocaleString('id-ID')}
+                            {Math.round(row.avgDaily).toLocaleString("id-ID")}
                           </td>
                         </tr>
                       ))}
@@ -2667,22 +2562,19 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                         <td colSpan={3} className="py-3 px-3 text-right sticky left-0 bg-slate-100/90 z-10 border-r border-slate-200 text-xs">
                           Total Porsi Harian Seluruh Sekolah:
                         </td>
-                        {dailyBeneficiaryMatrix.dates.map(dateKey => {
+                        {dailyBeneficiaryMatrix.dates.map((dateKey) => {
                           const totalCol = dailyBeneficiaryMatrix.dateTotals[dateKey] || 0;
                           return (
-                            <td
-                              key={dateKey}
-                              className="py-3 px-2 text-center font-mono font-bold text-emerald-800 border-l border-slate-200 tabular-nums text-xs"
-                            >
-                              {totalCol > 0 ? totalCol.toLocaleString('id-ID') : '-'}
+                            <td key={dateKey} className="py-3 px-2 text-center font-mono font-bold text-emerald-800 border-l border-slate-200 tabular-nums text-xs">
+                              {totalCol > 0 ? totalCol.toLocaleString("id-ID") : "-"}
                             </td>
                           );
                         })}
                         <td className="py-3 px-3 text-right font-mono font-bold text-blue-900 border-l-2 border-slate-300 tabular-nums text-xs">
-                          {dailyBeneficiaryMatrix.grandTotal.toLocaleString('id-ID')}
+                          {dailyBeneficiaryMatrix.grandTotal.toLocaleString("id-ID")}
                         </td>
                         <td className="py-3 px-3 text-right font-mono font-bold text-slate-800 border-l border-slate-200 tabular-nums text-xs">
-                          {Math.round(dailyBeneficiaryMatrix.avgDailyTotal).toLocaleString('id-ID')}
+                          {Math.round(dailyBeneficiaryMatrix.avgDailyTotal).toLocaleString("id-ID")}
                         </td>
                       </tr>
                     </tfoot>
@@ -2693,316 +2585,289 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
           )}
 
           {/* MODE 2: DETAIL ALOKASI PER TANGGAL */}
-          {beneficiaryViewMode === 'DETAIL_HARIAN' && (() => {
-            const currentOrder = orders.find(o => o.date === beneficiarySelectedDate);
-            const totalDraftPortions = Object.values(dailyDraftPortions).reduce((sum, v) => sum + (Number(v) || 0), 0);
-            const distinctDatesWithOrders = Array.from(new Set(orders.map(o => o.date))).sort();
+          {beneficiaryViewMode === "DETAIL_HARIAN" &&
+            (() => {
+              const currentOrder = orders.find((o) => o.date === beneficiarySelectedDate);
+              const totalDraftPortions = Object.values(dailyDraftPortions).reduce((sum, v) => sum + (Number(v) || 0), 0);
+              const distinctDatesWithOrders = Array.from(new Set(orders.map((o) => o.date))).sort();
 
-            return (
-              <div className="space-y-4">
-                {/* Date Navigation & Controls */}
-                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const d = parseMenuDate(beneficiarySelectedDate) || new Date();
-                          d.setDate(d.getDate() - 1);
-                          setBeneficiarySelectedDate(d.toISOString().slice(0, 10));
-                        }}
-                        className="p-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                        title="H-1 (Kemarin)"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
+              return (
+                <div className="space-y-4">
+                  {/* Date Navigation & Controls */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const d = parseMenuDate(beneficiarySelectedDate) || new Date();
+                            d.setDate(d.getDate() - 1);
+                            setBeneficiarySelectedDate(d.toISOString().slice(0, 10));
+                          }}
+                          className="p-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                          title="H-1 (Kemarin)">
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
 
-                      <div className="relative">
-                        <input
-                          type="date"
-                          value={beneficiarySelectedDate}
-                          onChange={e => setBeneficiarySelectedDate(e.target.value)}
-                          className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white font-mono"
-                        />
+                        <div className="relative">
+                          <input
+                            type="date"
+                            value={beneficiarySelectedDate}
+                            onChange={(e) => setBeneficiarySelectedDate(e.target.value)}
+                            className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white font-mono"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const d = parseMenuDate(beneficiarySelectedDate) || new Date();
+                            d.setDate(d.getDate() + 1);
+                            setBeneficiarySelectedDate(d.toISOString().slice(0, 10));
+                          }}
+                          className="p-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                          title="H+1 (Besok)">
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setBeneficiarySelectedDate(todayStr)}
+                          className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
+                            beneficiarySelectedDate === todayStr ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                          }`}>
+                          Hari Ini
+                        </button>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const d = parseMenuDate(beneficiarySelectedDate) || new Date();
-                          d.setDate(d.getDate() + 1);
-                          setBeneficiarySelectedDate(d.toISOString().slice(0, 10));
-                        }}
-                        className="p-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                        title="H+1 (Besok)"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setBeneficiarySelectedDate(todayStr)}
-                        className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
-                          beneficiarySelectedDate === todayStr
-                            ? 'bg-slate-900 text-white border-slate-900'
-                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                        }`}
-                      >
-                        Hari Ini
-                      </button>
+                      {/* Quick jump to date with orders */}
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span className="text-slate-400">Pilih Order:</span>
+                        <select
+                          value={distinctDatesWithOrders.includes(beneficiarySelectedDate) ? beneficiarySelectedDate : ""}
+                          onChange={(e) => {
+                            if (e.target.value) setBeneficiarySelectedDate(e.target.value);
+                          }}
+                          className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg text-slate-800 bg-white font-medium">
+                          <option value="">-- Pilih Tanggal Menu --</option>
+                          {distinctDatesWithOrders.map((d) => (
+                            <option key={d} value={d}>
+                              {formatShortDate(d)} - {orders.find((o) => o.date === d)?.menuTitle.slice(0, 30)}...
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
 
-                    {/* Quick jump to date with orders */}
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <span className="text-slate-400">Pilih Order:</span>
-                      <select
-                        value={distinctDatesWithOrders.includes(beneficiarySelectedDate) ? beneficiarySelectedDate : ''}
-                        onChange={e => {
-                          if (e.target.value) setBeneficiarySelectedDate(e.target.value);
-                        }}
-                        className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg text-slate-800 bg-white font-medium"
-                      >
-                        <option value="">-- Pilih Tanggal Menu --</option>
-                        {distinctDatesWithOrders.map(d => (
-                          <option key={d} value={d}>
-                            {formatShortDate(d)} - {orders.find(o => o.date === d)?.menuTitle.slice(0, 30)}...
-                          </option>
-                        ))}
-                      </select>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleScaleDailyPortionsProportional}
+                        className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-colors cursor-pointer"
+                        title="Sesuaikan seluruh sekolah secara proporsional berdasarkan target baru">
+                        Sesuaikan Proporsional
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResetDailyAllocationsToMaster}
+                        className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                        title="Reset alokasi porsi hari ini ke standar master default">
+                        <RotateCcw className="w-3 h-3 text-slate-400" />
+                        <span>Reset ke Master</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveDailyAllocations}
+                        className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer">
+                        <Save className="w-3.5 h-3.5" />
+                        <span>Simpan Alokasi Hari Ini</span>
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleScaleDailyPortionsProportional}
-                      className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-colors cursor-pointer"
-                      title="Sesuaikan seluruh sekolah secara proporsional berdasarkan target baru"
-                    >
-                      Sesuaikan Proporsional
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleResetDailyAllocationsToMaster}
-                      className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                      title="Reset alokasi porsi hari ini ke standar master default"
-                    >
-                      <RotateCcw className="w-3 h-3 text-slate-400" />
-                      <span>Reset ke Master</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveDailyAllocations}
-                      className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
-                    >
-                      <Save className="w-3.5 h-3.5" />
-                      <span>Simpan Alokasi Hari Ini</span>
-                    </button>
-                  </div>
-                </div>
+                  {/* Day Info Banner */}
+                  <div className="p-4 rounded-xl bg-slate-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-white">{formatIndonesianDate(beneficiarySelectedDate)}</span>
+                        {currentOrder ? (
+                          <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            Order Menu: {currentOrder.id} ({currentOrder.mealSession})
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            Belum ada menu order resmi tercatat
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-300">
+                        {currentOrder ? currentOrder.menuTitle : "Alokasi porsi harian dapat disesuaikan dan akan otomatis membuat draft alokasi untuk tanggal ini."}
+                      </div>
+                    </div>
 
-                {/* Day Info Banner */}
-                <div className="p-4 rounded-xl bg-slate-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-bold text-white">
-                        {formatIndonesianDate(beneficiarySelectedDate)}
-                      </span>
-                      {currentOrder ? (
-                        <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                          Order Menu: {currentOrder.id} ({currentOrder.mealSession})
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                          Belum ada menu order resmi tercatat
-                        </span>
+                    <div className="flex items-center gap-4 shrink-0">
+                      <div className="text-right">
+                        <div className="text-[11px] text-slate-400">Total Porsi Hari Ini:</div>
+                        <div className="text-xl font-bold font-mono text-emerald-400 tabular-nums">
+                          {totalDraftPortions.toLocaleString("id-ID")} <span className="text-xs font-normal text-slate-300">porsi</span>
+                        </div>
+                      </div>
+                      {isDailyDraftDirty && (
+                        <span className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-400 text-slate-950 animate-pulse">Ada Perubahan Belum Disimpan</span>
                       )}
                     </div>
-                    <div className="text-xs text-slate-300">
-                      {currentOrder ? currentOrder.menuTitle : 'Alokasi porsi harian dapat disesuaikan dan akan otomatis membuat draft alokasi untuk tanggal ini.'}
-                    </div>
                   </div>
 
-                  <div className="flex items-center gap-4 shrink-0">
-                    <div className="text-right">
-                      <div className="text-[11px] text-slate-400">Total Porsi Hari Ini:</div>
-                      <div className="text-xl font-bold font-mono text-emerald-400 tabular-nums">
-                        {totalDraftPortions.toLocaleString('id-ID')} <span className="text-xs font-normal text-slate-300">porsi</span>
+                  {/* Daily School Allocation Table */}
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                    <div className="p-3 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={selectedBeneficiaryCategory}
+                          onChange={(e) => setSelectedBeneficiaryCategory(e.target.value)}
+                          className="px-2.5 py-1 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white">
+                          <option value="ALL">Semua Kategori ({masterSchools.length})</option>
+                          <option value="SD / MI">SD / MI</option>
+                          <option value="SMP / MTs">SMP / MTs</option>
+                          <option value="PAUD / TK">PAUD / TK</option>
+                          <option value="Ibu Hamil & Balita (B3)">Balita 3T & Ibu Hamil</option>
+                        </select>
+                      </div>
+
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Cari sekolah..."
+                          value={schoolSearchQuery}
+                          onChange={(e) => setSchoolSearchQuery(e.target.value)}
+                          className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1 w-52 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
                       </div>
                     </div>
-                    {isDailyDraftDirty && (
-                      <span className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-400 text-slate-950 animate-pulse">
-                        Ada Perubahan Belum Disimpan
-                      </span>
-                    )}
-                  </div>
-                </div>
 
-                {/* Daily School Allocation Table */}
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                  <div className="p-3 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={selectedBeneficiaryCategory}
-                        onChange={e => setSelectedBeneficiaryCategory(e.target.value)}
-                        className="px-2.5 py-1 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white"
-                      >
-                        <option value="ALL">Semua Kategori ({masterSchools.length})</option>
-                        <option value="SD / MI">SD / MI</option>
-                        <option value="SMP / MTs">SMP / MTs</option>
-                        <option value="PAUD / TK">PAUD / TK</option>
-                        <option value="Ibu Hamil & Balita (B3)">Balita 3T & Ibu Hamil</option>
-                      </select>
-                    </div>
-
-                    <div className="relative">
-                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                      <input
-                        type="text"
-                        placeholder="Cari sekolah..."
-                        value={schoolSearchQuery}
-                        onChange={e => setSchoolSearchQuery(e.target.value)}
-                        className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1 w-52 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold">
-                        <th className="py-2.5 px-3 w-10 text-center">No</th>
-                        <th className="py-2.5 px-4 min-w-[200px]">Nama Sekolah / Lembaga</th>
-                        <th className="py-2.5 px-3 w-28">Kategori</th>
-                        <th className="py-2.5 px-3 w-36 text-right">Alokasi Porsi Hari Ini</th>
-                        <th className="py-2.5 px-3 w-24 text-center">Selisih vs Master</th>
-                        <th className="py-2.5 px-3 w-28">Jadwal Kirim</th>
-                        <th className="py-2.5 px-4 w-44">PIC & Kontak</th>
-                        <th className="py-2.5 px-3 w-32 text-center">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredSchools.map((s, idx) => {
-                        const curPortion = dailyDraftPortions[s.id] ?? s.portionCount;
-                        const diff = curPortion - s.portionCount;
-                        return (
-                          <tr key={s.id} className="hover:bg-slate-50/70 transition-colors">
-                            <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{idx + 1}</td>
-                            <td className="py-2.5 px-4">
-                              <div className="font-bold text-slate-900">{s.schoolName}</div>
-                              {s.notes && (
-                                <div className="text-[10px] text-slate-400 truncate max-w-xs">{s.notes}</div>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
-                                {s.category}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-3 text-right">
-                              <div className="inline-flex items-center gap-1 justify-end">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={curPortion || ''}
-                                  onChange={e => {
-                                    const val = Math.max(0, parseInt(e.target.value, 10) || 0);
-                                    setDailyDraftPortions(prev => ({ ...prev, [s.id]: val }));
-                                    setIsDailyDraftDirty(true);
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold">
+                          <th className="py-2.5 px-3 w-10 text-center">No</th>
+                          <th className="py-2.5 px-4 min-w-[200px]">Nama Sekolah / Lembaga</th>
+                          <th className="py-2.5 px-3 w-28">Kategori</th>
+                          <th className="py-2.5 px-3 w-36 text-right">Alokasi Porsi Hari Ini</th>
+                          <th className="py-2.5 px-3 w-24 text-center">Selisih vs Master</th>
+                          <th className="py-2.5 px-3 w-28">Jadwal Kirim</th>
+                          <th className="py-2.5 px-4 w-44">PIC & Kontak</th>
+                          <th className="py-2.5 px-3 w-32 text-center">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredSchools.map((s, idx) => {
+                          const curPortion = dailyDraftPortions[s.id] ?? s.portionCount;
+                          const diff = curPortion - s.portionCount;
+                          return (
+                            <tr key={s.id} className="hover:bg-slate-50/70 transition-colors">
+                              <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{idx + 1}</td>
+                              <td className="py-2.5 px-4">
+                                <div className="font-bold text-slate-900">{s.schoolName}</div>
+                                {s.notes && <div className="text-[10px] text-slate-400 truncate max-w-xs">{s.notes}</div>}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">{s.category}</span>
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                <div className="inline-flex items-center gap-1 justify-end">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={curPortion || ""}
+                                    onChange={(e) => {
+                                      const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                      setDailyDraftPortions((prev) => ({...prev, [s.id]: val}));
+                                      setIsDailyDraftDirty(true);
+                                    }}
+                                    className="w-20 px-2 py-1 text-right font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded focus:border-emerald-600 focus:outline-none"
+                                  />
+                                  <span className="text-slate-400 text-[11px]">porsi</span>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 text-center">
+                                {diff === 0 ? (
+                                  <span className="text-[10px] font-medium text-slate-400">Sesuai</span>
+                                ) : diff > 0 ? (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">+{diff}</span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">{diff}</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
+                                <div className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-slate-400" />
+                                  <span>{s.deliveryTime || "10:00 - 10:30"}</span>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-4 text-slate-700 text-[11px]">
+                                <div className="font-semibold text-slate-900">{s.contactPerson || "-"}</div>
+                                <div className="text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                                  <Phone className="w-2.5 h-2.5 text-slate-400" />
+                                  <span>{s.phone || "-"}</span>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 text-center">
+                                <select
+                                  value={currentOrder?.beneficiaryAllocations?.find((b) => b.id === s.id)?.status || s.status || "DIJADWALKAN"}
+                                  onChange={(e) => {
+                                    handleQuickUpdateBeneficiaryStatus(s, e.target.value as any);
                                   }}
-                                  className="w-20 px-2 py-1 text-right font-mono font-bold text-slate-900 bg-white border border-slate-300 rounded focus:border-emerald-600 focus:outline-none"
-                                />
-                                <span className="text-slate-400 text-[11px]">porsi</span>
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-3 text-center">
-                              {diff === 0 ? (
-                                <span className="text-[10px] font-medium text-slate-400">Sesuai</span>
-                              ) : diff > 0 ? (
-                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                  +{diff}
-                                </span>
-                              ) : (
-                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                  {diff}
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
-                              <div className="flex items-center gap-1">
-                                <Clock className="w-3 h-3 text-slate-400" />
-                                <span>{s.deliveryTime || '10:00 - 10:30'}</span>
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-4 text-slate-700 text-[11px]">
-                              <div className="font-semibold text-slate-900">{s.contactPerson || '-'}</div>
-                              <div className="text-slate-500 font-mono flex items-center gap-1 mt-0.5">
-                                <Phone className="w-2.5 h-2.5 text-slate-400" />
-                                <span>{s.phone || '-'}</span>
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-3 text-center">
-                              <select
-                                value={currentOrder?.beneficiaryAllocations?.find(b => b.id === s.id)?.status || s.status || 'DIJADWALKAN'}
-                                onChange={e => {
-                                  handleQuickUpdateBeneficiaryStatus(s, e.target.value as any);
-                                }}
-                                className={`text-[11px] font-bold px-2 py-1 rounded border cursor-pointer ${
-                                  (currentOrder?.beneficiaryAllocations?.find(b => b.id === s.id)?.status || s.status) === 'TERKIRIM'
-                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                    : (currentOrder?.beneficiaryAllocations?.find(b => b.id === s.id)?.status || s.status) === 'DALAM_PERJALANAN'
-                                    ? 'bg-amber-50 text-amber-800 border-amber-300'
-                                    : (currentOrder?.beneficiaryAllocations?.find(b => b.id === s.id)?.status || s.status) === 'SIAP_KIRIM'
-                                    ? 'bg-blue-50 text-blue-800 border-blue-300'
-                                    : 'bg-slate-100 text-slate-700 border-slate-300'
-                                }`}
-                              >
-                                <option value="DIJADWALKAN">Dijadwalkan</option>
-                                <option value="SIAP_KIRIM">Siap Kirim</option>
-                                <option value="DALAM_PERJALANAN">Dalam Perjalanan</option>
-                                <option value="TERKIRIM">Terkirim</option>
-                              </select>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-slate-100/90 border-t-2 border-slate-300 font-bold text-slate-900">
-                        <td colSpan={3} className="py-3 px-4 text-right text-xs">
-                          Total Alokasi Porsi Hari Ini:
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-emerald-800 text-sm tabular-nums">
-                          {totalDraftPortions.toLocaleString('id-ID')} <span className="text-xs font-normal">porsi</span>
-                        </td>
-                        <td colSpan={4} className="py-3 px-4 text-xs text-slate-500 font-normal">
-                          {isDailyDraftDirty ? 'Jangan lupa klik "Simpan Alokasi Hari Ini" untuk menyimpan perubahan' : 'Alokasi tersimpan sesuai rencana'}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                                  className={`text-[11px] font-bold px-2 py-1 rounded border cursor-pointer ${
+                                    (currentOrder?.beneficiaryAllocations?.find((b) => b.id === s.id)?.status || s.status) === "TERKIRIM"
+                                      ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                      : (currentOrder?.beneficiaryAllocations?.find((b) => b.id === s.id)?.status || s.status) === "DALAM_PERJALANAN"
+                                        ? "bg-amber-50 text-amber-800 border-amber-300"
+                                        : (currentOrder?.beneficiaryAllocations?.find((b) => b.id === s.id)?.status || s.status) === "SIAP_KIRIM"
+                                          ? "bg-blue-50 text-blue-800 border-blue-300"
+                                          : "bg-slate-100 text-slate-700 border-slate-300"
+                                  }`}>
+                                  <option value="DIJADWALKAN">Dijadwalkan</option>
+                                  <option value="SIAP_KIRIM">Siap Kirim</option>
+                                  <option value="DALAM_PERJALANAN">Dalam Perjalanan</option>
+                                  <option value="TERKIRIM">Terkirim</option>
+                                </select>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-slate-100/90 border-t-2 border-slate-300 font-bold text-slate-900">
+                          <td colSpan={3} className="py-3 px-4 text-right text-xs">
+                            Total Alokasi Porsi Hari Ini:
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-emerald-800 text-sm tabular-nums">
+                            {totalDraftPortions.toLocaleString("id-ID")} <span className="text-xs font-normal">porsi</span>
+                          </td>
+                          <td colSpan={4} className="py-3 px-4 text-xs text-slate-500 font-normal">
+                            {isDailyDraftDirty ? 'Jangan lupa klik "Simpan Alokasi Hari Ini" untuk menyimpan perubahan' : "Alokasi tersimpan sesuai rencana"}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            );
-          })()}
+              );
+            })()}
         </div>
       )}
 
       {/* ========================================================================= */}
       {/* TAB 3: SURAT JALAN & BERITA ACARA (3 LEMBAR PER SEKOLAH)                 */}
       {/* ========================================================================= */}
-      {activeSubTab === 'DELIVERY_NOTES' && (
-        <DeliveryNotesSubModule
-          orders={orders}
-          masterSchools={masterSchools}
-          currentDate={beneficiarySelectedDate || todayStr}
-          onSelectDate={setBeneficiarySelectedDate}
-        />
+      {activeSubTab === "DELIVERY_NOTES" && (
+        <DeliveryNotesSubModule orders={orders} masterSchools={masterSchools} currentDate={beneficiarySelectedDate || todayStr} onSelectDate={setBeneficiarySelectedDate} />
       )}
 
       {/* ========================================================================= */}
       {/* TAB 4: MASTER DATA PENERIMA MANFAAT                                       */}
       {/* ========================================================================= */}
-      {activeSubTab === 'MASTER_BENEFICIARIES' && (
+      {activeSubTab === "MASTER_BENEFICIARIES" && (
         <div className="space-y-4">
           {/* Header Box: Actions & Stats */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
@@ -3012,13 +2877,9 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                   <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-800 flex items-center justify-center">
                     <Building2 className="w-4 h-4 text-indigo-700" />
                   </div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Master Data Penerima Manfaat
-                  </h3>
+                  <h3 className="text-base font-bold text-slate-900">Master Data Penerima Manfaat</h3>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  Database induk lembaga, sekolah sasaran, penetapan target porsi harian, dan kontak penanggung jawab (PIC).
-                </p>
+                <p className="text-xs text-slate-500 mt-1">Database induk lembaga, sekolah sasaran, penetapan target porsi harian, dan kontak penanggung jawab (PIC).</p>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
@@ -3026,8 +2887,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                   type="button"
                   onClick={handleExportMasterBeneficiariesExcel}
                   className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-                  title="Unduh database master penerima manfaat ke file Excel"
-                >
+                  title="Unduh database master penerima manfaat ke file Excel">
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Ekspor Excel</span>
                 </button>
@@ -3035,8 +2895,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 <button
                   type="button"
                   onClick={handleOpenAddBeneficiary}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-all cursor-pointer"
-                >
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-all cursor-pointer">
                   <Plus className="w-4 h-4" />
                   <span>+ Tambah Penerima Manfaat</span>
                 </button>
@@ -3056,8 +2915,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
                 <div className="text-[11px] font-semibold text-slate-500">Total Target Porsi Harian</div>
                 <div className="text-xl font-bold text-emerald-800 mt-1 tabular-nums">
-                  {beneficiaryCategoryStats.totalAllPortions.toLocaleString('id-ID')}{' '}
-                  <span className="text-xs font-normal text-slate-500">porsi / hari</span>
+                  {beneficiaryCategoryStats.totalAllPortions.toLocaleString("id-ID")} <span className="text-xs font-normal text-slate-500">porsi / hari</span>
                 </div>
                 <div className="text-[10px] text-slate-400 mt-0.5">Kapasitas makan bergizi SPPG</div>
               </div>
@@ -3065,8 +2923,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
                 <div className="text-[11px] font-semibold text-slate-500">Kontak PIC Terverifikasi</div>
                 <div className="text-xl font-bold text-indigo-900 mt-1 tabular-nums">
-                  {beneficiaries.filter(b => b.contactPerson && b.phone).length}{' '}
-                  <span className="text-xs font-normal text-slate-500">penanggung jawab</span>
+                  {beneficiaries.filter((b) => b.contactPerson && b.phone).length} <span className="text-xs font-normal text-slate-500">penanggung jawab</span>
                 </div>
                 <div className="text-[10px] text-slate-400 mt-0.5">Nomor HP/WA aktif terhubung</div>
               </div>
@@ -3074,7 +2931,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
                 <div className="text-[11px] font-semibold text-slate-500">Rata-rata Porsi per Sekolah</div>
                 <div className="text-xl font-bold text-blue-900 mt-1 tabular-nums">
-                  {Math.round(beneficiaryCategoryStats.totalAllPortions / (beneficiaries.length || 1)).toLocaleString('id-ID')}{' '}
+                  {Math.round(beneficiaryCategoryStats.totalAllPortions / (beneficiaries.length || 1)).toLocaleString("id-ID")}{" "}
                   <span className="text-xs font-normal text-slate-500">porsi/titik</span>
                 </div>
                 <div className="text-[10px] text-slate-400 mt-0.5">Rata-rata distribusi per lembaga</div>
@@ -3086,9 +2943,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
               <div className="flex items-center gap-2">
                 <select
                   value={masterCategoryFilter}
-                  onChange={e => setMasterCategoryFilter(e.target.value)}
-                  className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white"
-                >
+                  onChange={(e) => setMasterCategoryFilter(e.target.value)}
+                  className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white">
                   <option value="ALL">Semua Kategori Sasaran</option>
                   <option value="SD / MI">Sekolah Dasar (SD / MI)</option>
                   <option value="SMP / MTs">Sekolah Menengah (SMP / MTs)</option>
@@ -3103,7 +2959,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                   type="text"
                   placeholder="Cari ID, sekolah, PIC, kontak..."
                   value={masterSearchQuery}
-                  onChange={e => setMasterSearchQuery(e.target.value)}
+                  onChange={(e) => setMasterSearchQuery(e.target.value)}
                   className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1.5 w-64 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
@@ -3133,45 +2989,39 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                     <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500 font-semibold">{s.id}</td>
                     <td className="py-2.5 px-4 font-bold text-slate-900">{s.schoolName}</td>
                     <td className="py-2.5 px-3">
-                      <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200">
-                        {s.category}
-                      </span>
+                      <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200">{s.category}</span>
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800 tabular-nums">
-                      {s.portionCount.toLocaleString('id-ID')} <span className="text-[10px] font-normal text-slate-500">porsi</span>
+                      {s.portionCount.toLocaleString("id-ID")} <span className="text-[10px] font-normal text-slate-500">porsi</span>
                     </td>
                     <td className="py-2.5 px-4 text-slate-700 text-[11px]">
-                      <div className="font-semibold text-slate-900">{s.contactPerson || '-'}</div>
+                      <div className="font-semibold text-slate-900">{s.contactPerson || "-"}</div>
                       <div className="text-slate-500 font-mono flex items-center gap-1 mt-0.5">
                         <Phone className="w-2.5 h-2.5 text-slate-400" />
-                        <span>{s.phone || '-'}</span>
+                        <span>{s.phone || "-"}</span>
                       </div>
                     </td>
                     <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
                       <div className="flex items-center gap-1">
                         <Clock className="w-3 h-3 text-slate-400" />
-                        <span>{s.deliveryTime || '09.45 WIB'}</span>
+                        <span>{s.deliveryTime || "09.45 WIB"}</span>
                       </div>
                     </td>
-                    <td className="py-2.5 px-4 text-slate-500 text-[11px]">
-                      {s.notes || '-'}
-                    </td>
+                    <td className="py-2.5 px-4 text-slate-500 text-[11px]">{s.notes || "-"}</td>
                     <td className="py-2.5 px-3 text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         <button
                           type="button"
                           onClick={() => handleOpenEditBeneficiary(s)}
                           className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                          title="Edit data penerima manfaat"
-                        >
+                          title="Edit data penerima manfaat">
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteBeneficiary(s)}
                           className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          title="Hapus lembaga ini dari master data"
-                        >
+                          title="Hapus lembaga ini dari master data">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -3200,144 +3050,129 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
               <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  {editingMenuOrderId ? 'Edit Menu & Porsi' : 'Input Menu Hari Ini'}
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Catat menu reguler siswa, menu khusus balita/bumil (B3), dan total sasaran porsi
-                </p>
+                <h3 className="text-base font-bold text-slate-900">{editingMenuOrderId ? "Edit Menu & Porsi" : "Input Menu Hari Ini"}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Catat menu reguler siswa, menu khusus balita/bumil (B3), dan total sasaran porsi</p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsMenuModalOpen(false)}
                 className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
-                title="Tutup dialog"
-              >
+                title="Tutup dialog">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSaveMenuForm} className="flex-1 flex flex-col min-h-0 overflow-hidden">
               <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Tanggal Distribusi Menu</label>
-                  <input
-                    type="date"
-                    required
-                    value={menuFormDate}
-                    onChange={e => {
-                      const newD = e.target.value;
-                      setMenuFormDate(newD);
-                      const d = new Date(newD);
-                      d.setDate(d.getDate() - 1);
-                      setMenuFormPoDate(d.toISOString().slice(0, 10));
-                    }}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-semibold text-slate-800 bg-white"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Tanggal Distribusi Menu</label>
+                    <input
+                      type="date"
+                      required
+                      value={menuFormDate}
+                      onChange={(e) => {
+                        const newD = e.target.value;
+                        setMenuFormDate(newD);
+                        const d = new Date(newD);
+                        d.setDate(d.getDate() - 1);
+                        setMenuFormPoDate(d.toISOString().slice(0, 10));
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-semibold text-slate-800 bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Tanggal PO (H-1)</label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: 2026-09-19"
+                      value={menuFormPoDate}
+                      onChange={(e) => setMenuFormPoDate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-800 bg-white"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Tanggal PO (H-1)</label>
+                  <label className="block font-semibold text-emerald-900 mb-1">
+                    Total Penerima Manfaat (Porsi) <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      value={menuFormPortions}
+                      onChange={(e) => setMenuFormPortions(parseInt(e.target.value) || 0)}
+                      className="w-full px-3 py-2 rounded-lg border border-emerald-300 font-mono font-bold text-sm text-emerald-950 bg-emerald-50/50"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">porsi siswa & balita</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Macam Menu Reguler (Siswa SD / SMP) <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    required
+                    rows={2}
+                    placeholder="Contoh: Nasi Putih, Rolade Ayam Krispi Asam Manis, Tahu Cabe Garam, Tumis Pokcoy Wortel, Semangka"
+                    value={menuFormTitle}
+                    onChange={(e) => setMenuFormTitle(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <span className="text-[11px] text-slate-400">Tip: Pisahkan setiap lauk atau buah dengan tanda koma (,) agar otomatis tampil sebagai badge rapi.</span>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">Menu Khusus Balita 3T & Ibu Hamil (Diet B3)</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Contoh: Honey Garlic Chicken, Tempe Kukus, Sup Buncis Jagung, Pisang/Kelengkeng"
+                    value={menuFormDietB3}
+                    onChange={(e) => setMenuFormDietB3(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <span className="text-[11px] text-slate-400">Kosongkan jika menu balita/bumil sama persis dengan menu reguler.</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Status Pengerjaan</label>
+                    <select
+                      value={menuFormStatus}
+                      onChange={(e) => setMenuFormStatus(e.target.value as any)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800">
+                      <option value="PLANNED">Direncanakan</option>
+                      <option value="PREPPING">Persiapan Bahan</option>
+                      <option value="COOKING">Sedang Dimasak</option>
+                      <option value="DISTRIBUTED">Terdistribusi Selesai</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">PIC Chef / Penanggung Jawab</label>
+                    <input
+                      type="text"
+                      value={menuFormChef}
+                      onChange={(e) => setMenuFormChef(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-800"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Catatan Tambahan</label>
                   <input
                     type="text"
-                    placeholder="Contoh: 2026-09-19"
-                    value={menuFormPoDate}
-                    onChange={e => setMenuFormPoDate(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-800 bg-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-emerald-900 mb-1">
-                  Total Penerima Manfaat (Porsi) <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    value={menuFormPortions}
-                    onChange={e => setMenuFormPortions(parseInt(e.target.value) || 0)}
-                    className="w-full px-3 py-2 rounded-lg border border-emerald-300 font-mono font-bold text-sm text-emerald-950 bg-emerald-50/50"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">
-                    porsi siswa & balita
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-800 mb-1">
-                  Macam Menu Reguler (Siswa SD / SMP) <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  required
-                  rows={2}
-                  placeholder="Contoh: Nasi Putih, Rolade Ayam Krispi Asam Manis, Tahu Cabe Garam, Tumis Pokcoy Wortel, Semangka"
-                  value={menuFormTitle}
-                  onChange={e => setMenuFormTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-                <span className="text-[11px] text-slate-400">
-                  Tip: Pisahkan setiap lauk atau buah dengan tanda koma (,) agar otomatis tampil sebagai badge rapi.
-                </span>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-800 mb-1">
-                  Menu Khusus Balita 3T & Ibu Hamil (Diet B3)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Contoh: Honey Garlic Chicken, Tempe Kukus, Sup Buncis Jagung, Pisang/Kelengkeng"
-                  value={menuFormDietB3}
-                  onChange={e => setMenuFormDietB3(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-                <span className="text-[11px] text-slate-400">
-                  Kosongkan jika menu balita/bumil sama persis dengan menu reguler.
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Status Pengerjaan</label>
-                  <select
-                    value={menuFormStatus}
-                    onChange={e => setMenuFormStatus(e.target.value as any)}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800"
-                  >
-                    <option value="PLANNED">Direncanakan</option>
-                    <option value="PREPPING">Persiapan Bahan</option>
-                    <option value="COOKING">Sedang Dimasak</option>
-                    <option value="DISTRIBUTED">Terdistribusi Selesai</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">PIC Chef / Penanggung Jawab</label>
-                  <input
-                    type="text"
-                    value={menuFormChef}
-                    onChange={e => setMenuFormChef(e.target.value)}
+                    placeholder="Keterangan distribusi, shift masak, dll"
+                    value={menuFormNotes}
+                    onChange={(e) => setMenuFormNotes(e.target.value)}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-800"
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Catatan Tambahan</label>
-                <input
-                  type="text"
-                  placeholder="Keterangan distribusi, shift masak, dll"
-                  value={menuFormNotes}
-                  onChange={e => setMenuFormNotes(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-slate-800"
-                />
-              </div>
-
               </div>
 
               {/* Action Buttons Sticky Footer */}
@@ -3345,14 +3180,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 <button
                   type="button"
                   onClick={() => setIsMenuModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl cursor-pointer transition-colors"
-                >
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl cursor-pointer transition-colors">
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer"
-                >
+                  className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white shadow-2xs transition-colors cursor-pointer">
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Simpan Data Menu</span>
                 </button>
@@ -3371,19 +3204,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
               <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Input & Buat Purchase Order (PO)
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Pencatatan daftar kebutuhan bahan baku (H-1) untuk menu harian
-                </p>
+                <h3 className="text-base font-bold text-slate-900">Input & Buat Purchase Order (PO)</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Pencatatan daftar kebutuhan bahan baku (H-1) untuk menu harian</p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsPoModalOpen(false)}
                 className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
-                title="Tutup dialog"
-              >
+                title="Tutup dialog">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -3393,33 +3221,30 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 {/* Pilihan Order Menu & Tanggal PO */}
                 <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs shrink-0">
                   <div className="sm:col-span-2">
-                    <label className="block font-medium text-slate-700 mb-1">
-                      Menu Tujuan untuk PO:
-                    </label>
+                    <label className="block font-medium text-slate-700 mb-1">Menu Tujuan untuk PO:</label>
                     <select
                       value={selectedPoOrderId}
-                      onChange={e => {
+                      onChange={(e) => {
                         const newId = e.target.value;
                         setSelectedPoOrderId(newId);
-                        const found = orders.find(o => o.id === newId);
+                        const found = orders.find((o) => o.id === newId);
                         if (found && found.poArrivalItems && found.poArrivalItems.length > 0) {
                           setPoFormRows(
-                            found.poArrivalItems.map(p => ({
-                              category: p.category || 'Bahan Makanan',
+                            found.poArrivalItems.map((p) => ({
+                              category: p.category || "Bahan Makanan",
                               itemName: p.itemName,
-                              qtyOrder: p.qtyOrder || '',
-                              qtyArrived: p.qtyArrived || '',
-                              supplier: p.supplier || '',
-                              arrivalTime: p.arrivalTime || '',
+                              qtyOrder: p.qtyOrder || "",
+                              qtyArrived: p.qtyArrived || "",
+                              supplier: p.supplier || "",
+                              arrivalTime: p.arrivalTime || "",
                               pic: p.pic || currentUser.name,
-                              notes: p.notes || '',
-                            }))
+                              notes: p.notes || "",
+                            })),
                           );
                         }
                       }}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-medium text-slate-800 bg-white focus:outline-none focus:border-slate-400"
-                    >
-                      {orders.map(ord => (
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-medium text-slate-800 bg-white focus:outline-none focus:border-slate-400">
+                      {orders.map((ord) => (
                         <option key={ord.id} value={ord.id}>
                           {ord.date} - {ord.menuTitle.slice(0, 45)}... ({ord.targetPortions} porsi)
                         </option>
@@ -3428,191 +3253,178 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                   </div>
 
                   <div>
-                    <label className="block font-medium text-slate-700 mb-1">
-                      Tanggal PO (H-1):
-                    </label>
+                    <label className="block font-medium text-slate-700 mb-1">Tanggal PO (H-1):</label>
                     <input
                       type="text"
                       placeholder="Contoh: 2026-09-19"
                       value={poFormDate}
-                      onChange={e => setPoFormDate(e.target.value)}
+                      onChange={(e) => setPoFormDate(e.target.value)}
                       className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-800 bg-white font-mono focus:outline-none focus:border-slate-400"
                     />
                   </div>
                 </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-slate-700 text-xs">
-                  Daftar Bahan PO ({poFormRows.length} item bahan):
-                </span>
-                <button
-                  type="button"
-                  onClick={handleApplyPoTemplate}
-                  className="text-xs font-medium text-slate-600 hover:text-slate-900 underline underline-offset-2 cursor-pointer transition-colors"
-                >
-                  Gunakan Template Standar SPPG (Ayam, Beras, Tahu, Sayur, Buah)
-                </button>
-              </div>
-
-              <div className="border border-slate-200 rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
-                <div className="overflow-y-auto flex-1">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50 text-slate-600 font-medium border-b border-slate-200 sticky top-0 z-10 text-xs">
-                      <tr>
-                        <th className="py-2.5 px-3 w-10 text-center font-medium text-slate-400">No</th>
-                        <th className="py-2.5 px-3 w-36 font-medium text-slate-700">Kategori</th>
-                        <th className="py-2.5 px-3 font-medium text-slate-700">Nama Barang</th>
-                        <th className="py-2.5 px-3 w-48 font-medium text-slate-700">Supplier / Rekanan</th>
-                        <th className="py-2.5 px-3 w-32 font-medium text-slate-700">Qty PO</th>
-                        <th className="py-2.5 px-2 w-10 text-center"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {poFormRows.map((row, rIdx) => (
-                        <tr key={rIdx} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-2 px-3 text-center text-slate-400 font-mono text-xs">
-                            {rIdx + 1}
-                          </td>
-                          <td className="py-2 px-3">
-                            <select
-                              value={row.category}
-                              onChange={e => {
-                                const newCat = e.target.value;
-                                const updated = [...poFormRows];
-                                updated[rIdx].category = newCat;
-                                if (!updated[rIdx].supplier || updated[rIdx].supplier === 'Pemasok Rekanan') {
-                                  const suggested = resolveSupplierForItem(newCat, updated[rIdx].itemName, '', masterSuppliers);
-                                  if (suggested && suggested !== 'Pemasok Rekanan') {
-                                    updated[rIdx].supplier = suggested;
-                                  }
-                                }
-                                setPoFormRows(updated);
-                              }}
-                              className="w-full px-2 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:border-slate-400"
-                            >
-                              <option value="Protein">Protein</option>
-                              <option value="Sembako">Sembako</option>
-                              <option value="Sayur dan Buah">Sayur dan Buah</option>
-                              <option value="Sayur">Sayur</option>
-                              <option value="Buah">Buah</option>
-                              <option value="Bumbu">Bumbu</option>
-                              <option value="Bahan Olahan">Bahan Olahan</option>
-                              <option value="Lain-lain">Lain-lain</option>
-                            </select>
-                          </td>
-                          <td className="py-2 px-3">
-                            <input
-                              type="text"
-                              required
-                              placeholder="Misal: Ayam Potong / Telur Ayam"
-                              value={row.itemName}
-                              onChange={e => {
-                                const newName = e.target.value;
-                                const updated = [...poFormRows];
-                                updated[rIdx].itemName = newName;
-                                if (!updated[rIdx].supplier || updated[rIdx].supplier === 'Pemasok Rekanan') {
-                                  const suggested = resolveSupplierForItem(updated[rIdx].category, newName, '', masterSuppliers);
-                                  if (suggested && suggested !== 'Pemasok Rekanan') {
-                                    updated[rIdx].supplier = suggested;
-                                  }
-                                }
-                                setPoFormRows(updated);
-                              }}
-                              className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 font-medium"
-                            />
-                          </td>
-                          <td className="py-2 px-3">
-                            <input
-                              type="text"
-                              list="po-supplier-options"
-                              placeholder="Pilih / ketik supplier..."
-                              value={row.supplier}
-                              onChange={e => {
-                                const updated = [...poFormRows];
-                                updated[rIdx].supplier = e.target.value;
-                                setPoFormRows(updated);
-                              }}
-                              className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 font-medium bg-white"
-                            />
-                          </td>
-                          <td className="py-2 px-3">
-                            <input
-                              type="text"
-                              required
-                              placeholder="Misal: 260 kg / 7 sak"
-                              value={row.qtyOrder}
-                              onChange={e => {
-                                const updated = [...poFormRows];
-                                updated[rIdx].qtyOrder = e.target.value;
-                                setPoFormRows(updated);
-                              }}
-                              className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs text-slate-800 font-mono placeholder-slate-400 focus:outline-none focus:border-slate-400"
-                            />
-                          </td>
-                          <td className="py-2 px-2 text-center">
-                            <button
-                              type="button"
-                              disabled={poFormRows.length === 1}
-                              onClick={() => {
-                                const updated = poFormRows.filter((_, idx) => idx !== rIdx);
-                                setPoFormRows(updated);
-                              }}
-                              className="text-slate-400 hover:text-rose-600 disabled:opacity-20 cursor-pointer p-1 rounded hover:bg-slate-100 transition-colors"
-                              title="Hapus baris"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <datalist id="po-supplier-options">
-                    {masterSuppliers.map(s => (
-                      <option key={s.id} value={s.name}>
-                        {s.supplyCategory ? `${s.name} (${s.supplyCategory})` : s.name}
-                      </option>
-                    ))}
-                    {masterSuppliers.every(s => s.name !== 'Ayam Segar Fajar') && <option value="Ayam Segar Fajar" />}
-                    {masterSuppliers.every(s => s.name !== 'Tahu Rio') && <option value="Tahu Rio" />}
-                    {masterSuppliers.every(s => s.name !== 'UMKM Tahu Rio') && <option value="UMKM Tahu Rio" />}
-                    {masterSuppliers.every(s => s.name !== 'Tumpang Grosir') && <option value="Tumpang Grosir" />}
-                    {masterSuppliers.every(s => s.name !== 'UMKM Tumpang Grosir') && <option value="UMKM Tumpang Grosir" />}
-                    {masterSuppliers.every(s => s.name !== 'Sayur Segar Malang') && <option value="Sayur Segar Malang" />}
-                    {masterSuppliers.every(s => s.name !== 'Buah Segar Nusantara') && <option value="Buah Segar Nusantara" />}
-                    {masterSuppliers.every(s => s.name !== 'Toko Bumbu Berkah') && <option value="Toko Bumbu Berkah" />}
-                  </datalist>
-                </div>
-
-                <div className="p-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-slate-700 text-xs">Daftar Bahan PO ({poFormRows.length} item bahan):</span>
                   <button
                     type="button"
-                    onClick={() =>
-                      setPoFormRows([
-                        ...poFormRows,
-                        {
-                          category: 'Sayur dan Buah',
-                          itemName: '',
-                          qtyOrder: '',
-                          qtyArrived: '',
-                          supplier: '',
-                          arrivalTime: '08.00',
-                          pic: currentUser.name,
-                          notes: '',
-                        },
-                      ])
-                    }
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 cursor-pointer shadow-2xs transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5 text-slate-600" />
-                    <span>Tambah Baris Bahan</span>
+                    onClick={handleApplyPoTemplate}
+                    className="text-xs font-medium text-slate-600 hover:text-slate-900 underline underline-offset-2 cursor-pointer transition-colors">
+                    Gunakan Template Standar SPPG (Ayam, Beras, Tahu, Sayur, Buah)
                   </button>
-
-                  <span className="text-xs text-slate-500">
-                    Total {poFormRows.length} item bahan
-                  </span>
                 </div>
-              </div>
 
+                <div className="border border-slate-200 rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
+                  <div className="overflow-y-auto flex-1">
+                    <table className="w-full text-left border-collapse">
+                      <thead className="bg-slate-50 text-slate-600 font-medium border-b border-slate-200 sticky top-0 z-10 text-xs">
+                        <tr>
+                          <th className="py-2.5 px-3 w-10 text-center font-medium text-slate-400">No</th>
+                          <th className="py-2.5 px-3 w-36 font-medium text-slate-700">Kategori</th>
+                          <th className="py-2.5 px-3 font-medium text-slate-700">Nama Barang</th>
+                          <th className="py-2.5 px-3 w-48 font-medium text-slate-700">Supplier / Rekanan</th>
+                          <th className="py-2.5 px-3 w-32 font-medium text-slate-700">Qty PO</th>
+                          <th className="py-2.5 px-2 w-10 text-center"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {poFormRows.map((row, rIdx) => (
+                          <tr key={rIdx} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="py-2 px-3 text-center text-slate-400 font-mono text-xs">{rIdx + 1}</td>
+                            <td className="py-2 px-3">
+                              <select
+                                value={row.category}
+                                onChange={(e) => {
+                                  const newCat = e.target.value;
+                                  const updated = [...poFormRows];
+                                  updated[rIdx].category = newCat;
+                                  if (!updated[rIdx].supplier || updated[rIdx].supplier === "Pemasok Rekanan") {
+                                    const suggested = resolveSupplierForItem(newCat, updated[rIdx].itemName, "", masterSuppliers);
+                                    if (suggested && suggested !== "Pemasok Rekanan") {
+                                      updated[rIdx].supplier = suggested;
+                                    }
+                                  }
+                                  setPoFormRows(updated);
+                                }}
+                                className="w-full px-2 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:border-slate-400">
+                                <option value="Protein">Protein</option>
+                                <option value="Sembako">Sembako</option>
+                                <option value="Sayur dan Buah">Sayur dan Buah</option>
+                                <option value="Sayur">Sayur</option>
+                                <option value="Buah">Buah</option>
+                                <option value="Bumbu">Bumbu</option>
+                                <option value="Bahan Olahan">Bahan Olahan</option>
+                                <option value="Lain-lain">Lain-lain</option>
+                              </select>
+                            </td>
+                            <td className="py-2 px-3">
+                              <input
+                                type="text"
+                                required
+                                placeholder="Misal: Ayam Potong / Telur Ayam"
+                                value={row.itemName}
+                                onChange={(e) => {
+                                  const newName = e.target.value;
+                                  const updated = [...poFormRows];
+                                  updated[rIdx].itemName = newName;
+                                  if (!updated[rIdx].supplier || updated[rIdx].supplier === "Pemasok Rekanan") {
+                                    const suggested = resolveSupplierForItem(updated[rIdx].category, newName, "", masterSuppliers);
+                                    if (suggested && suggested !== "Pemasok Rekanan") {
+                                      updated[rIdx].supplier = suggested;
+                                    }
+                                  }
+                                  setPoFormRows(updated);
+                                }}
+                                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 font-medium"
+                              />
+                            </td>
+                            <td className="py-2 px-3">
+                              <input
+                                type="text"
+                                list="po-supplier-options"
+                                placeholder="Pilih / ketik supplier..."
+                                value={row.supplier}
+                                onChange={(e) => {
+                                  const updated = [...poFormRows];
+                                  updated[rIdx].supplier = e.target.value;
+                                  setPoFormRows(updated);
+                                }}
+                                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 font-medium bg-white"
+                              />
+                            </td>
+                            <td className="py-2 px-3">
+                              <input
+                                type="text"
+                                required
+                                placeholder="Misal: 260 kg / 7 sak"
+                                value={row.qtyOrder}
+                                onChange={(e) => {
+                                  const updated = [...poFormRows];
+                                  updated[rIdx].qtyOrder = e.target.value;
+                                  setPoFormRows(updated);
+                                }}
+                                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs text-slate-800 font-mono placeholder-slate-400 focus:outline-none focus:border-slate-400"
+                              />
+                            </td>
+                            <td className="py-2 px-2 text-center">
+                              <button
+                                type="button"
+                                disabled={poFormRows.length === 1}
+                                onClick={() => {
+                                  const updated = poFormRows.filter((_, idx) => idx !== rIdx);
+                                  setPoFormRows(updated);
+                                }}
+                                className="text-slate-400 hover:text-rose-600 disabled:opacity-20 cursor-pointer p-1 rounded hover:bg-slate-100 transition-colors"
+                                title="Hapus baris">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <datalist id="po-supplier-options">
+                      {masterSuppliers.map((s) => (
+                        <option key={s.id} value={s.name}>
+                          {s.supplyCategory ? `${s.name} (${s.supplyCategory})` : s.name}
+                        </option>
+                      ))}
+                      {masterSuppliers.every((s) => s.name !== "Ayam Segar Fajar") && <option value="Ayam Segar Fajar" />}
+                      {masterSuppliers.every((s) => s.name !== "Tahu Rio") && <option value="Tahu Rio" />}
+                      {masterSuppliers.every((s) => s.name !== "UMKM Tahu Rio") && <option value="UMKM Tahu Rio" />}
+                      {masterSuppliers.every((s) => s.name !== "Tumpang Grosir") && <option value="Tumpang Grosir" />}
+                      {masterSuppliers.every((s) => s.name !== "UMKM Tumpang Grosir") && <option value="UMKM Tumpang Grosir" />}
+                      {masterSuppliers.every((s) => s.name !== "Sayur Segar Malang") && <option value="Sayur Segar Malang" />}
+                      {masterSuppliers.every((s) => s.name !== "Buah Segar Nusantara") && <option value="Buah Segar Nusantara" />}
+                      {masterSuppliers.every((s) => s.name !== "Toko Bumbu Berkah") && <option value="Toko Bumbu Berkah" />}
+                    </datalist>
+                  </div>
+
+                  <div className="p-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPoFormRows([
+                          ...poFormRows,
+                          {
+                            category: "Sayur dan Buah",
+                            itemName: "",
+                            qtyOrder: "",
+                            qtyArrived: "",
+                            supplier: "",
+                            arrivalTime: "08.00",
+                            pic: currentUser.name,
+                            notes: "",
+                          },
+                        ])
+                      }
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 cursor-pointer shadow-2xs transition-colors">
+                      <Plus className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Tambah Baris Bahan</span>
+                    </button>
+
+                    <span className="text-xs text-slate-500">Total {poFormRows.length} item bahan</span>
+                  </div>
+                </div>
               </div>
 
               {/* Action Buttons Sticky Footer */}
@@ -3623,8 +3435,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       type="button"
                       onClick={() => handleDeletePoForOrder(selectedPoOrderId)}
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-rose-700 hover:text-rose-800 hover:bg-rose-100/60 border border-rose-200 rounded-xl transition-colors cursor-pointer"
-                      title="Batalkan & hapus PO resmi untuk menu ini"
-                    >
+                      title="Batalkan & hapus PO resmi untuk menu ini">
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>Hapus PO</span>
                     </button>
@@ -3635,16 +3446,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                   <button
                     type="button"
                     onClick={() => setIsPoModalOpen(false)}
-                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl border border-slate-200 transition-colors cursor-pointer"
-                  >
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl border border-slate-200 transition-colors cursor-pointer">
                     Batal
                   </button>
                   <button
                     type="button"
                     onClick={handleSaveAndGenerateOfficialPo}
                     className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-2xs transition-colors cursor-pointer active:scale-[0.99]"
-                    title="Generate dan terbitkan PO resmi ke menu Input Barang & Belanja"
-                  >
+                    title="Generate dan terbitkan PO resmi ke menu Input Barang & Belanja">
                     <ArrowRight className="w-3.5 h-3.5" />
                     <span>Generate PO</span>
                   </button>
@@ -3663,170 +3472,148 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
               <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  {editingBeneficiary ? 'Edit Data Penerima Manfaat' : 'Tambah Penerima Manfaat Baru'}
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Atur nama sekolah/lembaga, kuota jumlah porsi, serta kontak penanggung jawab (PIC)
-                </p>
+                <h3 className="text-base font-bold text-slate-900">{editingBeneficiary ? "Edit Data Penerima Manfaat" : "Tambah Penerima Manfaat Baru"}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Atur nama sekolah/lembaga, kuota jumlah porsi, serta kontak penanggung jawab (PIC)</p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsBeneficiaryModalOpen(false)}
                 className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
-                title="Tutup dialog"
-              >
+                title="Tutup dialog">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSaveBeneficiary} className="flex-1 flex flex-col min-h-0 overflow-hidden">
               <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Nama Sekolah / Lembaga <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={beneficiaryFormName}
-                    onChange={e => setBeneficiaryFormName(e.target.value)}
-                    placeholder="Contoh: SDN 1 Jeru atau Posyandu Dahlia"
-                    className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    ID Lembaga
-                  </label>
-                  <input
-                    type="text"
-                    value={beneficiaryFormId}
-                    onChange={e => setBeneficiaryFormId(e.target.value)}
-                    placeholder="SCH-001"
-                    className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 bg-slate-50 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Kategori Sasaran <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={beneficiaryFormCategory}
-                    onChange={e => setBeneficiaryFormCategory(e.target.value)}
-                    className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  >
-                    <option value="SD / MI">Sekolah Dasar (SD / MI)</option>
-                    <option value="SMP / MTs">Sekolah Menengah (SMP / MTs)</option>
-                    <option value="PAUD / TK">PAUD / TK</option>
-                    <option value="Ibu Hamil & Balita (B3)">Balita 3T & Ibu Hamil (B3)</option>
-                    <option value="Lembaga Sasaran Lainnya">Lembaga Sasaran Lainnya</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Target Alokasi Porsi <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Nama Sekolah / Lembaga <span className="text-rose-500">*</span>
+                    </label>
                     <input
-                      type="number"
+                      type="text"
                       required
-                      min={1}
-                      value={beneficiaryFormPortions}
-                      onChange={e => setBeneficiaryFormPortions(Number(e.target.value) || 0)}
-                      className="w-full text-xs border border-slate-300 rounded-lg pl-3 pr-14 py-2 font-mono font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      value={beneficiaryFormName}
+                      onChange={(e) => setBeneficiaryFormName(e.target.value)}
+                      placeholder="Contoh: SDN 1 Jeru atau Posyandu Dahlia"
+                      className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium">
-                      porsi
-                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">ID Lembaga</label>
+                    <input
+                      type="text"
+                      value={beneficiaryFormId}
+                      onChange={(e) => setBeneficiaryFormId(e.target.value)}
+                      placeholder="SCH-001"
+                      className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 bg-slate-50 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
                   </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Kategori Sasaran <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={beneficiaryFormCategory}
+                      onChange={(e) => setBeneficiaryFormCategory(e.target.value)}
+                      className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                      <option value="SD / MI">Sekolah Dasar (SD / MI)</option>
+                      <option value="SMP / MTs">Sekolah Menengah (SMP / MTs)</option>
+                      <option value="PAUD / TK">PAUD / TK</option>
+                      <option value="Ibu Hamil & Balita (B3)">Balita 3T & Ibu Hamil (B3)</option>
+                      <option value="Lembaga Sasaran Lainnya">Lembaga Sasaran Lainnya</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Target Alokasi Porsi <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        required
+                        min={1}
+                        value={beneficiaryFormPortions}
+                        onChange={(e) => setBeneficiaryFormPortions(Number(e.target.value) || 0)}
+                        className="w-full text-xs border border-slate-300 rounded-lg pl-3 pr-14 py-2 font-mono font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium">porsi</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Kontak PIC / Penanggung Jawab</label>
+                    <input
+                      type="text"
+                      value={beneficiaryFormContactPerson}
+                      onChange={(e) => setBeneficiaryFormContactPerson(e.target.value)}
+                      placeholder="Contoh: Pak Hadi (Kepala Sekolah)"
+                      className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Nomor Kontak / WhatsApp PIC</label>
+                    <div className="relative">
+                      <Phone className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={beneficiaryFormPhone}
+                        onChange={(e) => setBeneficiaryFormPhone(e.target.value)}
+                        placeholder="Contoh: 0812-3344-5501"
+                        className="w-full text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-2 font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Jadwal / Waktu Kirim</label>
+                    <div className="relative">
+                      <Clock className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={beneficiaryFormDeliveryTime}
+                        onChange={(e) => setBeneficiaryFormDeliveryTime(e.target.value)}
+                        placeholder="Contoh: 09.45 WIB atau 10:00 - 10:30"
+                        className="w-full text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Status Operasional Distribusi</label>
+                    <select
+                      value={beneficiaryFormStatus}
+                      onChange={(e) => setBeneficiaryFormStatus(e.target.value as any)}
+                      className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                      <option value="DIJADWALKAN">Dijadwalkan</option>
+                      <option value="SIAP_KIRIM">Siap Kirim di Dapur</option>
+                      <option value="DALAM_PERJALANAN">Dalam Perjalanan Kurir</option>
+                      <option value="TERKIRIM">Telah Terkirim & Diterima</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Nama Kontak PIC / Penanggung Jawab
-                  </label>
-                  <input
-                    type="text"
-                    value={beneficiaryFormContactPerson}
-                    onChange={e => setBeneficiaryFormContactPerson(e.target.value)}
-                    placeholder="Contoh: Pak Hadi (Kepala Sekolah)"
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Titik Serah & Catatan Jalur Distribusi</label>
+                  <textarea
+                    rows={2}
+                    value={beneficiaryFormNotes}
+                    onChange={(e) => setBeneficiaryFormNotes(e.target.value)}
+                    placeholder="Contoh: Jalur Distribusi 1 - Area Jeru Timur, serah terima di ruang guru piket"
                     className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Nomor Kontak / WhatsApp PIC
-                  </label>
-                  <div className="relative">
-                    <Phone className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      value={beneficiaryFormPhone}
-                      onChange={e => setBeneficiaryFormPhone(e.target.value)}
-                      placeholder="Contoh: 0812-3344-5501"
-                      className="w-full text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-2 font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Jadwal / Waktu Kirim
-                  </label>
-                  <div className="relative">
-                    <Clock className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      value={beneficiaryFormDeliveryTime}
-                      onChange={e => setBeneficiaryFormDeliveryTime(e.target.value)}
-                      placeholder="Contoh: 09.45 WIB atau 10:00 - 10:30"
-                      className="w-full text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Status Operasional Distribusi
-                  </label>
-                  <select
-                    value={beneficiaryFormStatus}
-                    onChange={e => setBeneficiaryFormStatus(e.target.value as any)}
-                    className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  >
-                    <option value="DIJADWALKAN">Dijadwalkan</option>
-                    <option value="SIAP_KIRIM">Siap Kirim di Dapur</option>
-                    <option value="DALAM_PERJALANAN">Dalam Perjalanan Kurir</option>
-                    <option value="TERKIRIM">Telah Terkirim & Diterima</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Titik Serah & Catatan Jalur Distribusi
-                </label>
-                <textarea
-                  rows={2}
-                  value={beneficiaryFormNotes}
-                  onChange={e => setBeneficiaryFormNotes(e.target.value)}
-                  placeholder="Contoh: Jalur Distribusi 1 - Area Jeru Timur, serah terima di ruang guru piket"
-                  className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                />
-              </div>
-
               </div>
 
               {/* Action Buttons Sticky Footer */}
@@ -3834,16 +3621,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 <button
                   type="button"
                   onClick={() => setIsBeneficiaryModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
-                >
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer">
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white shadow-2xs transition-colors cursor-pointer"
-                >
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white shadow-2xs transition-colors cursor-pointer">
                   <Check className="w-4 h-4" />
-                  <span>{editingBeneficiary ? 'Simpan Perubahan' : 'Simpan Penerima Manfaat'}</span>
+                  <span>{editingBeneficiary ? "Simpan Perubahan" : "Simpan Penerima Manfaat"}</span>
                 </button>
               </div>
             </form>
@@ -3860,19 +3645,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
               <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Cetak Rekapitulasi Alokasi Porsi Harian Sekolah
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Format resmi siap cetak / simpan PDF standar Satuan Pelayanan Pemenuhan Gizi
-                </p>
+                <h3 className="text-base font-bold text-slate-900">Cetak Rekapitulasi Alokasi Porsi Harian Sekolah</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Format resmi siap cetak / simpan PDF standar Satuan Pelayanan Pemenuhan Gizi</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
-                >
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer">
                   <Printer className="w-4 h-4 text-slate-200" />
                   <span>Cetak / Print PDF</span>
                 </button>
@@ -3880,8 +3660,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                   type="button"
                   onClick={() => setIsBeneficiaryPrintModalOpen(false)}
                   className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
-                  title="Tutup dialog"
-                >
+                  title="Tutup dialog">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -3895,15 +3674,9 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                   <div className="flex items-center gap-3">
                     <SppgLogo size="md" variant="color" showText={false} />
                     <div>
-                      <div className="text-sm font-bold tracking-tight text-slate-900 leading-tight">
-                        SATUAN PELAYANAN PEMENUHAN GIZI (SPPG MLG TUMPANG JERU)
-                      </div>
-                      <div className="text-[11px] font-semibold text-slate-700">
-                        BADAN GIZI NASIONAL (BGN) REPUBLIK INDONESIA
-                      </div>
-                      <div className="text-[10px] text-slate-500">
-                        Jl. Raya Jeru No. 136, Kec. Tumpang, Kab. Malang, Jawa Timur 65156
-                      </div>
+                      <div className="text-sm font-bold tracking-tight text-slate-900 leading-tight">SATUAN PELAYANAN PEMENUHAN GIZI (SPPG MLG TUMPANG JERU)</div>
+                      <div className="text-[11px] font-semibold text-slate-700">BADAN GIZI NASIONAL (BGN) REPUBLIK INDONESIA</div>
+                      <div className="text-[10px] text-slate-500">Jl. Raya Jeru No. 136, Kec. Tumpang, Kab. Malang, Jawa Timur 65156</div>
                     </div>
                   </div>
                   <div className="text-right text-[10px] font-mono text-slate-500">
@@ -3913,11 +3686,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                 </div>
 
                 <div className="text-center my-3">
-                  <h3 className="text-sm font-bold text-slate-900">
-                    Rekapitulasi Alokasi Distribusi Porsi Harian Sekolah & Penerima Manfaat
-                  </h3>
+                  <h3 className="text-sm font-bold text-slate-900">Rekapitulasi Alokasi Distribusi Porsi Harian Sekolah & Penerima Manfaat</h3>
                   <p className="text-xs text-slate-600 mt-0.5">
-                    Periode: {dailyBeneficiaryMatrix.dates[0] ? formatIndonesianDate(dailyBeneficiaryMatrix.dates[0]) : '-'} s/d {dailyBeneficiaryMatrix.dates[dailyBeneficiaryMatrix.dates.length - 1] ? formatIndonesianDate(dailyBeneficiaryMatrix.dates[dailyBeneficiaryMatrix.dates.length - 1]) : '-'}
+                    Periode: {dailyBeneficiaryMatrix.dates[0] ? formatIndonesianDate(dailyBeneficiaryMatrix.dates[0]) : "-"} s/d{" "}
+                    {dailyBeneficiaryMatrix.dates[dailyBeneficiaryMatrix.dates.length - 1]
+                      ? formatIndonesianDate(dailyBeneficiaryMatrix.dates[dailyBeneficiaryMatrix.dates.length - 1])
+                      : "-"}
                   </p>
                 </div>
 
@@ -3928,7 +3702,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       <th className="py-1.5 px-2 border border-slate-900 w-8 text-center">No</th>
                       <th className="py-1.5 px-2.5 border border-slate-900">Nama Sekolah / Lembaga</th>
                       <th className="py-1.5 px-2 border border-slate-900 w-20">Kategori</th>
-                      {dailyBeneficiaryMatrix.dates.map(d => (
+                      {dailyBeneficiaryMatrix.dates.map((d) => (
                         <th key={d} className="py-1.5 px-1.5 border border-slate-900 text-center font-mono text-[10px]">
                           {formatShortDate(d)}
                         </th>
@@ -3943,17 +3717,13 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                         <td className="py-1 px-2 border border-slate-900/60 text-center font-mono">{idx + 1}</td>
                         <td className="py-1 px-2.5 border border-slate-900/60 font-semibold">{row.schoolName}</td>
                         <td className="py-1 px-2 border border-slate-900/60 text-[10px]">{row.category}</td>
-                        {dailyBeneficiaryMatrix.dates.map(d => (
+                        {dailyBeneficiaryMatrix.dates.map((d) => (
                           <td key={d} className="py-1 px-1.5 border border-slate-900/60 text-center font-mono">
-                            {row.datePortions[d] ? row.datePortions[d].toLocaleString('id-ID') : '-'}
+                            {row.datePortions[d] ? row.datePortions[d].toLocaleString("id-ID") : "-"}
                           </td>
                         ))}
-                        <td className="py-1 px-2 border border-slate-900/60 text-right font-mono font-bold">
-                          {row.totalPeriod.toLocaleString('id-ID')}
-                        </td>
-                        <td className="py-1 px-2 border border-slate-900/60 text-right font-mono">
-                          {Math.round(row.avgDaily).toLocaleString('id-ID')}
-                        </td>
+                        <td className="py-1 px-2 border border-slate-900/60 text-right font-mono font-bold">{row.totalPeriod.toLocaleString("id-ID")}</td>
+                        <td className="py-1 px-2 border border-slate-900/60 text-right font-mono">{Math.round(row.avgDaily).toLocaleString("id-ID")}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -3962,16 +3732,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       <td colSpan={3} className="py-2 px-2 border border-slate-900 text-right text-[10px]">
                         Total Porsi Harian:
                       </td>
-                      {dailyBeneficiaryMatrix.dates.map(d => (
+                      {dailyBeneficiaryMatrix.dates.map((d) => (
                         <td key={d} className="py-2 px-1.5 border border-slate-900 text-center font-mono font-bold text-[10px]">
-                          {(dailyBeneficiaryMatrix.dateTotals[d] || 0).toLocaleString('id-ID')}
+                          {(dailyBeneficiaryMatrix.dateTotals[d] || 0).toLocaleString("id-ID")}
                         </td>
                       ))}
+                      <td className="py-2 px-2 border border-slate-900 text-right font-mono font-bold text-xs">{dailyBeneficiaryMatrix.grandTotal.toLocaleString("id-ID")}</td>
                       <td className="py-2 px-2 border border-slate-900 text-right font-mono font-bold text-xs">
-                        {dailyBeneficiaryMatrix.grandTotal.toLocaleString('id-ID')}
-                      </td>
-                      <td className="py-2 px-2 border border-slate-900 text-right font-mono font-bold text-xs">
-                        {Math.round(dailyBeneficiaryMatrix.avgDailyTotal).toLocaleString('id-ID')}
+                        {Math.round(dailyBeneficiaryMatrix.avgDailyTotal).toLocaleString("id-ID")}
                       </td>
                     </tr>
                   </tfoot>
@@ -3984,9 +3752,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       <div className="text-slate-500 text-[11px]">Mengetahui & Menyetujui,</div>
                       <div className="font-semibold text-slate-800">Ahli Gizi / Kepala SPPG</div>
                     </div>
-                    <div className="font-bold underline text-slate-900">
-                      ( .................................................. )
-                    </div>
+                    <div className="font-bold underline text-slate-900">( .................................................. )</div>
                   </div>
 
                   <div className="space-y-12">
@@ -3994,9 +3760,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({ onNavigate }
                       <div className="text-slate-500 text-[11px]">Dibuat & Diverifikasi,</div>
                       <div className="font-semibold text-slate-800">Petugas Distribusi & Penerima Manfaat</div>
                     </div>
-                    <div className="font-bold underline text-slate-900">
-                      ( {currentUser?.name || 'Petugas SPPG'} )
-                    </div>
+                    <div className="font-bold underline text-slate-900">( {currentUser?.name || "Petugas SPPG"} )</div>
                   </div>
                 </div>
               </div>
