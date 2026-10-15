@@ -328,6 +328,20 @@ const BASE_RACKS_CONFIG: Omit<WarehouseRack, 'items'>[] = [
     customNote: 'Periksa segel karung & catat nomor batch saat penumpukan.',
   },
   {
+    id: 'PLT-KRG-T1',
+    name: 'Gudang Kering - Palet Tengah (Sembako Sak & Karung Curah)',
+    warehouseType: 'GUDANG_KERING',
+    warehouseName: 'Gudang Kering (Dry Storage)',
+    zone: 'Zona Tengah Gudang Kering - Palet Lantai (Floor Bulk Storage Bay)',
+    temperatureGuide: '20°C - 25°C (Suhu Ruang Kering Terkontrol)',
+    humidityGuide: 'Maks. 60% RH (Sirkulasi Terbuka & Bebas Lembap)',
+    storageRule: 'Wajib beralaskan palet plastik/kayu fumigasi min. 15 cm di atas lantai. Susun bersilangan (interlocking) maks. 8 tumpukan sak demi kestabilan. Beri lorong sirkulasi udara min. 50 cm antar tumpukan.',
+    rotationMethod: 'FIFO',
+    capacityMax: '2.500 Kg (Kapasitas Maks. 50-60 Sak / Karung Pangan 25-50 Kg)',
+    picName: 'Petugas Logistik Gudang Kering',
+    customNote: 'Khusus muatan komoditas berat: beras karung 25-50kg, gula sak 50kg, tepung sak, dan buffer stock pangan curah volume besar.',
+  },
+  {
     id: 'RAK-KRG-A2',
     name: 'Rak A2 - Minyak, Lemak & Cairan Pangan',
     warehouseType: 'GUDANG_KERING',
@@ -1676,6 +1690,14 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       }
       for (const cr of customRacks) {
         if (l.includes(cr.id.toLowerCase()) || l.includes(cr.name.toLowerCase())) return cr.id;
+      }
+
+      if (
+        l.includes('palet tengah') ||
+        l.includes('plt-krg-t1') ||
+        (l.includes('palet') && (l.includes('sak') || l.includes('tengah') || l.includes('curah')))
+      ) {
+        return 'PLT-KRG-T1';
       }
 
       if (l.includes('rak a1') || upperId.startsWith('ITM-KRG-001') || n.includes('beras')) return 'RAK-KRG-A1';

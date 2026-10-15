@@ -59,6 +59,7 @@ import {
   ALL_STANDARD_LOCATIONS,
   detectWarehouseType,
   generateAutoSku,
+  getStorageLocationDetails,
 } from '../utils/skuGenerator';
 
 interface InventoryModuleProps {
@@ -206,7 +207,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   const [formCustomUnit, setFormCustomUnit] = useState('');
   const [formInitialStock, setFormInitialStock] = useState<number>(0);
   const [formMinStock, setFormMinStock] = useState<number>(10);
-  const [formLocation, setFormLocation] = useState('Gudang Kering - Rak A1');
+  const [formLocation, setFormLocation] = useState('Gudang Kering - Rak A1 (Sembako Beras & Karung Pangan)');
   const [formEstimatedPrice, setFormEstimatedPrice] = useState<number>(0);
   const [formNotes, setFormNotes] = useState('');
   const [formIsActive, setFormIsActive] = useState<boolean>(true);
@@ -216,11 +217,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   const [batchMode, setBatchMode] = useState<'GRID' | 'PASTE'>('GRID');
   const [pasteRawText, setPasteRawText] = useState('');
   const [batchRows, setBatchRows] = useState<BatchMasterItemRow[]>([
-    { id: '1', sku: 'BBS-001', name: '', category: 'Bahan Basah', baseUnit: 'Kg', initialStock: 0, minStock: 15, location: 'Chiller Dapur', notes: '' },
-    { id: '2', sku: 'BKR-001', name: '', category: 'Bahan Kering', baseUnit: 'Kg', initialStock: 0, minStock: 20, location: 'Gudang Kering', notes: '' },
-    { id: '3', sku: 'ATK-001', name: '', category: 'ATK & Administrasi', baseUnit: 'Rim', initialStock: 0, minStock: 5, location: 'Ruang Kantor', notes: '' },
-    { id: '4', sku: 'CLN-001', name: '', category: 'Alat Kebersihan', baseUnit: 'Pouch', initialStock: 0, minStock: 10, location: 'Gudang Kebersihan', notes: '' },
-    { id: '5', sku: 'PRL-001', name: '', category: 'Perlengkapan & APD', baseUnit: 'Pack', initialStock: 0, minStock: 10, location: 'Gudang Kemasan', notes: '' },
+    { id: '1', sku: 'BBS-001', name: '', category: 'Bahan Basah', baseUnit: 'Kg', initialStock: 0, minStock: 15, location: 'Chiller Dapur - Bin C1 (Daging Ayam & Protein Unggas)', notes: '' },
+    { id: '2', sku: 'BKR-001', name: '', category: 'Bahan Kering', baseUnit: 'Kg', initialStock: 0, minStock: 20, location: 'Gudang Kering - Palet Tengah (Sembako Sak & Karung Curah)', notes: '' },
+    { id: '3', sku: 'ATK-001', name: '', category: 'ATK & Administrasi', baseUnit: 'Rim', initialStock: 0, minStock: 5, location: 'Ruang Kantor / Lemari ATK (Alat Tulis Kantor & Administrasi)', notes: '' },
+    { id: '4', sku: 'CLN-001', name: '', category: 'Alat Kebersihan', baseUnit: 'Pouch', initialStock: 0, minStock: 10, location: 'Gudang Non-Food - Rak N1 (Sabun, Kebersihan & Sanitasi Dapur)', notes: '' },
+    { id: '5', sku: 'PRL-001', name: '', category: 'Perlengkapan & APD', baseUnit: 'Pack', initialStock: 0, minStock: 10, location: 'Gudang Non-Food - Rak N2 (Plastik, Kemasan & Tissue Dapur)', notes: '' },
   ]);
 
   // ----------------------------------------------------
@@ -644,7 +645,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                             <td className="py-1.5 px-2 border-r border-slate-300 font-medium text-slate-900">
                               {item.name}
                             </td>
-                            <td className="py-1.5 px-2 border-r border-slate-300 text-slate-600">{item.location}</td>
+                            <td className="py-1.5 px-2 border-r border-slate-300 text-slate-700">
+                              {(() => {
+                                const spec = getStorageLocationDetails(item.location);
+                                return `${spec.rackCode} - ${spec.commodityDetail}`;
+                              })()}
+                            </td>
                             <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-500">
                               {item.minimumStock}
                             </td>
@@ -1151,19 +1157,19 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
         const updated = { ...row, [field]: value };
         if (field === 'category') {
           if (value === 'Bahan Kering') {
-            updated.location = 'Gudang Kering';
+            updated.location = 'Gudang Kering - Rak A1 (Sembako Beras & Karung Pangan)';
             updated.baseUnit = 'Kg';
           } else if (value === 'Bahan Basah') {
-            updated.location = 'Chiller Dapur';
+            updated.location = 'Gudang Basah - Rak V1 (Sayuran Segar & Umbi Hijau)';
             updated.baseUnit = 'Kg';
           } else if (value === 'ATK & Administrasi') {
-            updated.location = 'Ruang Kantor';
+            updated.location = 'Ruang Kantor / Lemari ATK (Alat Tulis Kantor & Administrasi)';
             updated.baseUnit = 'Rim';
           } else if (value === 'Alat Kebersihan') {
-            updated.location = 'Gudang Kebersihan';
+            updated.location = 'Gudang Non-Food - Rak N1 (Sabun, Kebersihan & Sanitasi Dapur)';
             updated.baseUnit = 'Pouch';
           } else {
-            updated.location = 'Gudang Utama';
+            updated.location = 'Gudang Non-Food - Rak N2 (Plastik, Kemasan & Tissue Dapur)';
             updated.baseUnit = 'Pack';
           }
         }
@@ -1694,11 +1700,20 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                           </td>
                           <td className="py-2.5 px-3">
                             <div className="font-semibold text-slate-900">{item.name}</div>
-                            <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
-                              <Store className="w-3 h-3 text-slate-400 shrink-0" />
-                              <span className="truncate">{item.location}</span>
-                              {item.notes && <span className="italic text-slate-400 truncate">• {item.notes}</span>}
-                            </div>
+                            {(() => {
+                              const rackSpec = getStorageLocationDetails(item.location);
+                              return (
+                                <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-1.5 mt-1">
+                                  <span className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200/70 shrink-0">
+                                    <Store className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                                    {rackSpec.rackCode}
+                                  </span>
+                                  <span className="text-slate-700 font-medium">{rackSpec.shortName}</span>
+                                  <span className="text-slate-500 text-[10px]">({rackSpec.commodityDetail})</span>
+                                  {item.notes && <span className="italic text-slate-400 text-[10px] truncate">• {item.notes}</span>}
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="py-2.5 px-3">
                             <span className="inline-block px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600">
@@ -2009,10 +2024,22 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                             <span className="text-slate-500 font-normal">{item.baseUnit}</span>
                           </td>
                           <td className="py-3 px-3">
-                            <div className="text-slate-600 text-[11px] flex items-center gap-1">
-                              <Store className="w-3 h-3 text-slate-400" />
-                              <span>{item.location}</span>
-                            </div>
+                            {(() => {
+                              const rackSpec = getStorageLocationDetails(item.location);
+                              return (
+                                <div className="flex flex-col gap-0.5 max-w-xs">
+                                  <div className="text-slate-800 text-[11px] font-semibold flex items-center gap-1.5">
+                                    <span className="font-mono text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+                                      {rackSpec.rackCode}
+                                    </span>
+                                    <span className="truncate">{rackSpec.shortName}</span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 line-clamp-1" title={rackSpec.commodityDetail}>
+                                    {rackSpec.commodityDetail}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="py-3 px-3 text-right font-mono text-slate-700">
                             Rp {unitPrice.toLocaleString('id-ID')}
@@ -2846,8 +2873,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {/* ========================================================================= */}
       {isSingleModalOpen && (
         <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
                   {editingItem ? 'Edit Data Master Barang' : 'Tambah Item Custom Master Barang'}
@@ -2868,7 +2895,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               </button>
             </div>
 
-            <form onSubmit={handleSaveSingleItem} className="p-6 space-y-3.5 text-xs">
+            <form onSubmit={handleSaveSingleItem} className="p-6 space-y-3.5 text-xs overflow-y-auto flex-1">
               {formError && (
                 <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg font-medium">
                   {formError}
@@ -3130,6 +3157,52 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                     />
                   </div>
                 )}
+
+                {/* Detail Spesifikasi & Panduan Rak Gudang */}
+                {(() => {
+                  const rackSpec = getStorageLocationDetails(formLocation);
+                  return (
+                    <div className="mt-2.5 rounded-lg border border-emerald-200/80 bg-emerald-50/40 p-3 text-xs space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-600 text-white">
+                            {rackSpec.rackCode}
+                          </span>
+                          <span className="font-semibold text-slate-900">
+                            {rackSpec.shortName}
+                          </span>
+                          <span className="text-emerald-700 font-medium text-[11px]">
+                            • {rackSpec.commodityDetail}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 shrink-0">
+                          Rotasi: {rackSpec.rotationMethod}
+                        </span>
+                      </div>
+
+                      <p className="text-[11px] text-slate-700 leading-relaxed">
+                        {rackSpec.description}
+                      </p>
+
+                      <div className="pt-2 border-t border-emerald-200/60 flex flex-col gap-1 text-[10.5px]">
+                        <div className="flex items-start gap-1 text-slate-600">
+                          <span className="font-semibold text-emerald-900 shrink-0">Zona & Suhu:</span>
+                          <span>{rackSpec.zone} ({rackSpec.temperature})</span>
+                        </div>
+                        <div className="flex items-start gap-1 text-slate-600">
+                          <span className="font-semibold text-emerald-900 shrink-0">Aturan Simpan:</span>
+                          <span className="text-slate-700">{rackSpec.storageRule}</span>
+                        </div>
+                        {rackSpec.capacityMax && (
+                          <div className="flex items-start gap-1 text-slate-600">
+                            <span className="font-semibold text-emerald-900 shrink-0">Kapasitas Maksimal:</span>
+                            <span className="font-mono text-slate-800">{rackSpec.capacityMax}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>
@@ -3302,8 +3375,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                             <td className="py-1.5 px-2">
                               <input
                                 type="text"
+                                list="batch-location-list"
                                 value={row.location}
                                 onChange={e => handleUpdateBatchRow(row.id, 'location', e.target.value)}
+                                placeholder="Pilih / ketik lokasi rak..."
                                 className="w-full text-xs border border-slate-200 rounded px-1.5 py-1"
                               />
                             </td>
@@ -3322,6 +3397,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                       </tbody>
                     </table>
                   </div>
+
+                  {/* Datalist rekomendasi lokasi rak untuk tabel batch */}
+                  <datalist id="batch-location-list">
+                    {ALL_STANDARD_LOCATIONS.map(loc => (
+                      <option key={loc} value={loc} />
+                    ))}
+                  </datalist>
 
                   <div className="flex items-center justify-between pt-1">
                     <div className="flex items-center gap-2">
