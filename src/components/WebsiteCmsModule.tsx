@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   WebsiteConfig,
   HeroVideoItem,
@@ -18,6 +18,8 @@ import {
   IMAGE_PRESETS
 } from '../db/websiteConfigStorage';
 import QRCode from 'qrcode';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { MenuTodayKidsEditor } from './MenuTodayKidsEditor';
 import { compressImageToWebP } from '../utils/imageCompressor';
 import {
@@ -63,15 +65,41 @@ import {
   Share2
 } from 'lucide-react';
 
+const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
+const BTN_PRIMARY = `inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors cursor-pointer min-h-[44px] sm:min-h-[36px] ${FOCUS}`;
+const BTN_SECONDARY = `inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold border border-slate-300 transition-colors cursor-pointer min-h-[44px] sm:min-h-[36px] ${FOCUS}`;
+
+const ICON_BTN = `inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[32px] sm:min-h-[32px] rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS}`;
+
+type ToastTone = 'success' | 'warning' | 'error';
+
+// Draf per tab browser, supaya pindah menu di aplikasi tidak menghapus perubahan yang belum disimpan.
+const DRAFT_KEY = 'sppg_website_cms_draft_v1';
+
+const readDraft = (): WebsiteConfig | null => {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    return raw ? (JSON.parse(raw) as WebsiteConfig) : null;
+  } catch {
+    return null;
+  }
+};
+
 interface WebsiteCmsModuleProps {
   onViewLanding?: () => void;
 }
 
 export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLanding }) => {
-  const [config, setConfig] = useState<WebsiteConfig>(getWebsiteConfig);
-  const [activeTab, setActiveTab] = useState<'hero' | 'menu' | 'visual' | 'menu_today'>('hero');
-  const [isSavedAlert, setIsSavedAlert] = useState(false);
-  const [saveMessage, setSaveMessage] = useState('');
+  const [config, setConfig] = useState<WebsiteConfig>(() => readDraft() ?? getWebsiteConfig());
+  const [activeTab, setActiveTab] = useState<'hero' | 'menu' | 'visual' | 'menu_today'>('menu_today');
+  const toast = useToast();
+  const askConfirm = useConfirm();
+
+  // Snapshot terakhir yang sudah disimpan, untuk mendeteksi perubahan yang belum disimpan.
+  const [savedJson, setSavedJson] = useState(() => JSON.stringify(getWebsiteConfig()));
+  const isDirty = useMemo(() => JSON.stringify(config) !== savedJson, [config, savedJson]);
+  const isDirtyRef = useRef(isDirty);
+  isDirtyRef.current = isDirty;
 
   const [isCloudSaving, setIsCloudSaving] = useState(false);
 
@@ -101,9 +129,6 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   const [isUploadingHeroSlideImg, setIsUploadingHeroSlideImg] = useState(false);
   const heroSlideFileRef = useRef<HTMLInputElement>(null);
 
-  // Video preview testing
-  const [isVideoUploading, setIsVideoUploading] = useState(false);
-  const videoFileRef = useRef<HTMLInputElement>(null);
   const menuFileRef = useRef<HTMLInputElement>(null);
   const visualFileRef = useRef<HTMLInputElement>(null);
 
@@ -126,8 +151,10 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
     let isMounted = true;
     fetchWebsiteConfigFromCloud().then(res => {
       if (!isMounted) return;
+      // Jangan timpa perubahan yang sudah mulai diketik sebelum data cloud tiba.
       if (res.fromCloud) {
-        setConfig(res.config);
+        setSavedJson(JSON.stringify(res.config));
+        if (!isDirtyRef.current) setConfig(res.config);
       }
     });
     return () => { isMounted = false; };
@@ -150,21 +177,94 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
     });
   }, []);
 
-  const showNotification = (msg: string) => {
-    setSaveMessage(msg);
-    setIsSavedAlert(true);
-    setTimeout(() => setIsSavedAlert(false), 3500);
+  useEffect(() => {
+    try {
+      if (isDirty) sessionStorage.setItem(DRAFT_KEY, JSON.stringify(config));
+      else sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // Kuota penuh atau storage diblokir: draf tidak tersimpan, peringatan beforeunload tetap jalan.
+    }
+  }, [config, isDirty]);
+
+  useEffect(() => {
+    if (readDraft()) showNotification('Perubahan yang belum disimpan dari sesi sebelumnya dipulihkan.', 'warning');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [isDirty]);
+
+
+  const anyModalOpen = isMenuModalOpen || isVisualModalOpen || isHeroVideoModalOpen || isHeroSlideModalOpen || isIngredientModalOpen || isPrintStickerModalOpen;
+  useEffect(() => {
+    if (!anyModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setIsMenuModalOpen(false);
+      setIsVisualModalOpen(false);
+      setIsHeroVideoModalOpen(false);
+      setIsHeroSlideModalOpen(false);
+      setIsIngredientModalOpen(false);
+      setIsPrintStickerModalOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [anyModalOpen]);
+
+  const showNotification = (text: string, tone: ToastTone = 'success') => {
+    if (tone === 'success') toast.success(text);
+    else if (tone === 'warning') toast.warning(text, undefined, 7000);
+    else toast.error(text, undefined, 7000);
   };
+  const showError = (text: string) => showNotification(text, 'error');
 
   const handleSaveAll = async () => {
     setIsCloudSaving(true);
     try {
       const res = await saveWebsiteConfigToCloud(config);
-      showNotification(res.message);
-    } catch {
-      showNotification('Konfigurasi disimpan di cache lokal browser.');
+      // Sinkron cloud yang gagal tetap dihitung "belum disimpan" agar tombol Simpan bisa dicoba lagi.
+      if (!res.cloudFailed) setSavedJson(JSON.stringify(config));
+      if (res.isCloudSynced) {
+        showNotification('Tersimpan. Website publik sudah menampilkan perubahan ini.');
+      } else {
+        showNotification(`${res.message} Pengunjung lain belum melihat perubahan ini.`, 'warning');
+      }
+    } catch (err) {
+      // Biasanya kuota penyimpanan browser penuh karena media yang tidak terunggah ke cloud.
+      const detail = err instanceof Error ? err.message : '';
+      showError(`Gagal menyimpan${detail ? `: ${detail}` : ''}. Perubahan masih ada di halaman ini, coba lagi.`);
     } finally {
       setIsCloudSaving(false);
+    }
+  };
+
+  const handleDiscardChanges = async () => {
+    if (!(await askConfirm({
+      title: 'Buang perubahan?',
+      message: 'Semua perubahan yang belum disimpan akan hilang.',
+      confirmText: 'Buang perubahan',
+      variant: 'danger',
+    }))) return;
+    setConfig(JSON.parse(savedJson) as WebsiteConfig);
+    showNotification('Perubahan dibatalkan.');
+  };
+
+  // Video yang gagal masuk cloud akan jadi data URL puluhan MB dan memenuhi kuota browser.
+  const rejectLocalVideo = (result: { isCloudStorage: boolean; warning?: string }) => {
+    if (result.isCloudStorage) return false;
+    showError(`Video tidak bisa diunggah ke cloud${result.warning ? ` (${result.warning})` : ''}. Coba lagi, atau pakai tautan URL video.`);
+    return true;
+  };
+
+  const notifyImageUpload = (result: { isCloudStorage: boolean; warning?: string; finalSizeKb: number }, label: string) => {
+    if (result.isCloudStorage) {
+      showNotification(`${label} diunggah (${result.finalSizeKb} KB).`);
+    } else {
+      showNotification(result.warning || `${label} hanya tersimpan di browser ini.`, 'warning');
     }
   };
 
@@ -188,7 +288,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   const handleSaveHeroVideo = () => {
     if (!editingHeroVideo) return;
     if (!editingHeroVideo.url.trim()) {
-      alert('Tautan/file video wajib diisi.');
+      showError('Tautan/file video wajib diisi.');
       return;
     }
 
@@ -211,16 +311,16 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
 
     setIsHeroVideoModalOpen(false);
     setEditingHeroVideo(null);
-    showNotification(`Video "${editingHeroVideo.title}" berhasil disimpan ke playlist loop!`);
+    showNotification(`Video "${editingHeroVideo.title}" diperbarui.`);
   };
 
-  const handleDeleteHeroVideo = (id: string) => {
+  const handleDeleteHeroVideo = async (id: string) => {
     const curVideos = config.hero.videos || [];
     if (curVideos.length <= 1) {
-      alert('Minimal harus ada 1 video dalam playlist hero.');
+      showError('Minimal harus ada 1 video dalam playlist hero.');
       return;
     }
-    if (window.confirm('Hapus video ini dari playlist putar hero?')) {
+    if (await askConfirm({ title: 'Hapus video ini dari playlist hero?', message: 'Website publik berubah setelah kamu klik Simpan.', confirmText: 'Hapus video', variant: 'danger' })) {
       setConfig(prev => {
         const nextVideos = (prev.hero.videos || []).filter(v => v.id !== id);
         return {
@@ -259,18 +359,19 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
     if (!file) return;
 
     if (!file.type.startsWith('video/')) {
-      alert('Mohon pilih file video yang valid (.mp4, .webm).');
+      showError('Mohon pilih file video yang valid (.mp4, .webm).');
       return;
     }
 
     if (file.size > 50 * 1024 * 1024) {
-      alert('Ukuran video terlalu besar (maksimal 50 MB). Disarankan video ringkas berdurasi 10–30 detik.');
+      showError('Ukuran video terlalu besar (maksimal 50 MB). Disarankan video ringkas berdurasi 10–30 detik.');
       return;
     }
 
     setIsUploadingHeroVideo(true);
     try {
       const result = await uploadCmsMedia(file, 'hero');
+      if (rejectLocalVideo(result)) return;
       const cleanTitle = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
       const newVid: HeroVideoItem = {
         id: `vid-${Date.now()}`,
@@ -291,14 +392,10 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
         };
       });
 
-      if (result.isCloudStorage) {
-        showNotification(`Video "${newVid.title}" (${result.finalSizeKb} KB) berhasil diunggah ke Cloud Storage & ditambahkan ke playlist loop!`);
-      } else {
-        showNotification(`Video "${newVid.title}" berhasil ditambahkan ke playlist loop (tersimpan lokal).`);
-      }
+      showNotification(`Video "${newVid.title}" ditambahkan ke playlist.`);
     } catch (err) {
       console.error(err);
-      alert('Gagal mengunggah file video.');
+      showError('Gagal mengunggah file video.');
     } finally {
       setIsUploadingHeroVideo(false);
       if (e.target) e.target.value = '';
@@ -311,26 +408,23 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
     if (!file || !editingHeroVideo) return;
 
     if (!file.type.startsWith('video/')) {
-      alert('Mohon pilih file video yang valid (.mp4, .webm).');
+      showError('Mohon pilih file video yang valid (.mp4, .webm).');
       return;
     }
 
     if (file.size > 50 * 1024 * 1024) {
-      alert('Ukuran video maksimal 50 MB.');
+      showError('Ukuran video maksimal 50 MB.');
       return;
     }
 
     setIsUploadingHeroVideo(true);
     try {
       const result = await uploadCmsMedia(file, 'hero');
+      if (rejectLocalVideo(result)) return;
       setEditingHeroVideo(prev => prev ? { ...prev, url: result.url } : null);
-      if (result.isCloudStorage) {
-        showNotification(`Video baru berhasil diunggah ke Supabase Storage!`);
-      } else {
-        showNotification(result.warning || 'Video disimpan secara lokal.');
-      }
+      showNotification('File video diganti.');
     } catch {
-      alert('Gagal mengunggah file video.');
+      showError('Gagal mengunggah file video.');
     } finally {
       setIsUploadingHeroVideo(false);
       if (e.target) e.target.value = '';
@@ -360,16 +454,16 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
       };
     });
 
-    showNotification(`Preset "${newVid.title}" ditambahkan ke playlist loop video!`);
+    showNotification(`Preset "${newVid.title}" ditambahkan ke playlist.`);
   };
 
   // Hero Photo Slides CRUD Handlers (Dokumentasi Kotak Kanan Landing Page)
   const handleOpenAddHeroSlide = () => {
     const newSlide: HeroDocumentationSlide = {
       id: `hero-photo-${Date.now()}`,
-      title: 'Sajian Nampan MBG Bersekat SUS 304',
+      title: '',
       category: 'Standar Wadah Higienis',
-      description: 'Pemisahan higienis antar lauk tanpa risiko bercampur kuah. Wadah stainless steel SUS 304 standar food-grade.',
+      description: '',
       imageUrl: IMAGE_PRESETS[2].url,
       badge: 'SUS 304 Food-Grade',
       targetGrams: '475 gram'
@@ -388,7 +482,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   const handleSaveHeroSlide = () => {
     if (!editingHeroSlide) return;
     if (!editingHeroSlide.title.trim()) {
-      alert('Judul foto dokumentasi wajib diisi.');
+      showError('Judul foto dokumentasi wajib diisi.');
       return;
     }
 
@@ -416,23 +510,23 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
 
     setIsHeroSlideModalOpen(false);
     setEditingHeroSlide(null);
-    showNotification(`Slide foto "${updatedSlide.title}" berhasil diperbarui! Klik Simpan Semua Perubahan.`);
+    showNotification(`Slide foto "${updatedSlide.title}" diperbarui.`);
   };
 
-  const handleDeleteHeroSlide = (id: string) => {
+  const handleDeleteHeroSlide = async (id: string) => {
     const currentSlides = config.hero.photoSlides && config.hero.photoSlides.length > 0
       ? config.hero.photoSlides
       : (DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []);
     if (currentSlides.length <= 1) {
-      alert('Minimal harus ada 1 slide foto dokumentasi yang aktif di kotak hero.');
+      showError('Minimal harus ada 1 slide foto dokumentasi yang aktif di kotak hero.');
       return;
     }
-    if (window.confirm('Hapus slide foto dokumentasi ini dari kotak hero landing page?')) {
+    if (await askConfirm({ title: 'Hapus slide foto ini?', message: 'Website publik berubah setelah kamu klik Simpan.', confirmText: 'Hapus slide', variant: 'danger' })) {
       setConfig(prev => ({
         ...prev,
         hero: {
           ...prev.hero,
-          photoSlides: (prev.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []).filter(s => s.id !== id)
+          photoSlides: (prev.hero.photoSlides?.length ? prev.hero.photoSlides : DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []).filter(s => s.id !== id)
         }
       }));
       showNotification('Slide foto dokumentasi hero dihapus.');
@@ -440,7 +534,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   };
 
   const handleMoveHeroSlide = (idx: number, direction: 'up' | 'down') => {
-    const currentSlides = [...(config.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || [])];
+    const currentSlides = [...(config.hero.photoSlides?.length ? config.hero.photoSlides : DEFAULT_WEBSITE_CONFIG.hero.photoSlides || [])];
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
     if (targetIdx < 0 || targetIdx >= currentSlides.length) return;
     const temp = currentSlides[idx];
@@ -466,55 +560,11 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
       if (editingHeroSlide) {
         setEditingHeroSlide(prev => prev ? { ...prev, imageUrl: result.url } : null);
       }
-      if (result.isCloudStorage) {
-        showNotification(`Foto berhasil diunggah ke Supabase Storage (${result.finalSizeKb} KB)!`);
-      } else {
-        showNotification(result.warning || 'Foto disimpan secara lokal di browser.');
-      }
+      notifyImageUpload(result, 'Foto');
     } catch {
-      alert('Gagal mengunggah foto slide hero.');
+      showError('Gagal mengunggah foto slide hero.');
     } finally {
       setIsUploadingHeroSlideImg(false);
-      if (e.target) e.target.value = '';
-    }
-  };
-
-  // Video Upload Handler Legacy (Fallback)
-  const handleVideoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('video/')) {
-      alert('Mohon pilih file video yang valid (.mp4, .webm).');
-      return;
-    }
-
-    if (file.size > 50 * 1024 * 1024) {
-      alert('Ukuran video terlalu besar (maksimal 50 MB). Disarankan menggunakan video ringkas atau tautan URL CDN.');
-      return;
-    }
-
-    setIsVideoUploading(true);
-    try {
-      const result = await uploadCmsMedia(file, 'hero');
-      setConfig(prev => ({
-        ...prev,
-        hero: {
-          ...prev.hero,
-          videoUrl: result.url,
-          backgroundType: 'video'
-        }
-      }));
-      if (result.isCloudStorage) {
-        showNotification(`Video hero (${result.finalSizeKb} KB) berhasil diunggah ke Supabase Object Storage!`);
-      } else {
-        showNotification(result.warning || 'Video disimpan secara lokal di browser.');
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Gagal mengunggah file video ke storage.');
-    } finally {
-      setIsVideoUploading(false);
       if (e.target) e.target.value = '';
     }
   };
@@ -531,14 +581,10 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
       if (editingMenuSlide) {
         setEditingMenuSlide(prev => prev ? { ...prev, imageUrl: result.url } : null);
       }
-      if (result.isCloudStorage) {
-        showNotification(`Foto menu dikompresi ke WebP (${result.finalSizeKb} KB) & disimpan di Supabase Storage!`);
-      } else if (result.warning) {
-        showNotification(result.warning);
-      }
+      notifyImageUpload(result, 'Foto menu');
     } catch (err) {
       console.error(err);
-      alert('Gagal memproses gambar menu.');
+      showError('Gagal memproses gambar menu.');
     } finally {
       setIsUploadingMenuImg(false);
       if (e.target) e.target.value = '';
@@ -557,14 +603,10 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
       if (editingVisualItem) {
         setEditingVisualItem(prev => prev ? { ...prev, imageUrl: result.url } : null);
       }
-      if (result.isCloudStorage) {
-        showNotification(`Foto kajian dikompresi ke WebP (${result.finalSizeKb} KB) & disimpan di Supabase Storage!`);
-      } else if (result.warning) {
-        showNotification(result.warning);
-      }
+      notifyImageUpload(result, 'Foto kajian');
     } catch (err) {
       console.error(err);
-      alert('Gagal memproses gambar dokumentasi.');
+      showError('Gagal memproses gambar dokumentasi.');
     } finally {
       setIsUploadingVisualImg(false);
       if (e.target) e.target.value = '';
@@ -575,12 +617,12 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   const handleOpenAddMenu = () => {
     const newSlide: MenuSlideItem = {
       id: `menu-${Date.now()}`,
-      title: 'Menu Porsi Baru MBG',
+      title: '',
       day: 'Senin',
       category: 'Paket Porsi Lengkap MBG',
       calories: '650 kkal • Protein 25g',
       imageUrl: IMAGE_PRESETS[0].url,
-      description: 'Deskripsi menu lengkap porsi bergizi seimbang dengan takaran karbohidrat, protein hewani, protein nabati, sayuran, dan buah segar.',
+      description: '',
       targetGrams: '460 gram',
       allergens: 'Halal • Bersih Berstandar'
     };
@@ -598,7 +640,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   const handleSaveMenuSlide = () => {
     if (!editingMenuSlide) return;
     if (!editingMenuSlide.title.trim()) {
-      alert('Judul menu wajib diisi.');
+      showError('Judul menu wajib diisi.');
       return;
     }
 
@@ -623,15 +665,15 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
 
     setIsMenuModalOpen(false);
     setEditingMenuSlide(null);
-    showNotification(`Slide menu "${updatedSlide.title}" berhasil diperbarui! Jangan lupa klik Simpan Semua Perubahan.`);
+    showNotification(`Menu "${updatedSlide.title}" diperbarui.`);
   };
 
-  const handleDeleteMenuSlide = (id: string) => {
+  const handleDeleteMenuSlide = async (id: string) => {
     if (config.menuSlider.slides.length <= 1) {
-      alert('Minimal harus ada 1 slide menu yang aktif di website.');
+      showError('Minimal harus ada 1 slide menu yang aktif di website.');
       return;
     }
-    if (window.confirm('Hapus slide menu ini dari website?')) {
+    if (await askConfirm({ title: 'Hapus menu ini dari website?', message: 'Website publik berubah setelah kamu klik Simpan.', confirmText: 'Hapus menu', variant: 'danger' })) {
       setConfig(prev => ({
         ...prev,
         menuSlider: {
@@ -660,9 +702,9 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   const handleOpenAddVisual = () => {
     const newItem: VisualStudyItem = {
       id: `vis-${Date.now()}`,
-      title: 'Dokumentasi Nampan / Fasilitas Baru',
+      title: '',
       category: 'Standar Higienitas',
-      description: 'Keterangan pengujian sampel atau penataan nampan di fasilitas dapur SPPG MLG TUMPANG JERU.',
+      description: '',
       imageUrl: IMAGE_PRESETS[2].url,
       date: new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
       badge: 'Inspeksi Tim QC'
@@ -681,7 +723,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   const handleSaveVisualItem = () => {
     if (!editingVisualItem) return;
     if (!editingVisualItem.title.trim()) {
-      alert('Judul dokumentasi wajib diisi.');
+      showError('Judul dokumentasi wajib diisi.');
       return;
     }
 
@@ -706,15 +748,15 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
 
     setIsVisualModalOpen(false);
     setEditingVisualItem(null);
-    showNotification(`Kajian visual "${updatedItem.title}" berhasil diperbarui!`);
+    showNotification(`Kajian visual "${updatedItem.title}" diperbarui.`);
   };
 
-  const handleDeleteVisualItem = (id: string) => {
+  const handleDeleteVisualItem = async (id: string) => {
     if (config.visualStudy.items.length <= 1) {
-      alert('Minimal harus ada 1 foto kajian visual yang aktif di website.');
+      showError('Minimal harus ada 1 foto kajian visual yang aktif di website.');
       return;
     }
-    if (window.confirm('Hapus foto kajian visual ini dari website?')) {
+    if (await askConfirm({ title: 'Hapus foto kajian visual ini?', message: 'Website publik berubah setelah kamu klik Simpan.', confirmText: 'Hapus foto', variant: 'danger' })) {
       setConfig(prev => ({
         ...prev,
         visualStudy: {
@@ -742,10 +784,14 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   // Helper & Handler untuk Menu MBG Hari Ini & QR Code
   const handleCopyQrLink = () => {
     const targetUrl = `${window.location.origin}/menu-mbg-hari-ini`;
-    navigator.clipboard.writeText(targetUrl);
-    setCopiedQrLink(true);
-    setTimeout(() => setCopiedQrLink(false), 2200);
-    showNotification('Tautan URL publik /menu-mbg-hari-ini berhasil disalin!');
+    navigator.clipboard.writeText(targetUrl).then(
+      () => {
+        setCopiedQrLink(true);
+        setTimeout(() => setCopiedQrLink(false), 2200);
+        showNotification('Tautan disalin.');
+      },
+      () => showError(`Browser menolak menyalin. Salin manual: ${targetUrl}`)
+    );
   };
 
   const handleDownloadQrPng = () => {
@@ -754,7 +800,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
     a.href = qrCodeDataUrl;
     a.download = `qr-code-menu-mbg-${new Date().toISOString().slice(0, 10)}.png`;
     a.click();
-    showNotification('File gambar QR Code berhasil diunduh (PNG).');
+    showNotification('QR Code diunduh.');
   };
 
   const handleUploadTodayMenuPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -771,13 +817,9 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
           imageUrl: result.url
         }
       }));
-      if (result.isCloudStorage) {
-        showNotification(`Foto menu hari ini diunggah ke cloud (${result.finalSizeKb} KB)!`);
-      } else {
-        showNotification('Foto menu hari ini disimpan.');
-      }
+      notifyImageUpload(result, 'Foto menu hari ini');
     } catch {
-      alert('Gagal mengunggah foto menu.');
+      showError('Gagal mengunggah foto menu.');
     } finally {
       setIsUploadingTodayMenuPhoto(false);
       if (e.target) e.target.value = '';
@@ -812,7 +854,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   const handleSaveIngredient = () => {
     if (!editingIngredient) return;
     if (!editingIngredient.name.trim()) {
-      alert('Nama bahan pangan wajib diisi.');
+      showError('Nama bahan pangan wajib diisi.');
       return;
     }
 
@@ -833,16 +875,16 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
 
     setIsIngredientModalOpen(false);
     setEditingIngredient(null);
-    showNotification(`Bahan "${editingIngredient.name}" berhasil disimpan!`);
+    showNotification(`Bahan "${editingIngredient.name}" diperbarui.`);
   };
 
-  const handleDeleteIngredient = (id: string) => {
+  const handleDeleteIngredient = async (id: string) => {
     const curMenuToday = config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
     if (curMenuToday.ingredients.length <= 1) {
-      alert('Minimal harus ada 1 bahan pangan dalam daftar menu hari ini.');
+      showError('Minimal harus ada 1 bahan pangan dalam daftar menu hari ini.');
       return;
     }
-    if (window.confirm('Hapus bahan pangan ini dari sajian menu hari ini?')) {
+    if (await askConfirm({ title: 'Hapus bahan ini dari menu hari ini?', message: 'Website publik berubah setelah kamu klik Simpan.', confirmText: 'Hapus bahan', variant: 'danger' })) {
       setConfig(prev => {
         const c = prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
         return {
@@ -885,13 +927,9 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
       if (editingIngredient) {
         setEditingIngredient(prev => prev ? { ...prev, imageUrl: result.url } : null);
       }
-      if (result.isCloudStorage) {
-        showNotification(`Foto bahan diunggah (${result.finalSizeKb} KB)!`);
-      } else {
-        showNotification('Foto bahan disimpan secara lokal.');
-      }
+      notifyImageUpload(result, 'Foto bahan');
     } catch {
-      alert('Gagal mengunggah foto bahan.');
+      showError('Gagal mengunggah foto bahan.');
     } finally {
       setIsUploadingIngredientImg(false);
       if (e.target) e.target.value = '';
@@ -899,143 +937,98 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   };
 
   return (
-    <div className="space-y-6">
-      {/* 1. Header Konsol CMS */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start sm:items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-emerald-900/10 text-emerald-800 flex items-center justify-center shrink-0 border border-emerald-900/15">
-              <Globe className="w-6 h-6 text-emerald-700" />
-            </div>
-            <div>
-              <h2 className="font-display text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                Pengaturan Konten Website Publik
-              </h2>
-              <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
-                Kelola video latar belakang hero, rotasi slide foto nampan MBG, dan galeri kajian visual operasional.
-              </p>
-            </div>
+    <div className={`space-y-4 ${isDirty ? 'pb-36 sm:pb-24' : ''}`}>
+      {/* Header */}
+      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Atur Website</h1>
+            <p className="text-xs text-slate-600 mt-0.5 max-w-2xl">
+              Video hero, foto menu MBG, kajian visual, dan halaman menu hari ini yang tampil di website publik.
+            </p>
           </div>
 
-          {/* Action Toolbar */}
-          <div className="flex items-center gap-2.5 self-start sm:self-auto shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <span className={`inline-flex items-center gap-1.5 text-xs mr-1 ${isDirty ? 'text-amber-800 font-semibold' : 'text-slate-600'}`}>
+              <span className={`w-2 h-2 rounded-full ${isDirty ? 'bg-amber-500' : 'bg-emerald-600'}`} aria-hidden="true" />
+              {isDirty ? 'Belum disimpan' : 'Semua tersimpan'}
+            </span>
             {onViewLanding && (
               <button
                 type="button"
-                onClick={onViewLanding}
-                className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 text-xs font-semibold transition-colors cursor-pointer border border-slate-200 shadow-2xs"
-                title="Buka pratinjau website publik"
+                onClick={async () => {
+                  if (isDirty && !(await askConfirm({
+                    title: 'Buka website tanpa menyimpan?',
+                    message: 'Website publik masih menampilkan versi lama. Perubahanmu tetap tersimpan sebagai draf di halaman ini.',
+                    confirmText: 'Buka website',
+                    variant: 'warning',
+                  }))) return;
+                  onViewLanding();
+                }}
+                className={BTN_SECONDARY}
               >
-                <Eye className="w-4 h-4 text-emerald-700" />
-                <span>Lihat Website</span>
-                <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                <ExternalLink className="w-4 h-4" />
+                Lihat Website
               </button>
             )}
-
-            <button
-              type="button"
-              onClick={handleSaveAll}
-              disabled={isCloudSaving}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-75 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer border border-emerald-600 active:scale-[0.99]"
-            >
+            <button type="button" onClick={handleSaveAll} disabled={isCloudSaving || !isDirty} className={BTN_PRIMARY}>
               <Save className="w-4 h-4" />
-              <span>{isCloudSaving ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
+              {isCloudSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
             </button>
           </div>
         </div>
 
-        {/* Notifikasi Toast Tersimpan */}
-        {isSavedAlert && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span className="font-semibold">{saveMessage}</span>
-          </div>
-        )}
-
-        {/* Tab Navigasi Sub-Modul */}
-        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
-          <button
-            type="button"
-            onClick={() => setActiveTab('hero')}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'hero'
-                ? 'bg-emerald-800 text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200/80 text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Video className={`w-4 h-4 ${activeTab === 'hero' ? 'text-emerald-200' : 'text-slate-500'}`} />
-            <span>Hero & Video Background</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('menu')}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'menu'
-                ? 'bg-emerald-800 text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200/80 text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <UtensilsCrossed className={`w-4 h-4 ${activeTab === 'menu' ? 'text-emerald-200' : 'text-slate-500'}`} />
-            <span>Foto Menu MBG ({config.menuSlider.slides.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('visual')}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'visual'
-                ? 'bg-emerald-800 text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200/80 text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <ImageIcon className={`w-4 h-4 ${activeTab === 'visual' ? 'text-emerald-200' : 'text-slate-500'}`} />
-            <span>Kajian Visual Lapangan ({config.visualStudy.items.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('menu_today')}
-            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeTab === 'menu_today'
-                ? 'bg-emerald-800 text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200/80 text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <QrCode className={`w-4 h-4 ${activeTab === 'menu_today' ? 'text-emerald-200' : 'text-slate-500'}`} />
-            <span>Menu Hari Ini & QR Code</span>
-          </button>
+        <div role="tablist" aria-label="Bagian website" className="flex gap-1 p-1 bg-slate-100 rounded-lg text-xs overflow-x-auto max-w-full w-fit">
+          {([
+            { id: 'menu_today', label: 'Menu Hari Ini & QR' },
+            { id: 'hero', label: 'Bagian Atas (Hero)' },
+            { id: 'menu', label: `Foto Menu (${config.menuSlider.slides.length})` },
+            { id: 'visual', label: `Kajian Visual (${config.visualStudy.items.length})` },
+          ] as const).map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-3 rounded-md whitespace-nowrap cursor-pointer min-h-[44px] sm:min-h-[32px] ${FOCUS} ${
+                activeTab === tab.id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* 2. KONTEN TAB 1: HERO & VIDEO BACKGROUND */}
       {activeTab === 'hero' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Kolom Kiri: Konfigurasi Video & Kontrol */}
-          <div className="lg:col-span-7 space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
+          <div className="lg:col-span-7 space-y-4">
+            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-5">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
                     <Video className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="font-display text-sm font-bold text-slate-900">
+                    <h3 className="text-sm font-bold text-slate-900">
                       Format Latar Hero
                     </h3>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-600">
                       Tampilan utama halaman depan: video gerak sinematik atau foto statis
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center p-1 bg-slate-100 rounded-lg border border-slate-200">
+                <div className="flex items-center p-1 bg-slate-100 rounded-lg">
                   <button
                     type="button"
                     onClick={() => setConfig(prev => ({ ...prev, hero: { ...prev.hero, backgroundType: 'video' } }))}
-                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                    className={`px-3 py-1 min-h-[44px] sm:min-h-[30px] text-xs font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${FOCUS} ${
                       config.hero.backgroundType === 'video'
-                        ? 'bg-[#0c3123] text-white shadow-xs'
+                        ? 'bg-white text-slate-900 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -1045,9 +1038,9 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   <button
                     type="button"
                     onClick={() => setConfig(prev => ({ ...prev, hero: { ...prev.hero, backgroundType: 'image' } }))}
-                    className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                    className={`px-3 py-1 min-h-[44px] sm:min-h-[30px] text-xs font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${FOCUS} ${
                       config.hero.backgroundType === 'image'
-                        ? 'bg-[#0c3123] text-white shadow-xs'
+                        ? 'bg-white text-slate-900 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -1063,11 +1056,11 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   <div>
                     <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                       <span>Playlist Video Hero (Looping Otomatis)</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-900 font-semibold">
+                      <span className="px-2 py-0.5 rounded-md text-[10px] bg-emerald-100 text-emerald-900 font-semibold">
                         {(config.hero.videos || []).length} Video
                       </span>
                     </h4>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
+                    <p className="text-[11px] text-slate-600 mt-0.5">
                       Video diputar berurutan secara otomatis berkesinambungan.
                     </p>
                   </div>
@@ -1085,7 +1078,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                       type="button"
                       onClick={() => newHeroVideoFileRef.current?.click()}
                       disabled={isUploadingHeroVideo}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:opacity-75 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                      className={`${BTN_PRIMARY}`}
                       title="Unggah file MP4 langsung ke penyimpanan cloud"
                     >
                       <Upload className="w-3.5 h-3.5" />
@@ -1095,7 +1088,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                     <button
                       type="button"
                       onClick={handleOpenAddHeroVideo}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium border border-slate-200 transition-colors cursor-pointer"
+                      className={`${BTN_SECONDARY}`}
                       title="Tambah tautan video manual"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -1109,7 +1102,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   {(config.hero.videos || []).map((vid, idx) => (
                     <div
                       key={vid.id}
-                      className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
+                      className="p-3 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-slate-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <span className="w-6 h-6 rounded-lg bg-[#0c3123] text-emerald-300 font-mono text-xs font-bold flex items-center justify-center shrink-0">
@@ -1136,7 +1129,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                           type="button"
                           onClick={() => handleMoveHeroVideo(idx, 'up')}
                           disabled={idx === 0}
-                          className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 text-slate-600 transition-colors cursor-pointer"
+                          className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
+                          aria-label="Geser ke atas"
                           title="Geser ke atas"
                         >
                           <ChevronLeft className="w-3.5 h-3.5 rotate-90" />
@@ -1145,7 +1139,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                           type="button"
                           onClick={() => handleMoveHeroVideo(idx, 'down')}
                           disabled={idx === (config.hero.videos?.length || 1) - 1}
-                          className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 text-slate-600 transition-colors cursor-pointer"
+                          className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
+                          aria-label="Geser ke bawah"
                           title="Geser ke bawah"
                         >
                           <ChevronRight className="w-3.5 h-3.5 rotate-90" />
@@ -1153,7 +1148,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                         <button
                           type="button"
                           onClick={() => handleOpenEditHeroVideo(vid)}
-                          className="p-1.5 rounded hover:bg-emerald-100 text-emerald-800 transition-colors cursor-pointer"
+                          className={`${ICON_BTN} text-emerald-700 hover:bg-emerald-50`}
+                          aria-label="Edit video ini"
                           title="Edit video ini"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -1161,7 +1157,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                         <button
                           type="button"
                           onClick={() => handleDeleteHeroVideo(vid.id)}
-                          className="p-1.5 rounded hover:bg-rose-100 text-rose-600 transition-colors cursor-pointer"
+                          className={`${ICON_BTN} text-rose-600 hover:bg-rose-50`}
+                          aria-label="Hapus video dari playlist"
                           title="Hapus video dari playlist"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1172,11 +1169,11 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 </div>
 
                 {/* Pengaturan Looping & Waktu Transisi Playlist */}
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
                       <span className="font-bold text-xs text-slate-800">Mode Transisi Video:</span>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-[11px] text-slate-600">
                         Atur interval pergantian video latar belakang.
                       </p>
                     </div>
@@ -1306,20 +1303,20 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
             </div>
 
             {/* Card Kustomisasi Dokumentasi Slide Foto Hero (Kotak Kanan Landing Page) */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
+            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
                     <ImageIcon className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="font-display text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                       <span>Slide Foto Hero (Kotak Kanan)</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-900 font-semibold">
+                      <span className="px-2 py-0.5 rounded-md text-[10px] bg-emerald-100 text-emerald-900 font-semibold">
                         {(config.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []).length} Foto
                       </span>
                     </h3>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-600">
                       Foto operasional & sajian nampan yang tampil bergantian di sisi kanan hero
                     </p>
                   </div>
@@ -1328,7 +1325,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 <button
                   type="button"
                   onClick={handleOpenAddHeroSlide}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer self-start sm:self-auto shrink-0"
+                  className={`${BTN_PRIMARY} self-start sm:self-auto shrink-0`}
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Tambah Foto Slide</span>
@@ -1336,7 +1333,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
               </div>
 
               {/* Pengaturan Auto-Slide & Durasi Detik */}
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
@@ -1394,7 +1391,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 {(config.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []).map((slide, idx) => (
                   <div
                     key={slide.id || idx}
-                    className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
+                    className="p-3 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-slate-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="w-6 h-6 rounded-lg bg-[#0c3123] text-emerald-300 font-mono text-xs font-bold flex items-center justify-center shrink-0">
@@ -1414,7 +1411,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
+                        <p className="text-[11px] text-slate-600 line-clamp-1 mt-0.5">
                           {slide.description}
                         </p>
                       </div>
@@ -1425,7 +1422,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                         type="button"
                         onClick={() => handleMoveHeroSlide(idx, 'up')}
                         disabled={idx === 0}
-                        className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 text-slate-600 transition-colors cursor-pointer"
+                        className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
+                        aria-label="Geser ke atas"
                         title="Geser ke atas"
                       >
                         <ChevronLeft className="w-3.5 h-3.5 rotate-90" />
@@ -1434,7 +1432,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                         type="button"
                         onClick={() => handleMoveHeroSlide(idx, 'down')}
                         disabled={idx === (config.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []).length - 1}
-                        className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 text-slate-600 transition-colors cursor-pointer"
+                        className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
+                        aria-label="Geser ke bawah"
                         title="Geser ke bawah"
                       >
                         <ChevronRight className="w-3.5 h-3.5 rotate-90" />
@@ -1442,7 +1441,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                       <button
                         type="button"
                         onClick={() => handleOpenEditHeroSlide(slide)}
-                        className="p-1.5 rounded hover:bg-emerald-100 text-emerald-800 transition-colors cursor-pointer"
+                        className={`${ICON_BTN} text-emerald-700 hover:bg-emerald-50`}
+                        aria-label="Edit slide foto ini"
                         title="Edit slide foto ini"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
@@ -1450,7 +1450,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                       <button
                         type="button"
                         onClick={() => handleDeleteHeroSlide(slide.id)}
-                        className="p-1.5 rounded hover:bg-rose-100 text-rose-600 transition-colors cursor-pointer"
+                        className={`${ICON_BTN} text-rose-600 hover:bg-rose-50`}
+                        aria-label="Hapus foto dari slide"
                         title="Hapus foto dari slide"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1464,7 +1465,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
 
           {/* Kolom Kanan: Pratinjau Tampilan Hero */}
           <div className="lg:col-span-5 space-y-4">
-            <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-md sticky top-24 space-y-4 p-4">
+            <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden sticky top-24 space-y-4 p-4">
               <div className="flex items-center justify-between text-xs text-slate-200 pb-2 border-b border-slate-800">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-400" />
@@ -1504,7 +1505,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
 
                 {/* Konten Simulasi Teks */}
                 <div className="relative z-10 space-y-2 max-w-sm">
-                  <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-white/20 backdrop-blur-xs text-white border border-white/30">
+                  <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-white/20 text-white border border-white/30">
                     {config.hero.heroBadge}
                   </span>
                   <h4 className="font-display text-base font-bold text-white leading-tight drop-shadow-xs">
@@ -1573,23 +1574,30 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
 
       {/* 3. KONTEN TAB 2: FOTO MENU & AUTO-SLIDE */}
       {activeTab === 'menu' && (
-        <div className="space-y-6">
+        <div className="space-y-4">
+          <div role="note" className="flex items-start gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-900">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
+            <p>
+              <span className="font-semibold">Daftar foto menu ini belum tampil di website publik.</span>{' '}
+              Bagian itu di website masih memakai menu mingguan bawaan, jadi perubahan di sini belum terlihat oleh pengunjung.
+            </p>
+          </div>
           {/* Bar Kontrol Slider Otomatis */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
               <div>
-                <h3 className="font-display text-sm font-bold text-slate-900 flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Sliders className="w-4 h-4 text-emerald-700" />
                   <span>Pengaturan Rotasi Menu MBG</span>
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-600 mt-0.5">
                   Atur perputaran carousel dan durasi pergantian menu di halaman depan
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
                 {/* Toggle Auto-Slide */}
-                <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+                <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
                   <input
                     type="checkbox"
                     checked={config.menuSlider.autoSlide}
@@ -1605,7 +1613,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 </label>
 
                 {/* Interval Detik */}
-                <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
+                <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
                   <span className="text-slate-600 font-medium">Durasi:</span>
                   <select
                     value={config.menuSlider.intervalSeconds}
@@ -1625,7 +1633,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 </div>
 
                 {/* Pause on Hover */}
-                <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
+                <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
                   <input
                     type="checkbox"
                     checked={config.menuSlider.pauseOnHover}
@@ -1677,10 +1685,10 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
           {/* Daftar Koleksi Slide Menu */}
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-display text-base font-bold text-slate-900">
+              <h3 className="text-base font-bold text-slate-900">
                 Koleksi Menu Harian MBG ({config.menuSlider.slides.length} Menu)
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-600">
                 Foto dan resep berganti bergantian pada carousel website
               </p>
             </div>
@@ -1688,7 +1696,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
             <button
               type="button"
               onClick={handleOpenAddMenu}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              className={`${BTN_PRIMARY}`}
             >
               <Plus className="w-4 h-4" />
               <span>Tambah Foto Menu Baru</span>
@@ -1699,7 +1707,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
             {config.menuSlider.slides.map((slide, idx) => (
               <div
                 key={slide.id}
-                className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs flex flex-col hover:border-slate-300 transition-all group"
+                className="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col hover:border-slate-300 transition-all group"
               >
                 {/* Gambar Menu */}
                 <div className="relative aspect-4/3 bg-slate-900 overflow-hidden">
@@ -1711,7 +1719,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   <div className="absolute top-3 left-3 bg-[#0c3123]/95 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-lg border border-emerald-700/50">
                     {slide.day}
                   </div>
-                  <div className="absolute top-3 right-3 bg-white/95 text-slate-900 text-[10px] font-bold px-2 py-0.5 rounded-lg shadow-xs">
+                  <div className="absolute top-3 right-3 bg-white/95 text-slate-900 text-[10px] font-bold px-2 py-0.5 rounded-lg">
                     Slide #{idx + 1}
                   </div>
                 </div>
@@ -1722,10 +1730,10 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                     <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200/50 px-2 py-0.5 rounded">
                       {slide.category}
                     </span>
-                    <h4 className="font-display text-sm font-bold text-slate-900 mt-1.5 line-clamp-1">
+                    <h4 className="text-sm font-bold text-slate-900 mt-1.5 line-clamp-1">
                       {slide.title}
                     </h4>
-                    <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                    <p className="text-xs text-slate-600 mt-1 line-clamp-2 leading-relaxed">
                       {slide.description}
                     </p>
                   </div>
@@ -1740,7 +1748,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                         onClick={() => handleMoveMenuSlide(idx, 'up')}
                         disabled={idx === 0}
                         title="Geser urutan lebih dulu"
-                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 disabled:opacity-30 cursor-pointer"
+                        className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
+                        aria-label="Geser urutan lebih dulu"
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </button>
@@ -1749,7 +1758,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                         onClick={() => handleMoveMenuSlide(idx, 'down')}
                         disabled={idx === config.menuSlider.slides.length - 1}
                         title="Geser urutan setelahnya"
-                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 disabled:opacity-30 cursor-pointer"
+                        className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
+                        aria-label="Geser urutan setelahnya"
                       >
                         <ChevronRight className="w-4 h-4" />
                       </button>
@@ -1757,7 +1767,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                         type="button"
                         onClick={() => handleOpenEditMenu(slide)}
                         title="Edit Menu"
-                        className="p-1.5 rounded-lg hover:bg-emerald-50 text-emerald-700 cursor-pointer"
+                        className={`${ICON_BTN} text-emerald-700 hover:bg-emerald-50`}
+                        aria-label="Edit Menu"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
@@ -1765,7 +1776,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                         type="button"
                         onClick={() => handleDeleteMenuSlide(slide.id)}
                         title="Hapus Menu"
-                        className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-600 cursor-pointer"
+                        className={`${ICON_BTN} text-rose-600 hover:bg-rose-50`}
+                        aria-label="Hapus Menu"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -1780,15 +1792,22 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
 
       {/* 4. KONTEN TAB 3: KAJIAN VISUAL SAJIAN MAKANAN */}
       {activeTab === 'visual' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+        <div className="space-y-4">
+          <div role="note" className="flex items-start gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-900">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
+            <p>
+              <span className="font-semibold">Daftar kajian visual ini belum tampil di website publik.</span>{' '}
+              Bagian itu di website masih memakai foto dokumentasi bawaan, jadi perubahan di sini belum terlihat oleh pengunjung.
+            </p>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
               <div>
-                <h3 className="font-display text-sm font-bold text-slate-900 flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <ImageIcon className="w-4 h-4 text-emerald-700" />
                   <span>Pengaturan Kajian Visual Lapangan</span>
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-600 mt-0.5">
                   Dokumentasi nampan 5 sekat, pengemasan boks ganda, dan standar higienitas SPPG
                 </p>
               </div>
@@ -1796,7 +1815,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
               <button
                 type="button"
                 onClick={handleOpenAddVisual}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer self-start sm:self-auto"
+                className={`${BTN_PRIMARY} self-start sm:self-auto`}
               >
                 <Plus className="w-4 h-4" />
                 <span>Tambah Dokumentasi Visual Baru</span>
@@ -1840,7 +1859,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
             {config.visualStudy.items.map((item, idx) => (
               <div
                 key={item.id}
-                className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs flex flex-col hover:border-slate-300 transition-all"
+                className="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col hover:border-slate-300 transition-all"
               >
                 <div className="relative aspect-4/3 bg-slate-900 overflow-hidden">
                   <img
@@ -1863,10 +1882,10 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                     <span className="text-[10px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200/50 px-2 py-0.5 rounded inline-block">
                       {item.category}
                     </span>
-                    <h4 className="font-display text-sm font-bold text-slate-900 mt-1">
+                    <h4 className="text-sm font-bold text-slate-900 mt-1">
                       {item.title}
                     </h4>
-                    <p className="text-xs text-slate-500 mt-1 line-clamp-3 leading-relaxed">
+                    <p className="text-xs text-slate-600 mt-1 line-clamp-3 leading-relaxed">
                       {item.description}
                     </p>
                   </div>
@@ -1881,7 +1900,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                         onClick={() => handleMoveVisualItem(idx, 'up')}
                         disabled={idx === 0}
                         title="Pindah Urutan Kiri"
-                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 disabled:opacity-30 cursor-pointer"
+                        className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
+                        aria-label="Pindah Urutan Kiri"
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </button>
@@ -1890,7 +1910,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                         onClick={() => handleMoveVisualItem(idx, 'down')}
                         disabled={idx === config.visualStudy.items.length - 1}
                         title="Pindah Urutan Kanan"
-                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 disabled:opacity-30 cursor-pointer"
+                        className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
+                        aria-label="Pindah Urutan Kanan"
                       >
                         <ChevronRight className="w-4 h-4" />
                       </button>
@@ -1898,7 +1919,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                         type="button"
                         onClick={() => handleOpenEditVisual(item)}
                         title="Edit Dokumentasi"
-                        className="p-1.5 rounded-lg hover:bg-emerald-50 text-emerald-700 cursor-pointer"
+                        className={`${ICON_BTN} text-emerald-700 hover:bg-emerald-50`}
+                        aria-label="Edit Dokumentasi"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
@@ -1906,7 +1928,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                         type="button"
                         onClick={() => handleDeleteVisualItem(item.id)}
                         title="Hapus Dokumentasi"
-                        className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-600 cursor-pointer"
+                        className={`${ICON_BTN} text-rose-600 hover:bg-rose-50`}
+                        aria-label="Hapus Dokumentasi"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -1925,12 +1948,12 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
         const targetPublicUrl = `${window.location.origin}/menu-mbg-hari-ini`;
 
         return (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {/* Kartu Hub QR Code & Akses Cepat */}
-            <div className="bg-gradient-to-br from-emerald-900 via-emerald-800 to-slate-900 rounded-2xl p-6 text-white shadow-md border border-emerald-700/40">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+            <div className="bg-emerald-900 rounded-xl p-4 sm:p-5 text-white border border-emerald-800">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
-                  <div className="p-3 bg-white rounded-xl shadow-lg shrink-0">
+                  <div className="p-3 bg-white rounded-lg shrink-0">
                     {qrCodeDataUrl ? (
                       <img src={qrCodeDataUrl} alt="QR Code Menu Hari Ini" className="w-28 h-28 object-contain" />
                     ) : (
@@ -1944,7 +1967,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                       <QrCode className="w-3.5 h-3.5" />
                       <span>Akses Scan Meja & Nampan Makan Siswa</span>
                     </div>
-                    <h3 className="font-display text-lg font-bold text-white tracking-tight">
+                    <h3 className="text-lg font-bold text-white tracking-tight">
                       Halaman Publik: /menu-mbg-hari-ini
                     </h3>
                     <p className="text-xs text-emerald-100/90 max-w-xl leading-relaxed">
@@ -1963,7 +1986,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   <button
                     type="button"
                     onClick={() => window.open('/menu-mbg-hari-ini', '_blank')}
-                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-950 font-semibold text-xs transition-colors cursor-pointer shadow-xs"
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-white hover:bg-emerald-50 text-emerald-950 font-semibold text-xs transition-colors cursor-pointer"
                   >
                     <ExternalLink className="w-4 h-4 text-emerald-700" />
                     <span>Buka Halaman Publik</span>
@@ -1972,7 +1995,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   <button
                     type="button"
                     onClick={handleCopyQrLink}
-                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-800/80 hover:bg-emerald-700 border border-emerald-600/50 text-white font-medium text-xs transition-colors cursor-pointer"
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-800/80 hover:bg-emerald-700 border border-emerald-600/50 text-white font-medium text-xs transition-colors cursor-pointer"
                   >
                     {copiedQrLink ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
                     <span>{copiedQrLink ? 'Tautan Disalin!' : 'Salin Tautan'}</span>
@@ -1981,7 +2004,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   <button
                     type="button"
                     onClick={handleDownloadQrPng}
-                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-800/80 hover:bg-emerald-700 border border-emerald-600/50 text-white font-medium text-xs transition-colors cursor-pointer"
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-800/80 hover:bg-emerald-700 border border-emerald-600/50 text-white font-medium text-xs transition-colors cursor-pointer"
                   >
                     <Download className="w-4 h-4" />
                     <span>Unduh PNG</span>
@@ -1990,7 +2013,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   <button
                     type="button"
                     onClick={() => setIsPrintStickerModalOpen(true)}
-                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 border border-emerald-500 text-white font-semibold text-xs transition-colors cursor-pointer"
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 border border-emerald-500 text-white font-semibold text-xs transition-colors cursor-pointer"
                   >
                     <Printer className="w-4 h-4" />
                     <span>Cetak Stiker Meja</span>
@@ -2000,20 +2023,20 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
             </div>
 
             {/* Form Pengaturan Konten Menu Hari Ini */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
               {/* Kolom Kiri: Info Utama & Foto Menu */}
-              <div className="lg:col-span-7 space-y-6">
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+              <div className="lg:col-span-7 space-y-4">
+                <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
                         <UtensilsCrossed className="w-4 h-4" />
                       </div>
                       <div>
-                        <h3 className="font-display text-sm font-bold text-slate-900">
+                        <h3 className="text-sm font-bold text-slate-900">
                           Identitas & Foto Sajian Menu Hari Ini
                         </h3>
-                        <p className="text-[11px] text-slate-500">
+                        <p className="text-[11px] text-slate-600">
                           Informasi yang tampil di bagian atas halaman saat QR code di-scan
                         </p>
                       </div>
@@ -2102,8 +2125,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                       Foto Sajian Menu Hari Ini
                     </label>
-                    <div className="flex flex-col sm:flex-row items-start gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50/50">
-                      <div className="w-36 h-24 rounded-lg overflow-hidden border border-slate-300 bg-slate-200 shrink-0 shadow-2xs">
+                    <div className="flex flex-col sm:flex-row items-start gap-3 p-3 rounded-lg border border-slate-200 bg-slate-50/50">
+                      <div className="w-36 h-24 rounded-lg overflow-hidden border border-slate-300 bg-slate-200 shrink-0">
                         <img
                           src={menuToday.imageUrl}
                           alt="Foto Menu Hari Ini"
@@ -2125,7 +2148,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                           type="button"
                           onClick={() => todayMenuPhotoFileRef.current?.click()}
                           disabled={isUploadingTodayMenuPhoto}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold cursor-pointer shadow-2xs"
+                          className={`${BTN_PRIMARY}`}
                         >
                           <Upload className="w-3.5 h-3.5" />
                           <span>{isUploadingTodayMenuPhoto ? 'Memproses...' : 'Unggah Foto Baru (WebP)'}</span>
@@ -2221,16 +2244,16 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 </div>
 
                 {/* Ringkasan Makronutrisi Sajian */}
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+                <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4">
                   <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
                     <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
                       <Sparkles className="w-4 h-4" />
                     </div>
                     <div>
-                      <h3 className="font-display text-sm font-bold text-slate-900">
+                      <h3 className="text-sm font-bold text-slate-900">
                         Kandungan Gizi Makro Rata-Rata
                       </h3>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-[11px] text-slate-600">
                         Akumulasi nutrisi per porsi standar rekomendasi Badan Gizi Nasional
                       </p>
                     </div>
@@ -2332,19 +2355,19 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
               </div>
 
               {/* Kolom Kanan: Porsi Kecil vs Porsi Besar */}
-              <div className="lg:col-span-5 space-y-6">
-                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
+              <div className="lg:col-span-5 space-y-4">
+                <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-5">
                   <div className="pb-3 border-b border-slate-100">
-                    <h3 className="font-display text-sm font-bold text-slate-900">
+                    <h3 className="text-sm font-bold text-slate-900">
                       Standar Porsi: Porsi Kecil vs Porsi Besar
                     </h3>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-600">
                       Pengaturan takaran yang berubah secara interaktif pada tombol toggle di halaman publik
                     </p>
                   </div>
 
                   {/* Porsi Kecil */}
-                  <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/40 space-y-3">
+                  <div className="p-4 rounded-lg border border-emerald-200 bg-emerald-50/40 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-emerald-900">1. Konfigurasi Porsi Kecil</span>
                       <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-200 text-emerald-800 font-semibold">
@@ -2506,7 +2529,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   </div>
 
                   {/* Porsi Besar */}
-                  <div className="p-4 rounded-xl border border-sky-200 bg-sky-50/40 space-y-3">
+                  <div className="p-4 rounded-lg border border-sky-200 bg-sky-50/40 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-sky-900">2. Konfigurasi Porsi Besar</span>
                       <span className="text-[10px] px-2 py-0.5 rounded bg-sky-200 text-sky-800 font-semibold">
@@ -2671,20 +2694,20 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
             </div>
 
             {/* Komposisi Bahan & Manfaat Kesehatan */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                 <div>
-                  <h3 className="font-display text-sm font-bold text-slate-900">
+                  <h3 className="text-sm font-bold text-slate-900">
                     Bahan Pangan, Kandungan Gizi & Manfaat Kesehatan ({menuToday.ingredients.length} Bahan)
                   </h3>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-600">
                     Rincian tiap komponen makanan yang ditampilkan dengan foto, takaran gramatur, dan manfaat kognitif bagi anak
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={handleOpenAddIngredient}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
+                  className={`${BTN_PRIMARY} self-start sm:self-auto`}
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>Tambah Bahan Pangan</span>
@@ -2696,7 +2719,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 {menuToday.ingredients.map((item, idx) => (
                   <div
                     key={item.id}
-                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/40 hover:bg-white hover:border-emerald-300 transition-all space-y-3"
+                    className="p-4 rounded-lg border border-slate-200 bg-slate-50/40 hover:bg-white hover:border-emerald-300 transition-all space-y-3"
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0">
@@ -2760,7 +2783,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                           type="button"
                           onClick={() => handleMoveIngredient(idx, 'up')}
                           disabled={idx === 0}
-                          className="p-1 rounded hover:bg-slate-200 text-slate-500 disabled:opacity-30 cursor-pointer"
+                          className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
+                          aria-label="Naikkan urutan"
                           title="Naikkan urutan"
                         >
                           <ChevronLeft className="w-3.5 h-3.5 rotate-90" />
@@ -2769,7 +2793,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                           type="button"
                           onClick={() => handleMoveIngredient(idx, 'down')}
                           disabled={idx === menuToday.ingredients.length - 1}
-                          className="p-1 rounded hover:bg-slate-200 text-slate-500 disabled:opacity-30 cursor-pointer"
+                          className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
+                          aria-label="Turunkan urutan"
                           title="Turunkan urutan"
                         >
                           <ChevronRight className="w-3.5 h-3.5 rotate-90" />
@@ -2788,7 +2813,8 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                         <button
                           type="button"
                           onClick={() => handleDeleteIngredient(item.id)}
-                          className="p-1 rounded hover:bg-rose-100 text-rose-600 cursor-pointer"
+                          className={`${ICON_BTN} text-rose-600 hover:bg-rose-50`}
+                          aria-label="Hapus bahan"
                           title="Hapus bahan"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -2813,42 +2839,28 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
               }))}
             />
 
-            {/* Bottom Save Bar */}
-            <div className="flex items-center justify-between p-4 bg-emerald-50 rounded-2xl border border-emerald-200">
-              <div className="text-xs text-emerald-900">
-                <span className="font-bold">Perubahan Tersimpan Sementara:</span> Klik simpan untuk menerapkan ke website publik dan database cloud.
-              </div>
-              <button
-                type="button"
-                onClick={handleSaveAll}
-                disabled={isCloudSaving}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-75 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer border border-emerald-600"
-              >
-                <Save className="w-4 h-4" />
-                <span>{isCloudSaving ? 'Menyimpan...' : 'Simpan Semua Perubahan'}</span>
-              </button>
-            </div>
           </div>
         );
       })()}
 
       {/* 5. MODAL FORM: EDIT / TAMBAH SLIDE MENU */}
       {isMenuModalOpen && editingMenuSlide && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-slate-200 max-w-xl w-full p-4 sm:p-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
                   <UtensilsCrossed className="w-4 h-4" />
                 </div>
-                <h4 className="font-display text-sm font-bold text-slate-900">
-                  {editingMenuSlide.id.startsWith('menu-') ? 'Edit Menu MBG' : 'Tambah Menu Baru'}
+                <h4 className="text-sm font-bold text-slate-900">
+                  {config.menuSlider.slides.some(x => x.id === editingMenuSlide.id) ? 'Edit Menu' : 'Tambah Menu'}
                 </h4>
               </div>
               <button
                 type="button"
                 onClick={() => setIsMenuModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                className={`${ICON_BTN} text-slate-500 hover:text-slate-800 hover:bg-slate-100`}
+                aria-label="Tutup"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -2861,7 +2873,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   Foto Sajian Menu
                 </label>
                 <div className="flex items-start gap-3">
-                  <div className="w-28 h-24 rounded-xl bg-slate-900 overflow-hidden border border-slate-200 shrink-0">
+                  <div className="w-28 h-24 rounded-lg bg-slate-900 overflow-hidden border border-slate-200 shrink-0">
                     {menuImagePreview ? (
                       <img src={menuImagePreview} alt="Preview Menu" className="w-full h-full object-cover" />
                     ) : (
@@ -2919,6 +2931,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   <label className="block font-semibold text-slate-700 mb-1">Judul Menu / Paket</label>
                   <input
                     type="text"
+                    placeholder="Contoh: Nasi, Ayam Goreng, Sayur Sop"
                     value={editingMenuSlide.title}
                     onChange={e => setEditingMenuSlide(prev => prev ? { ...prev, title: e.target.value } : null)}
                     className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
@@ -2968,6 +2981,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 <label className="block font-semibold text-slate-700 mb-1">Uraian Komponen Masakan</label>
                 <textarea
                   rows={3}
+                  placeholder="Isi menu, takaran, dan keterangan gizi singkat..."
                   value={editingMenuSlide.description}
                   onChange={e => setEditingMenuSlide(prev => prev ? { ...prev, description: e.target.value } : null)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
@@ -2978,14 +2992,14 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 <button
                   type="button"
                   onClick={() => setIsMenuModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+                  className={`${BTN_SECONDARY}`}
                 >
                   Batal
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveMenuSlide}
-                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer"
+                  className={`${BTN_PRIMARY}`}
                 >
                   Terapkan Slide
                 </button>
@@ -2997,21 +3011,22 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
 
       {/* 6. MODAL FORM: EDIT / TAMBAH KAJIAN VISUAL */}
       {isVisualModalOpen && editingVisualItem && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-slate-200 max-w-xl w-full p-4 sm:p-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
                   <ImageIcon className="w-4 h-4" />
                 </div>
-                <h4 className="font-display text-sm font-bold text-slate-900">
-                  {editingVisualItem.id.startsWith('vis-') ? 'Edit Foto Kajian Visual' : 'Tambah Kajian Visual Baru'}
+                <h4 className="text-sm font-bold text-slate-900">
+                  {config.visualStudy.items.some(x => x.id === editingVisualItem.id) ? 'Edit Kajian Visual' : 'Tambah Kajian Visual'}
                 </h4>
               </div>
               <button
                 type="button"
                 onClick={() => setIsVisualModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                className={`${ICON_BTN} text-slate-500 hover:text-slate-800 hover:bg-slate-100`}
+                aria-label="Tutup"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -3024,7 +3039,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   Foto Dokumentasi Lapangan
                 </label>
                 <div className="flex items-start gap-3">
-                  <div className="w-28 h-24 rounded-xl bg-slate-900 overflow-hidden border border-slate-200 shrink-0">
+                  <div className="w-28 h-24 rounded-lg bg-slate-900 overflow-hidden border border-slate-200 shrink-0">
                     {visualImagePreview ? (
                       <img src={visualImagePreview} alt="Preview Visual" className="w-full h-full object-cover" />
                     ) : (
@@ -3082,6 +3097,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   <label className="block font-semibold text-slate-700 mb-1">Judul Dokumentasi</label>
                   <input
                     type="text"
+                    placeholder="Contoh: Penataan nampan di ruang saji"
                     value={editingVisualItem.title}
                     onChange={e => setEditingVisualItem(prev => prev ? { ...prev, title: e.target.value } : null)}
                     className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
@@ -3126,6 +3142,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 <label className="block font-semibold text-slate-700 mb-1">Uraian / Keterangan Temuan Lapangan</label>
                 <textarea
                   rows={3}
+                  placeholder="Apa yang terlihat di foto dan kenapa penting..."
                   value={editingVisualItem.description}
                   onChange={e => setEditingVisualItem(prev => prev ? { ...prev, description: e.target.value } : null)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
@@ -3136,14 +3153,14 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 <button
                   type="button"
                   onClick={() => setIsVisualModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+                  className={`${BTN_SECONDARY}`}
                 >
                   Batal
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveVisualItem}
-                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer"
+                  className={`${BTN_PRIMARY}`}
                 >
                   Terapkan Dokumentasi
                 </button>
@@ -3154,21 +3171,22 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
       )}
       {/* 7. MODAL FORM: TAMBAH / EDIT VIDEO HERO */}
       {isHeroVideoModalOpen && editingHeroVideo && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-slate-200 max-w-lg w-full p-4 sm:p-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
                   <Video className="w-4 h-4" />
                 </div>
-                <h4 className="font-display text-sm font-bold text-slate-900">
-                  {editingHeroVideo.id.startsWith('vid-') ? 'Edit Video Playlist Hero' : 'Tambah Video Hero'}
+                <h4 className="text-sm font-bold text-slate-900">
+                  {(config.hero.videos || []).some(x => x.id === editingHeroVideo.id) ? 'Edit Video Hero' : 'Tambah Video Hero'}
                 </h4>
               </div>
               <button
                 type="button"
                 onClick={() => setIsHeroVideoModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                className={`${ICON_BTN} text-slate-500 hover:text-slate-800 hover:bg-slate-100`}
+                aria-label="Tutup"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -3223,7 +3241,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
               {editingHeroVideo.url && (
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Pratinjau Video</label>
-                  <div className="aspect-video rounded-xl bg-slate-950 overflow-hidden border border-slate-300">
+                  <div className="aspect-video rounded-lg bg-slate-950 overflow-hidden border border-slate-300">
                     <video
                       key={editingHeroVideo.url}
                       src={editingHeroVideo.url}
@@ -3238,14 +3256,14 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 <button
                   type="button"
                   onClick={() => setIsHeroVideoModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+                  className={`${BTN_SECONDARY}`}
                 >
                   Batal
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveHeroVideo}
-                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer"
+                  className={`${BTN_PRIMARY}`}
                 >
                   Simpan Video
                 </button>
@@ -3257,21 +3275,22 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
 
       {/* 8. MODAL FORM: EDIT / TAMBAH DOKUMENTASI SLIDE FOTO HERO (KOTAK KANAN) */}
       {isHeroSlideModalOpen && editingHeroSlide && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-slate-200 max-w-xl w-full p-4 sm:p-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
                   <ImageIcon className="w-4 h-4" />
                 </div>
-                <h4 className="font-display text-sm font-bold text-slate-900">
-                  {editingHeroSlide.id.startsWith('hero-photo-') ? 'Edit Slide Foto Dokumentasi Hero' : 'Tambah Slide Foto Baru'}
+                <h4 className="text-sm font-bold text-slate-900">
+                  {(config.hero.photoSlides || []).some(x => x.id === editingHeroSlide.id) ? 'Edit Slide Foto' : 'Tambah Slide Foto'}
                 </h4>
               </div>
               <button
                 type="button"
                 onClick={() => setIsHeroSlideModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                className={`${ICON_BTN} text-slate-500 hover:text-slate-800 hover:bg-slate-100`}
+                aria-label="Tutup"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -3284,7 +3303,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   Foto Dokumentasi Nampan / Operasional
                 </label>
                 <div className="flex items-start gap-3">
-                  <div className="w-28 h-24 rounded-xl bg-slate-900 overflow-hidden border border-slate-200 shrink-0">
+                  <div className="w-28 h-24 rounded-lg bg-slate-900 overflow-hidden border border-slate-200 shrink-0">
                     {heroSlideImagePreview ? (
                       <img src={heroSlideImagePreview} alt="Preview Foto Hero" className="w-full h-full object-cover" />
                     ) : (
@@ -3406,14 +3425,14 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 <button
                   type="button"
                   onClick={() => setIsHeroSlideModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+                  className={`${BTN_SECONDARY}`}
                 >
                   Batal
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveHeroSlide}
-                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer"
+                  className={`${BTN_PRIMARY}`}
                 >
                   Terapkan Foto Slide
                 </button>
@@ -3425,21 +3444,22 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
 
       {/* 8. MODAL FORM: EDIT / TAMBAH BAHAN PANGAN MENU HARI INI */}
       {isIngredientModalOpen && editingIngredient && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-slate-200 max-w-xl w-full p-4 sm:p-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
                   <Apple className="w-4 h-4" />
                 </div>
-                <h4 className="font-display text-sm font-bold text-slate-900">
-                  {editingIngredient.name ? `Edit Bahan: ${editingIngredient.name}` : 'Tambah Bahan Pangan Baru'}
+                <h4 className="text-sm font-bold text-slate-900">
+                  {(config.menuToday?.ingredients || []).some(x => x.id === editingIngredient.id) ? 'Edit Bahan Pangan' : 'Tambah Bahan Pangan'}
                 </h4>
               </div>
               <button
                 type="button"
                 onClick={() => setIsIngredientModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                className={`${ICON_BTN} text-slate-500 hover:text-slate-800 hover:bg-slate-100`}
+                aria-label="Tutup"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -3452,7 +3472,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   Foto Bahan Pangan
                 </label>
                 <div className="flex items-start gap-3">
-                  <div className="w-24 h-20 rounded-xl bg-slate-100 overflow-hidden border border-slate-200 shrink-0">
+                  <div className="w-24 h-20 rounded-lg bg-slate-100 overflow-hidden border border-slate-200 shrink-0">
                     {ingredientImagePreview ? (
                       <img src={ingredientImagePreview} alt="Preview Bahan" className="w-full h-full object-cover" />
                     ) : (
@@ -3640,14 +3660,14 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 <button
                   type="button"
                   onClick={() => setIsIngredientModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+                  className={`${BTN_SECONDARY}`}
                 >
                   Batal
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveIngredient}
-                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold cursor-pointer"
+                  className={`${BTN_PRIMARY}`}
                 >
                   Simpan Bahan
                 </button>
@@ -3659,21 +3679,22 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
 
       {/* 9. MODAL / PRINT VIEW: CETAK STIKER MEJA QR CODE */}
       {isPrintStickerModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-slate-200 max-w-md w-full p-4 sm:p-5 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
                   <Printer className="w-4 h-4" />
                 </div>
-                <h4 className="font-display text-sm font-bold text-slate-900">
+                <h4 className="text-sm font-bold text-slate-900">
                   Cetak Stiker QR Code Meja & Nampan
                 </h4>
               </div>
               <button
                 type="button"
                 onClick={() => setIsPrintStickerModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                className={`${ICON_BTN} text-slate-500 hover:text-slate-800 hover:bg-slate-100`}
+                aria-label="Tutup"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -3719,7 +3740,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
               <button
                 type="button"
                 onClick={() => setIsPrintStickerModalOpen(false)}
-                className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs cursor-pointer"
+                className={`${BTN_SECONDARY}`}
               >
                 Tutup
               </button>
@@ -3737,12 +3758,38 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   onClick={() => {
                     window.print();
                   }}
-                  className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs cursor-pointer inline-flex items-center gap-1.5 shadow-xs"
+                  className={`${BTN_PRIMARY}`}
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>Cetak Stiker</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bar bawah: selalu terlihat walau halaman digulir jauh dari tombol Simpan di header */}
+      {isDirty && (
+        <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-4 pointer-events-none no-print">
+          <div className="max-w-3xl mx-auto pointer-events-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg bg-slate-900 text-white">
+            <p className="text-xs">
+              <span className="font-semibold">Ada perubahan yang belum disimpan.</span>{' '}
+              <span className="text-slate-300">Website publik belum berubah sampai kamu klik Simpan.</span>
+            </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleDiscardChanges}
+                disabled={isCloudSaving}
+                className={`px-3 py-2 min-h-[44px] sm:min-h-[34px] rounded-lg text-xs font-semibold text-slate-200 hover:text-white hover:bg-white/10 cursor-pointer disabled:opacity-50 ${FOCUS}`}
+              >
+                Batalkan
+              </button>
+              <button type="button" onClick={handleSaveAll} disabled={isCloudSaving} className={BTN_PRIMARY}>
+                <Save className="w-4 h-4" />
+                {isCloudSaving ? 'Menyimpan...' : 'Simpan'}
+              </button>
             </div>
           </div>
         </div>

@@ -266,12 +266,12 @@ export const NonFoodExpensesModule: React.FC = () => {
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-xl border border-slate-200">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
             Rekap Pengeluaran Non-Food
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5 font-medium">
+          </h1>
+          <p className="text-xs text-slate-600 mt-0.5">
             Pencatatan biaya peralatan dapur, ATK, pembersih sanitasi, APD, dan operasional.
           </p>
         </div>

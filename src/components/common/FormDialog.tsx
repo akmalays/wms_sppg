@@ -5,7 +5,9 @@ export const FIELD_INPUT =
   'w-full px-2.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-xs text-slate-900 disabled:bg-slate-100 disabled:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600';
 export const FIELD_LABEL = 'block text-xs font-medium text-slate-700 mb-1';
 export const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
-export const BTN_PRIMARY = `inline-flex items-center justify-center gap-1.5 px-4 min-h-[44px] sm:min-h-[34px] rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer ${FOCUS_RING}`;
+const BTN_SOLID = `inline-flex items-center justify-center gap-1.5 px-4 min-h-[44px] sm:min-h-[34px] rounded-lg disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer ${FOCUS_RING}`;
+export const BTN_PRIMARY = `${BTN_SOLID} bg-emerald-700 hover:bg-emerald-800`;
+const BTN_DANGER = `${BTN_SOLID} bg-rose-700 hover:bg-rose-800`;
 export const BTN_SECONDARY = `inline-flex whitespace-nowrap items-center justify-center gap-1.5 px-3 min-h-[44px] sm:min-h-[32px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-medium cursor-pointer ${FOCUS_RING}`;
 
 interface FormDialogProps {
@@ -15,6 +17,7 @@ interface FormDialogProps {
   onSubmit: (e: React.FormEvent) => void;
   submitLabel: string;
   submitDisabled?: boolean;
+  danger?: boolean;
   error?: string;
   children: React.ReactNode;
 }
@@ -27,6 +30,7 @@ export const FormDialog: React.FC<FormDialogProps> = ({
   onSubmit,
   submitLabel,
   submitDisabled,
+  danger,
   error,
   children,
 }) => {
@@ -83,7 +87,11 @@ export const FormDialog: React.FC<FormDialogProps> = ({
             <button type="button" onClick={onClose} className={`${BTN_SECONDARY} flex-1 sm:flex-none border-transparent bg-transparent hover:bg-slate-200/70`}>
               Batal
             </button>
-            <button type="submit" disabled={submitDisabled} className={`${BTN_PRIMARY} flex-1 sm:flex-none`}>
+            <button
+              type="submit"
+              disabled={submitDisabled}
+              className={`${danger ? BTN_DANGER : BTN_PRIMARY} flex-1 sm:flex-none`}
+            >
               {submitLabel}
             </button>
           </div>

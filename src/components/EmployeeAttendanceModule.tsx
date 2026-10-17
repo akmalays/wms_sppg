@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useConfirm } from '../context/ConfirmContext';
+import { localDateIso } from '../utils/localDate';
 import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
@@ -41,6 +43,7 @@ import {
 import { exportToExcel } from '../lib/excelExport';
 import { PhotoUploadCompressor } from './PhotoUploadCompressor';
 import { SppgLogo } from './SppgLogo';
+import { UserAccountsPanel, ROLE_INFO } from './UserManagementModule';
 
 const DEPARTMENTS: EmployeeDepartment[] = [
   'Dapur & Masak',
@@ -104,14 +107,20 @@ const getIndonesianShortDay = (dateStr: string, veryDense = false): string => {
   }
 };
 
-export const EmployeeAttendanceModule: React.FC = () => {
-  const { currentUser } = useAuth();
+type EmployeeTab = 'ATTENDANCE' | 'EMPLOYEES' | 'ACCOUNTS';
 
-  // Active Tab: ATTENDANCE or EMPLOYEES
-  const [activeTab, setActiveTab] = useState<'ATTENDANCE' | 'EMPLOYEES'>('ATTENDANCE');
+export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = ({ initialTab }) => {
+  const { currentUser, can } = useAuth();
+  const askConfirm = useConfirm();
+  const canManageUsers = can('MANAGE_USERS');
+
+  // Absensi | Data karyawan | Akun aplikasi (khusus Superadmin & Kepala SPPG)
+  const [activeTab, setActiveTab] = useState<EmployeeTab>(
+    initialTab === 'ACCOUNTS' && !canManageUsers ? 'ATTENDANCE' : initialTab || 'ATTENDANCE'
+  );
 
   // Selected Date for Attendance (Default to today in local YYYY-MM-DD)
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const todayStr = useMemo(() => localDateIso(), []);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
   // States untuk modal cetak dokumen resmi SPPG
@@ -124,7 +133,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
   const [attPrintStartDate, setAttPrintStartDate] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
-    return d.toISOString().slice(0, 10);
+    return localDateIso(d);
   });
   const [attPrintEndDate, setAttPrintEndDate] = useState<string>(todayStr);
   const [attPrintDept, setAttPrintDept] = useState<string>('ALL');
@@ -195,10 +204,23 @@ export const EmployeeAttendanceModule: React.FC = () => {
 
   // Data Refresh Trigger
   const [dataVersion, setDataVersion] = useState(0);
+  // Muat ulang saat ada perubahan (termasuk absensi dari perangkat lain lewat realtime),
+  // tanpa me-remount halaman agar dialog yang sedang diisi tidak tertutup.
+  useEffect(() => {
+    const onSync = () => setDataVersion(v => v + 1);
+    window.addEventListener('sppg_storage_items_changed', onSync);
+    return () => window.removeEventListener('sppg_storage_items_changed', onSync);
+  }, []);
   const refreshData = () => setDataVersion(v => v + 1);
 
   // Load Data from Database
   const employees = useMemo(() => warehouseDb.getEmployees(), [dataVersion]);
+  // Akun aplikasi yang ditautkan ke karyawan, untuk penanda di tabel karyawan.
+  const appUsers = useMemo(() => warehouseDb.getUsers(), [dataVersion, activeTab]);
+  const accountByEmployee = useMemo(
+    () => new Map(appUsers.filter(u => u.employeeId).map(u => [u.employeeId as string, u])),
+    [appUsers]
+  );
   const allAttendances = useMemo(() => warehouseDb.getAttendanceLogs(), [dataVersion]);
 
   // Attendance for the selected date
@@ -550,8 +572,13 @@ export const EmployeeAttendanceModule: React.FC = () => {
     setIsEmployeeModalOpen(false);
   };
 
-  const handleDeleteEmployee = (emp: Employee) => {
-    if (confirm(`Yakin ingin menghapus data staf "${emp.name}" (${emp.nip})?`)) {
+  const handleDeleteEmployee = async (emp: Employee) => {
+    if (await askConfirm({
+      title: `Hapus data ${emp.name}?`,
+      message: `NIP ${emp.nip}. Data karyawan yang dihapus tidak bisa dikembalikan.`,
+      confirmText: 'Hapus karyawan',
+      variant: 'danger',
+    })) {
       warehouseDb.deleteEmployee(emp.id, currentUser);
       refreshData();
       showToast(`Staf ${emp.name} telah dihapus.`);
@@ -656,8 +683,8 @@ export const EmployeeAttendanceModule: React.FC = () => {
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200">
-            Belum Absen
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium whitespace-nowrap bg-slate-100 text-slate-700 border border-slate-200">
+            Belum absen
           </span>
         );
     }
@@ -736,7 +763,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
         const end = new Date(endDate + 'T00:00:00');
         let count = 0;
         while (cur <= end && count < 62) {
-          rangeDateList.push(cur.toISOString().slice(0, 10));
+          rangeDateList.push(localDateIso(cur));
           cur.setDate(cur.getDate() + 1);
           count++;
         }
@@ -1281,7 +1308,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
 
             <div>
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
-              <div className="font-semibold text-slate-800">Kepala SPPG MLG TUMPANG JERU</div>
+              <div className="font-semibold text-slate-800">Kepala SPPG Tumpang Jeru</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
                 (Rizky Iman Ramdhan, S.Pd)
               </div>
@@ -1498,7 +1525,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
 
             <div>
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
-              <div className="font-semibold text-slate-800">Kepala SPPG MLG TUMPANG JERU</div>
+              <div className="font-semibold text-slate-800">Kepala SPPG Tumpang Jeru</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
                 (Rizky Iman Ramdhan, S.Pd)
               </div>
@@ -1558,44 +1585,32 @@ export const EmployeeAttendanceModule: React.FC = () => {
         )}
 
         {/* Header Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 bg-white p-4 sm:p-5 rounded-xl border border-slate-200">
           <div>
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-              Presensi & Karyawan
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Monitoring absensi harian dan data staf operasional SPPG MLG TUMPANG JERU.
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Karyawan</h1>
+            <p className="text-xs text-slate-600 mt-0.5">
+              Absensi harian, data karyawan{canManageUsers ? ', dan akun untuk masuk ke aplikasi' : ''}.
             </p>
           </div>
-
-          {/* Tab Switcher */}
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <div className="inline-flex p-0.5 bg-slate-100 rounded-xl border border-slate-200 text-xs font-semibold">
+          <div role="tablist" aria-label="Bagian" className="inline-flex p-1 rounded-lg bg-slate-200/70 text-xs self-start overflow-x-auto max-w-full">
+            {([
+              { id: 'ATTENDANCE', label: 'Absensi' },
+              { id: 'EMPLOYEES', label: `Data karyawan (${employees.length})` },
+              ...(canManageUsers ? [{ id: 'ACCOUNTS', label: `Akun aplikasi (${appUsers.length})` }] : []),
+            ] as { id: EmployeeTab; label: string }[]).map(t => (
               <button
+                key={t.id}
                 type="button"
-                onClick={() => setActiveTab('ATTENDANCE')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                  activeTab === 'ATTENDANCE'
-                    ? 'bg-white text-emerald-800 shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
+                role="tab"
+                aria-selected={activeTab === t.id}
+                onClick={() => setActiveTab(t.id)}
+                className={`px-3 min-h-[44px] sm:min-h-[30px] rounded-md whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+                  activeTab === t.id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-700 hover:text-slate-900 font-medium'
                 }`}
               >
-                <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Presensi Harian</span>
+                {t.label}
               </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('EMPLOYEES')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                  activeTab === 'EMPLOYEES'
-                    ? 'bg-white text-emerald-800 shadow-2xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Master Karyawan ({employees.length})</span>
-              </button>
-            </div>
+            ))}
           </div>
         </div>
 
@@ -1611,7 +1626,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
               <div className="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5 tabular-nums">
                 {metrics.total} <span className="text-xs font-normal text-slate-500">Staf</span>
               </div>
-              <span className="text-[10px] text-slate-400">Personil SPPG MLG TUMPANG JERU</span>
+              <span className="text-[10px] text-slate-400">Karyawan aktif</span>
             </div>
 
             <div className="pt-2 sm:pt-0 sm:px-4">
@@ -1621,7 +1636,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                 <span className="text-xs font-medium text-emerald-600">({metrics.rate}%)</span>
               </div>
               <span className="text-[10px] text-slate-400">
-                {metrics.terlambat > 0 ? `${metrics.terlambat} terlambat` : 'Semua tepat waktu'}
+                {metrics.terlambat > 0 ? `${metrics.terlambat} terlambat` : metrics.hadir > 0 ? 'Tidak ada yang terlambat' : 'Belum ada yang hadir'}
               </span>
             </div>
 
@@ -1805,7 +1820,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                   Daftar Presensi Karyawan - {new Date(selectedDate).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Menampilkan {filteredAttendanceRows.length} dari {activeEmployees.length} karyawan aktif SPPG MLG TUMPANG JERU.
+                  Menampilkan {filteredAttendanceRows.length} dari {activeEmployees.length} karyawan aktif.
                 </p>
               </div>
             </div>
@@ -2139,6 +2154,11 @@ export const EmployeeAttendanceModule: React.FC = () => {
                                 </span>
                               </div>
                               <div className="text-[10px] font-mono text-slate-400">{emp.nip} • NIK: {emp.nik || '-'}</div>
+                              {accountByEmployee.get(emp.id) && (
+                                <div className="text-[11px] text-emerald-800 font-medium">
+                                  Akun: {ROLE_INFO[accountByEmployee.get(emp.id)!.role]?.label}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -2205,6 +2225,8 @@ export const EmployeeAttendanceModule: React.FC = () => {
           </div>
         </div>
       )}
+
+      {activeTab === 'ACCOUNTS' && canManageUsers && <UserAccountsPanel />}
       </div>
 
       {/* =========================================================================
@@ -2217,7 +2239,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  Presensi Cepat 1-Klik - SPPG MLG TUMPANG JERU
+                  Presensi cepat
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Tanggal Operasional: <strong className="text-slate-700 font-semibold">{selectedDate}</strong> • Total {quickRows.length} staf aktif
@@ -2388,7 +2410,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  Form Presensi Staf SPPG MLG TUMPANG JERU
+                  Presensi karyawan
                 </h3>
                 <p className="text-xs text-slate-500">
                   Catat atau ubah status kehadiran individual beserta jam kerja & bukti foto WebP.
@@ -2564,7 +2586,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                   {editingEmployeeId ? 'Ubah Data Karyawan' : 'Tambah Karyawan Baru'}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
+                  Data karyawan SPPG Tumpang Jeru
                 </p>
               </div>
               <button
@@ -2954,7 +2976,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                       onClick={() => {
                         const d = new Date();
                         d.setDate(d.getDate() - 6);
-                        setAttPrintStartDate(d.toISOString().slice(0, 10));
+                        setAttPrintStartDate(localDateIso(d));
                         setAttPrintEndDate(todayStr);
                       }}
                       className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
@@ -2966,7 +2988,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                       onClick={() => {
                         const d = new Date();
                         d.setDate(d.getDate() - 13);
-                        setAttPrintStartDate(d.toISOString().slice(0, 10));
+                        setAttPrintStartDate(localDateIso(d));
                         setAttPrintEndDate(todayStr);
                       }}
                       className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
@@ -2977,7 +2999,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                       type="button"
                       onClick={() => {
                         const now = new Date();
-                        const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+                        const start = localDateIso(new Date(now.getFullYear(), now.getMonth(), 1));
                         setAttPrintStartDate(start);
                         setAttPrintEndDate(todayStr);
                       }}
@@ -2990,7 +3012,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
                       onClick={() => {
                         const d = new Date();
                         d.setDate(d.getDate() - 29);
-                        setAttPrintStartDate(d.toISOString().slice(0, 10));
+                        setAttPrintStartDate(localDateIso(d));
                         setAttPrintEndDate(todayStr);
                       }}
                       className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"

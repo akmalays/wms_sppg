@@ -44,6 +44,15 @@ import { removeFromPrintPool } from '../utils/poPrintPool';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { localDateIso, localTimestamp } from '../utils/localDate';
 
+const MAX_AUDIT_LOGS = 2000;
+
+const EQUIPMENT_CONDITION_TEXT: Record<string, string> = { GOOD: 'baik', NEEDS_INSPECTION: 'perlu dicek', DAMAGED: 'rusak' };
+const EQUIPMENT_STATUS_TEXT: Record<string, string> = { ACTIVE: 'dipakai', IN_REPAIR: 'diservis', LOST: 'hilang', RETIRED: 'tidak dipakai lagi' };
+
+// "rusak → baik" bila berubah, "tetap rusak" bila sama.
+const change = (labels: Record<string, string>, before: string, after: string) =>
+  before === after ? `tetap ${labels[after] || after}` : `${labels[before] || before} → ${labels[after] || after}`;
+
 const STORAGE_KEYS = {
   ITEMS: 'sppg_items_v1',
   SUPPLIERS: 'sppg_suppliers_v1',
@@ -63,38 +72,33 @@ const STORAGE_KEYS = {
   BENEFICIARIES: 'sppg_school_beneficiaries_v1',
 };
 
-// Initial realistic users for SPPG role-based testing
+// Akun petugas SPPG Tumpang Jeru. ID USR-001..005 dipakai ulang agar akun dummy lama
+// yang tersimpan di browser tertimpa saat dimuat (lihat penggabungan di constructor).
 export const INITIAL_USERS: User[] = [
-  {
-    id: 'USR-001',
-    name: 'Budi Santoso',
-    email: 'budi.superadmin@sppg.id',
-    role: 'SUPERADMIN',
-  },
-  {
-    id: 'USR-002',
-    name: 'Rizky Iman Ramdhan, S.Pd',
-    email: 'rizky.kasppg@sppg.id',
-    role: 'KA_SPPG',
-  },
-  {
-    id: 'USR-003',
-    name: 'Akmal',
-    email: 'akmal@sppg.id',
-    role: 'ADMIN',
-  },
-  {
-    id: 'USR-004',
-    name: 'Andi Pratama',
-    email: 'andi.aslap@sppg.id',
-    role: 'ASLAP',
-  },
-  {
-    id: 'USR-005',
-    name: 'Dewi Lestari',
-    email: 'dewi.akuntan@sppg.id',
-    role: 'AKUNTAN',
-  },
+  { id: 'USR-001', name: 'Eno Shafira R', email: 'eno.sppgjeru@sppg.id', role: 'ASLAP', employeeId: 'EMP-003' },
+  { id: 'USR-002', name: 'Rizky Iman Ramdhan, S.Pd', email: 'rizky.sppgjeru@sppg.id', role: 'KA_SPPG', employeeId: 'EMP-001' },
+  { id: 'USR-003', name: 'Nur Akmal Ays', email: 'akmal.sppgjeru@sppg.id', role: 'SUPERADMIN', employeeId: 'EMP-002' },
+  { id: 'USR-004', name: 'M Ali Akbar Fathoni', email: 'toni.sppgjeru@sppg.id', role: 'ASLAP', employeeId: 'EMP-005' },
+  { id: 'USR-005', name: 'Alfiana Viransa', email: 'alfiana.sppgjeru@sppg.id', role: 'AKUNTAN', employeeId: 'EMP-004' },
+];
+
+// Kata sandi awal (sementara) dibaca dari .env agar tidak masuk ke git.
+// Format: VITE_INITIAL_PASSWORDS="email1:sandi1,email2:sandi2". Catatan: nilai VITE_* tetap
+// tertanam di bundle hasil build, jadi petugas wajib mengganti kata sandi setelah login pertama.
+const INITIAL_PASSWORDS: Record<string, string> = Object.fromEntries(
+  String(import.meta.env.VITE_INITIAL_PASSWORDS || '')
+    .split(',')
+    .map(pair => {
+      const idx = pair.indexOf(':');
+      return idx > 0 ? [pair.slice(0, idx).trim().toLowerCase(), pair.slice(idx + 1).trim()] : null;
+    })
+    .filter((entry): entry is [string, string] => !!entry && !!entry[0] && !!entry[1])
+);
+
+// Akun dummy lama beserta alias login-nya, dibersihkan dari penyimpanan browser.
+const LEGACY_DUMMY_LOGINS = [
+  'budi.superadmin@sppg.id', 'rizky.kasppg@sppg.id', 'akmal@sppg.id', 'andi.aslap@sppg.id', 'dewi.akuntan@sppg.id',
+  'akmal', 'dewi', 'rizky', 'andi', 'budi', 'admin', 'akuntan', 'kasppg', 'aslap', 'superadmin',
 ];
 
 // Supplier UMKM & mitra asli SPPG MLG TUMPANG JERU (dari data nota pesanan).
@@ -1769,6 +1773,262 @@ export function mapTxToSupabase(tx: InventoryTransaction) {
   };
 }
 
+// ------------------------------------------------------------------------------
+// Pemetaan kolom untuk data yang disinkronkan lewat migrasi 20261017000000:
+// karyawan, absensi, penerima manfaat, riwayat aktivitas, stok opname, tugas harian.
+// ------------------------------------------------------------------------------
+
+// Timestamp lokal "YYYY-MM-DD HH:mm" -> ISO untuk kolom TIMESTAMPTZ (dan sebaliknya saat dimuat).
+const localTsToIso = (ts: string): string => {
+  const d = new Date((ts || '').replace(' ', 'T'));
+  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+};
+const isoToLocalTs = (iso: string): string => (iso ? localTimestamp(new Date(iso)) : '');
+
+export function mapEmployeeToSupabase(e: Employee) {
+  return {
+    id: e.id,
+    name: e.name,
+    nik: e.nik || null,
+    nip: e.nip || null,
+    gender: e.gender,
+    phone: e.phone || null,
+    department: e.department,
+    position: e.position,
+    employment_type: e.employmentType,
+    shift: e.shift,
+    join_date: e.joinDate || null,
+    status: e.status,
+    is_active: e.status !== 'NONAKTIF',
+    address: e.address || null,
+    emergency_contact: e.emergencyContact || null,
+    avatar_url: e.avatarUrl || null,
+    notes: e.notes || null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mapSupabaseToEmployee(r: any): Employee {
+  return {
+    id: r.id,
+    nik: r.nik || '',
+    nip: r.nip || '',
+    name: r.name || '',
+    gender: r.gender === 'P' ? 'P' : 'L',
+    phone: r.phone || '',
+    department: r.department || 'Manajemen & Administrasi',
+    position: r.position || '',
+    employmentType: r.employment_type || 'Tetap',
+    shift: r.shift || 'Pagi (05:00 - 13:00)',
+    joinDate: r.join_date || '',
+    status: r.status || (r.is_active === false ? 'NONAKTIF' : 'AKTIF'),
+    address: r.address || '',
+    emergencyContact: r.emergency_contact || '',
+    avatarUrl: r.avatar_url || undefined,
+    notes: r.notes || undefined,
+  };
+}
+
+export function mapAttendanceToSupabase(a: EmployeeAttendance) {
+  return {
+    id: a.id,
+    date: a.date,
+    employee_id: a.employeeId,
+    employee_name: a.employeeName,
+    department: a.department,
+    position: a.position,
+    shift: a.shift,
+    check_in_time: a.checkInTime || null,
+    check_out_time: a.checkOutTime || null,
+    status: a.status,
+    late_minutes: a.lateMinutes || 0,
+    photo_url: a.photoUrl || null,
+    notes: a.notes || null,
+    recorded_by: a.recordedBy,
+    verified: !!a.verified,
+    created_at: a.createdAt,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mapSupabaseToAttendance(r: any): EmployeeAttendance {
+  return {
+    id: r.id,
+    date: r.date,
+    employeeId: r.employee_id,
+    employeeName: r.employee_name || '',
+    department: r.department || 'Manajemen & Administrasi',
+    position: r.position || '',
+    shift: r.shift || 'Pagi (05:00 - 13:00)',
+    checkInTime: r.check_in_time || '',
+    checkOutTime: r.check_out_time || '',
+    status: r.status,
+    lateMinutes: Number(r.late_minutes) || 0,
+    photoUrl: r.photo_url || undefined,
+    notes: r.notes || undefined,
+    recordedBy: r.recorded_by || '',
+    verified: !!r.verified,
+    createdAt: r.created_at || new Date().toISOString(),
+  };
+}
+
+export function mapBeneficiaryToSupabase(b: SchoolBeneficiaryAllocation) {
+  return {
+    id: b.id,
+    school_name: b.schoolName,
+    category: b.category,
+    portion_count: b.portionCount,
+    delivery_time: b.deliveryTime || null,
+    contact_person: b.contactPerson || null,
+    phone: b.phone || null,
+    status: b.status || null,
+    notes: b.notes || null,
+  };
+}
+
+export function mapSupabaseToBeneficiary(r: any): SchoolBeneficiaryAllocation {
+  return {
+    id: r.id,
+    schoolName: r.school_name || '',
+    category: r.category || '',
+    portionCount: Number(r.portion_count ?? r.student_count) || 0,
+    deliveryTime: r.delivery_time || undefined,
+    contactPerson: r.contact_person || undefined,
+    phone: r.phone || undefined,
+    status: r.status || undefined,
+    notes: r.notes || undefined,
+  };
+}
+
+export function mapAuditToSupabase(l: AuditLog) {
+  return {
+    id: l.id,
+    timestamp: localTsToIso(l.timestamp),
+    user_id: l.userId,
+    user_name: l.userName,
+    user_role: l.userRole,
+    action: l.action,
+    entity: l.entity,
+    entity_id: l.entityId || '-',
+    details: l.details,
+  };
+}
+
+export function mapSupabaseToAudit(r: any): AuditLog {
+  return {
+    id: r.id,
+    timestamp: isoToLocalTs(r.timestamp),
+    userId: r.user_id,
+    userName: r.user_name,
+    userRole: r.user_role,
+    action: r.action,
+    entity: r.entity,
+    entityId: r.entity_id,
+    details: typeof r.details === 'string' ? r.details : JSON.stringify(r.details),
+  };
+}
+
+export function mapOpnameToSupabase(o: StockOpnameSession) {
+  return {
+    id: o.id,
+    date: o.date,
+    location: o.location,
+    created_by_id: o.createdById,
+    created_by_name: o.createdByName,
+    status: o.status,
+    approved_by_id: o.approvedById || null,
+    approved_by_name: o.approvedByName || null,
+    approved_at: o.approvedAt ? localTsToIso(o.approvedAt) : null,
+    notes: o.notes || null,
+    created_at: o.createdAt,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mapOpnameItemsToSupabase(o: StockOpnameSession) {
+  return o.items.map(i => ({
+    id: i.id,
+    session_id: o.id,
+    item_id: i.itemId,
+    item_name: i.itemName,
+    category: i.category,
+    unit: i.unit,
+    system_stock: i.systemStock,
+    physical_count: i.physicalCount,
+    variance: i.variance,
+    reason: i.reason,
+  }));
+}
+
+export function mapSupabaseToOpname(r: any): StockOpnameSession {
+  return {
+    id: r.id,
+    date: r.date,
+    location: r.location || r.location_id || '',
+    createdById: r.created_by_id || '',
+    createdByName: r.created_by_name || '',
+    status: r.status,
+    approvedById: r.approved_by_id || undefined,
+    approvedByName: r.approved_by_name || undefined,
+    approvedAt: r.approved_at ? isoToLocalTs(r.approved_at) : undefined,
+    notes: r.notes || undefined,
+    createdAt: r.created_at,
+    items: Array.isArray(r.stock_opname_items)
+      ? r.stock_opname_items.map((i: any) => ({
+          id: i.id,
+          itemId: i.item_id,
+          itemName: i.item_name,
+          category: i.category,
+          unit: i.unit,
+          systemStock: Number(i.system_stock) || 0,
+          physicalCount: Number(i.physical_count) || 0,
+          variance: Number(i.variance) || 0,
+          reason: i.reason || '',
+        }))
+      : [],
+  };
+}
+
+export function mapTodoToSupabase(t: DailyTodoItem) {
+  return {
+    id: t.id,
+    date: t.date,
+    title: t.title,
+    category: t.category,
+    priority: t.priority,
+    session: t.session || null,
+    target_time: t.targetTime || null,
+    is_completed: t.isCompleted,
+    completed_at: t.completedAt || null,
+    completed_by: t.completedBy || null,
+    assigned_role: t.assignedRole || null,
+    assigned_user_id: t.assignedUserId || null,
+    assigned_user_name: t.assignedUserName || null,
+    notes: t.notes || null,
+    created_at: t.createdAt,
+  };
+}
+
+export function mapSupabaseToTodo(r: any): DailyTodoItem {
+  return {
+    id: r.id,
+    date: r.date,
+    title: r.title,
+    category: r.category,
+    priority: r.priority,
+    session: r.session || undefined,
+    targetTime: r.target_time || undefined,
+    isCompleted: !!r.is_completed,
+    completedAt: r.completed_at || undefined,
+    completedBy: r.completed_by || undefined,
+    assignedRole: r.assigned_role || undefined,
+    assignedUserId: r.assigned_user_id || undefined,
+    assignedUserName: r.assigned_user_name || undefined,
+    notes: r.notes || undefined,
+    createdAt: r.created_at,
+  };
+}
+
 export function purgeLocalStorageOperationalData(): void {
   if (typeof window === 'undefined' || !window.localStorage) return;
   const OPERATIONAL_STORAGE_KEYS = [
@@ -1776,14 +2036,13 @@ export function purgeLocalStorageOperationalData(): void {
     STORAGE_KEYS.SUPPLIERS,
     STORAGE_KEYS.RECEIVINGS,
     STORAGE_KEYS.TRANSACTIONS,
-    STORAGE_KEYS.OPNAMES,
     STORAGE_KEYS.EQUIPMENT,
-    STORAGE_KEYS.AUDIT_LOGS,
+    // OPNAMES & AUDIT_LOGS sengaja tidak dihapus: riwayat aktivitas harus bertahan setelah halaman dimuat ulang.
     STORAGE_KEYS.NONFOOD_EXPENSES,
     STORAGE_KEYS.PURCHASE_ORDERS,
     STORAGE_KEYS.MENU_ORDERS,
     STORAGE_KEYS.WASTE_LOGS,
-    STORAGE_KEYS.BENEFICIARIES,
+    // BENEFICIARIES tidak dihapus: tersimpan di cloud dan di-cache lokal.
     'sppg_master_items_cleared_v2',
     'sppg_transactions_cleared_v1',
     'sppg_clean_real_suppliers_v3',
@@ -1826,15 +2085,15 @@ class WarehouseDatabase {
 
     // 2. Akun & Otentikasi (tetap dipertahankan untuk login lokal)
     this.users = getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    this.users = this.users.filter(u => !LEGACY_DUMMY_LOGINS.includes(u.email.toLowerCase()) || INITIAL_USERS.some(i => i.id === u.id));
     INITIAL_USERS.forEach(initUser => {
       const idx = this.users.findIndex(u => u.id === initUser.id || u.email.toLowerCase() === initUser.email.toLowerCase());
       if (idx >= 0) {
-        this.users[idx] = {
-          ...this.users[idx],
-          name: initUser.name,
-          email: initUser.email,
-          role: initUser.role,
-        };
+        // Akun dummy lama ber-ID sama diganti seluruhnya (tidak membawa NIP/HP dummy).
+        const wasLegacy = LEGACY_DUMMY_LOGINS.includes(this.users[idx].email.toLowerCase());
+        this.users[idx] = wasLegacy
+          ? { ...initUser }
+          : { ...this.users[idx], name: initUser.name, email: initUser.email, role: initUser.role, employeeId: this.users[idx].employeeId || initUser.employeeId };
       } else {
         this.users.push(initUser);
       }
@@ -1842,37 +2101,30 @@ class WarehouseDatabase {
     setStored(STORAGE_KEYS.USERS, this.users);
 
     const passwords = getStored<Record<string, string>>('sppg_user_passwords_v1', {});
-    passwords['akmal@sppg.id'] = passwords['akmal@sppg.id'] || 'admin123';
-    passwords['akmal'] = passwords['akmal'] || 'admin123';
-    passwords['dewi.akuntan@sppg.id'] = passwords['dewi.akuntan@sppg.id'] || 'akuntan123';
-    passwords['dewi'] = passwords['dewi'] || 'akuntan123';
-    passwords['rizky.kasppg@sppg.id'] = passwords['rizky.kasppg@sppg.id'] || 'kasppg123';
-    passwords['rizky'] = passwords['rizky'] || 'kasppg123';
-    passwords['andi.aslap@sppg.id'] = passwords['andi.aslap@sppg.id'] || 'aslap123';
-    passwords['andi'] = passwords['andi'] || 'aslap123';
-    passwords['budi.superadmin@sppg.id'] = passwords['budi.superadmin@sppg.id'] || 'superadmin123';
-    passwords['budi'] = passwords['budi'] || 'superadmin123';
+    LEGACY_DUMMY_LOGINS.forEach(k => delete passwords[k]);
+    // Kata sandi awal hanya dipasang jika belum pernah diganti petugas.
+    Object.entries(INITIAL_PASSWORDS).forEach(([email, pw]) => {
+      passwords[email] = passwords[email] || pw;
+    });
     setStored('sppg_user_passwords_v1', passwords);
-
-    if (localStorage.getItem('sppg_active_user_name') === 'Akmal') {
-      localStorage.setItem('sppg_active_user_id', 'USR-003');
-      localStorage.setItem('sppg_active_user_role', 'ADMIN');
-    }
 
     // 3. Fallback in-memory arrays sebelum data live dari Supabase Cloud selesai dimuat
     this.items = [];
     this.suppliers = [...INITIAL_SUPPLIERS];
     this.receivings = [];
     this.transactions = [];
-    this.opnames = [];
+    this.opnames = getStored<StockOpnameSession[]>(STORAGE_KEYS.OPNAMES, []);
     this.equipment = [...INITIAL_EQUIPMENT];
-    this.auditLogs = [];
+    this.auditLogs = getStored<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, []);
     this.nonFoodExpenses = [];
     this.purchaseOrders = [];
     this.menuOrders = [];
     this.wasteLogs = [];
-    const loadedTodos = getStored<DailyTodoItem[]>(STORAGE_KEYS.TODOS, INITIAL_TODOS);
-    this.todos = (loadedTodos && loadedTodos.length > 0 ? loadedTodos : [...INITIAL_TODOS]).map(t => {
+    // Tugas harian dibuat per tanggal oleh getDailyTodos. Tugas lama yang masih memakai ID template
+    // (sama setiap hari) diberi akhiran tanggal agar tidak saling menimpa di database.
+    const templateIds = new Set(INITIAL_TODOS.map(t => t.id));
+    const loadedTodos = getStored<DailyTodoItem[]>(STORAGE_KEYS.TODOS, []);
+    this.todos = loadedTodos.map(t => (templateIds.has(t.id) ? { ...t, id: `${t.id}-${t.date}` } : t)).map(t => {
       if (t.title.toLowerCase().includes('chiller') || t.title.toLowerCase().includes('cold storage')) {
         return {
           ...t,
@@ -1883,12 +2135,29 @@ class WarehouseDatabase {
       return t;
     });
     setStored(STORAGE_KEYS.TODOS, this.todos);
-    this.employees = [...REAL_EMPLOYEES];
-    this.attendanceLogs = [...REAL_ATTENDANCE_LOGS];
-    this.schoolBeneficiaries = [...DEFAULT_SCHOOL_BENEFICIARIES];
+    // Sebelumnya karyawan & absensi selalu di-reset ke data contoh setiap halaman dimuat,
+    // sehingga data yang dicatat hilang. Sekarang dibaca dari penyimpanan; data contoh lama
+    // (18 karyawan dummy) dibuang sekali lewat penanda migrasi.
+    const EMPLOYEE_MIGRATION_FLAG = 'sppg_employees_real_v2';
+    if (localStorage.getItem(EMPLOYEE_MIGRATION_FLAG) !== 'done') {
+      setStored(STORAGE_KEYS.EMPLOYEES, REAL_EMPLOYEES);
+      setStored(STORAGE_KEYS.ATTENDANCE, REAL_ATTENDANCE_LOGS);
+      localStorage.setItem(EMPLOYEE_MIGRATION_FLAG, 'done');
+    }
+    this.employees = getStored<Employee[]>(STORAGE_KEYS.EMPLOYEES, [...REAL_EMPLOYEES]);
+    this.attendanceLogs = getStored<EmployeeAttendance[]>(STORAGE_KEYS.ATTENDANCE, [...REAL_ATTENDANCE_LOGS]);
+    this.schoolBeneficiaries = getStored<SchoolBeneficiaryAllocation[]>(STORAGE_KEYS.BENEFICIARIES, [...DEFAULT_SCHOOL_BENEFICIARIES]);
 
     // 4. Inisialisasi Cloud Supabase & Realtime Subscription
     this.initCloudAndRealtime();
+  }
+
+  // Tulis ke Supabase tanpa menunggu; kegagalan dicatat di console, data tetap ada di cache lokal.
+  private pushCloud(label: string, run: () => PromiseLike<{ error: any }>): void {
+    if (!isSupabaseConfigured()) return;
+    run().then(({ error }) => {
+      if (error) console.error(`Supabase ${label} gagal:`, error.message || error);
+    });
   }
 
   private async initCloudAndRealtime(): Promise<void> {
@@ -2057,11 +2326,147 @@ class WarehouseDatabase {
         this.wasteLogs = dbWaste.map(mapSupabaseToWaste);
       }
 
+      // 10. Karyawan, absensi, penerima manfaat, opname, tugas harian, riwayat aktivitas
+      await this.loadSyncedTables(true);
+
       // Beritahu seluruh komponen bahwa data cloud telah siap
       this.notifyAllChanged();
     } catch (err) {
       console.error('Gagal mengambil data operasional dari Supabase Cloud:', err);
     }
+  }
+
+  // Cloud adalah sumber utama. Jika tabel cloud masih kosong tetapi browser punya data
+  // (data lama sebelum sinkronisasi), data browser diunggah sekali agar tidak hilang.
+  private async loadOrSeed<T>(opts: {
+    table: string;
+    fetch: () => PromiseLike<{ data: any[] | null; error: any }>;
+    fromRow: (row: any) => T;
+    toRows: (items: T[]) => any[];
+    getLocal: () => T[];
+    setLocal: (items: T[]) => void;
+    seed: boolean;
+  }): Promise<void> {
+    const { data, error } = await opts.fetch();
+    if (error) {
+      console.error(`Supabase ${opts.table} gagal dimuat (sudah menjalankan migrasi 20261017000000?):`, error.message);
+      return;
+    }
+    if (data && data.length > 0) {
+      opts.setLocal(data.map(opts.fromRow));
+    } else if (opts.seed && opts.getLocal().length > 0) {
+      const rows = opts.toRows(opts.getLocal());
+      const { error: upErr } = await supabase.from(opts.table).upsert(rows);
+      if (upErr) console.error(`Supabase ${opts.table} gagal diunggah:`, upErr.message);
+    }
+  }
+
+  private async loadSyncedTables(seed: boolean): Promise<void> {
+    await this.loadOrSeed<Employee>({
+      table: 'employees',
+      fetch: () => supabase.from('employees').select('*').order('id'),
+      fromRow: mapSupabaseToEmployee,
+      toRows: list => list.map(mapEmployeeToSupabase),
+      getLocal: () => this.employees,
+      setLocal: list => {
+        this.employees = list;
+        setStored(STORAGE_KEYS.EMPLOYEES, list);
+      },
+      seed,
+    });
+
+    await this.loadOrSeed<EmployeeAttendance>({
+      table: 'attendance_logs',
+      fetch: () => supabase.from('attendance_logs').select('*').order('date', { ascending: false }).limit(5000),
+      fromRow: mapSupabaseToAttendance,
+      toRows: list => list.map(mapAttendanceToSupabase),
+      getLocal: () => this.attendanceLogs,
+      setLocal: list => {
+        this.attendanceLogs = list;
+        setStored(STORAGE_KEYS.ATTENDANCE, list);
+      },
+      seed,
+    });
+
+    await this.loadOrSeed<SchoolBeneficiaryAllocation>({
+      table: 'school_beneficiaries',
+      fetch: () => supabase.from('school_beneficiaries').select('*').order('id'),
+      fromRow: mapSupabaseToBeneficiary,
+      toRows: list => list.map(mapBeneficiaryToSupabase),
+      getLocal: () => this.schoolBeneficiaries,
+      setLocal: list => {
+        this.schoolBeneficiaries = list;
+        setStored(STORAGE_KEYS.BENEFICIARIES, list);
+      },
+      seed,
+    });
+
+    // Tugas harian 60 hari terakhir cukup untuk tampilan; yang lebih lama tetap di database.
+    const since = localDateIso(new Date(Date.now() - 60 * 86400000));
+    await this.loadOrSeed<DailyTodoItem>({
+      table: 'daily_todos',
+      fetch: () => supabase.from('daily_todos').select('*').gte('date', since),
+      fromRow: mapSupabaseToTodo,
+      toRows: list => list.map(mapTodoToSupabase),
+      getLocal: () => this.todos,
+      setLocal: list => {
+        this.todos = list;
+        setStored(STORAGE_KEYS.TODOS, list);
+      },
+      seed,
+    });
+
+    // Opname: sesi dan rincian dimuat terpisah lalu digabung.
+    const { data: sessions, error: sesErr } = await supabase
+      .from('stock_opname_sessions')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (sesErr) {
+      console.error('Supabase stock_opname_sessions gagal dimuat:', sesErr.message);
+    } else if (sessions && sessions.length > 0) {
+      const { data: lines } = await supabase.from('stock_opname_items').select('*');
+      const bySession = new Map<string, any[]>();
+      (lines || []).forEach((l: any) => bySession.set(l.session_id, [...(bySession.get(l.session_id) || []), l]));
+      this.opnames = sessions.map((sRow: any) => mapSupabaseToOpname({ ...sRow, stock_opname_items: bySession.get(sRow.id) || [] }));
+      setStored(STORAGE_KEYS.OPNAMES, this.opnames);
+    } else if (seed && this.opnames.length > 0) {
+      this.opnames.forEach(o => this.pushOpname(o));
+    }
+
+    // Riwayat aktivitas hanya bertambah: gabungkan cloud + catatan browser yang belum terunggah.
+    const { data: cloudLogs, error: auditErr } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(MAX_AUDIT_LOGS);
+    if (auditErr) {
+      console.error('Supabase audit_logs gagal dimuat:', auditErr.message);
+    } else {
+      const cloud = (cloudLogs || []).map(mapSupabaseToAudit);
+      const cloudIds = new Set(cloud.map(l => l.id));
+      const localOnly = this.auditLogs.filter(l => !cloudIds.has(l.id));
+      if (seed && localOnly.length > 0) {
+        const { error: upErr } = await supabase.from('audit_logs').insert(localOnly.map(mapAuditToSupabase));
+        if (upErr) console.error('Supabase audit_logs gagal diunggah:', upErr.message);
+      }
+      this.auditLogs = [...cloud, ...localOnly]
+        .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))
+        .slice(0, MAX_AUDIT_LOGS);
+      setStored(STORAGE_KEYS.AUDIT_LOGS, this.auditLogs);
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('sppg_audit_changed'));
+    }
+  }
+
+  // Perubahan dari perangkat lain: muat ulang (tanpa unggah) dengan jeda singkat agar banyak
+  // perubahan beruntun (mis. presensi massal) cukup sekali dimuat.
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private refreshSyncedTables(): void {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    this.refreshTimer = setTimeout(async () => {
+      this.refreshTimer = null;
+      await this.loadSyncedTables(false);
+      this.notifyAllChanged();
+    }, 800);
   }
 
   private initRealtimeSubscriptions(): void {
@@ -2185,6 +2590,11 @@ class WarehouseDatabase {
           this.notifyAllChanged();
         }
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => this.refreshSyncedTables())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_logs' }, () => this.refreshSyncedTables())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_opname_sessions' }, () => this.refreshSyncedTables())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_todos' }, () => this.refreshSyncedTables())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_logs' }, () => this.refreshSyncedTables())
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           console.log('[Supabase Realtime] Berhasil terhubung ke realtime sinkronisasi data gudang.');
@@ -2207,6 +2617,7 @@ class WarehouseDatabase {
       this.schoolBeneficiaries.push(beneficiary);
     }
     setStored(STORAGE_KEYS.BENEFICIARIES, this.schoolBeneficiaries);
+    this.pushCloud('school_beneficiaries', () => supabase.from('school_beneficiaries').upsert(mapBeneficiaryToSupabase(beneficiary)));
 
     if (user) {
       this.logAudit(
@@ -2225,6 +2636,7 @@ class WarehouseDatabase {
     if (idx < 0) return false;
     const deleted = this.schoolBeneficiaries.splice(idx, 1)[0];
     setStored(STORAGE_KEYS.BENEFICIARIES, this.schoolBeneficiaries);
+    this.pushCloud('school_beneficiaries', () => supabase.from('school_beneficiaries').delete().eq('id', id));
 
     if (user) {
       this.logAudit(
@@ -2280,7 +2692,13 @@ class WarehouseDatabase {
   }
 
   public getAuditLogs(): AuditLog[] {
-    return [...this.auditLogs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    // Format timestamp "YYYY-MM-DD HH:mm" urut secara teks; new Date() untuk format ini tidak andal di Safari.
+    return [...this.auditLogs].sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+  }
+
+  // Untuk aktivitas yang dicatat dari luar storage (mis. kelola akun aplikasi).
+  public logActivity(user: User, action: string, entity: AuditLog['entity'], entityId: string, details: string): void {
+    this.logAudit(user, action, entity, entityId, details);
   }
 
   // --- AUDIT HELPER ---
@@ -2304,8 +2722,11 @@ class WarehouseDatabase {
       entityId,
       details,
     };
-    this.auditLogs.unshift(newLog);
+    // Batasi jumlah agar penyimpanan browser (sekitar 5 MB) tidak penuh.
+    this.auditLogs = [newLog, ...this.auditLogs].slice(0, MAX_AUDIT_LOGS);
     setStored(STORAGE_KEYS.AUDIT_LOGS, this.auditLogs);
+    this.pushCloud('audit_logs', () => supabase.from('audit_logs').insert(mapAuditToSupabase(newLog)));
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('sppg_audit_changed'));
   }
 
   public notifyAllChanged(): void {
@@ -2608,7 +3029,8 @@ class WarehouseDatabase {
     notes?: string
   ): StockOpnameSession {
     const year = new Date().getFullYear();
-    const opnameId = `SO-${year}-${String(this.opnames.length + 1).padStart(4, '0')}`;
+    // Berbasis waktu agar dua perangkat tidak membuat nomor yang sama.
+    const opnameId = `SO-${year}-${Date.now().toString().slice(-7)}`;
 
     const countedItems = itemsToCount.map((entry, idx) => {
       const item = this.getItemById(entry.itemId);
@@ -2645,6 +3067,7 @@ class WarehouseDatabase {
 
     this.opnames.unshift(newOpname);
     setStored(STORAGE_KEYS.OPNAMES, this.opnames);
+    this.pushOpname(newOpname);
 
     this.logAudit(
       user,
@@ -2655,6 +3078,18 @@ class WarehouseDatabase {
     );
 
     return newOpname;
+  }
+
+  // Sesi dulu, baru rincian (rincian merujuk ke sesi).
+  private pushOpname(o: StockOpnameSession): void {
+    if (!isSupabaseConfigured()) return;
+    supabase.from('stock_opname_sessions').upsert(mapOpnameToSupabase(o)).then(({ error }) => {
+      if (error) return console.error('Supabase stock_opname_sessions gagal:', error.message);
+      if (o.items.length === 0) return;
+      supabase.from('stock_opname_items').upsert(mapOpnameItemsToSupabase(o)).then(({ error: itemErr }) => {
+        if (itemErr) console.error('Supabase stock_opname_items gagal:', itemErr.message);
+      });
+    });
   }
 
   public approveStockOpname(opnameId: string, approver: User): StockOpnameSession {
@@ -2721,6 +3156,10 @@ class WarehouseDatabase {
     };
 
     this.opnames[opIndex] = updatedSession;
+    setStored(STORAGE_KEYS.OPNAMES, this.opnames);
+    this.pushCloud('stock_opname_sessions', () =>
+      supabase.from('stock_opname_sessions').upsert(mapOpnameToSupabase(updatedSession))
+    );
 
     // Save directly to Supabase Cloud
     if (isSupabaseConfigured()) {
@@ -3185,7 +3624,7 @@ class WarehouseDatabase {
       'EQUIPMENT_CONDITION_CHANGED',
       'EQUIPMENT',
       equipmentId,
-      `Mengubah status/kondisi alat ${old.name} (${equipmentId}): Kondisi [${old.condition} -> ${condition}], Status [${old.status} -> ${status}]. Catatan: ${notes}`
+      `${old.name}: kondisi ${change(EQUIPMENT_CONDITION_TEXT, old.condition, condition)}, status ${change(EQUIPMENT_STATUS_TEXT, old.status, status)}. Hasil cek: ${notes}`
     );
 
     return updated;
@@ -3914,9 +4353,11 @@ class WarehouseDatabase {
     const filtered = this.todos.filter(t => t.date === targetDate);
     // If no todos exist for requested date, and it's today, seed today's items
     if (filtered.length === 0 && targetDate === localDateIso()) {
-      const seeded = INITIAL_TODOS.map(t => ({ ...t, date: targetDate }));
+      // ID diberi tanggal: dulu memakai ID template yang sama setiap hari sehingga saling menimpa.
+      const seeded = INITIAL_TODOS.map(t => ({ ...t, id: `${t.id}-${targetDate}`, date: targetDate, isCompleted: false, completedAt: undefined, completedBy: undefined }));
       this.todos.push(...seeded);
       setStored(STORAGE_KEYS.TODOS, this.todos);
+      this.pushCloud('daily_todos', () => supabase.from('daily_todos').upsert(seeded.map(mapTodoToSupabase)));
       return [...seeded];
     }
     return filtered.length > 0 ? filtered : this.todos;
@@ -3938,6 +4379,7 @@ class WarehouseDatabase {
     };
     this.todos.unshift(newTodo);
     setStored(STORAGE_KEYS.TODOS, this.todos);
+    this.pushCloud('daily_todos', () => supabase.from('daily_todos').upsert(mapTodoToSupabase(newTodo)));
 
     if (user) {
       this.logAudit(
@@ -3966,6 +4408,7 @@ class WarehouseDatabase {
     };
     this.todos[idx] = updated;
     setStored(STORAGE_KEYS.TODOS, this.todos);
+    this.pushCloud('daily_todos', () => supabase.from('daily_todos').upsert(mapTodoToSupabase(updated)));
 
     if (user) {
       this.logAudit(
@@ -3985,6 +4428,7 @@ class WarehouseDatabase {
     const old = this.todos[idx];
     this.todos.splice(idx, 1);
     setStored(STORAGE_KEYS.TODOS, this.todos);
+    this.pushCloud('daily_todos', () => supabase.from('daily_todos').delete().eq('id', id));
 
     if (user) {
       this.logAudit(
@@ -4000,6 +4444,7 @@ class WarehouseDatabase {
 
   public resetDailyTodos(date?: string): DailyTodoItem[] {
     const targetDate = date || localDateIso();
+    const removedIds = this.todos.filter(t => t.date === targetDate).map(t => t.id);
     this.todos = this.todos.filter(t => t.date !== targetDate);
     const seeded = INITIAL_TODOS.map(t => ({
       ...t,
@@ -4008,6 +4453,10 @@ class WarehouseDatabase {
     }));
     this.todos.push(...seeded);
     setStored(STORAGE_KEYS.TODOS, this.todos);
+    if (removedIds.length > 0) {
+      this.pushCloud('daily_todos', () => supabase.from('daily_todos').delete().in('id', removedIds));
+    }
+    this.pushCloud('daily_todos', () => supabase.from('daily_todos').upsert(seeded.map(mapTodoToSupabase)));
     return seeded;
   }
 
@@ -4029,7 +4478,9 @@ class WarehouseDatabase {
       this.employees[existingIndex] = savedEmployee;
       this.logAudit(user, 'UPDATE', 'STAFF', savedEmployee.id, `Memperbarui data karyawan: ${savedEmployee.name} (${savedEmployee.nip})`);
     } else {
-      const nextId = `EMP-${String(this.employees.length + 1).padStart(3, '0')}`;
+      // Dari nomor terbesar, bukan jumlah: setelah ada yang dihapus, jumlah+1 bisa bentrok.
+      const maxNum = this.employees.reduce((m, e) => Math.max(m, parseInt(e.id.replace(/\D/g, ''), 10) || 0), 0);
+      const nextId = `EMP-${String(maxNum + 1).padStart(3, '0')}`;
       savedEmployee = {
         ...empData,
         id: ('id' in empData && empData.id) ? empData.id : nextId,
@@ -4039,6 +4490,7 @@ class WarehouseDatabase {
     }
 
     setStored(STORAGE_KEYS.EMPLOYEES, this.employees);
+    this.pushCloud('employees', () => supabase.from('employees').upsert(mapEmployeeToSupabase(savedEmployee)));
     return savedEmployee;
   }
 
@@ -4048,6 +4500,8 @@ class WarehouseDatabase {
 
     this.employees[index] = { ...this.employees[index], ...updates };
     setStored(STORAGE_KEYS.EMPLOYEES, this.employees);
+    const updatedEmp = this.employees[index];
+    this.pushCloud('employees', () => supabase.from('employees').upsert(mapEmployeeToSupabase(updatedEmp)));
     this.logAudit(user, 'UPDATE', 'STAFF', id, `Memperbarui profil staf: ${this.employees[index].name}`);
     return this.employees[index];
   }
@@ -4056,6 +4510,7 @@ class WarehouseDatabase {
     const emp = this.employees.find(e => e.id === id);
     this.employees = this.employees.filter(e => e.id !== id);
     setStored(STORAGE_KEYS.EMPLOYEES, this.employees);
+    this.pushCloud('employees', () => supabase.from('employees').delete().eq('id', id));
     if (emp) {
       this.logAudit(user, 'DELETE', 'STAFF', id, `Menghapus data staf: ${emp.name} (${emp.nip})`);
     }
@@ -4085,7 +4540,8 @@ class WarehouseDatabase {
       this.attendanceLogs[existingIndex] = savedRecord;
       this.logAudit(user, 'UPDATE', 'ATTENDANCE', savedRecord.id, `Update absensi: ${savedRecord.employeeName} (${savedRecord.status}) tgl ${savedRecord.date}`);
     } else {
-      const newId = `ATT-${attData.date.replace(/-/g, '')}-${String(this.attendanceLogs.length + 1).padStart(3, '0')}`;
+      // Satu absensi per karyawan per hari, jadi ID dari tanggal + karyawan (tidak bentrok antar perangkat).
+      const newId = `ATT-${attData.date.replace(/-/g, '')}-${attData.employeeId}`;
       savedRecord = {
         ...attData,
         id: newId,
@@ -4096,6 +4552,7 @@ class WarehouseDatabase {
     }
 
     setStored(STORAGE_KEYS.ATTENDANCE, this.attendanceLogs);
+    this.pushCloud('attendance_logs', () => supabase.from('attendance_logs').upsert(mapAttendanceToSupabase(savedRecord)));
     return savedRecord;
   }
 
@@ -4115,6 +4572,7 @@ class WarehouseDatabase {
     const att = this.attendanceLogs.find(a => a.id === id);
     this.attendanceLogs = this.attendanceLogs.filter(a => a.id !== id);
     setStored(STORAGE_KEYS.ATTENDANCE, this.attendanceLogs);
+    this.pushCloud('attendance_logs', () => supabase.from('attendance_logs').delete().eq('id', id));
     if (att) {
       this.logAudit(user, 'DELETE', 'ATTENDANCE', id, `Menghapus data presensi: ${att.employeeName} tgl ${att.date}`);
     }
@@ -4231,8 +4689,15 @@ class WarehouseDatabase {
   }
 
   public registerUser(userData: Omit<User, 'id'> & { password?: string }): User {
-    const nextNum = this.users.length + 1;
-    const newId = `USR-${String(nextNum).padStart(3, '0')}`;
+    // Nomor berikutnya dari ID terbesar, bukan jumlah akun: setelah ada yang dihapus, jumlah+1 bisa bentrok.
+    const maxNum = this.users.reduce((max, u) => {
+      const n = parseInt(u.id.replace(/\D/g, ''), 10);
+      return Number.isNaN(n) ? max : Math.max(max, n);
+    }, 0);
+    const newId = `USR-${String(maxNum + 1).padStart(3, '0')}`;
+    if (this.users.some(u => u.email.toLowerCase() === userData.email.trim().toLowerCase())) {
+      throw new Error(`Email ${userData.email.trim()} sudah dipakai akun lain.`);
+    }
     const newUser: User = {
       id: newId,
       name: userData.name.trim(),
@@ -4241,6 +4706,7 @@ class WarehouseDatabase {
       avatarUrl: userData.avatarUrl,
       phone: userData.phone,
       nip: userData.nip,
+      employeeId: userData.employeeId,
     };
     this.users.push(newUser);
     setStored(STORAGE_KEYS.USERS, this.users);
@@ -4257,52 +4723,25 @@ class WarehouseDatabase {
   public getUserPassword(email: string): string | undefined {
     const passwords = getStored<Record<string, string>>('sppg_user_passwords_v1', {});
     const clean = email.toLowerCase().trim();
-    if (passwords[clean]) return passwords[clean];
-    if (clean === 'akmal@sppg.id' || clean === 'akmal' || clean === 'admin') return 'admin123';
-    if (clean === 'dewi.akuntan@sppg.id' || clean === 'dewi' || clean === 'akuntan') return 'akuntan123';
-    if (clean === 'rizky.kasppg@sppg.id' || clean === 'rizky' || clean === 'kasppg') return 'kasppg123';
-    if (clean === 'andi.aslap@sppg.id' || clean === 'andi' || clean === 'aslap') return 'aslap123';
-    if (clean === 'budi.superadmin@sppg.id' || clean === 'budi' || clean === 'superadmin') return 'superadmin123';
-    return undefined;
+    return passwords[clean];
   }
 
   public verifyUserCredentials(emailOrIdentifier: string, passwordInput: string): { valid: boolean; user?: User; error?: string } {
     const clean = emailOrIdentifier.toLowerCase().trim();
-    const user = this.users.find(u =>
-      u.email.toLowerCase() === clean ||
-      u.name.toLowerCase() === clean ||
-      u.id.toLowerCase() === clean ||
-      (u.role === 'ADMIN' && (clean === 'admin' || clean === 'akmal' || clean === 'akmal@sppg.id')) ||
-      (u.role === 'KA_SPPG' && (clean === 'kasppg' || clean === 'ka sppg' || clean === 'rizky' || clean === 'rizky.kasppg@sppg.id')) ||
-      (u.role === 'AKUNTAN' && (clean === 'akuntan' || clean === 'dewi' || clean === 'dewi.akuntan@sppg.id')) ||
-      (u.role === 'ASLAP' && (clean === 'aslap' || clean === 'andi' || clean === 'andi.aslap@sppg.id')) ||
-      (u.role === 'SUPERADMIN' && (clean === 'superadmin' || clean === 'budi' || clean === 'budi.superadmin@sppg.id'))
-    );
+    // Boleh masuk dengan email lengkap atau bagian sebelum @ (mis. akmal.sppgjeru).
+    const user = this.users.find(u => {
+      const email = u.email.toLowerCase();
+      return email === clean || email.split('@')[0] === clean;
+    });
 
     if (!user) {
-      return { valid: false, error: 'Email atau nama pengguna tidak terdaftar dalam database petugas.' };
+      return { valid: false, error: 'Email atau nama pengguna tidak terdaftar.' };
     }
 
     const passwords = getStored<Record<string, string>>('sppg_user_passwords_v1', {});
-    const customPass = passwords[user.email] || passwords[clean];
-
-    let isMatch = false;
-    if (customPass && customPass === passwordInput) {
-      isMatch = true;
-    } else if (user.role === 'ADMIN' && (passwordInput === 'admin123' || passwordInput === 'akmal123')) {
-      isMatch = true;
-    } else if (user.role === 'KA_SPPG' && (passwordInput === 'kasppg123' || passwordInput === 'rizky123')) {
-      isMatch = true;
-    } else if (user.role === 'AKUNTAN' && (passwordInput === 'akuntan123' || passwordInput === 'dewi123')) {
-      isMatch = true;
-    } else if (user.role === 'ASLAP' && (passwordInput === 'aslap123' || passwordInput === 'andi123')) {
-      isMatch = true;
-    } else if (user.role === 'SUPERADMIN' && (passwordInput === 'superadmin123' || passwordInput === 'budi123')) {
-      isMatch = true;
-    }
-
-    if (!isMatch) {
-      return { valid: false, error: 'Kata sandi yang Anda masukkan salah untuk akun ini.' };
+    const stored = passwords[user.email.toLowerCase()];
+    if (!stored || stored !== passwordInput) {
+      return { valid: false, error: 'Kata sandi salah untuk akun ini.' };
     }
 
     return { valid: true, user };
@@ -4333,6 +4772,11 @@ class WarehouseDatabase {
     if (!user) return false;
     this.users = this.users.filter(u => u.id !== userId);
     setStored(STORAGE_KEYS.USERS, this.users);
+    const passwords = getStored<Record<string, string>>('sppg_user_passwords_v1', {});
+    if (passwords[user.email]) {
+      delete passwords[user.email];
+      setStored('sppg_user_passwords_v1', passwords);
+    }
     return true;
   }
 }

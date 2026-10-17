@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { ToastProvider } from './context/ToastContext';
+import { ToastProvider, useToast } from './context/ToastContext';
+import { ConfirmProvider, useConfirm } from './context/ConfirmContext';
 import { Navbar } from './components/Navbar';
 import { DashboardView } from './components/DashboardView';
 import { DailyExpensesModule } from './components/DailyExpensesModule';
@@ -20,9 +21,7 @@ import { SuppliersModule } from './components/SuppliersModule';
 import { AuditLogModule } from './components/AuditLogModule';
 import { MenuPrintModule } from './components/MenuPrintModule';
 import { LoginPage } from './components/LoginPage';
-import { RegisterPage } from './components/RegisterPage';
 import { LandingPage } from './components/LandingPage';
-import { UserManagementModule } from './components/UserManagementModule';
 import { WebsiteCmsModule } from './components/WebsiteCmsModule';
 import { DailyMenuPublicPage } from './components/DailyMenuPublicPage';
 import { warehouseDb } from './db/storage';
@@ -64,9 +63,10 @@ export const getAppRoute = (): AppRouteType => {
 
 const MainLayout: React.FC = () => {
   const { currentUser, isAuthenticated } = useAuth();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [currentRoute, setCurrentRoute] = useState<AppRouteType>(getAppRoute);
-  const [authView, setAuthView] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
   const [dataVersion, setDataVersion] = useState<number>(0);
   // Form yang dibuka saat pindah ke Cetak Form dari halaman lain (nota supplier, label aset).
   const [printTarget, setPrintTarget] = useState<PrintTarget | undefined>(undefined);
@@ -152,41 +152,39 @@ const MainLayout: React.FC = () => {
 
   // 2. Jika mengakses rute /dashboard tetapi belum login: Tampilkan form login petugas
   if (!isAuthenticated) {
-    if (authView === 'REGISTER') {
-      return <RegisterPage onNavigateToLogin={() => setAuthView('LOGIN')} />;
-    }
-    return (
-      <LoginPage
-        onNavigateToRegister={() => setAuthView('REGISTER')}
-        onNavigateToLanding={navigateToHome}
-      />
-    );
+    // Pendaftaran mandiri ditutup: siapa pun bisa membuat akun Superadmin lewat halaman itu.
+    // Akun dibuat Superadmin / Kepala SPPG di menu Karyawan > Akun aplikasi.
+    return <LoginPage onNavigateToLanding={navigateToHome} />;
   }
 
   const handleRefresh = () => {
     setDataVersion(v => v + 1);
   };
 
-  const handleClearTransactions = () => {
-    const confirmClear = window.confirm(
-      'Bersihkan seluruh data transaksi belanja, penerimaan, nota pesanan (PO), dan reset stok barang ke 0?\n\n(Catatan: Master Barang, Master Supplier, dan Akun Pengguna akan tetap aman tersimpan).'
-    );
-    if (confirmClear) {
-      warehouseDb.clearTransactionsOnly();
-      setDataVersion(v => v + 1);
-      alert('Data transaksi berhasil dibersihkan! Stok barang kini bernilai 0 dan siap untuk testing/seeding data baru.');
-    }
+  const handleClearTransactions = async () => {
+    const ok = await confirm({
+      title: 'Bersihkan semua data transaksi?',
+      message: 'Belanja, penerimaan, nota pesanan (PO) dihapus dan stok barang kembali ke 0. Master barang, supplier, dan akun pengguna tetap aman.',
+      confirmText: 'Bersihkan data',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    warehouseDb.clearTransactionsOnly();
+    setDataVersion(v => v + 1);
+    toast.success('Data transaksi dibersihkan. Stok barang sekarang 0.');
   };
 
-  const handleResetData = () => {
-    const confirmReset = window.confirm(
-      'Reset data ke kondisi awal demo SPPG? Seluruh data transaksi simulasi bawaan akan dimuat ulang.'
-    );
-    if (confirmReset) {
-      warehouseDb.resetToSeedData();
-      setDataVersion(v => v + 1);
-      alert('Data gudang SPPG berhasil di-reset ke data bawaan.');
-    }
+  const handleResetData = async () => {
+    const ok = await confirm({
+      title: 'Reset ke data demo?',
+      message: 'Semua data diganti dengan data contoh bawaan SPPG.',
+      confirmText: 'Reset data',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    warehouseDb.resetToSeedData();
+    setDataVersion(v => v + 1);
+    toast.success('Data gudang dikembalikan ke data bawaan.');
   };
 
   return (
@@ -233,8 +231,12 @@ const MainLayout: React.FC = () => {
             <WasteLogModule />
           )}
 
-          {activeTab === 'employees' && (
-            <EmployeeAttendanceModule />
+          {/* Kelola Pengguna digabung ke halaman Karyawan sebagai tab "Akun aplikasi". */}
+          {(activeTab === 'employees' || activeTab === 'user_management') && (
+            <EmployeeAttendanceModule
+              key={activeTab}
+              initialTab={activeTab === 'user_management' ? 'ACCOUNTS' : undefined}
+            />
           )}
 
           {activeTab === 'profile' && (
@@ -278,7 +280,6 @@ const MainLayout: React.FC = () => {
             <MenuPrintModule onNavigate={setActiveTab} />
           )}
 
-          {activeTab === 'user_management' && <UserManagementModule />}
 
           {activeTab === 'website_cms' && (
             <WebsiteCmsModule onViewLanding={navigateToHome} />
@@ -299,13 +300,15 @@ const MainLayout: React.FC = () => {
   );
 };
 
-const SELF_SYNCING_TABS = new Set(['receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'daily_flow', 'equipment', 'suppliers']);
+const SELF_SYNCING_TABS = new Set(['receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit']);
 
 export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <MainLayout />
+        <ConfirmProvider>
+          <MainLayout />
+        </ConfirmProvider>
       </ToastProvider>
     </AuthProvider>
   );

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { HelpCircle, AlertTriangle, Trash2, CheckCircle2, Loader2, X } from 'lucide-react';
 
 export type ConfirmVariant = 'primary' | 'danger' | 'warning' | 'info';
@@ -31,6 +31,38 @@ export interface ConfirmationModalProps {
   itemsSummary?: ConfirmationItemSummary;
 }
 
+const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
+const BTN_BASE = `inline-flex items-center justify-center gap-1.5 px-4 min-h-[44px] sm:min-h-[34px] rounded-lg text-xs font-semibold cursor-pointer disabled:cursor-not-allowed ${FOCUS_RING}`;
+
+const VARIANTS: Record<ConfirmVariant, { icon: string; button: string; defaultIcon: React.ReactNode; defaultConfirmText: string }> = {
+  primary: {
+    icon: 'bg-emerald-50 text-emerald-700',
+    button: 'bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white',
+    defaultIcon: <CheckCircle2 className="w-4 h-4" />,
+    defaultConfirmText: 'Ya, lanjutkan',
+  },
+  danger: {
+    icon: 'bg-rose-50 text-rose-700',
+    button: 'bg-rose-700 hover:bg-rose-800 disabled:bg-slate-300 text-white',
+    defaultIcon: <Trash2 className="w-4 h-4" />,
+    defaultConfirmText: 'Ya, hapus',
+  },
+  warning: {
+    icon: 'bg-amber-50 text-amber-700',
+    button: 'bg-amber-700 hover:bg-amber-800 disabled:bg-slate-300 text-white',
+    defaultIcon: <AlertTriangle className="w-4 h-4" />,
+    defaultConfirmText: 'Ya, lanjutkan',
+  },
+  info: {
+    icon: 'bg-slate-100 text-slate-700',
+    button: 'bg-slate-800 hover:bg-slate-900 disabled:bg-slate-300 text-white',
+    defaultIcon: <HelpCircle className="w-4 h-4" />,
+    defaultConfirmText: 'Konfirmasi',
+  },
+};
+
+// Dialog konfirmasi standar. Bentuknya sama dengan FormDialog: kartu rounded-xl,
+// muncul dari bawah di ponsel, tombol di footer. Untuk aksi berbahaya, fokus awal di tombol Batal.
 export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   isOpen,
   onClose,
@@ -45,167 +77,138 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   loadingText = 'Memproses...',
   itemsSummary,
 }) => {
-  // Accessibility: Close on Escape key if not loading
+  const titleId = useId();
+  const messageId = useId();
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
+    if (!isOpen) return;
+    (variant === 'danger' ? cancelRef : confirmRef).current?.focus();
+  }, [isOpen, variant]);
+
+  useEffect(() => {
+    if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isLoading && isOpen) {
+      if (e.key === 'Escape' && !isLoading) {
+        e.stopPropagation();
         onClose();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    // Capture: Escape menutup konfirmasi dulu, bukan modal di belakangnya.
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [isOpen, isLoading, onClose]);
 
   if (!isOpen) return null;
 
-  const config = {
-    primary: {
-      iconBg: 'bg-emerald-100 text-emerald-700',
-      iconBorder: 'ring-emerald-50',
-      confirmBtn: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20',
-      defaultIcon: <CheckCircle2 className="w-6 h-6" />,
-      defaultConfirmText: 'Ya, Lanjutkan',
-    },
-    danger: {
-      iconBg: 'bg-rose-100 text-rose-700',
-      iconBorder: 'ring-rose-50',
-      confirmBtn: 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/20',
-      defaultIcon: <Trash2 className="w-6 h-6" />,
-      defaultConfirmText: 'Ya, Hapus',
-    },
-    warning: {
-      iconBg: 'bg-amber-100 text-amber-700',
-      iconBorder: 'ring-amber-50',
-      confirmBtn: 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/20',
-      defaultIcon: <AlertTriangle className="w-6 h-6" />,
-      defaultConfirmText: 'Ya, Lanjutkan',
-    },
-    info: {
-      iconBg: 'bg-blue-100 text-blue-700',
-      iconBorder: 'ring-blue-50',
-      confirmBtn: 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20',
-      defaultIcon: <HelpCircle className="w-6 h-6" />,
-      defaultConfirmText: 'Konfirmasi',
-    },
-  }[variant];
-
-  const displayConfirmText = confirmText || config.defaultConfirmText;
+  const v = VARIANTS[variant];
 
   return (
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
-      role="dialog"
-      aria-modal="true"
-    >
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
-        {/* Header bar with close button */}
-        <div className="px-5 pt-4 pb-2 flex items-center justify-end">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/60">
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={messageId}
+        className="bg-white w-full sm:max-w-md max-h-[92vh] flex flex-col rounded-t-xl sm:rounded-xl border border-slate-200 overflow-hidden"
+      >
+        <div className="px-4 sm:px-5 pt-4 pb-3 flex items-start gap-3 overflow-y-auto">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${v.icon}`} aria-hidden="true">
+            {icon || v.defaultIcon}
+          </div>
+          <div className="flex-1 min-w-0 pt-1">
+            <h2 id={titleId} className="text-sm font-semibold text-slate-900">
+              {title}
+            </h2>
+            <div id={messageId} className="text-xs text-slate-600 mt-1 leading-relaxed whitespace-pre-line">
+              {message}
+            </div>
+
+            {itemsSummary && (
+              <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-2">
+                <div className="flex justify-between items-center text-slate-700 font-semibold pb-1.5 border-b border-slate-200">
+                  <span>Rincian barang</span>
+                  {itemsSummary.count !== undefined && (
+                    <span className="text-[11px] px-1.5 rounded-md bg-slate-200 text-slate-700">
+                      {itemsSummary.count} item
+                    </span>
+                  )}
+                </div>
+
+                {itemsSummary.items && itemsSummary.items.length > 0 && (
+                  <div className="max-h-36 overflow-y-auto divide-y divide-slate-200 text-[11px]">
+                    {itemsSummary.items.map((item, idx) => (
+                      <div key={idx} className="py-1.5 flex items-center justify-between">
+                        <div className="truncate pr-2">
+                          <span className="font-semibold text-slate-800">{item.name}</span>
+                          {item.qty && (
+                            <span className="text-slate-600 ml-1">
+                              ({item.qty} {item.unit || ''})
+                            </span>
+                          )}
+                          {item.supplier && (
+                            <span className="block text-[10px] text-slate-600 truncate">{item.supplier}</span>
+                          )}
+                        </div>
+                        {item.subtotal !== undefined && (
+                          <span className="font-mono font-semibold text-slate-900 shrink-0 tabular-nums">
+                            Rp {item.subtotal.toLocaleString('id-ID')}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {itemsSummary.totalNominal !== undefined && (
+                  <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
+                    <span className="text-slate-600 font-medium">Total estimasi</span>
+                    <span className="font-mono font-bold text-slate-900 text-sm tabular-nums">
+                      Rp {itemsSummary.totalNominal.toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <button
             type="button"
             disabled={isLoading}
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors cursor-pointer disabled:opacity-40"
             aria-label="Tutup"
+            className={`p-2 -m-1 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer disabled:opacity-40 ${FOCUS_RING}`}
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Content body */}
-        <div className="px-6 pb-6 text-center overflow-y-auto">
-          {/* Icon badge */}
-          <div
-            className={`w-14 h-14 mx-auto rounded-2xl flex items-center justify-center mb-4 ring-8 ${config.iconBg} ${config.iconBorder}`}
+        <div className="px-4 sm:px-5 py-3 border-t border-slate-200 bg-slate-50 flex justify-end gap-2">
+          <button
+            ref={cancelRef}
+            type="button"
+            disabled={isLoading}
+            onClick={onClose}
+            className={`${BTN_BASE} flex-1 sm:flex-none text-slate-800 hover:bg-slate-200/70 disabled:opacity-50`}
           >
-            {icon || config.defaultIcon}
-          </div>
-
-          {/* Title */}
-          <h3 className="text-base font-bold text-slate-900 leading-snug">
-            {title}
-          </h3>
-
-          {/* Message */}
-          <div className="text-xs text-slate-600 mt-1.5 leading-relaxed">
-            {message}
-          </div>
-
-          {/* Optional items summary box */}
-          {itemsSummary && (
-            <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200 text-left text-xs space-y-2">
-              <div className="flex justify-between items-center text-slate-700 font-semibold pb-1.5 border-b border-slate-200/80">
-                <span>Rincian Barang</span>
-                {itemsSummary.count !== undefined && (
-                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
-                    {itemsSummary.count} Item
-                  </span>
-                )}
-              </div>
-
-              {itemsSummary.items && itemsSummary.items.length > 0 && (
-                <div className="max-h-36 overflow-y-auto divide-y divide-slate-100 text-[11px]">
-                  {itemsSummary.items.map((item, idx) => (
-                    <div key={idx} className="py-1.5 flex items-center justify-between">
-                      <div className="truncate pr-2">
-                        <span className="font-semibold text-slate-800">{item.name}</span>
-                        {item.qty && (
-                          <span className="text-slate-400 ml-1">
-                            ({item.qty} {item.unit || ''})
-                          </span>
-                        )}
-                        {item.supplier && (
-                          <span className="block text-[10px] text-slate-400 truncate">
-                            {item.supplier}
-                          </span>
-                        )}
-                      </div>
-                      {item.subtotal !== undefined && (
-                        <span className="font-mono font-bold text-slate-900 shrink-0">
-                          Rp {item.subtotal.toLocaleString('id-ID')}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {itemsSummary.totalNominal !== undefined && (
-                <div className="pt-2 border-t border-slate-200/80 flex justify-between items-center">
-                  <span className="text-slate-500 font-medium">Total Estimasi:</span>
-                  <span className="font-mono font-bold text-emerald-700 text-sm">
-                    Rp {itemsSummary.totalNominal.toLocaleString('id-ID')}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Action buttons */}
-          <div className="mt-6 flex flex-col sm:flex-row gap-2.5">
-            <button
-              type="button"
-              disabled={isLoading}
-              onClick={onClose}
-              className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              {cancelText}
-            </button>
-            <button
-              type="button"
-              disabled={isLoading}
-              onClick={onConfirm}
-              className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${config.confirmBtn}`}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>{loadingText}</span>
-                </>
-              ) : (
-                <span>{displayConfirmText}</span>
-              )}
-            </button>
-          </div>
+            {cancelText}
+          </button>
+          <button
+            ref={confirmRef}
+            type="button"
+            disabled={isLoading}
+            onClick={onConfirm}
+            className={`${BTN_BASE} flex-1 sm:flex-none ${v.button}`}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {loadingText}
+              </>
+            ) : (
+              confirmText || v.defaultConfirmText
+            )}
+          </button>
         </div>
       </div>
     </div>

@@ -18,6 +18,7 @@ export interface User {
   avatarUrl?: string;
   phone?: string;
   nip?: string;
+  employeeId?: string; // tautan ke data karyawan (EMP-xxx), jika akun ini milik karyawan
 }
 
 export type ItemType =

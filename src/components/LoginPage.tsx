@@ -232,18 +232,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister, onNa
               </button>
             </form>
 
-            {onNavigateToRegister && (
-              <div className="text-center pt-2 border-t border-slate-100">
-                <span className="text-xs text-slate-500">Petugas belum terdaftar? </span>
-                <button
-                  type="button"
-                  onClick={onNavigateToRegister}
-                  className="text-xs font-semibold text-emerald-800 hover:text-emerald-900 hover:underline cursor-pointer"
-                >
-                  Registrasi Akun Petugas
-                </button>
-              </div>
-            )}
+            <p className="text-center pt-2 border-t border-slate-100 text-xs text-slate-600">
+              Belum punya akun? Minta dibuatkan oleh Kepala SPPG.
+            </p>
 
             {/* Official Disclaimer */}
             <div className="pt-3 border-t border-slate-100 flex items-start gap-2.5 text-[11px] text-slate-400 leading-relaxed">

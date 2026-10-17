@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useConfirm } from '../context/ConfirmContext';
 import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
@@ -104,6 +105,7 @@ interface BatchMasterItemRow {
 export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = 'stock' }) => {
   const { currentUser, can } = useAuth();
   const toast = useToast();
+  const askConfirm = useConfirm();
 
   // Top level active tab: 'stock' (Data Stok Keseluruhan) vs 'master' (Master Barang) vs 'opname' (Stok Opname Fisik)
   const [activeMainTab, setActiveMainTab] = useState<'stock' | 'master' | 'opname'>(initialTab);
@@ -731,9 +733,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
     );
   };
 
-  const handleOpnameCategoryChange = (cat: SppgCategory) => {
+  const handleOpnameCategoryChange = async (cat: SppgCategory) => {
     const counted = countingItems.filter(c => c.physicalCount !== null).length;
-    if (counted > 0 && !window.confirm(`Ganti kategori akan menghapus ${counted} hasil hitung yang sudah diisi. Lanjutkan?`)) {
+    if (counted > 0 && !(await askConfirm({
+      title: 'Ganti kategori?',
+      message: `${counted} hasil hitung yang sudah diisi akan dihapus.`,
+      confirmText: 'Ganti kategori',
+      variant: 'warning',
+    }))) {
       return;
     }
     setOpnameCategoryFilter(cat);

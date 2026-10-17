@@ -829,6 +829,8 @@ export async function fetchWebsiteConfigFromCloud(): Promise<{
 export async function saveWebsiteConfigToCloud(config: WebsiteConfig): Promise<{
   success: boolean;
   isCloudSynced: boolean;
+  /** true jika Supabase terhubung tapi sinkron gagal, jadi layak dicoba lagi */
+  cloudFailed: boolean;
   message: string;
 }> {
   // 1. Simpan segera ke localStorage agar UI instan merespons tanpa jeda jaringan
@@ -842,6 +844,7 @@ export async function saveWebsiteConfigToCloud(config: WebsiteConfig): Promise<{
     return {
       success: true,
       isCloudSynced: false,
+      cloudFailed: false,
       message: 'Tersimpan di browser lokal (Supabase belum terhubung).'
     };
   }
@@ -860,6 +863,7 @@ export async function saveWebsiteConfigToCloud(config: WebsiteConfig): Promise<{
       return {
         success: true,
         isCloudSynced: false,
+        cloudFailed: true,
         message: `Tersimpan di browser lokal. Cloud pending: ${error.message}`
       };
     }
@@ -867,6 +871,7 @@ export async function saveWebsiteConfigToCloud(config: WebsiteConfig): Promise<{
     return {
       success: true,
       isCloudSynced: true,
+      cloudFailed: false,
       message: 'Konfigurasi website berhasil disinkronkan ke Database Cloud Supabase!'
     };
   } catch (err: unknown) {
@@ -874,6 +879,7 @@ export async function saveWebsiteConfigToCloud(config: WebsiteConfig): Promise<{
     return {
       success: true,
       isCloudSynced: false,
+      cloudFailed: true,
       message: `Tersimpan di browser lokal. (Koneksi cloud: ${errorMsg})`
     };
   }

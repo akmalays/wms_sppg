@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useConfirm } from '../context/ConfirmContext';
 import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
@@ -113,6 +114,7 @@ export interface DailyExpensesModuleProps {
 
 export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavigate }) => {
   const { currentUser, can } = useAuth();
+  const askConfirm = useConfirm();
   const today = localDateIso();
 
   const [periodType, setPeriodType] = useState<PeriodType>('WEEKLY');
@@ -345,8 +347,13 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
 
   const visibleCategories = categoryFilter === 'ALL' ? CATEGORIES : [categoryFilter];
 
-  const handleDeleteManual = (id: string, name: string) => {
-    if (!window.confirm(`Hapus catatan "${name}"? Catatan yang dihapus tidak bisa dikembalikan.`)) return;
+  const handleDeleteManual = async (id: string, name: string) => {
+    if (!(await askConfirm({
+      title: `Hapus catatan "${name}"?`,
+      message: 'Catatan yang dihapus tidak bisa dikembalikan.',
+      confirmText: 'Hapus catatan',
+      variant: 'danger',
+    }))) return;
     warehouseDb.deleteNonFoodExpense(id, currentUser);
     setSuccessNotice(`Catatan "${name}" dihapus.`);
     setTimeout(() => setSuccessNotice(''), 4000);

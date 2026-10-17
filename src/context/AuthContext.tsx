@@ -31,7 +31,8 @@ export type PermissionAction =
   | 'MANAGE_SUPPLIERS'
   | 'MANAGE_EQUIPMENT'
   | 'RECORD_CONSUMPTION'
-  | 'VIEW_AUDIT';
+  | 'VIEW_AUDIT'
+  | 'MANAGE_USERS';
 
 const ROLE_PERMISSIONS: Record<UserRole, PermissionAction[]> = {
   SUPERADMIN: [
@@ -43,6 +44,7 @@ const ROLE_PERMISSIONS: Record<UserRole, PermissionAction[]> = {
     'MANAGE_EQUIPMENT',
     'RECORD_CONSUMPTION',
     'VIEW_AUDIT',
+    'MANAGE_USERS',
   ],
   KA_SPPG: [
     'RECEIVE_GOODS',
@@ -53,6 +55,7 @@ const ROLE_PERMISSIONS: Record<UserRole, PermissionAction[]> = {
     'MANAGE_EQUIPMENT',
     'RECORD_CONSUMPTION',
     'VIEW_AUDIT',
+    'MANAGE_USERS',
   ],
   ADMIN: [
     'RECEIVE_GOODS',
@@ -84,45 +87,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [currentUser, setCurrentUser] = useState<User>(() => {
     const allUsers = warehouseDb.getUsers();
-    let saved = localStorage.getItem('sppg_active_user_id');
-    let savedName = localStorage.getItem('sppg_active_user_name');
-    let savedRole = localStorage.getItem('sppg_active_user_role') as UserRole;
+    const saved = localStorage.getItem('sppg_active_user_id');
 
-    if (savedName === 'Hendra Wijaya') {
-      savedName = 'Akmal';
-      savedRole = 'ADMIN';
-      localStorage.setItem('sppg_active_user_name', 'Akmal');
-      localStorage.setItem('sppg_active_user_role', 'ADMIN');
-      localStorage.setItem('sppg_active_user_id', 'USR-003');
+    // Akun lokal: nama dan peran selalu dari data akun. Peran di localStorage tidak dipercaya,
+    // karena bisa diubah siapa pun lewat DevTools browser.
+    const found = saved ? allUsers.find(u => u.id === saved) : undefined;
+    if (found) return found;
+
+    // Sesi Supabase Auth (ID bukan USR-xxx): profil belum dimuat ulang di sini, jadi pakai data sesi terakhir.
+    if (saved && !saved.startsWith('USR-')) {
+      return {
+        id: saved,
+        email: '',
+        name: localStorage.getItem('sppg_active_user_name') || 'Petugas',
+        role: (localStorage.getItem('sppg_active_user_role') as UserRole) || 'ASLAP',
+      };
     }
 
-    // Akmal is always ADMIN (USR-003)
-    if (savedName === 'Akmal') {
-      savedRole = 'ADMIN';
-      saved = 'USR-003';
-      localStorage.setItem('sppg_active_user_name', 'Akmal');
-      localStorage.setItem('sppg_active_user_role', 'ADMIN');
-      localStorage.setItem('sppg_active_user_id', 'USR-003');
-    }
-
-    if (saved) {
-      const found = allUsers.find(u => u.id === saved);
-      if (found) {
-        return {
-          ...found,
-          name: savedName || found.name,
-          role: found.id === 'USR-003' || savedName === 'Akmal' ? 'ADMIN' : (savedRole || found.role),
-        };
-      }
-    }
-    // Default fallback to Admin (Akmal)
-    const def = allUsers.find(u => u.id === 'USR-003' || u.role === 'ADMIN') || allUsers[0] || INITIAL_USERS[2];
-    return {
-      ...def,
-      id: 'USR-003',
-      name: 'Akmal',
-      role: 'ADMIN',
-    };
+    return allUsers.find(u => u.role === 'SUPERADMIN') || allUsers[0] || INITIAL_USERS[0];
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {

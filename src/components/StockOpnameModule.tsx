@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useConfirm } from '../context/ConfirmContext';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { ItemMaster, StockOpnameSession, StockOpnameItem } from '../types/warehouse';
@@ -10,6 +11,7 @@ interface StockOpnameModuleProps {
 
 export const StockOpnameModule: React.FC<StockOpnameModuleProps> = ({ onRefreshData }) => {
   const { currentUser, can } = useAuth();
+  const askConfirm = useConfirm();
   const [opnames, setOpnames] = useState<StockOpnameSession[]>(() => warehouseDb.getOpnames());
   const [items, setItems] = useState<ItemMaster[]>(() => warehouseDb.getItems().filter(i => i.isActive && i.itemType !== 'EQUIPMENT'));
 
@@ -141,15 +143,17 @@ export const StockOpnameModule: React.FC<StockOpnameModuleProps> = ({ onRefreshD
     }
   };
 
-  const handleApprove = (session: StockOpnameSession) => {
+  const handleApprove = async (session: StockOpnameSession) => {
     if (!can('APPROVE_OPNAME')) {
       alert('Anda tidak memiliki peran otorisasi untuk menyetujui Stock Opname (Hanya Manager / Warehouse Manager).');
       return;
     }
 
-    const confirmed = window.confirm(
-      `Setujui Stock Opname #${session.id}? Tindakan ini akan langsung memperbarui saldo stok fisik dan mencatat penyesuaian di buku besar mutasi.`
-    );
+    const confirmed = await askConfirm({
+      title: `Setujui stock opname #${session.id}?`,
+      message: 'Saldo stok langsung diperbarui dan penyesuaiannya dicatat di buku besar mutasi.',
+      confirmText: 'Setujui',
+    });
     if (!confirmed) return;
 
     try {
@@ -173,15 +177,15 @@ export const StockOpnameModule: React.FC<StockOpnameModuleProps> = ({ onRefreshD
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-xl border border-slate-200">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Stock Opname & Rekonsiliasi Fisik</h2>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Stock Opname & Rekonsiliasi Fisik</h1>
             <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-purple-50 text-purple-800 border border-purple-200">
               Audit & Penyesuaian
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-600 mt-0.5">
             Pencocokan stok fisik vs sistem dengan alur approval bertingkat dan catatan alasan selisih mutlak.
           </p>
         </div>

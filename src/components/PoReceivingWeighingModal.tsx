@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useConfirm } from '../context/ConfirmContext';
 import {
   PurchaseOrderNota,
   WeighedPoItemInput,
@@ -34,6 +35,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
 }) => {
   const { currentUser } = useAuth();
   const toast = useToast();
+  const askConfirm = useConfirm();
 
   const [deliveryNoteNo, setDeliveryNoteNo] = useState('');
   const [arrivalTime, setArrivalTime] = useState('');
@@ -165,9 +167,12 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
       return;
     }
     if (zeroItems.length > 0) {
-      const confirmZero = window.confirm(
-        `${zeroItems.length} bahan jumlahnya masih kosong atau 0 dan akan dianggap tidak datang:\n${zeroItems.map(it => `- ${it.name}`).join('\n')}\n\nLanjutkan simpan penerimaan?`
-      );
+      const confirmZero = await askConfirm({
+        title: `${zeroItems.length} bahan belum ditimbang`,
+        message: `Jumlahnya masih kosong atau 0 dan akan dianggap tidak datang:\n${zeroItems.map(it => `- ${it.name}`).join('\n')}`,
+        confirmText: 'Tetap simpan',
+        variant: 'warning',
+      });
       if (!confirmZero) return;
     }
 

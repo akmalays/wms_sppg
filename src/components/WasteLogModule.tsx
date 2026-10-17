@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useConfirm } from '../context/ConfirmContext';
 import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
@@ -154,6 +155,7 @@ const inputClass =
 
 export const WasteLogModule: React.FC = () => {
   const { currentUser, can } = useAuth();
+  const askConfirm = useConfirm();
   const canRecord = can('RECORD_CONSUMPTION');
   const today = localDateIso();
 
@@ -378,15 +380,24 @@ export const WasteLogModule: React.FC = () => {
     setSplitOpen(false);
   };
 
-  const handleSaveDaily = (e: React.FormEvent) => {
+  const handleSaveDaily = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!dailyDate) return;
     if (NUTRITION.some(n => (parseFloat(dailyValues[n.key]) || 0) < 0)) {
       alert('Berat tidak boleh negatif.');
       return;
     }
-    if (dailySum === 0 && !window.confirm('Semua kategori 0 kg. Simpan sebagai hari tanpa sisa makanan?')) return;
-    if (dailyHasExisting && !window.confirm(`Data ${dayName(dailyDate)}, ${formatDate(dailyDate)} sudah ada. Ganti dengan angka baru?`)) return;
+    if (dailySum === 0 && !(await askConfirm({
+      title: 'Semua kategori 0 kg',
+      message: 'Simpan sebagai hari tanpa sisa makanan?',
+      confirmText: 'Simpan',
+    }))) return;
+    if (dailyHasExisting && !(await askConfirm({
+      title: 'Ganti data yang sudah ada?',
+      message: `Data ${dayName(dailyDate)}, ${formatDate(dailyDate)} sudah tercatat dan akan diganti dengan angka baru.`,
+      confirmText: 'Ganti data',
+      variant: 'warning',
+    }))) return;
 
     const notes = [dailyNotes.trim(), splitNote].filter(Boolean).join(' ');
     warehouseDb.saveDailyNutritionLog(
@@ -406,8 +417,13 @@ export const WasteLogModule: React.FC = () => {
     showNotice(`Sisa makanan ${dayName(dailyDate)}, ${formatDate(dailyDate)} tersimpan: ${formatKg(dailySum)} kg.`);
   };
 
-  const handleDeleteDay = (date: string) => {
-    if (!window.confirm(`Hapus rekap sisa makanan ${dayName(date)}, ${formatDate(date)}? Catatan limbah dapur lain di tanggal itu tidak ikut terhapus.`)) return;
+  const handleDeleteDay = async (date: string) => {
+    if (!(await askConfirm({
+      title: `Hapus rekap sisa makanan ${dayName(date)}, ${formatDate(date)}?`,
+      message: 'Catatan limbah dapur lain di tanggal itu tidak ikut terhapus.',
+      confirmText: 'Hapus rekap',
+      variant: 'danger',
+    }))) return;
     warehouseDb.deleteDailyWasteLogs(date, currentUser);
     refreshLogs();
     showNotice(`Rekap sisa makanan ${formatDate(date)} dihapus.`);
@@ -455,9 +471,14 @@ export const WasteLogModule: React.FC = () => {
     showNotice(`${filled.length} catatan limbah dapur tanggal ${formatDate(otherDate)} tersimpan.`);
   };
 
-  const handleDeleteLog = (log: WasteLog) => {
+  const handleDeleteLog = async (log: WasteLog) => {
     const name = log.itemName || categoryLabel(log.wasteCategory);
-    if (!window.confirm(`Hapus catatan "${name}" (${formatKg(log.quantity)} ${log.unit}) tanggal ${formatDate(log.date)}?`)) return;
+    if (!(await askConfirm({
+      title: `Hapus catatan "${name}"?`,
+      message: `${formatKg(log.quantity)} ${log.unit}, tanggal ${formatDate(log.date)}.`,
+      confirmText: 'Hapus catatan',
+      variant: 'danger',
+    }))) return;
     warehouseDb.deleteWasteLog(log.id, currentUser);
     refreshLogs();
     showNotice(`Catatan "${name}" dihapus.`);

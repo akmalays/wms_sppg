@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useConfirm } from '../context/ConfirmContext';
 import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
@@ -35,7 +36,8 @@ export interface ProfileModuleProps {
 }
 
 export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
-  const { currentUser, updateProfile, availableUsers } = useAuth();
+  const { currentUser, updateProfile, availableUsers, can } = useAuth();
+  const askConfirm = useConfirm();
 
   // Internal module tab state: 'profile' | 'todos' | 'report'
   const [activeSubTab, setActiveSubTab] = useState<'profile' | 'todos' | 'report'>('profile');
@@ -131,10 +133,13 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
     const allCompleted = currentList.length > 0 && currentList.every(t => t.isCompleted);
     if (allCompleted && updated.isCompleted) {
       // Suggest user to inspect report
-      setTimeout(() => {
-        const viewRep = window.confirm(
-          'Luar biasa! Seluruh checklist tugas harian SPPG hari ini telah selesai 100%.\n\nBuka Lembar Laporan Penyelesaian Tugas Harian sekarang?'
-        );
+      setTimeout(async () => {
+        const viewRep = await askConfirm({
+          title: 'Semua tugas hari ini selesai',
+          message: 'Buka laporan penyelesaian tugas harian sekarang?',
+          confirmText: 'Buka laporan',
+          cancelText: 'Nanti',
+        });
         if (viewRep) {
           setActiveSubTab('report');
         }
@@ -176,19 +181,22 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
   };
 
   // Handle Delete Todo
-  const handleDeleteTodo = (id: string, title: string) => {
-    if (window.confirm(`Hapus tugas harian "${title}"?`)) {
+  const handleDeleteTodo = async (id: string, title: string) => {
+    if (await askConfirm({ title: `Hapus tugas "${title}"?`, confirmText: 'Hapus tugas', variant: 'danger' })) {
       warehouseDb.deleteTodo(id, currentUser);
       refreshTodos();
     }
   };
 
   // Handle Reset Todos
-  const handleResetTodos = () => {
+  const handleResetTodos = async () => {
     if (
-      window.confirm(
-        'Kembalikan daftar ceklis harian tanggal ini ke 8 tugas standar operasional SPPG?'
-      )
+      await askConfirm({
+        title: 'Kembalikan ke tugas standar?',
+        message: 'Daftar ceklis tanggal ini diganti dengan 8 tugas standar operasional SPPG.',
+        confirmText: 'Kembalikan',
+        variant: 'warning',
+      })
     ) {
       warehouseDb.resetDailyTodos(selectedDate);
       refreshTodos();
@@ -277,12 +285,12 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
   return (
     <div className="space-y-6">
       {/* Module Title Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">
             Profil Pengguna & Tugas Harian
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-600 mt-0.5">
             Kelola profil, ganti kata sandi, simulasikan peran pengguna, dan pantau checklist operasional harian.
           </p>
         </div>
@@ -537,7 +545,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
                 </div>
               </div>
 
-              {onNavigate && (
+              {onNavigate && can('MANAGE_USERS') && (
                 <div className="pt-3 mt-3 border-t border-slate-100">
                   <button
                     type="button"
@@ -545,7 +553,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
                     className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg border border-emerald-300 bg-emerald-50/70 hover:bg-emerald-100 text-xs font-semibold text-emerald-800 transition-colors cursor-pointer"
                   >
                     <Users className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Kelola & Buat User Baru</span>
+                    <span>Kelola akun aplikasi</span>
                   </button>
                 </div>
               )}

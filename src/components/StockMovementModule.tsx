@@ -72,15 +72,15 @@ export const StockMovementModule: React.FC = () => {
       />
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-xl border border-slate-200">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Buku Besar Mutasi Stok (Inventory Ledger)</h2>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Buku Besar Mutasi Stok (Inventory Ledger)</h1>
             <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
               Traceable & Immutable
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-600 mt-0.5">
             Setiap perubahan stok tercatat secara permanen dan dapat ditelusuri ke dokumen sumber (GR/SO/Issue).
           </p>
         </div>

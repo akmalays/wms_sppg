@@ -1,4 +1,5 @@
 import React, {useState, useMemo, useRef, useEffect} from "react";
+import { useConfirm } from '../context/ConfirmContext';
 import {useAuth} from "../context/AuthContext";
 import {useToast} from "../context/ToastContext";
 import {warehouseDb} from "../db/storage";
@@ -264,6 +265,7 @@ interface MenuOrdersModuleProps {
 export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) => {
   const {currentUser} = useAuth();
   const toast = useToast();
+  const askConfirm = useConfirm();
   const [orders, setOrders] = useState<MenuOrder[]>(() => warehouseDb.getMenuOrders());
   const [activeSubTab, setActiveSubTab] = useState<SubTabType>("MENU_ORDERS");
 
@@ -697,8 +699,13 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
     setTimeout(() => setSuccessNotice(""), 6000);
   };
 
-  const handleDeleteBeneficiary = (b: SchoolBeneficiaryAllocation) => {
-    if (window.confirm(`Yakin ingin menghapus data penerima manfaat "${b.schoolName}"? Data yang terhapus tidak dapat dikembalikan.`)) {
+  const handleDeleteBeneficiary = async (b: SchoolBeneficiaryAllocation) => {
+    if (await askConfirm({
+      title: `Hapus penerima manfaat "${b.schoolName}"?`,
+      message: 'Data yang dihapus tidak bisa dikembalikan.',
+      confirmText: 'Hapus',
+      variant: 'danger',
+    })) {
       warehouseDb.deleteSchoolBeneficiary(b.id, currentUser || undefined);
       setBeneficiaries(warehouseDb.getSchoolBeneficiaries());
       setSuccessNotice(`Data penerima manfaat "${b.schoolName}" berhasil dihapus.`);
@@ -790,8 +797,13 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
     setTimeout(() => setSuccessNotice(""), 6000);
   };
 
-  const handleResetDailyAllocationsToMaster = () => {
-    if (window.confirm(`Kembalikan alokasi porsi tanggal ${formatIndonesianDate(beneficiarySelectedDate)} ke standar master default?`)) {
+  const handleResetDailyAllocationsToMaster = async () => {
+    if (await askConfirm({
+      title: 'Kembalikan ke porsi standar?',
+      message: `Alokasi porsi ${formatIndonesianDate(beneficiarySelectedDate)} diganti dengan porsi standar tiap sekolah.`,
+      confirmText: 'Kembalikan',
+      variant: 'warning',
+    })) {
       const draft: Record<string, number> = {};
       masterSchools.forEach((s) => {
         draft[s.id] = s.portionCount;
@@ -1432,16 +1444,19 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
     setPoFormRows(STANDARD_PO_TEMPLATES.map((t) => ({...t, notes: ""})));
   };
 
-  const handleDeletePoForOrder = (orderId?: string) => {
+  const handleDeletePoForOrder = async (orderId?: string) => {
     const targetId = orderId || selectedPoOrderId;
     if (!targetId) return;
 
     const targetOrder = orders.find((o) => o.id === targetId);
     const orderTitle = targetOrder ? targetOrder.menuTitle : "menu ini";
 
-    const confirmDelete = window.confirm(
-      `Apakah Anda yakin ingin membatalkan & menghapus seluruh PO resmi untuk menu "${orderTitle}"?\n\nPO ini akan otomatis terhapus dari sistem, modul Input Barang & Belanja, dan Ringkasan.`,
-    );
+    const confirmDelete = await askConfirm({
+      title: `Batalkan semua PO untuk "${orderTitle}"?`,
+      message: 'PO dihapus dari sistem, termasuk dari Barang Datang dan Ringkasan.',
+      confirmText: 'Batalkan PO',
+      variant: 'danger',
+    });
 
     if (confirmDelete) {
       const deletedCount = warehouseDb.deletePurchaseOrdersByMenuOrderId(targetId, currentUser);
@@ -1525,8 +1540,13 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
   };
 
   // Delete Order
-  const handleDeleteOrder = (orderId: string, menuTitle: string) => {
-    if (window.confirm(`Hapus catatan menu & PO "${menuTitle}"? Data yang dihapus tidak dapat dikembalikan.`)) {
+  const handleDeleteOrder = async (orderId: string, menuTitle: string) => {
+    if (await askConfirm({
+      title: `Hapus menu & PO "${menuTitle}"?`,
+      message: 'Data yang dihapus tidak bisa dikembalikan.',
+      confirmText: 'Hapus',
+      variant: 'danger',
+    })) {
       warehouseDb.deleteMenuOrder(orderId, currentUser);
       refreshOrders();
       setSuccessNotice(`Catatan menu "${menuTitle}" telah dihapus.`);
@@ -1651,10 +1671,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
       )}
 
       {/* Header Utama dengan 2 Tombol Aksi Mandiri */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-xl border border-slate-200">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Rekap Order Menu, PO Bahan & Penerima Manfaat Gizi</h1>
-          <p className="text-xs text-slate-500 mt-0.5 font-medium">Manajemen menu harian, pesanan PO H-1, timbangan riil, dan alokasi penerima manfaat.</p>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Rekap Order Menu, PO Bahan & Penerima Manfaat Gizi</h1>
+          <p className="text-xs text-slate-600 mt-0.5">Manajemen menu harian, pesanan PO H-1, timbangan riil, dan alokasi penerima manfaat.</p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0" ref={actionDropdownRef}>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, PermissionAction } from '../context/AuthContext';
 import { UserRole } from '../types/warehouse';
 import { SppgLogo } from './SppgLogo';
 import {
@@ -37,6 +37,8 @@ const ROLE_OPTIONS: { role: UserRole; label: string; shortLabel: string }[] = [
 interface NavItem {
   id: string;
   label: string;
+  // Menu disembunyikan bagi peran tanpa izin ini.
+  permission?: PermissionAction;
 }
 
 // Daily work stays one click away; reports and admin modules sit in two dropdowns.
@@ -62,12 +64,11 @@ const NAV_GROUPS: { id: 'laporan' | 'lainnya'; label: string; items: NavItem[] }
     id: 'lainnya',
     label: 'Lainnya',
     items: [
-      { id: 'employees', label: 'Karyawan & Absensi' },
+      { id: 'employees', label: 'Karyawan' },
       { id: 'equipment', label: 'Aset Dapur' },
       { id: 'suppliers', label: 'Supplier' },
       { id: 'website_cms', label: 'Atur Website' },
-      { id: 'user_management', label: 'Kelola Pengguna' },
-      { id: 'audit', label: 'Riwayat Aktivitas' },
+      { id: 'audit', label: 'Riwayat Aktivitas', permission: 'VIEW_AUDIT' },
     ],
   },
 ];
@@ -79,7 +80,8 @@ const MENU_PANEL = 'absolute mt-2 bg-white border border-slate-200 rounded-xl sh
 const MENU_ITEM = `w-full text-left flex items-center gap-2.5 px-3.5 py-2 text-xs cursor-pointer min-h-[40px] transition-colors ${FOCUS}`;
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetData, onClearTransactions, onViewLanding }) => {
-  const { currentUser, switchUser, logout } = useAuth();
+  const { currentUser, switchUser, logout, can } = useAuth();
+  const allowed = (item: NavItem) => !item.permission || can(item.permission);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -173,7 +175,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
                 </button>
                 {isOpen && (
                   <div role="menu" className={`${MENU_PANEL} left-0 w-56`}>
-                    {group.items.map(item => (
+                    {group.items.filter(allowed).map(item => (
                       <button
                         key={item.id}
                         type="button"
@@ -340,7 +342,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
               <div key={group.id}>
                 <div className="text-[11px] font-semibold text-slate-600 mb-1 px-1">{group.label}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                  {group.items.map(item => {
+                  {group.items.filter(allowed).map(item => {
                     const isActive = activeTab === item.id;
                     return (
                       <button

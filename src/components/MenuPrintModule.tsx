@@ -1561,16 +1561,16 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
       `}</style>
 
       {/* Header Studio Section (No Print) */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 no-print">
+      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 no-print">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
               <span>Cetak Menu MBG</span>
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
                 {printMode === "SINGLE" ? "1 Menu (Potrait)" : "2 Menu (Landscape)"}
               </span>
             </h1>
-            <p className="text-xs text-slate-500 mt-0.5">Siap cetak A4 & download format JPG / PNG.</p>
+            <p className="text-xs text-slate-600 mt-0.5">Siap cetak A4 & download format JPG / PNG.</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

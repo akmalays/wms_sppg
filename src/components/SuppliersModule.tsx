@@ -159,7 +159,7 @@ export const SuppliersModule: React.FC<SuppliersModuleProps> = ({ onNavigateToEx
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 bg-white p-4 sm:p-5 rounded-xl border border-slate-200">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Supplier</h1>
           <p className="text-xs text-slate-600 mt-0.5">Pemasok bahan pangan dan perlengkapan, beserta riwayat pengirimannya.</p>
