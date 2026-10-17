@@ -3,7 +3,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import { localDateIso } from '../utils/localDate';
 import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
-import { warehouseDb } from '../db/storage';
+import { warehouseDb, signerName } from '../db/storage';
 import {
   Employee,
   EmployeeAttendance,
@@ -1302,7 +1302,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
               <div className="text-slate-500">Diverifikasi Oleh,</div>
               <div className="font-semibold text-slate-800">Koordinator Operasional Dapur</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
-                (Budi Santoso, S.T)
+                ({signerName('KOORDINATOR')})
               </div>
             </div>
 
@@ -1310,7 +1310,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
               <div className="font-semibold text-slate-800">Kepala SPPG Tumpang Jeru</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
-                (Rizky Iman Ramdhan, S.Pd)
+                ({signerName('KEPALA_SPPG')})
               </div>
             </div>
           </div>
@@ -1519,7 +1519,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
               <div className="text-slate-500">Diverifikasi Oleh,</div>
               <div className="font-semibold text-slate-800">Koordinator Operasional SPPG</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
-                (Budi Santoso, S.T)
+                ({signerName('KOORDINATOR')})
               </div>
             </div>
 
@@ -1527,7 +1527,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
               <div className="font-semibold text-slate-800">Kepala SPPG Tumpang Jeru</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
-                (Rizky Iman Ramdhan, S.Pd)
+                ({signerName('KEPALA_SPPG')})
               </div>
             </div>
           </div>

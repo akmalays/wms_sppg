@@ -1,157 +1,179 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useConfirm } from '../context/ConfirmContext';
+import { useToast } from '../context/ToastContext';
 import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
-import { warehouseDb } from '../db/storage';
+import { warehouseDb, signerName } from '../db/storage';
 import { DailyTodoItem, TodoCategory, TodoPriority, UserRole } from '../types/warehouse';
 import { exportToExcel } from '../lib/excelExport';
+import { localDateIso } from '../utils/localDate';
 import { SppgLogo } from './SppgLogo';
+import { ROLE_INFO } from './UserManagementModule';
+import { FormDialog, FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY, FOCUS_RING } from './common/FormDialog';
 import {
-  User,
-  Shield,
-  KeyRound,
   CheckCircle2,
   Circle,
   Plus,
   Trash2,
   FileSpreadsheet,
   Printer,
-  Calendar,
   Clock,
   ListTodo,
-  FileCheck2,
   AlertCircle,
-  X,
-  Info,
-  CheckSquare2,
-  RefreshCw,
-  Award,
+  RotateCcw,
   Eye,
   EyeOff,
-  Users
+  Users,
 } from 'lucide-react';
 
 export interface ProfileModuleProps {
   onNavigate?: (tab: string) => void;
 }
 
+type SubTab = 'profile' | 'todos' | 'report';
+
+const TODO_CATEGORIES: TodoCategory[] = [
+  'Penerimaan & QC',
+  'Persiapan Dapur',
+  'Sanitasi & Kebersihan',
+  'Administrasi & Stok',
+  'Stock Opname',
+  'Distribusi',
+];
+
+const PRIORITY_TONE: Record<TodoPriority, string> = {
+  Tinggi: 'bg-rose-50 text-rose-800 border-rose-200',
+  Sedang: 'bg-amber-50 text-amber-800 border-amber-200',
+  Rendah: 'bg-slate-50 text-slate-700 border-slate-200',
+};
+
+const BADGE = 'inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded-md border';
+const MIN_PASSWORD = 6;
+
+// "2026-10-17" -> Date lokal; new Date("2026-10-17") dibaca sebagai UTC.
+const parseIsoDate = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
+const formatLongDate = (iso: string) =>
+  parseIsoDate(iso).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+const roleLabel = (role?: string) => (role && ROLE_INFO[role as UserRole]?.label) || role || '-';
+
 export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
   const { currentUser, updateProfile, availableUsers, can } = useAuth();
   const askConfirm = useConfirm();
+  const toast = useToast();
 
-  // Internal module tab state: 'profile' | 'todos' | 'report'
-  const [activeSubTab, setActiveSubTab] = useState<'profile' | 'todos' | 'report'>('profile');
+  const [activeSubTab, setActiveSubTab] = useState<SubTab>('profile');
 
-  // --- Profile Edit State ---
+  // --- Profil ---
   const [name, setName] = useState<string>(currentUser.name);
-  const [role, setRole] = useState<UserRole>(currentUser.role);
-  const [newPassword, setNewPassword] = useState<string>('');
-  const [confirmPassword, setConfirmPassword] = useState<string>('');
-  const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [profileMessage, setProfileMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [isSavingProfile, setIsSavingProfile] = useState<boolean>(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
-  // --- Daily Todos State ---
-  const todayStr = new Date().toISOString().split('T')[0];
+  // --- Tugas harian ---
+  const todayStr = localDateIso();
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
   const [todos, setTodos] = useState<DailyTodoItem[]>(() => warehouseDb.getDailyTodos(todayStr));
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'PENDING'>('ALL');
-  const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addError, setAddError] = useState('');
 
-  // New todo form state
-  const [newTitle, setNewTitle] = useState<string>('');
+  const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState<TodoCategory>('Penerimaan & QC');
   const [newPriority, setNewPriority] = useState<TodoPriority>('Tinggi');
   const [newSession, setNewSession] = useState<'Pagi' | 'Siang' | 'Sore' | 'Harian'>('Pagi');
-  const [newTargetTime, setNewTargetTime] = useState<string>('08:00');
-  const [newAssignedUserId, setNewAssignedUserId] = useState<string>('');
+  const [newTargetTime, setNewTargetTime] = useState('08:00');
+  const [newAssignedUserId, setNewAssignedUserId] = useState('');
   const [newAssignedRole, setNewAssignedRole] = useState<UserRole | 'ALL'>('ALL');
-  const [newNotes, setNewNotes] = useState<string>('');
+  const [newNotes, setNewNotes] = useState('');
 
-  // Refresh todos from db
-  const refreshTodos = () => {
-    setTodos(warehouseDb.getDailyTodos(selectedDate));
-  };
+  const refreshTodos = (date = selectedDate) => setTodos(warehouseDb.getDailyTodos(date));
 
-  // Change date
+  // Tugas yang dicentang di perangkat lain ikut muncul.
+  useEffect(() => {
+    const onSync = () => setTodos(warehouseDb.getDailyTodos(selectedDate));
+    window.addEventListener('sppg_warehouse_sync', onSync);
+    return () => window.removeEventListener('sppg_warehouse_sync', onSync);
+  }, [selectedDate]);
+
   const handleDateChange = (date: string) => {
+    if (!date) return;
     setSelectedDate(date);
-    setTodos(warehouseDb.getDailyTodos(date));
+    refreshTodos(date);
   };
 
-  // Handle Save Profile
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setProfileMessage(null);
+    setProfileError('');
 
     if (!name.trim()) {
-      setProfileMessage({ type: 'error', text: 'Nama lengkap pengguna wajib diisi.' });
+      setProfileError('Nama lengkap wajib diisi.');
       return;
     }
-
-    if (newPassword && newPassword.length < 6) {
-      setProfileMessage({ type: 'error', text: 'Password baru minimal harus 6 karakter.' });
-      return;
-    }
-
-    if (newPassword && newPassword !== confirmPassword) {
-      setProfileMessage({ type: 'error', text: 'Konfirmasi password baru tidak cocok.' });
-      return;
+    if (newPassword || confirmPassword) {
+      if (!currentPassword) {
+        setProfileError('Isi kata sandi saat ini untuk mengganti kata sandi.');
+        return;
+      }
+      if (newPassword.length < MIN_PASSWORD) {
+        setProfileError(`Kata sandi baru minimal ${MIN_PASSWORD} karakter.`);
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setProfileError('Konfirmasi kata sandi baru tidak cocok.');
+        return;
+      }
     }
 
     setIsSavingProfile(true);
     const result = await updateProfile({
       name: name.trim(),
-      role: role,
+      currentPassword: newPassword ? currentPassword : undefined,
       password: newPassword || undefined,
     });
     setIsSavingProfile(false);
 
     if (result.success) {
-      setProfileMessage({
-        type: 'success',
-        text: 'Profil dan pengaturan hak akses berhasil disimpan serta diperbarui di seluruh sistem.',
-      });
+      toast.success(newPassword ? 'Profil dan kata sandi tersimpan.' : 'Profil tersimpan.');
+      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } else {
-      setProfileMessage({
-        type: 'error',
-        text: result.error || 'Terjadi kesalahan saat memperbarui profil.',
-      });
+      setProfileError(result.error || 'Profil gagal disimpan.');
     }
   };
 
-  // Handle Toggle Todo Checkbox
   const handleToggleTodo = (todoId: string) => {
     const updated = warehouseDb.toggleTodo(todoId, currentUser);
-    setTodos(prev => prev.map(t => (t.id === todoId ? updated : t)));
+    const next = todos.map(t => (t.id === todoId ? updated : t));
+    setTodos(next);
 
-    // Check if after this toggle all items are completed
-    const currentList = warehouseDb.getDailyTodos(selectedDate);
-    const allCompleted = currentList.length > 0 && currentList.every(t => t.isCompleted);
-    if (allCompleted && updated.isCompleted) {
-      // Suggest user to inspect report
-      setTimeout(async () => {
-        const viewRep = await askConfirm({
-          title: 'Semua tugas hari ini selesai',
-          message: 'Buka laporan penyelesaian tugas harian sekarang?',
-          confirmText: 'Buka laporan',
-          cancelText: 'Nanti',
-        });
-        if (viewRep) {
-          setActiveSubTab('report');
-        }
-      }, 300);
+    if (updated.isCompleted && next.length > 0 && next.every(t => t.isCompleted)) {
+      toast.success('Semua tugas tanggal ini selesai. Laporannya siap dicetak di tab Laporan.');
     }
   };
 
-  // Handle Add Todo
+  const openAddModal = () => {
+    setAddError('');
+    setNewTitle('');
+    setNewNotes('');
+    setNewAssignedUserId('');
+    setNewAssignedRole('ALL');
+    setIsAddModalOpen(true);
+  };
+
   const handleAddTodo = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) {
-      alert('Judul tugas harian wajib diisi.');
+      setAddError('Uraian tugas wajib diisi.');
       return;
     }
 
@@ -164,8 +186,8 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
         priority: newPriority,
         session: newSession,
         targetTime: newTargetTime || undefined,
-        assignedUserId: assignedUser ? assignedUser.id : undefined,
-        assignedUserName: assignedUser ? assignedUser.name : undefined,
+        assignedUserId: assignedUser?.id,
+        assignedUserName: assignedUser?.name,
         assignedRole: assignedUser ? assignedUser.role : newAssignedRole,
         notes: newNotes.trim() || undefined,
         isCompleted: false,
@@ -173,14 +195,11 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
       currentUser
     );
 
-    // Reset form
-    setNewTitle('');
-    setNewNotes('');
     setIsAddModalOpen(false);
     refreshTodos();
+    toast.success(`Tugas "${newTitle.trim()}" ditambahkan.`);
   };
 
-  // Handle Delete Todo
   const handleDeleteTodo = async (id: string, title: string) => {
     if (await askConfirm({ title: `Hapus tugas "${title}"?`, confirmText: 'Hapus tugas', variant: 'danger' })) {
       warehouseDb.deleteTodo(id, currentUser);
@@ -188,12 +207,11 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
     }
   };
 
-  // Handle Reset Todos
   const handleResetTodos = async () => {
     if (
       await askConfirm({
         title: 'Kembalikan ke tugas standar?',
-        message: 'Daftar ceklis tanggal ini diganti dengan 8 tugas standar operasional SPPG.',
+        message: `Daftar tugas ${formatLongDate(selectedDate)} diganti dengan 8 tugas standar operasional SPPG. Centang yang sudah ada ikut hilang.`,
         confirmText: 'Kembalikan',
         variant: 'warning',
       })
@@ -203,1023 +221,627 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
     }
   };
 
-  // Filtered Todos
-  const filteredTodos = useMemo(() => {
-    return todos.filter(item => {
-      const matchCat = categoryFilter === 'ALL' || item.category === categoryFilter;
-      const matchStatus =
-        statusFilter === 'ALL' ||
-        (statusFilter === 'COMPLETED' && item.isCompleted) ||
-        (statusFilter === 'PENDING' && !item.isCompleted);
-      return matchCat && matchStatus;
-    });
-  }, [todos, categoryFilter, statusFilter]);
+  const filteredTodos = useMemo(
+    () =>
+      todos.filter(item => {
+        const matchCat = categoryFilter === 'ALL' || item.category === categoryFilter;
+        const matchStatus =
+          statusFilter === 'ALL' ||
+          (statusFilter === 'COMPLETED' && item.isCompleted) ||
+          (statusFilter === 'PENDING' && !item.isCompleted);
+        return matchCat && matchStatus;
+      }),
+    [todos, categoryFilter, statusFilter]
+  );
 
-  // Statistics
+  const categoryOptions = useMemo(
+    () => Array.from(new Set([...TODO_CATEGORIES, ...todos.map(t => t.category)])),
+    [todos]
+  );
+
   const totalTasks = todos.length;
   const completedTasks = todos.filter(t => t.isCompleted).length;
   const completionPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   const isAllCompleted = totalTasks > 0 && completedTasks === totalTasks;
+  const isToday = selectedDate === todayStr;
 
-  // Last completed task info
-  const completedList = todos.filter(t => t.isCompleted && t.completedAt);
-  const lastCompletedItem = completedList.length > 0 ? completedList[completedList.length - 1] : null;
+  // Jam selesai paling akhir (format "HH.MM"), bukan urutan terakhir di daftar.
+  const lastCompletedAt = todos
+    .map(t => t.completedAt)
+    .filter((v): v is string => Boolean(v))
+    .sort()
+    .pop();
 
-  // Export Report to Excel
   const handleExportExcel = () => {
     const exportData = todos.map((t, index) => ({
       'No': index + 1,
       'Tanggal': t.date,
-      'Target Jam': t.targetTime ? `Jam ${t.targetTime}` : '-',
-      'Shift / Sesi': t.session || 'Harian',
-      'Kategori Tugas': t.category,
-      'Uraian Tugas SOP': t.title,
-      'Staf Ditugaskan': t.assignedUserName || (t.assignedRole ? `Role ${t.assignedRole}` : 'Semua Staf'),
+      'Target Jam': t.targetTime || '-',
+      'Sesi': t.session || 'Harian',
+      'Kategori': t.category,
+      'Uraian Tugas': t.title,
+      'Ditugaskan ke': t.assignedUserName || (t.assignedRole && t.assignedRole !== 'ALL' ? roleLabel(t.assignedRole) : 'Semua petugas'),
       'Prioritas': t.priority,
-      'Status': t.isCompleted ? 'SELESAI' : 'BELUM SELESAI',
-      'Waktu Selesai': t.completedAt || '-',
-      'Pelaksana (PIC)': t.completedBy || '-',
+      'Status': t.isCompleted ? 'Selesai' : 'Belum selesai',
+      'Jam Selesai': t.completedAt || '-',
+      'Diselesaikan oleh': t.completedBy || '-',
       'Catatan': t.notes || '-',
     }));
-
-    exportToExcel(
-      exportData,
-      `Laporan_Tugas_Harian_SPPG_${selectedDate}.xlsx`,
-      'Laporan Tugas Harian'
-    );
+    exportToExcel(exportData, `Laporan_Tugas_Harian_SPPG_${selectedDate}.xlsx`, 'Laporan Tugas Harian');
   };
 
-  // Print Report (PDF)
-  const handlePrintReport = () => {
-    window.print();
-  };
+  const tabs: { id: SubTab; label: string }[] = [
+    { id: 'profile', label: 'Profil' },
+    { id: 'todos', label: `Tugas harian (${completedTasks}/${totalTasks})` },
+    { id: 'report', label: 'Laporan' },
+  ];
 
-  const roleDescriptions: Record<UserRole, { title: string; desc: string; badgeColor: string }> = {
-    SUPERADMIN: {
-      title: 'Superadmin Gudang & Dapur',
-      desc: 'Akses penuh ke seluruh konfigurasi sistem, audit log, manajemen item, transaksi gudang, dan otorisasi dokumen.',
-      badgeColor: 'bg-purple-100 text-purple-800 border-purple-200',
-    },
-    KA_SPPG: {
-      title: 'Kepala SPPG (Pimpinan Satuan Pelayanan)',
-      desc: 'Verifikasi & persetujuan stock opname, monitoring kepatuhan SOP harian, otorisasi penerimaan dan pengeluaran bahan pangan.',
-      badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    },
-    ADMIN: {
-      title: 'Admin Operasional Gudang',
-      desc: 'Pencatatan penerimaan barang (GRN), pembuatan pesanan menu gizi, pencatatan mutasi stok harian dan master item.',
-      badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
-    },
-    ASLAP: {
-      title: 'Asisten Lapangan & QC Dapur',
-      desc: 'Pemeriksaan fisik bahan datang, uji organoleptik, cek suhu chiller, pencatatan limbah dan serah terima bahan masak.',
-      badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
-    },
-    AKUNTAN: {
-      title: 'Akuntan / Finance SPPG',
-      desc: 'Rekonsiliasi buku mutasi, validasi bon pengeluaran non-food, rekapitulasi biaya per porsi dan audit kepatuhan anggaran.',
-      badgeColor: 'bg-teal-100 text-teal-800 border-teal-200',
-    },
-  };
+  const dateControl = (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        type="date"
+        aria-label="Tanggal tugas"
+        value={selectedDate}
+        onChange={e => handleDateChange(e.target.value)}
+        className={`${FIELD_INPUT} w-auto font-semibold`}
+      />
+      {!isToday && (
+        <button type="button" onClick={() => handleDateChange(todayStr)} className={BTN_SECONDARY}>
+          Hari ini
+        </button>
+      )}
+    </div>
+  );
 
   return (
-    <div className="space-y-6">
-      {/* Module Title Bar */}
-      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-4">
+      <style>{`
+        @media print {
+          @page { size: A4 portrait; margin: 10mm 12mm; }
+          body * { visibility: hidden; }
+          #printable-report-area, #printable-report-area * { visibility: visible; }
+          #printable-report-area { position: absolute; left: 0; top: 0; width: 100%; border: none; padding: 0; }
+        }
+      `}</style>
+
+      {/* Header */}
+      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 space-y-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            Profil Pengguna & Tugas Harian
-          </h1>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Profil & Tugas Harian</h1>
           <p className="text-xs text-slate-600 mt-0.5">
-            Kelola profil, ganti kata sandi, simulasikan peran pengguna, dan pantau checklist operasional harian.
+            Nama dan kata sandi akun, ceklis tugas operasional harian, dan laporan penyelesaiannya.
           </p>
         </div>
-
-        {/* Tab Navigation Pill */}
-        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl self-start md:self-auto border border-slate-200">
-          <button
-            onClick={() => setActiveSubTab('profile')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              activeSubTab === 'profile'
-                ? 'bg-white text-emerald-800 shadow-2xs border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Shield className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Profil & Keamanan</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('todos')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              activeSubTab === 'todos'
-                ? 'bg-white text-emerald-800 shadow-2xs border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <ListTodo className="w-3.5 h-3.5 text-blue-600" />
-            <span>Checklist Harian</span>
-            <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">
-              {completedTasks}/{totalTasks}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('report')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              activeSubTab === 'report'
-                ? 'bg-white text-emerald-800 shadow-2xs border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <FileCheck2 className="w-3.5 h-3.5 text-teal-600" />
-            <span>Laporan Penyelesaian</span>
-            {isAllCompleted && (
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            )}
-          </button>
+        <div role="tablist" aria-label="Bagian halaman profil" className="flex gap-1 p-1 bg-slate-100 rounded-lg text-xs overflow-x-auto max-w-full w-fit">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeSubTab === tab.id}
+              onClick={() => setActiveSubTab(tab.id)}
+              className={`px-3 rounded-md whitespace-nowrap cursor-pointer min-h-[44px] sm:min-h-[32px] ${FOCUS_RING} ${
+                activeSubTab === tab.id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* TAB 1: PROFIL & KEAMANAN AKUN */}
-      {/* ========================================================================= */}
+      {/* ===================== PROFIL ===================== */}
       {activeSubTab === 'profile' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column: Edit Form */}
-          <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-2xs p-6">
-            <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
-              <div>
-                <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                  <User className="w-4 h-4 text-emerald-600" />
-                  Pengaturan Identitas & Kredensial
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Ubah nama lengkap, ganti kata sandi login, dan sesuaikan peran operasional SPPG Anda.
-                </p>
-              </div>
-              <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Sesi Aktif
-              </span>
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <form onSubmit={handleSaveProfile} className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4">
+            <h2 className="text-sm font-bold text-slate-900">Data akun</h2>
 
-            {profileMessage && (
-              <div
-                className={`mb-5 p-3.5 rounded-lg text-xs font-medium flex items-start gap-2.5 ${
-                  profileMessage.type === 'success'
-                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                    : 'bg-rose-50 text-rose-800 border border-rose-200'
-                }`}
-              >
-                {profileMessage.type === 'success' ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                )}
-                <span>{profileMessage.text}</span>
-              </div>
+            {profileError && (
+              <p role="alert" className="flex items-start gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-900">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
+                {profileError}
+              </p>
             )}
 
-            <form onSubmit={handleSaveProfile} className="space-y-5">
-              {/* Email (Readonly) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Alamat Email Akun
-                </label>
-                <input
-                  type="email"
-                  value={currentUser.email}
-                  disabled
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
-                />
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Email digunakan sebagai identitas akun login dan integrasi otorisasi.
-                </p>
+                <label htmlFor="pf-email" className={FIELD_LABEL}>Email</label>
+                <input id="pf-email" type="email" value={currentUser.email} disabled className={FIELD_INPUT} />
               </div>
-
-              {/* Nama User */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Nama Lengkap Pengguna <span className="text-rose-500">*</span>
-                </label>
+                <label htmlFor="pf-name" className={FIELD_LABEL}>Nama lengkap</label>
                 <input
+                  id="pf-name"
                   type="text"
                   required
                   value={name}
                   onChange={e => setName(e.target.value)}
-                  placeholder="Masukkan nama lengkap petugas..."
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-800"
+                  className={FIELD_INPUT}
                 />
               </div>
+            </div>
 
-              {/* Ganti Role */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Peran / Jabatan Petugas <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  value={role}
-                  onChange={e => setRole(e.target.value as UserRole)}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-slate-800 cursor-pointer font-medium"
-                >
-                  <option value="SUPERADMIN">Superadmin - Akses Penuh Konfigurasi & Audit</option>
-                  <option value="KA_SPPG">Ka SPPG - Kepala Satuan Pelayanan & Otorisasi</option>
-                  <option value="ADMIN">Admin - Operasional Gudang & Order Menu</option>
-                  <option value="ASLAP">Aslap - Asisten Lapangan & QC Pemeriksaan Dapur</option>
-                  <option value="AKUNTAN">Akuntan - Validasi Biaya, Buku Mutasi & Keuangan</option>
-                </select>
-                <div className="mt-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-600">
-                  <strong className="text-slate-800">{roleDescriptions[role]?.title}:</strong>{' '}
-                  {roleDescriptions[role]?.desc}
-                </div>
+            <div>
+              <span className={FIELD_LABEL}>Peran</span>
+              <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700">
+                <span className="font-semibold text-slate-900">{roleLabel(currentUser.role)}</span>
+                {ROLE_INFO[currentUser.role] && <> · {ROLE_INFO[currentUser.role].desc}</>}
+                <p className="text-[11px] text-slate-600 mt-1">Peran hanya bisa diubah oleh Superadmin atau Kepala SPPG lewat Kelola Akun.</p>
               </div>
+            </div>
 
-              {/* Divider for Password */}
-              <div className="pt-3 border-t border-slate-100">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <KeyRound className="w-3.5 h-3.5 text-amber-600" />
-                    Ganti Kata Sandi (Opsional)
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="text-[11px] text-emerald-700 hover:text-emerald-800 flex items-center gap-1 font-medium cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                    <span>{showPassword ? 'Sembunyikan' : 'Tampilkan'}</span>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                      Kata Sandi Baru
-                    </label>
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={newPassword}
-                      onChange={e => setNewPassword(e.target.value)}
-                      placeholder="Minimal 6 karakter..."
-                      className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-800"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                      Konfirmasi Kata Sandi Baru
-                    </label>
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={confirmPassword}
-                      onChange={e => setConfirmPassword(e.target.value)}
-                      placeholder="Ulangi kata sandi baru..."
-                      className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-800"
-                    />
-                  </div>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1.5">
-                  Kosongkan kolom kata sandi jika Anda hanya ingin memperbarui nama atau peran pengguna.
-                </p>
-              </div>
-
-              {/* Submit Button */}
-              <div className="pt-2 flex justify-end">
+            <div className="pt-4 border-t border-slate-200 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold text-slate-900">Ganti kata sandi</h3>
                 <button
-                  type="submit"
-                  disabled={isSavingProfile}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  aria-pressed={showPassword}
+                  className={`inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 hover:underline cursor-pointer rounded min-h-[44px] sm:min-h-0 ${FOCUS_RING}`}
                 >
-                  {isSavingProfile ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                  )}
-                  <span>Simpan Perubahan Profil</span>
+                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  {showPassword ? 'Sembunyikan' : 'Tampilkan'}
                 </button>
               </div>
-            </form>
-          </div>
-
-          {/* Right Column: User Card & Unit Info */}
-          <div className="space-y-4">
-            {/* Identity Card */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white font-bold text-lg shadow-sm">
-                  {currentUser.name.charAt(0)}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label htmlFor="pf-cur" className={FIELD_LABEL}>Kata sandi saat ini</label>
+                  <input
+                    id="pf-cur"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={currentPassword}
+                    onChange={e => setCurrentPassword(e.target.value)}
+                    className={FIELD_INPUT}
+                  />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-800 leading-tight">
-                    {currentUser.name}
-                  </h3>
-                  <p className="text-xs text-slate-500 leading-normal">{currentUser.email}</p>
+                  <label htmlFor="pf-new" className={FIELD_LABEL}>Kata sandi baru</label>
+                  <input
+                    id="pf-new"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    placeholder={`Minimal ${MIN_PASSWORD} karakter`}
+                    className={FIELD_INPUT}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pf-confirm" className={FIELD_LABEL}>Ulangi kata sandi baru</label>
+                  <input
+                    id="pf-confirm"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    className={FIELD_INPUT}
+                  />
                 </div>
               </div>
+              <p className="text-[11px] text-slate-600">Biarkan kosong jika hanya mengubah nama.</p>
+            </div>
 
-              <div className="space-y-2.5 pt-3 border-t border-slate-100 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">ID Petugas:</span>
-                  <span className="font-mono font-medium text-slate-700">{currentUser.id}</span>
+            <div className="flex justify-end">
+              <button type="submit" disabled={isSavingProfile} className={BTN_PRIMARY}>
+                {isSavingProfile ? 'Menyimpan…' : 'Simpan'}
+              </button>
+            </div>
+          </form>
+
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold text-base shrink-0" aria-hidden="true">
+                  {currentUser.name.charAt(0).toUpperCase()}
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Peran Aktif:</span>
-                  <span
-                    className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border ${
-                      roleDescriptions[currentUser.role]?.badgeColor || 'bg-slate-100 text-slate-800'
-                    }`}
-                  >
-                    {currentUser.role}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Status Akun:</span>
-                  <span className="flex items-center gap-1.5 text-emerald-700 font-semibold">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    Aktif
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Unit:</span>
-                  <span className="font-medium text-slate-800">SPPG MLG TUMPANG JERU 01</span>
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-slate-900 truncate">{currentUser.name}</div>
+                  <div className="text-xs text-slate-600 truncate">{currentUser.email}</div>
                 </div>
               </div>
-
+              <dl className="mt-4 pt-3 border-t border-slate-200 space-y-2 text-xs">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-slate-600">Peran</dt>
+                  <dd className="font-semibold text-slate-900">{roleLabel(currentUser.role)}</dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-slate-600">ID akun</dt>
+                  <dd className="font-mono text-slate-800 truncate">{currentUser.id}</dd>
+                </div>
+              </dl>
               {onNavigate && can('MANAGE_USERS') && (
-                <div className="pt-3 mt-3 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => onNavigate('user_management')}
-                    className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg border border-emerald-300 bg-emerald-50/70 hover:bg-emerald-100 text-xs font-semibold text-emerald-800 transition-colors cursor-pointer"
-                  >
-                    <Users className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Kelola akun aplikasi</span>
-                  </button>
-                </div>
+                <button type="button" onClick={() => onNavigate('user_management')} className={`${BTN_SECONDARY} w-full mt-4`}>
+                  <Users className="w-4 h-4" />
+                  Kelola akun aplikasi
+                </button>
               )}
             </div>
 
-            {/* Quick Checklist Widget */}
-            <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-xl p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
-                  <ListTodo className="w-3.5 h-3.5" />
-                  Status Checklist Hari Ini
-                </span>
-                <span className="text-xs font-bold text-slate-300">
-                  {completionPercentage}%
+            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-xs font-bold text-slate-900">Tugas hari ini</h2>
+                <span className="text-xs font-semibold text-slate-700 tabular-nums">
+                  {isToday ? `${completedTasks}/${totalTasks}` : '-'}
                 </span>
               </div>
-
-              <div className="w-full bg-slate-700/80 rounded-full h-2 mb-3">
-                <div
-                  className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${completionPercentage}%` }}
-                ></div>
-              </div>
-
-              <p className="text-[11px] text-slate-300 mb-3.5 leading-relaxed">
-                {isAllCompleted
-                  ? 'Semua tugas harian SPPG hari ini telah selesai 100% dan terverifikasi.'
-                  : `Tersisa ${totalTasks - completedTasks} tugas lagi yang perlu diselesaikan hari ini.`}
+              {isToday && (
+                <div className="w-full bg-slate-100 rounded-full h-2 mt-2" role="progressbar" aria-valuenow={completionPercentage} aria-valuemin={0} aria-valuemax={100}>
+                  <div className="bg-emerald-600 h-2 rounded-full" style={{ width: `${completionPercentage}%` }} />
+                </div>
+              )}
+              <p className="text-xs text-slate-600 mt-2">
+                {!isToday
+                  ? 'Buka tab Tugas harian untuk melihat tugas hari ini.'
+                  : isAllCompleted
+                    ? 'Semua tugas hari ini selesai.'
+                    : `${totalTasks - completedTasks} tugas belum selesai.`}
               </p>
-
               <button
-                onClick={() => setActiveSubTab('todos')}
-                className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                type="button"
+                onClick={() => {
+                  handleDateChange(todayStr);
+                  setActiveSubTab('todos');
+                }}
+                className={`${BTN_SECONDARY} w-full mt-3`}
               >
-                <span>Buka Ceklis Operasional</span>
-                <CheckSquare2 className="w-3.5 h-3.5" />
+                Buka tugas harian
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* TAB 2: TODOLIST & CHECKLIST HARIAN SPPG */}
-      {/* ========================================================================= */}
+      {/* ===================== TUGAS HARIAN ===================== */}
       {activeSubTab === 'todos' && (
-        <div className="space-y-5">
-          {/* Header Controls: Date Picker, Filters, Add Button */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2.5">
-              {/* Date selector */}
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={e => handleDateChange(e.target.value)}
-                  className="text-xs font-semibold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
-                />
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              {dateControl}
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={handleResetTodos} className={BTN_SECONDARY} title="Ganti daftar dengan 8 tugas standar SPPG">
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Tugas standar
+                </button>
+                <button type="button" onClick={openAddModal} className={BTN_PRIMARY}>
+                  <Plus className="w-4 h-4" />
+                  Tambah tugas
+                </button>
               </div>
+            </div>
 
-              {/* Status filter */}
+            <div className="flex flex-wrap items-center gap-2">
               <select
+                aria-label="Filter status"
                 value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value as any)}
-                className="text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-slate-700 focus:outline-none cursor-pointer"
+                onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
+                className={`${FIELD_INPUT} w-auto`}
               >
-                <option value="ALL">Semua Status</option>
-                <option value="PENDING">Belum Selesai</option>
-                <option value="COMPLETED">Sudah Selesai</option>
+                <option value="ALL">Semua status</option>
+                <option value="PENDING">Belum selesai</option>
+                <option value="COMPLETED">Sudah selesai</option>
               </select>
-
-              {/* Category filter */}
               <select
+                aria-label="Filter kategori"
                 value={categoryFilter}
                 onChange={e => setCategoryFilter(e.target.value)}
-                className="text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-slate-700 focus:outline-none cursor-pointer"
+                className={`${FIELD_INPUT} w-auto`}
               >
-                <option value="ALL">Semua Kategori</option>
-                <option value="Penerimaan & QC">Penerimaan & QC</option>
-                <option value="Persiapan Dapur">Persiapan Dapur</option>
-                <option value="Sanitasi & Kebersihan">Sanitasi & Kebersihan</option>
-                <option value="Administrasi & Stok">Administrasi & Stok</option>
-                <option value="Distribusi">Distribusi</option>
+                <option value="ALL">Semua kategori</option>
+                {categoryOptions.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
               </select>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleResetTodos}
-                title="Muat ulang 8 tugas standar SPPG"
-                className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-              </button>
-
-              <button
-                onClick={() => setIsAddModalOpen(true)}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition-all cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Tambah Tugas Harian</span>
-              </button>
+            <div className="pt-3 border-t border-slate-200">
+              <div className="flex items-center justify-between gap-2 text-xs mb-2">
+                <span className="text-slate-700">
+                  <span className="font-semibold text-slate-900">{completedTasks} dari {totalTasks}</span> selesai · {formatLongDate(selectedDate)}
+                </span>
+                <span className="font-semibold text-slate-900 tabular-nums">{completionPercentage}%</span>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-2" role="progressbar" aria-valuenow={completionPercentage} aria-valuemin={0} aria-valuemax={100}>
+                <div className="h-2 rounded-full bg-emerald-600 transition-all" style={{ width: `${completionPercentage}%` }} />
+              </div>
             </div>
           </div>
 
-          {/* Progress Banner */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-4 sm:p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-bold text-slate-800">
-                    Progres Penyelesaian Tugas Operasional
-                  </h2>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      isAllCompleted
-                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                        : 'bg-blue-100 text-blue-800 border border-blue-200'
-                    }`}
-                  >
-                    {isAllCompleted ? '100% Selesai Penuh' : `${completedTasks} dari ${totalTasks} Selesai`}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Centang tugas saat diverifikasi di lapangan. Waktu penyelesaian dan penanggung jawab tercatat otomatis.
+          <div className="space-y-2">
+            {filteredTodos.length === 0 ? (
+              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+                <ListTodo className="w-8 h-8 text-slate-300 mx-auto mb-2" aria-hidden="true" />
+                <p className="text-xs text-slate-600">
+                  {totalTasks === 0 ? 'Belum ada tugas untuk tanggal ini.' : 'Tidak ada tugas yang cocok dengan filter.'}
                 </p>
               </div>
-
-              {isAllCompleted && (
-                <button
-                  onClick={() => setActiveSubTab('report')}
-                  className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
-                >
-                  <Award className="w-4 h-4 text-emerald-600" />
-                  <span>Lihat Laporan Resmi</span>
-                </button>
-              )}
-            </div>
-
-            <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-              <div
-                className={`h-3 rounded-full transition-all duration-500 ${
-                  isAllCompleted ? 'bg-emerald-600' : 'bg-emerald-500'
-                }`}
-                style={{ width: `${completionPercentage}%` }}
-              ></div>
-            </div>
-          </div>
-
-          {/* Checklist Items Cards */}
-          <div className="space-y-2.5">
-            {filteredTodos.length === 0 ? (
-              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500">
-                <ListTodo className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                <p className="text-xs font-medium">Tidak ada tugas harian yang cocok dengan filter.</p>
-              </div>
             ) : (
-              filteredTodos.map(todo => {
-                const priorityBadge =
-                  todo.priority === 'Tinggi'
-                    ? 'bg-rose-50 text-rose-700 border-rose-200'
-                    : todo.priority === 'Sedang'
-                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                    : 'bg-slate-50 text-slate-600 border-slate-200';
-
-                return (
-                  <div
-                    key={todo.id}
-                    className={`bg-white rounded-xl border transition-all p-4 flex items-start gap-3.5 ${
-                      todo.isCompleted
-                        ? 'border-emerald-200 bg-emerald-50/20'
-                        : 'border-slate-200 hover:border-slate-300 shadow-2xs'
-                    }`}
+              filteredTodos.map(todo => (
+                <div
+                  key={todo.id}
+                  className={`rounded-xl border p-3 sm:p-4 flex items-start gap-3 ${
+                    todo.isCompleted ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleToggleTodo(todo.id)}
+                    aria-pressed={todo.isCompleted}
+                    aria-label={todo.isCompleted ? `Tandai belum selesai: ${todo.title}` : `Tandai selesai: ${todo.title}`}
+                    className={`-m-2 p-2 rounded-lg shrink-0 cursor-pointer text-emerald-700 hover:bg-emerald-50 ${FOCUS_RING}`}
                   >
-                    {/* Checkbox Button */}
-                    <button
-                      type="button"
-                      onClick={() => handleToggleTodo(todo.id)}
-                      className="mt-0.5 text-emerald-600 hover:text-emerald-700 transition-transform active:scale-95 cursor-pointer shrink-0"
-                      title={todo.isCompleted ? 'Tandai belum selesai' : 'Tandai selesai'}
-                    >
-                      {todo.isCompleted ? (
-                        <CheckCircle2 className="w-5 h-5 fill-emerald-600 text-white" />
-                      ) : (
-                        <Circle className="w-5 h-5 text-slate-300 hover:text-emerald-500" />
-                      )}
-                    </button>
+                    {todo.isCompleted ? (
+                      <CheckCircle2 className="w-6 h-6 fill-emerald-700 text-white" />
+                    ) : (
+                      <Circle className="w-6 h-6 text-slate-400" />
+                    )}
+                  </button>
 
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        {todo.targetTime && (
-                          <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
-                            <Clock className="w-2.5 h-2.5 text-emerald-600" />
-                            Jam {todo.targetTime}
-                          </span>
-                        )}
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                          {todo.category}
+                  <div className="flex-1 min-w-0">
+                    <h3 className={`text-sm font-semibold ${todo.isCompleted ? 'text-slate-600 line-through' : 'text-slate-900'}`}>
+                      {todo.title}
+                    </h3>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                      {todo.targetTime && (
+                        <span className={`${BADGE} bg-white text-slate-700 border-slate-200 font-mono`}>
+                          <Clock className="w-3 h-3" aria-hidden="true" />
+                          {todo.targetTime}
                         </span>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${priorityBadge}`}>
-                          Prioritas {todo.priority}
+                      )}
+                      <span className={`${BADGE} bg-slate-100 text-slate-700 border-slate-200`}>{todo.category}</span>
+                      <span className={`${BADGE} ${PRIORITY_TONE[todo.priority] || PRIORITY_TONE.Rendah}`}>Prioritas {todo.priority.toLowerCase()}</span>
+                      {todo.session && todo.session !== 'Harian' && (
+                        <span className={`${BADGE} bg-white text-slate-700 border-slate-200`}>{todo.session}</span>
+                      )}
+                      {todo.assignedUserName ? (
+                        <span className={`${BADGE} bg-white text-slate-700 border-slate-200`}>
+                          <Users className="w-3 h-3" aria-hidden="true" />
+                          {todo.assignedUserName}
                         </span>
-                        {todo.session && (
-                          <span className="text-[10px] font-medium text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
-                            Shift {todo.session}
-                          </span>
-                        )}
-                        {todo.assignedUserName ? (
-                          <span className="text-[10px] font-semibold text-purple-800 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 flex items-center gap-1">
-                            <Users className="w-2.5 h-2.5 text-purple-600" />
-                            {todo.assignedUserName}
-                          </span>
-                        ) : todo.assignedRole && todo.assignedRole !== 'ALL' ? (
-                          <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                            PIC: {todo.assignedRole}
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <h3
-                        className={`text-xs font-semibold leading-relaxed ${
-                          todo.isCompleted ? 'text-slate-500 line-through' : 'text-slate-900'
-                        }`}
-                      >
-                        {todo.title}
-                      </h3>
-
-                      {todo.notes && (
-                        <p className="text-[11px] text-slate-500 mt-1 italic">
-                          Catatan: {todo.notes}
-                        </p>
-                      )}
-
-                      {/* Completed Audit Footer */}
-                      {todo.isCompleted && (
-                        <div className="flex items-center gap-3 mt-2 text-[11px] text-emerald-700">
-                          <span className="flex items-center gap-1 font-medium">
-                            <Clock className="w-3 h-3 text-emerald-600" />
-                            Selesai pukul {todo.completedAt}
-                          </span>
-                          {todo.completedBy && (
-                            <span className="flex items-center gap-1 text-slate-500">
-                              <User className="w-3 h-3 text-slate-400" />
-                              Oleh {todo.completedBy}
-                            </span>
-                          )}
-                        </div>
-                      )}
+                      ) : todo.assignedRole && todo.assignedRole !== 'ALL' ? (
+                        <span className={`${BADGE} bg-white text-slate-700 border-slate-200`}>{roleLabel(todo.assignedRole)}</span>
+                      ) : null}
                     </div>
-
-                    {/* Delete button */}
-                    <button
-                      onClick={() => handleDeleteTodo(todo.id, todo.title)}
-                      title="Hapus tugas ini"
-                      className="text-slate-300 hover:text-rose-600 p-1 rounded transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {todo.notes && <p className="text-xs text-slate-600 mt-1.5">{todo.notes}</p>}
+                    {todo.isCompleted && (
+                      <p className="text-[11px] text-emerald-800 mt-1.5">
+                        Selesai pukul {todo.completedAt}
+                        {todo.completedBy && ` oleh ${todo.completedBy}`}
+                      </p>
+                    )}
                   </div>
-                );
-              })
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteTodo(todo.id, todo.title)}
+                    aria-label={`Hapus tugas: ${todo.title}`}
+                    title="Hapus tugas"
+                    className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[32px] sm:min-h-[32px] -m-1 rounded-lg text-slate-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer shrink-0 ${FOCUS_RING}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))
             )}
           </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* TAB 3: LAPORAN PENYELESAIAN TUGAS HARIAN (REPORT & BERITA ACARA) */}
-      {/* ========================================================================= */}
+      {/* ===================== LAPORAN ===================== */}
       {activeSubTab === 'report' && (
-        <div className="space-y-6">
-          {/* Action Toolbar */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-emerald-600" />
-              <span className="text-xs font-semibold text-slate-700">Tanggal Laporan:</span>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={e => handleDateChange(e.target.value)}
-                className="text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 px-2 py-1 rounded-md cursor-pointer"
-              />
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {dateControl}
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={handleExportExcel} disabled={totalTasks === 0} className={`${BTN_SECONDARY} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                  <FileSpreadsheet className="w-4 h-4" />
+                  Ekspor Excel
+                </button>
+                <button type="button" onClick={() => window.print()} disabled={totalTasks === 0} className={BTN_PRIMARY}>
+                  <Printer className="w-4 h-4" />
+                  Cetak laporan
+                </button>
+              </div>
             </div>
-
-            <div className="flex items-center gap-2 self-end sm:self-auto">
-              <button
-                onClick={handleExportExcel}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Ekspor Excel (.xlsx)</span>
-              </button>
-
-              <button
-                onClick={handlePrintReport}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-              >
-                <Printer className="w-3.5 h-3.5 text-slate-200" />
-                <span>Cetak Laporan (PDF)</span>
-              </button>
-            </div>
+            {!isAllCompleted && totalTasks > 0 && (
+              <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Baru {completedTasks} dari {totalTasks} tugas selesai ({completionPercentage}%). Laporan tetap bisa dicetak sebagai laporan sementara.
+              </p>
+            )}
           </div>
 
-          {/* Completion Celebration Badge if 100% */}
-          {isAllCompleted ? (
-            <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl p-5 shadow-sm flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3.5">
-                <div className="p-3 bg-white/10 rounded-xl">
-                  <Award className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold leading-tight">
-                    Checklist Tugas Harian Telah Selesai 100%
-                  </h3>
-                  <p className="text-xs text-emerald-100 mt-0.5">
-                    Seluruh {totalTasks} butir tugas operasional SPPG telah diverifikasi dan memenuhi standar operasional prosedur gizi.
-                  </p>
-                </div>
-              </div>
-              <div className="hidden sm:block text-right">
-                <div className="text-[11px] text-emerald-200">Status Tugas</div>
-                <div className="text-xs font-bold bg-white/20 px-2.5 py-1 rounded-lg mt-0.5">
-                  Semua Selesai
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3 text-amber-800 text-xs">
-              <Info className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>
-                Laporan ini mencatat progres berjalan: <strong>{completedTasks}</strong> dari <strong>{totalTasks}</strong> tugas selesai ({completionPercentage}%). Anda tetap dapat mencetak atau mengekspor laporan sementara.
-              </span>
-            </div>
-          )}
-
-          {/* Printable Report Paper Layout */}
-          <div
-            id="printable-report-area"
-            className="bg-white rounded-xl border border-slate-300 shadow-sm p-8 print:p-0 print:border-none print:shadow-none"
-          >
-            {/* Report Header */}
-            <div className="flex items-start justify-between border-b-2 border-slate-800 pb-5 mb-6">
+          <div id="printable-report-area" className="bg-white rounded-xl border border-slate-200 p-4 sm:p-8 overflow-x-auto">
+            <div className="flex flex-col sm:flex-row items-start justify-between gap-4 border-b-2 border-slate-800 pb-5 mb-6">
               <div className="flex items-start gap-4">
                 <SppgLogo size="lg" variant="color" showText={false} />
                 <KopText />
               </div>
-
-              <div className="text-right text-xs">
-                <div className="font-bold text-slate-800">BERITA ACARA LAPORAN HARIAN</div>
-                <div className="font-mono text-slate-500 text-[11px] mt-0.5">
+              <div className="sm:text-right text-xs">
+                <div className="font-bold text-slate-900">BERITA ACARA LAPORAN HARIAN</div>
+                <div className="font-mono text-slate-600 text-[11px] mt-0.5">
                   NOMOR: BA-SPPG/{selectedDate.replace(/-/g, '')}/01
                 </div>
-                <div className="text-[11px] text-slate-500 mt-1">
-                  Tanggal:{' '}
-                  <strong className="text-slate-700">
-                    {new Date(selectedDate).toLocaleDateString('id-ID', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                  </strong>
+                <div className="text-[11px] text-slate-600 mt-1">
+                  Tanggal: <strong className="text-slate-800">{formatLongDate(selectedDate)}</strong>
                 </div>
               </div>
             </div>
 
-            {/* Metrics Overview Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="text-[11px] text-slate-500 font-medium">Total Tugas Terjadwal</div>
-                <div className="text-lg font-bold text-slate-800 mt-0.5">{totalTasks} Butir</div>
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="text-[11px] text-slate-500 font-medium">Tugas Selesai</div>
-                <div className="text-lg font-bold text-emerald-700 mt-0.5">{completedTasks} Butir</div>
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="text-[11px] text-slate-500 font-medium">Tingkat Kepatuhan SOP</div>
-                <div className="text-lg font-bold text-slate-800 mt-0.5">{completionPercentage}%</div>
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="text-[11px] text-slate-500 font-medium">Penyelesaian Terakhir</div>
-                <div className="text-lg font-bold text-slate-800 mt-0.5">
-                  {lastCompletedItem?.completedAt ? `Pukul ${lastCompletedItem.completedAt}` : '-'}
+              {[
+                { label: 'Tugas terjadwal', value: `${totalTasks}` },
+                { label: 'Tugas selesai', value: `${completedTasks}` },
+                { label: 'Persentase selesai', value: `${completionPercentage}%` },
+                { label: 'Selesai terakhir', value: lastCompletedAt ? `Pukul ${lastCompletedAt}` : '-' },
+              ].map(m => (
+                <div key={m.label} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="text-[11px] text-slate-600">{m.label}</div>
+                  <div className="text-lg font-bold text-slate-900 mt-0.5 tabular-nums">{m.value}</div>
                 </div>
-              </div>
+              ))}
             </div>
 
-            {/* Itemized Table */}
-            <div className="overflow-x-auto mb-6">
-              <table className="w-full text-left text-xs border border-slate-200 rounded-lg overflow-hidden">
-                <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
+            <table className="w-full min-w-[640px] text-left text-xs border border-slate-200 mb-6">
+              <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
+                <tr>
+                  <th className="py-2.5 px-3 w-10 text-center">No</th>
+                  <th className="py-2.5 px-3">Kategori & jam</th>
+                  <th className="py-2.5 px-3">Uraian tugas</th>
+                  <th className="py-2.5 px-3 w-20">Prioritas</th>
+                  <th className="py-2.5 px-3 w-20 text-center">Status</th>
+                  <th className="py-2.5 px-3 w-24">Jam selesai</th>
+                  <th className="py-2.5 px-3">Pelaksana</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {todos.length === 0 ? (
                   <tr>
-                    <th className="py-2.5 px-3 w-10 text-center">No</th>
-                    <th className="py-2.5 px-3">Kategori & Shift</th>
-                    <th className="py-2.5 px-3">Uraian Butir Tugas Operasional</th>
-                    <th className="py-2.5 px-3 w-24">Prioritas</th>
-                    <th className="py-2.5 px-3 w-28 text-center">Status</th>
-                    <th className="py-2.5 px-3 w-24">Jam Selesai</th>
-                    <th className="py-2.5 px-3">Pelaksana (PIC)</th>
+                    <td colSpan={7} className="py-6 text-center text-slate-600">Belum ada tugas untuk tanggal ini.</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {todos.map((todo, idx) => (
-                    <tr key={todo.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                      <td className="py-2 px-3 text-center font-medium text-slate-500">{idx + 1}</td>
+                ) : (
+                  todos.map((todo, idx) => (
+                    <tr key={todo.id}>
+                      <td className="py-2 px-3 text-center text-slate-600">{idx + 1}</td>
                       <td className="py-2 px-3">
                         <div className="font-semibold text-slate-800">{todo.category}</div>
-                        <div className="text-[10px] text-slate-500">
-                          {todo.targetTime ? (
-                            <span className="font-mono font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                              Jam {todo.targetTime}
-                            </span>
-                          ) : (
-                            `Shift ${todo.session || 'Harian'}`
-                          )}
-                        </div>
+                        <div className="text-[11px] text-slate-600">{todo.targetTime || todo.session || 'Harian'}</div>
                       </td>
                       <td className="py-2 px-3">
-                        <div className="font-medium text-slate-800">{todo.title}</div>
-                        {todo.notes && (
-                          <div className="text-[11px] text-slate-500 italic mt-0.5">{todo.notes}</div>
-                        )}
+                        <div className="font-medium text-slate-900">{todo.title}</div>
+                        {todo.notes && <div className="text-[11px] text-slate-600 mt-0.5">{todo.notes}</div>}
                       </td>
-                      <td className="py-2 px-3">
-                        <span
-                          className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
-                            todo.priority === 'Tinggi'
-                              ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : 'bg-slate-100 text-slate-700 border-slate-200'
-                          }`}
-                        >
-                          {todo.priority}
-                        </span>
+                      <td className="py-2 px-3 text-slate-700">{todo.priority}</td>
+                      <td className="py-2 px-3 text-center font-semibold">
+                        {todo.isCompleted ? <span className="text-emerald-800">Selesai</span> : <span className="text-slate-600">Belum</span>}
                       </td>
-                      <td className="py-2 px-3 text-center">
-                        <span
-                          className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                            todo.isCompleted
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-slate-100 text-slate-500'
-                          }`}
-                        >
-                          {todo.isCompleted ? 'SELESAI' : 'BELUM'}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3 text-slate-600 font-mono text-[11px]">
-                        {todo.completedAt ? `${todo.completedAt} WIB` : '-'}
-                      </td>
+                      <td className="py-2 px-3 text-slate-700 font-mono">{todo.completedAt ? `${todo.completedAt} WIB` : '-'}</td>
                       <td className="py-2 px-3 text-slate-700">
                         <div className="font-semibold">{todo.completedBy || '-'}</div>
-                        {todo.assignedUserName && (
-                          <div className="text-[10px] text-purple-700 font-medium">Tugas: {todo.assignedUserName}</div>
-                        )}
+                        {todo.assignedUserName && <div className="text-[11px] text-slate-600">Ditugaskan: {todo.assignedUserName}</div>}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  ))
+                )}
+              </tbody>
+            </table>
 
-            {/* Statement & Signatures */}
-            <div className="border border-slate-200 rounded-lg p-4 bg-slate-50/40 mb-8 text-xs text-slate-600 leading-relaxed">
-              <strong className="text-slate-800">Pernyataan:</strong> Seluruh butir tugas di atas telah diperiksa dan diselesaikan sesuai penugasan kerja operasional harian SPPG.
-            </div>
+            <p className="border border-slate-200 rounded-lg p-4 bg-slate-50 mb-8 text-xs text-slate-700 leading-relaxed">
+              <strong className="text-slate-900">Pernyataan:</strong> butir tugas di atas telah diperiksa dan dikerjakan sesuai penugasan operasional harian SPPG.
+            </p>
 
-            {/* Signature Columns */}
-            <div className="grid grid-cols-2 gap-8 pt-4">
-              <div className="text-center">
-                <p className="text-xs text-slate-500 mb-1">Pelaksana Operasional Lapangan</p>
-                <p className="text-xs font-semibold text-slate-700">Petugas Yang Memeriksa,</p>
-                <div className="h-16 flex items-end justify-center">
-                  <div className="border-b border-slate-400 w-44"></div>
-                </div>
-                <p className="text-xs font-bold text-slate-800 mt-1">{currentUser.name}</p>
-                <p className="text-[11px] text-slate-500">Jabatan: {currentUser.role}</p>
+            <div className="grid grid-cols-2 gap-8 pt-4 text-center text-xs">
+              <div>
+                <p className="text-slate-600">Petugas yang memeriksa,</p>
+                <div className="h-16" />
+                <p className="font-bold text-slate-900 underline">{currentUser.name}</p>
+                <p className="text-[11px] text-slate-600">{roleLabel(currentUser.role)}</p>
               </div>
-
-              <div className="text-center">
-                <p className="text-xs text-slate-500 mb-1">Mengetahui & Menyetujui</p>
-                <p className="text-xs font-semibold text-slate-700">Kepala SPPG Unit 01,</p>
-                <div className="h-16 flex items-end justify-center">
-                  <div className="border-b border-slate-400 w-44"></div>
-                </div>
-                <p className="text-xs font-bold text-slate-800 mt-1">Rizky Iman Ramdhan, S.Pd</p>
-                <p className="text-[11px] text-slate-500">NIP / ID: SPPG-KA-2026-001</p>
+              <div>
+                <p className="text-slate-600">Mengetahui & menyetujui,</p>
+                <div className="h-16" />
+                <p className="font-bold text-slate-900 underline">{signerName('KEPALA_SPPG')}</p>
+                <p className="text-[11px] text-slate-600">Kepala SPPG</p>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL: TAMBAH TUGAS HARIAN BARU */}
-      {/* ========================================================================= */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Tambah Butir Tugas Ceklis Harian
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Tentukan uraian tugas SOP, kategori, prioritas, dan staf penanggung jawab
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAddModalOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition-colors cursor-pointer"
-                title="Tutup dialog"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddTodo} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Uraian Butir Tugas <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newTitle}
-                    onChange={e => setNewTitle(e.target.value)}
-                    placeholder="Contoh: Kalibrasi timbangan digital & cek sanitizer lantai..."
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Kategori</label>
-                    <select
-                      value={newCategory}
-                      onChange={e => setNewCategory(e.target.value as TodoCategory)}
-                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                    >
-                      <option value="Penerimaan & QC">Penerimaan & QC</option>
-                      <option value="Persiapan Dapur">Persiapan Dapur</option>
-                      <option value="Sanitasi & Kebersihan">Sanitasi & Kebersihan</option>
-                      <option value="Administrasi & Stok">Administrasi & Stok</option>
-                      <option value="Stock Opname">Stock Opname</option>
-                      <option value="Distribusi">Distribusi</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Prioritas</label>
-                    <select
-                      value={newPriority}
-                      onChange={e => setNewPriority(e.target.value as TodoPriority)}
-                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                    >
-                      <option value="Tinggi">Tinggi</option>
-                      <option value="Sedang">Sedang</option>
-                      <option value="Rendah">Rendah</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                      Target Jam <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="time"
-                      required
-                      value={newTargetTime}
-                      onChange={e => setNewTargetTime(e.target.value)}
-                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-mono font-semibold text-slate-800"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Tugaskan ke Staf
-                    </label>
-                    <select
-                      value={newAssignedUserId}
-                      onChange={e => setNewAssignedUserId(e.target.value)}
-                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                    >
-                      <option value="">Semua Staf (Umum)</option>
-                      {availableUsers?.map(u => (
-                        <option key={u.id} value={u.id}>
-                          {u.name} ({u.role})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Shift / Sesi</label>
-                    <select
-                      value={newSession}
-                      onChange={e => setNewSession(e.target.value as any)}
-                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                    >
-                      <option value="Pagi">Pagi (05:00 - 09:00)</option>
-                      <option value="Siang">Siang (09:00 - 14:00)</option>
-                      <option value="Sore">Sore (14:00 - 18:00)</option>
-                      <option value="Harian">Fleksibel Harian</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Penugasan Peran Standar</label>
-                    <select
-                      value={newAssignedRole}
-                      onChange={e => setNewAssignedRole(e.target.value as any)}
-                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                    >
-                      <option value="ALL">Semua Petugas (Umum)</option>
-                      <option value="ASLAP">Aslap (QC / Lapangan)</option>
-                      <option value="ADMIN">Admin Gudang</option>
-                      <option value="AKUNTAN">Akuntan / Finance</option>
-                      <option value="KA_SPPG">Kepala SPPG</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Catatan SOP / Instruksi Khusus (Opsional)
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={newNotes}
-                    onChange={e => setNewNotes(e.target.value)}
-                    placeholder="Catatan parameter pemeriksaan, nomor form rujukan, dll..."
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
-                  ></textarea>
-                </div>
-              </div>
-
-              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-200/60 text-xs font-semibold cursor-pointer transition-colors"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
-                >
-                  Simpan Tugas
-                </button>
-              </div>
-            </form>
+        <FormDialog
+          title="Tambah tugas"
+          description={formatLongDate(selectedDate)}
+          onClose={() => setIsAddModalOpen(false)}
+          onSubmit={handleAddTodo}
+          submitLabel="Simpan tugas"
+          error={addError}
+        >
+          <div>
+            <label htmlFor="td-title" className={FIELD_LABEL}>Uraian tugas</label>
+            <input
+              id="td-title"
+              type="text"
+              required
+              value={newTitle}
+              onChange={e => setNewTitle(e.target.value)}
+              placeholder="Contoh: Kalibrasi timbangan digital"
+              className={FIELD_INPUT}
+            />
           </div>
-        </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="td-cat" className={FIELD_LABEL}>Kategori</label>
+              <select id="td-cat" value={newCategory} onChange={e => setNewCategory(e.target.value as TodoCategory)} className={FIELD_INPUT}>
+                {TODO_CATEGORIES.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="td-prio" className={FIELD_LABEL}>Prioritas</label>
+              <select id="td-prio" value={newPriority} onChange={e => setNewPriority(e.target.value as TodoPriority)} className={FIELD_INPUT}>
+                <option value="Tinggi">Tinggi</option>
+                <option value="Sedang">Sedang</option>
+                <option value="Rendah">Rendah</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="td-time" className={FIELD_LABEL}>Target jam</label>
+              <input id="td-time" type="time" value={newTargetTime} onChange={e => setNewTargetTime(e.target.value)} className={`${FIELD_INPUT} font-mono`} />
+            </div>
+            <div>
+              <label htmlFor="td-session" className={FIELD_LABEL}>Sesi</label>
+              <select id="td-session" value={newSession} onChange={e => setNewSession(e.target.value as typeof newSession)} className={FIELD_INPUT}>
+                <option value="Pagi">Pagi (05.00–09.00)</option>
+                <option value="Siang">Siang (09.00–14.00)</option>
+                <option value="Sore">Sore (14.00–18.00)</option>
+                <option value="Harian">Kapan saja</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="td-user" className={FIELD_LABEL}>Tugaskan ke orang</label>
+              <select id="td-user" value={newAssignedUserId} onChange={e => setNewAssignedUserId(e.target.value)} className={FIELD_INPUT}>
+                <option value="">Tidak spesifik</option>
+                {availableUsers?.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} ({roleLabel(u.role)})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="td-role" className={FIELD_LABEL}>Atau ke peran</label>
+              <select
+                id="td-role"
+                value={newAssignedRole}
+                disabled={Boolean(newAssignedUserId)}
+                onChange={e => setNewAssignedRole(e.target.value as UserRole | 'ALL')}
+                className={FIELD_INPUT}
+              >
+                <option value="ALL">Semua petugas</option>
+                {(Object.keys(ROLE_INFO) as UserRole[]).map(r => (
+                  <option key={r} value={r}>{ROLE_INFO[r].label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label htmlFor="td-notes" className={FIELD_LABEL}>Catatan (opsional)</label>
+            <textarea
+              id="td-notes"
+              rows={2}
+              value={newNotes}
+              onChange={e => setNewNotes(e.target.value)}
+              placeholder="Parameter pemeriksaan, nomor form rujukan, dll."
+              className={`${FIELD_INPUT} py-2`}
+            />
+          </div>
+        </FormDialog>
       )}
     </div>
   );

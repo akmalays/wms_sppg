@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useConfirm } from '../context/ConfirmContext';
 import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
-import { warehouseDb } from '../db/storage';
+import { warehouseDb, signerName } from '../db/storage';
 import { MainItemCategory, normalizeItemCategory } from '../types/warehouse';
 import { Printer, Search, CheckCircle2, FileSpreadsheet, Trash2, Plus, X } from 'lucide-react';
 import { exportMultiSheetExcel } from '../lib/excelExport';
@@ -544,12 +544,12 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
           <div>
             <div className="text-slate-600">Diperiksa oleh,</div>
             <div className="font-semibold text-slate-800">Akuntan SPPG</div>
-            <div className="h-16 flex items-end justify-center font-bold">(Dewi Lestari, S.Ak)</div>
+            <div className="h-16 flex items-end justify-center font-bold">({signerName('AKUNTAN')})</div>
           </div>
           <div>
             <div className="text-slate-600">Mengetahui,</div>
             <div className="font-semibold text-slate-800">Kepala SPPG Tumpang Jeru</div>
-            <div className="h-16 flex items-end justify-center font-bold">(Rizky Iman Ramdhan, S.Pd)</div>
+            <div className="h-16 flex items-end justify-center font-bold">({signerName('KEPALA_SPPG')})</div>
           </div>
         </div>
       </div>

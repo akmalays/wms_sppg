@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { ToastProvider, useToast } from './context/ToastContext';
-import { ConfirmProvider, useConfirm } from './context/ConfirmContext';
+import { ToastProvider } from './context/ToastContext';
+import { ConfirmProvider } from './context/ConfirmContext';
 import { Navbar } from './components/Navbar';
 import { DashboardView } from './components/DashboardView';
 import { DailyExpensesModule } from './components/DailyExpensesModule';
@@ -24,7 +24,6 @@ import { LoginPage } from './components/LoginPage';
 import { LandingPage } from './components/LandingPage';
 import { WebsiteCmsModule } from './components/WebsiteCmsModule';
 import { DailyMenuPublicPage } from './components/DailyMenuPublicPage';
-import { warehouseDb } from './db/storage';
 
 export type AppRouteType = 'DASHBOARD' | 'MENU_TODAY' | 'LANDING';
 
@@ -63,8 +62,6 @@ export const getAppRoute = (): AppRouteType => {
 
 const MainLayout: React.FC = () => {
   const { currentUser, isAuthenticated } = useAuth();
-  const confirm = useConfirm();
-  const toast = useToast();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [currentRoute, setCurrentRoute] = useState<AppRouteType>(getAppRoute);
   const [dataVersion, setDataVersion] = useState<number>(0);
@@ -161,40 +158,12 @@ const MainLayout: React.FC = () => {
     setDataVersion(v => v + 1);
   };
 
-  const handleClearTransactions = async () => {
-    const ok = await confirm({
-      title: 'Bersihkan semua data transaksi?',
-      message: 'Belanja, penerimaan, nota pesanan (PO) dihapus dan stok barang kembali ke 0. Master barang, supplier, dan akun pengguna tetap aman.',
-      confirmText: 'Bersihkan data',
-      variant: 'danger',
-    });
-    if (!ok) return;
-    warehouseDb.clearTransactionsOnly();
-    setDataVersion(v => v + 1);
-    toast.success('Data transaksi dibersihkan. Stok barang sekarang 0.');
-  };
-
-  const handleResetData = async () => {
-    const ok = await confirm({
-      title: 'Reset ke data demo?',
-      message: 'Semua data diganti dengan data contoh bawaan SPPG.',
-      confirmText: 'Reset data',
-      variant: 'danger',
-    });
-    if (!ok) return;
-    warehouseDb.resetToSeedData();
-    setDataVersion(v => v + 1);
-    toast.success('Data gudang dikembalikan ke data bawaan.');
-  };
-
   return (
     <div className="min-h-screen bg-[#f1f5f9] flex flex-col text-slate-800 font-sans selection:bg-emerald-100 selection:text-emerald-900">
       {/* Navigation & Header */}
       <Navbar
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        onResetData={handleResetData}
-        onClearTransactions={handleClearTransactions}
         onViewLanding={navigateToHome}
       />
 
@@ -282,7 +251,7 @@ const MainLayout: React.FC = () => {
 
 
           {activeTab === 'website_cms' && (
-            <WebsiteCmsModule onViewLanding={navigateToHome} />
+            <WebsiteCmsModule />
           )}
 
           {activeTab === 'audit' && <AuditLogModule />}
@@ -300,7 +269,7 @@ const MainLayout: React.FC = () => {
   );
 };
 
-const SELF_SYNCING_TABS = new Set(['receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit']);
+const SELF_SYNCING_TABS = new Set(['profile', 'receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit']);
 
 export default function App() {
   return (

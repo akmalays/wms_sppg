@@ -2,15 +2,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   WebsiteConfig,
   HeroVideoItem,
-  MenuSlideItem,
-  VisualStudyItem,
   HeroDocumentationSlide,
   IngredientNutritionInfo,
-  PortionTierConfig,
-  WebsiteMenuTodayConfig,
   DEFAULT_WEBSITE_CONFIG,
   getWebsiteConfig,
-  saveWebsiteConfig,
   saveWebsiteConfigToCloud,
   fetchWebsiteConfigFromCloud,
   uploadCmsMedia,
@@ -18,51 +13,38 @@ import {
   IMAGE_PRESETS
 } from '../db/websiteConfigStorage';
 import QRCode from 'qrcode';
+import { warehouseDb } from '../db/storage';
+import { localDateIso } from '../utils/localDate';
+import type { MenuOrder } from '../types/warehouse';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
 import { MenuTodayKidsEditor } from './MenuTodayKidsEditor';
 import { compressImageToWebP } from '../utils/imageCompressor';
 import {
-  Globe,
   Video,
   Image as ImageIcon,
   Sliders,
   Play,
-  Pause,
   Plus,
   Trash2,
   Edit2,
   Save,
-  RotateCcw,
-  CheckCircle2,
-  AlertCircle,
   ExternalLink,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Upload,
   Sparkles,
-  Layers,
   UtensilsCrossed,
-  FileText,
-  Volume2,
-  VolumeX,
-  Eye,
   Info,
-  Clock,
   Check,
   X,
-  Cloud,
-  Database,
   Download,
-  UploadCloud,
-  RefreshCw,
-  HardDrive,
   QrCode,
+  RotateCcw,
   Printer,
   Copy,
-  PlusCircle,
-  Apple,
-  Share2
+  Apple
 } from 'lucide-react';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
@@ -72,6 +54,14 @@ const BTN_SECONDARY = `inline-flex items-center justify-center gap-1.5 px-3.5 py
 const ICON_BTN = `inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[32px] sm:min-h-[32px] rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS}`;
 
 type ToastTone = 'success' | 'warning' | 'error';
+
+const SESSION_ORDER: Record<MenuOrder['mealSession'], number> = { Siang: 0, Pagi: 1, Snack: 2 };
+
+// Format yang dibaca halaman publik untuk mendeteksi menu kedaluwarsa: "Rabu, 14 Oktober 2026".
+const formatMenuDate = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+const normalizeName = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ');
 
 // Draf per tab browser, supaya pindah menu di aplikasi tidak menghapus perubahan yang belum disimpan.
 const DRAFT_KEY = 'sppg_website_cms_draft_v1';
@@ -85,13 +75,27 @@ const readDraft = (): WebsiteConfig | null => {
   }
 };
 
-interface WebsiteCmsModuleProps {
-  onViewLanding?: () => void;
-}
+const CollapsibleCard: React.FC<{
+  title: string;
+  summary: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}> = ({ title, summary, defaultOpen, children }) => (
+  <details open={defaultOpen} className="group bg-white rounded-xl border border-slate-200">
+    <summary className={`list-none [&::-webkit-details-marker]:hidden flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 min-h-[44px] cursor-pointer select-none rounded-xl hover:bg-slate-50 ${FOCUS}`}>
+      <div className="min-w-0">
+        <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+        <p className="text-xs text-slate-600 mt-0.5">{summary}</p>
+      </div>
+      <ChevronDown className="w-4 h-4 text-slate-500 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
+    </summary>
+    <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-4 space-y-5 border-t border-slate-200">{children}</div>
+  </details>
+);
 
-export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLanding }) => {
+export const WebsiteCmsModule: React.FC = () => {
   const [config, setConfig] = useState<WebsiteConfig>(() => readDraft() ?? getWebsiteConfig());
-  const [activeTab, setActiveTab] = useState<'hero' | 'menu' | 'visual' | 'menu_today'>('menu_today');
+  const [activeTab, setActiveTab] = useState<'hero' | 'menu_today'>('menu_today');
   const toast = useToast();
   const askConfirm = useConfirm();
 
@@ -102,18 +106,6 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   isDirtyRef.current = isDirty;
 
   const [isCloudSaving, setIsCloudSaving] = useState(false);
-
-  // State untuk editing Menu Slide
-  const [editingMenuSlide, setEditingMenuSlide] = useState<MenuSlideItem | null>(null);
-  const [isMenuModalOpen, setIsMenuModalOpen] = useState(false);
-  const [menuImagePreview, setMenuImagePreview] = useState<string>('');
-  const [isUploadingMenuImg, setIsUploadingMenuImg] = useState(false);
-
-  // State untuk editing Visual Study Item
-  const [editingVisualItem, setEditingVisualItem] = useState<VisualStudyItem | null>(null);
-  const [isVisualModalOpen, setIsVisualModalOpen] = useState(false);
-  const [visualImagePreview, setVisualImagePreview] = useState<string>('');
-  const [isUploadingVisualImg, setIsUploadingVisualImg] = useState(false);
 
   // State untuk Multi-Video Hero Playlist & Modal
   const [editingHeroVideo, setEditingHeroVideo] = useState<HeroVideoItem | null>(null);
@@ -129,8 +121,6 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   const [isUploadingHeroSlideImg, setIsUploadingHeroSlideImg] = useState(false);
   const heroSlideFileRef = useRef<HTMLInputElement>(null);
 
-  const menuFileRef = useRef<HTMLInputElement>(null);
-  const visualFileRef = useRef<HTMLInputElement>(null);
 
   // State untuk Menu Hari Ini & QR Code
   const [editingIngredient, setEditingIngredient] = useState<IngredientNutritionInfo | null>(null);
@@ -199,13 +189,11 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
   }, [isDirty]);
 
 
-  const anyModalOpen = isMenuModalOpen || isVisualModalOpen || isHeroVideoModalOpen || isHeroSlideModalOpen || isIngredientModalOpen || isPrintStickerModalOpen;
+  const anyModalOpen = isHeroVideoModalOpen || isHeroSlideModalOpen || isIngredientModalOpen || isPrintStickerModalOpen;
   useEffect(() => {
     if (!anyModalOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      setIsMenuModalOpen(false);
-      setIsVisualModalOpen(false);
       setIsHeroVideoModalOpen(false);
       setIsHeroSlideModalOpen(false);
       setIsIngredientModalOpen(false);
@@ -569,216 +557,76 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
     }
   };
 
-  // Menu Image Upload Handler (Kompres WebP otomatis + Upload Supabase Storage)
-  const handleMenuImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Menu hari ini dari Rekap Order Menu, supaya tidak perlu diketik dua kali.
+  const todayIso = localDateIso();
+  const todayOrders = useMemo(
+    () => warehouseDb.getMenuOrders()
+      .filter(o => o.date === todayIso)
+      .sort((a, b) => SESSION_ORDER[a.mealSession] - SESSION_ORDER[b.mealSession]),
+    [todayIso]
+  );
+  const [selectedOrderId, setSelectedOrderId] = useState('');
+  const selectedOrder = todayOrders.find(o => o.id === selectedOrderId) ?? todayOrders[0];
 
-    try {
-      setIsUploadingMenuImg(true);
-      const result = await uploadCmsMedia(file, 'menu');
-      setMenuImagePreview(result.url);
-      if (editingMenuSlide) {
-        setEditingMenuSlide(prev => prev ? { ...prev, imageUrl: result.url } : null);
-      }
-      notifyImageUpload(result, 'Foto menu');
-    } catch (err) {
-      console.error(err);
-      showError('Gagal memproses gambar menu.');
-    } finally {
-      setIsUploadingMenuImg(false);
-      if (e.target) e.target.value = '';
-    }
-  };
+  const handleFillFromOrder = async (order: MenuOrder) => {
+    const current = config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+    const ok = await askConfirm({
+      title: `Isi dari menu "${order.menuTitle}"?`,
+      message: 'Tanggal, nama menu, deskripsi, dan daftar bahan diganti. Data gizi bahan yang namanya sama tetap dipakai.',
+      confirmText: 'Isi otomatis',
+      variant: 'warning',
+    });
+    if (!ok) return;
 
-  // Visual Study Image Upload Handler (Kompres WebP otomatis + Upload Supabase Storage)
-  const handleVisualImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const supplierByName = new Map(
+      (order.poArrivalItems || []).map(it => [normalizeName(it.itemName), it.supplier])
+    );
+    const existingByName = new Map(current.ingredients.map(i => [normalizeName(i.name), i]));
+    const names = [
+      ...(order.keyIngredients || []).map(k => k.name || k.itemName || ''),
+      ...(order.poArrivalItems || []).map(it => it.itemName),
+    ].map(n => n.trim()).filter(Boolean);
+    const uniqueNames = [...new Map(names.map(n => [normalizeName(n), n])).values()];
 
-    try {
-      setIsUploadingVisualImg(true);
-      const result = await uploadCmsMedia(file, 'visual');
-      setVisualImagePreview(result.url);
-      if (editingVisualItem) {
-        setEditingVisualItem(prev => prev ? { ...prev, imageUrl: result.url } : null);
-      }
-      notifyImageUpload(result, 'Foto kajian');
-    } catch (err) {
-      console.error(err);
-      showError('Gagal memproses gambar dokumentasi.');
-    } finally {
-      setIsUploadingVisualImg(false);
-      if (e.target) e.target.value = '';
-    }
-  };
-
-  // Menu Slide Crud
-  const handleOpenAddMenu = () => {
-    const newSlide: MenuSlideItem = {
-      id: `menu-${Date.now()}`,
-      title: '',
-      day: 'Senin',
-      category: 'Paket Porsi Lengkap MBG',
-      calories: '650 kkal • Protein 25g',
-      imageUrl: IMAGE_PRESETS[0].url,
-      description: '',
-      targetGrams: '460 gram',
-      allergens: 'Halal • Bersih Berstandar'
-    };
-    setEditingMenuSlide(newSlide);
-    setMenuImagePreview(newSlide.imageUrl);
-    setIsMenuModalOpen(true);
-  };
-
-  const handleOpenEditMenu = (slide: MenuSlideItem) => {
-    setEditingMenuSlide({ ...slide });
-    setMenuImagePreview(slide.imageUrl);
-    setIsMenuModalOpen(true);
-  };
-
-  const handleSaveMenuSlide = () => {
-    if (!editingMenuSlide) return;
-    if (!editingMenuSlide.title.trim()) {
-      showError('Judul menu wajib diisi.');
-      return;
-    }
-
-    const updatedSlide = {
-      ...editingMenuSlide,
-      imageUrl: menuImagePreview || editingMenuSlide.imageUrl
-    };
-
-    setConfig(prev => {
-      const exists = prev.menuSlider.slides.some(s => s.id === updatedSlide.id);
-      const slides = exists
-        ? prev.menuSlider.slides.map(s => s.id === updatedSlide.id ? updatedSlide : s)
-        : [...prev.menuSlider.slides, updatedSlide];
+    const missingNutrition: string[] = [];
+    const ingredients: IngredientNutritionInfo[] = uniqueNames.map((name, idx) => {
+      const existing = existingByName.get(normalizeName(name));
+      if (existing) return existing;
+      missingNutrition.push(name);
+      const req = order.keyIngredients?.find(k => normalizeName(k.name || k.itemName || '') === normalizeName(name));
       return {
-        ...prev,
-        menuSlider: {
-          ...prev.menuSlider,
-          slides
-        }
+        id: `ing-${Date.now()}-${idx}`,
+        name,
+        category: req?.category || '',
+        portionSmall: '',
+        portionLarge: '',
+        imageUrl: '',
+        nutritionHighlight: '',
+        healthBenefits: '',
+        supplier: supplierByName.get(normalizeName(name)) || '',
       };
     });
 
-    setIsMenuModalOpen(false);
-    setEditingMenuSlide(null);
-    showNotification(`Menu "${updatedSlide.title}" diperbarui.`);
-  };
-
-  const handleDeleteMenuSlide = async (id: string) => {
-    if (config.menuSlider.slides.length <= 1) {
-      showError('Minimal harus ada 1 slide menu yang aktif di website.');
-      return;
-    }
-    if (await askConfirm({ title: 'Hapus menu ini dari website?', message: 'Website publik berubah setelah kamu klik Simpan.', confirmText: 'Hapus menu', variant: 'danger' })) {
-      setConfig(prev => ({
-        ...prev,
-        menuSlider: {
-          ...prev.menuSlider,
-          slides: prev.menuSlider.slides.filter(s => s.id !== id)
-        }
-      }));
-      showNotification('Slide menu dihapus.');
-    }
-  };
-
-  const handleMoveMenuSlide = (idx: number, direction: 'up' | 'down') => {
-    const slides = [...config.menuSlider.slides];
-    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= slides.length) return;
-    const temp = slides[idx];
-    slides[idx] = slides[targetIdx];
-    slides[targetIdx] = temp;
-    setConfig(prev => ({
-      ...prev,
-      menuSlider: { ...prev.menuSlider, slides }
-    }));
-  };
-
-  // Visual Study Crud
-  const handleOpenAddVisual = () => {
-    const newItem: VisualStudyItem = {
-      id: `vis-${Date.now()}`,
-      title: '',
-      category: 'Standar Higienitas',
-      description: '',
-      imageUrl: IMAGE_PRESETS[2].url,
-      date: new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
-      badge: 'Inspeksi Tim QC'
-    };
-    setEditingVisualItem(newItem);
-    setVisualImagePreview(newItem.imageUrl);
-    setIsVisualModalOpen(true);
-  };
-
-  const handleOpenEditVisual = (item: VisualStudyItem) => {
-    setEditingVisualItem({ ...item });
-    setVisualImagePreview(item.imageUrl);
-    setIsVisualModalOpen(true);
-  };
-
-  const handleSaveVisualItem = () => {
-    if (!editingVisualItem) return;
-    if (!editingVisualItem.title.trim()) {
-      showError('Judul dokumentasi wajib diisi.');
-      return;
-    }
-
-    const updatedItem = {
-      ...editingVisualItem,
-      imageUrl: visualImagePreview || editingVisualItem.imageUrl
-    };
-
     setConfig(prev => {
-      const exists = prev.visualStudy.items.some(i => i.id === updatedItem.id);
-      const items = exists
-        ? prev.visualStudy.items.map(i => i.id === updatedItem.id ? updatedItem : i)
-        : [...prev.visualStudy.items, updatedItem];
+      const c = prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
       return {
         ...prev,
-        visualStudy: {
-          ...prev.visualStudy,
-          items
-        }
+        menuToday: {
+          ...c,
+          dateText: formatMenuDate(order.date),
+          menuTitle: order.menuTitle,
+          description: order.menuDescription?.trim() || c.description,
+          // Order tanpa daftar bahan: pertahankan daftar lama daripada mengosongkan halaman publik.
+          ingredients: ingredients.length > 0 ? ingredients : c.ingredients,
+        },
       };
     });
 
-    setIsVisualModalOpen(false);
-    setEditingVisualItem(null);
-    showNotification(`Kajian visual "${updatedItem.title}" diperbarui.`);
-  };
-
-  const handleDeleteVisualItem = async (id: string) => {
-    if (config.visualStudy.items.length <= 1) {
-      showError('Minimal harus ada 1 foto kajian visual yang aktif di website.');
-      return;
+    if (missingNutrition.length > 0) {
+      showNotification(`Menu terisi. ${missingNutrition.length} bahan belum punya data gizi: ${missingNutrition.join(', ')}.`, 'warning');
+    } else {
+      showNotification('Menu hari ini terisi dari Rekap Order Menu.');
     }
-    if (await askConfirm({ title: 'Hapus foto kajian visual ini?', message: 'Website publik berubah setelah kamu klik Simpan.', confirmText: 'Hapus foto', variant: 'danger' })) {
-      setConfig(prev => ({
-        ...prev,
-        visualStudy: {
-          ...prev.visualStudy,
-          items: prev.visualStudy.items.filter(i => i.id !== id)
-        }
-      }));
-      showNotification('Foto kajian visual dihapus.');
-    }
-  };
-
-  const handleMoveVisualItem = (idx: number, direction: 'up' | 'down') => {
-    const items = [...config.visualStudy.items];
-    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= items.length) return;
-    const temp = items[idx];
-    items[idx] = items[targetIdx];
-    items[targetIdx] = temp;
-    setConfig(prev => ({
-      ...prev,
-      visualStudy: { ...prev.visualStudy, items }
-    }));
   };
 
   // Helper & Handler untuk Menu MBG Hari Ini & QR Code
@@ -953,24 +801,10 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
               <span className={`w-2 h-2 rounded-full ${isDirty ? 'bg-amber-500' : 'bg-emerald-600'}`} aria-hidden="true" />
               {isDirty ? 'Belum disimpan' : 'Semua tersimpan'}
             </span>
-            {onViewLanding && (
-              <button
-                type="button"
-                onClick={async () => {
-                  if (isDirty && !(await askConfirm({
-                    title: 'Buka website tanpa menyimpan?',
-                    message: 'Website publik masih menampilkan versi lama. Perubahanmu tetap tersimpan sebagai draf di halaman ini.',
-                    confirmText: 'Buka website',
-                    variant: 'warning',
-                  }))) return;
-                  onViewLanding();
-                }}
-                className={BTN_SECONDARY}
-              >
-                <ExternalLink className="w-4 h-4" />
-                Lihat Website
-              </button>
-            )}
+            <a href="/" target="_blank" rel="noopener noreferrer" className={BTN_SECONDARY}>
+              <ExternalLink className="w-4 h-4" />
+              Lihat Website
+            </a>
             <button type="button" onClick={handleSaveAll} disabled={isCloudSaving || !isDirty} className={BTN_PRIMARY}>
               <Save className="w-4 h-4" />
               {isCloudSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
@@ -982,8 +816,6 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
           {([
             { id: 'menu_today', label: 'Menu Hari Ini & QR' },
             { id: 'hero', label: 'Bagian Atas (Hero)' },
-            { id: 'menu', label: `Foto Menu (${config.menuSlider.slides.length})` },
-            { id: 'visual', label: `Kajian Visual (${config.visualStudy.items.length})` },
           ] as const).map(tab => (
             <button
               key={tab.id}
@@ -1003,25 +835,60 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
 
       {/* 2. KONTEN TAB 1: HERO & VIDEO BACKGROUND */}
       {activeTab === 'hero' && (
+        <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+          <p className="text-xs text-slate-600">Bagian paling atas halaman depan website: judul, latar video atau foto, dan slide foto di kanan.</p>
+          <a href="/" target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 hover:underline min-h-[44px] sm:min-h-0 ${FOCUS}`}>
+            Lihat di website
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Kolom Kiri: Konfigurasi Video & Kontrol */}
           <div className="lg:col-span-7 space-y-4">
-            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-5">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
-                    <Video className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">
-                      Format Latar Hero
-                    </h3>
-                    <p className="text-[11px] text-slate-600">
-                      Tampilan utama halaman depan: video gerak sinematik atau foto statis
-                    </p>
-                  </div>
+            <CollapsibleCard title="Teks & Judul" summary={config.hero.heroTitle || 'Judul belum diisi'} defaultOpen>
+              <div className="space-y-3">
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Badge Teks</label>
+                  <input
+                    type="text"
+                    value={config.hero.heroBadge}
+                    onChange={e => setConfig(prev => ({ ...prev, hero: { ...prev.hero, heroBadge: e.target.value } }))}
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                  />
                 </div>
 
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Judul Utama</label>
+                  <input
+                    type="text"
+                    value={config.hero.heroTitle}
+                    onChange={e => setConfig(prev => ({ ...prev, hero: { ...prev.hero, heroTitle: e.target.value } }))}
+                    className="w-full px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Deskripsi Narasi</label>
+                  <textarea
+                    rows={3}
+                    value={config.hero.heroSubtitle}
+                    onChange={e => setConfig(prev => ({ ...prev, hero: { ...prev.hero, heroSubtitle: e.target.value } }))}
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Latar Belakang"
+              summary={config.hero.backgroundType === 'video'
+                ? `Video, ${(config.hero.videos || []).length} di playlist`
+                : 'Foto statis'}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-700">Jenis latar</span>
                 <div className="flex items-center p-1 bg-slate-100 rounded-lg">
                   <button
                     type="button"
@@ -1033,7 +900,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                     }`}
                   >
                     <Video className="w-3.5 h-3.5" />
-                    <span>Video (Aktif)</span>
+                    <span>Video</span>
                   </button>
                   <button
                     type="button"
@@ -1266,69 +1133,17 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                 </div>
               </div>
 
-              {/* Teks & Judul Hero Section */}
-              <div className="pt-3 border-t border-slate-100 space-y-3">
-                <h4 className="text-xs font-bold text-slate-800">Teks & Narasi Hero</h4>
+            </CollapsibleCard>
 
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Badge Teks</label>
-                  <input
-                    type="text"
-                    value={config.hero.heroBadge}
-                    onChange={e => setConfig(prev => ({ ...prev, hero: { ...prev.hero, heroBadge: e.target.value } }))}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Judul Utama</label>
-                  <input
-                    type="text"
-                    value={config.hero.heroTitle}
-                    onChange={e => setConfig(prev => ({ ...prev, hero: { ...prev.hero, heroTitle: e.target.value } }))}
-                    className="w-full px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Deskripsi Narasi</label>
-                  <textarea
-                    rows={3}
-                    value={config.hero.heroSubtitle}
-                    onChange={e => setConfig(prev => ({ ...prev, hero: { ...prev.hero, heroSubtitle: e.target.value } }))}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Card Kustomisasi Dokumentasi Slide Foto Hero (Kotak Kanan Landing Page) */}
-            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
-                    <ImageIcon className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                      <span>Slide Foto Hero (Kotak Kanan)</span>
-                      <span className="px-2 py-0.5 rounded-md text-[10px] bg-emerald-100 text-emerald-900 font-semibold">
-                        {(config.hero.photoSlides || DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []).length} Foto
-                      </span>
-                    </h3>
-                    <p className="text-[11px] text-slate-600">
-                      Foto operasional & sajian nampan yang tampil bergantian di sisi kanan hero
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleOpenAddHeroSlide}
-                  className={`${BTN_PRIMARY} self-start sm:self-auto shrink-0`}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Tambah Foto Slide</span>
+            {/* Slide foto di sisi kanan hero */}
+            <CollapsibleCard
+              title="Slide Foto Kanan"
+              summary={`${(config.hero.photoSlides?.length ? config.hero.photoSlides : DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []).length} foto bergantian di sisi kanan judul`}
+            >
+              <div className="flex justify-end">
+                <button type="button" onClick={handleOpenAddHeroSlide} className={BTN_PRIMARY}>
+                  <Plus className="w-4 h-4" />
+                  Tambah foto
                 </button>
               </div>
 
@@ -1460,7 +1275,7 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   </div>
                 ))}
               </div>
-            </div>
+            </CollapsibleCard>
           </div>
 
           {/* Kolom Kanan: Pratinjau Tampilan Hero */}
@@ -1570,375 +1385,6 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
             </div>
           </div>
         </div>
-      )}
-
-      {/* 3. KONTEN TAB 2: FOTO MENU & AUTO-SLIDE */}
-      {activeTab === 'menu' && (
-        <div className="space-y-4">
-          <div role="note" className="flex items-start gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-900">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
-            <p>
-              <span className="font-semibold">Daftar foto menu ini belum tampil di website publik.</span>{' '}
-              Bagian itu di website masih memakai menu mingguan bawaan, jadi perubahan di sini belum terlihat oleh pengunjung.
-            </p>
-          </div>
-          {/* Bar Kontrol Slider Otomatis */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <Sliders className="w-4 h-4 text-emerald-700" />
-                  <span>Pengaturan Rotasi Menu MBG</span>
-                </h3>
-                <p className="text-xs text-slate-600 mt-0.5">
-                  Atur perputaran carousel dan durasi pergantian menu di halaman depan
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                {/* Toggle Auto-Slide */}
-                <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
-                  <input
-                    type="checkbox"
-                    checked={config.menuSlider.autoSlide}
-                    onChange={e => setConfig(prev => ({
-                      ...prev,
-                      menuSlider: { ...prev.menuSlider, autoSlide: e.target.checked }
-                    }))}
-                    className="w-4 h-4 text-emerald-700 rounded border-slate-300 focus:ring-emerald-600 accent-emerald-700 cursor-pointer"
-                  />
-                  <span className="text-xs font-semibold text-slate-800">
-                    Rotasi {config.menuSlider.autoSlide ? 'Aktif' : 'Nonaktif'}
-                  </span>
-                </label>
-
-                {/* Interval Detik */}
-                <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
-                  <span className="text-slate-600 font-medium">Durasi:</span>
-                  <select
-                    value={config.menuSlider.intervalSeconds}
-                    onChange={e => setConfig(prev => ({
-                      ...prev,
-                      menuSlider: { ...prev.menuSlider, intervalSeconds: parseInt(e.target.value, 10) }
-                    }))}
-                    className="font-bold text-emerald-800 bg-transparent focus:outline-none cursor-pointer"
-                  >
-                    <option value={3}>3 Detik</option>
-                    <option value={4}>4 Detik</option>
-                    <option value={5}>5 Detik</option>
-                    <option value={6}>6 Detik</option>
-                    <option value={8}>8 Detik</option>
-                    <option value={10}>10 Detik</option>
-                  </select>
-                </div>
-
-                {/* Pause on Hover */}
-                <label className="flex items-center gap-2 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={config.menuSlider.pauseOnHover}
-                    onChange={e => setConfig(prev => ({
-                      ...prev,
-                      menuSlider: { ...prev.menuSlider, pauseOnHover: e.target.checked }
-                    }))}
-                    className="w-4 h-4 text-emerald-700 rounded border-slate-300 focus:ring-emerald-600 accent-emerald-700 cursor-pointer"
-                  />
-                  <span className="text-slate-700 font-medium">Jeda Saat Kursor Di Atas Menu</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Judul Seksi Menu */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Judul Seksi di Halaman Depan
-                </label>
-                <input
-                  type="text"
-                  value={config.menuSlider.sectionTitle}
-                  onChange={e => setConfig(prev => ({
-                    ...prev,
-                    menuSlider: { ...prev.menuSlider, sectionTitle: e.target.value }
-                  }))}
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Subjudul Seksi
-                </label>
-                <input
-                  type="text"
-                  value={config.menuSlider.sectionSubtitle}
-                  onChange={e => setConfig(prev => ({
-                    ...prev,
-                    menuSlider: { ...prev.menuSlider, sectionSubtitle: e.target.value }
-                  }))}
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Daftar Koleksi Slide Menu */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">
-                Koleksi Menu Harian MBG ({config.menuSlider.slides.length} Menu)
-              </h3>
-              <p className="text-xs text-slate-600">
-                Foto dan resep berganti bergantian pada carousel website
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleOpenAddMenu}
-              className={`${BTN_PRIMARY}`}
-            >
-              <Plus className="w-4 h-4" />
-              <span>Tambah Foto Menu Baru</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {config.menuSlider.slides.map((slide, idx) => (
-              <div
-                key={slide.id}
-                className="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col hover:border-slate-300 transition-all group"
-              >
-                {/* Gambar Menu */}
-                <div className="relative aspect-4/3 bg-slate-900 overflow-hidden">
-                  <img
-                    src={slide.imageUrl}
-                    alt={slide.title}
-                    className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
-                  />
-                  <div className="absolute top-3 left-3 bg-[#0c3123]/95 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-lg border border-emerald-700/50">
-                    {slide.day}
-                  </div>
-                  <div className="absolute top-3 right-3 bg-white/95 text-slate-900 text-[10px] font-bold px-2 py-0.5 rounded-lg">
-                    Slide #{idx + 1}
-                  </div>
-                </div>
-
-                {/* Deskripsi Menu */}
-                <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
-                  <div>
-                    <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200/50 px-2 py-0.5 rounded">
-                      {slide.category}
-                    </span>
-                    <h4 className="text-sm font-bold text-slate-900 mt-1.5 line-clamp-1">
-                      {slide.title}
-                    </h4>
-                    <p className="text-xs text-slate-600 mt-1 line-clamp-2 leading-relaxed">
-                      {slide.description}
-                    </p>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                    <span className="font-mono text-emerald-700 font-bold text-[11px]">
-                      {slide.calories}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => handleMoveMenuSlide(idx, 'up')}
-                        disabled={idx === 0}
-                        title="Geser urutan lebih dulu"
-                        className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
-                        aria-label="Geser urutan lebih dulu"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleMoveMenuSlide(idx, 'down')}
-                        disabled={idx === config.menuSlider.slides.length - 1}
-                        title="Geser urutan setelahnya"
-                        className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
-                        aria-label="Geser urutan setelahnya"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEditMenu(slide)}
-                        title="Edit Menu"
-                        className={`${ICON_BTN} text-emerald-700 hover:bg-emerald-50`}
-                        aria-label="Edit Menu"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteMenuSlide(slide.id)}
-                        title="Hapus Menu"
-                        className={`${ICON_BTN} text-rose-600 hover:bg-rose-50`}
-                        aria-label="Hapus Menu"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 4. KONTEN TAB 3: KAJIAN VISUAL SAJIAN MAKANAN */}
-      {activeTab === 'visual' && (
-        <div className="space-y-4">
-          <div role="note" className="flex items-start gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-900">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
-            <p>
-              <span className="font-semibold">Daftar kajian visual ini belum tampil di website publik.</span>{' '}
-              Bagian itu di website masih memakai foto dokumentasi bawaan, jadi perubahan di sini belum terlihat oleh pengunjung.
-            </p>
-          </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <ImageIcon className="w-4 h-4 text-emerald-700" />
-                  <span>Pengaturan Kajian Visual Lapangan</span>
-                </h3>
-                <p className="text-xs text-slate-600 mt-0.5">
-                  Dokumentasi nampan 5 sekat, pengemasan boks ganda, dan standar higienitas SPPG
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleOpenAddVisual}
-                className={`${BTN_PRIMARY} self-start sm:self-auto`}
-              >
-                <Plus className="w-4 h-4" />
-                <span>Tambah Dokumentasi Visual Baru</span>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Judul Seksi di Halaman Depan
-                </label>
-                <input
-                  type="text"
-                  value={config.visualStudy.sectionTitle}
-                  onChange={e => setConfig(prev => ({
-                    ...prev,
-                    visualStudy: { ...prev.visualStudy, sectionTitle: e.target.value }
-                  }))}
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Subjudul Seksi
-                </label>
-                <input
-                  type="text"
-                  value={config.visualStudy.sectionSubtitle}
-                  onChange={e => setConfig(prev => ({
-                    ...prev,
-                    visualStudy: { ...prev.visualStudy, sectionSubtitle: e.target.value }
-                  }))}
-                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {config.visualStudy.items.map((item, idx) => (
-              <div
-                key={item.id}
-                className="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col hover:border-slate-300 transition-all"
-              >
-                <div className="relative aspect-4/3 bg-slate-900 overflow-hidden">
-                  <img
-                    src={item.imageUrl}
-                    alt={item.title}
-                    className="w-full h-full object-cover"
-                  />
-                  {item.badge && (
-                    <div className="absolute top-3 left-3 bg-[#0c3123]/90 text-emerald-300 text-[10px] font-semibold px-2 py-0.5 rounded-md border border-emerald-700/50">
-                      {item.badge}
-                    </div>
-                  )}
-                  <div className="absolute top-3 right-3 bg-white/90 text-slate-900 text-[10px] font-bold px-2 py-0.5 rounded-md">
-                    Foto #{idx + 1}
-                  </div>
-                </div>
-
-                <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
-                  <div>
-                    <span className="text-[10px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200/50 px-2 py-0.5 rounded inline-block">
-                      {item.category}
-                    </span>
-                    <h4 className="text-sm font-bold text-slate-900 mt-1">
-                      {item.title}
-                    </h4>
-                    <p className="text-xs text-slate-600 mt-1 line-clamp-3 leading-relaxed">
-                      {item.description}
-                    </p>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                    <span className="text-[11px] text-slate-400 font-medium">
-                      {item.date || 'Arsip SPPG'}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => handleMoveVisualItem(idx, 'up')}
-                        disabled={idx === 0}
-                        title="Pindah Urutan Kiri"
-                        className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
-                        aria-label="Pindah Urutan Kiri"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleMoveVisualItem(idx, 'down')}
-                        disabled={idx === config.visualStudy.items.length - 1}
-                        title="Pindah Urutan Kanan"
-                        className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
-                        aria-label="Pindah Urutan Kanan"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEditVisual(item)}
-                        title="Edit Dokumentasi"
-                        className={`${ICON_BTN} text-emerald-700 hover:bg-emerald-50`}
-                        aria-label="Edit Dokumentasi"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteVisualItem(item.id)}
-                        title="Hapus Dokumentasi"
-                        className={`${ICON_BTN} text-rose-600 hover:bg-rose-50`}
-                        aria-label="Hapus Dokumentasi"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       )}
 
@@ -2020,6 +1466,49 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   </button>
                 </div>
               </div>
+            </div>
+
+            {/* Isi otomatis dari Rekap Order Menu */}
+            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-slate-900">Ambil dari Rekap Order Menu</h3>
+                {selectedOrder ? (
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Menu {selectedOrder.mealSession.toLowerCase()} hari ini:{' '}
+                    <span className="font-semibold text-slate-900">{selectedOrder.menuTitle}</span>
+                    {' · '}{(selectedOrder.keyIngredients?.length || selectedOrder.poArrivalItems?.length || 0)} bahan
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Belum ada menu untuk {formatMenuDate(todayIso)} di Rekap Order Menu. Isi manual di bawah, atau buat menunya dulu.
+                  </p>
+                )}
+                {menuToday.dateText.trim() !== formatMenuDate(todayIso) && (
+                  <p className="text-xs text-amber-800 mt-1">
+                    Halaman publik masih menampilkan menu {menuToday.dateText || 'tanpa tanggal'}.
+                  </p>
+                )}
+              </div>
+              {selectedOrder && (
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {todayOrders.length > 1 && (
+                    <select
+                      aria-label="Pilih sesi menu"
+                      value={selectedOrder.id}
+                      onChange={e => setSelectedOrderId(e.target.value)}
+                      className={`px-2.5 min-h-[44px] sm:min-h-[36px] rounded-lg border border-slate-300 bg-white text-xs text-slate-900 ${FOCUS}`}
+                    >
+                      {todayOrders.map(o => (
+                        <option key={o.id} value={o.id}>{o.mealSession}: {o.menuTitle}</option>
+                      ))}
+                    </select>
+                  )}
+                  <button type="button" onClick={() => handleFillFromOrder(selectedOrder)} className={BTN_PRIMARY}>
+                    <RotateCcw className="w-4 h-4" />
+                    Isi otomatis
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Form Pengaturan Konten Menu Hari Ini */}
@@ -2843,332 +2332,6 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
         );
       })()}
 
-      {/* 5. MODAL FORM: EDIT / TAMBAH SLIDE MENU */}
-      {isMenuModalOpen && editingMenuSlide && (
-        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl border border-slate-200 max-w-xl w-full p-4 sm:p-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
-                  <UtensilsCrossed className="w-4 h-4" />
-                </div>
-                <h4 className="text-sm font-bold text-slate-900">
-                  {config.menuSlider.slides.some(x => x.id === editingMenuSlide.id) ? 'Edit Menu' : 'Tambah Menu'}
-                </h4>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsMenuModalOpen(false)}
-                className={`${ICON_BTN} text-slate-500 hover:text-slate-800 hover:bg-slate-100`}
-                aria-label="Tutup"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              {/* Foto Menu Upload / Preview */}
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Foto Sajian Menu
-                </label>
-                <div className="flex items-start gap-3">
-                  <div className="w-28 h-24 rounded-lg bg-slate-900 overflow-hidden border border-slate-200 shrink-0">
-                    {menuImagePreview ? (
-                      <img src={menuImagePreview} alt="Preview Menu" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-500 text-[10px]">
-                        Belum ada foto
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <input
-                      type="file"
-                      ref={menuFileRef}
-                      accept="image/*"
-                      onChange={handleMenuImageUpload}
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => menuFileRef.current?.click()}
-                      disabled={isUploadingMenuImg}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-semibold cursor-pointer"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>{isUploadingMenuImg ? 'Memproses...' : 'Unggah Foto dari Perangkat'}</span>
-                    </button>
-                    <div className="text-[11px] text-slate-500">
-                      Pilihan foto preset:
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {IMAGE_PRESETS.map(p => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => {
-                            setMenuImagePreview(p.url);
-                            setEditingMenuSlide(prev => prev ? { ...prev, imageUrl: p.url } : null);
-                          }}
-                          className={`px-2 py-0.5 rounded text-[10px] border transition-colors cursor-pointer ${
-                            menuImagePreview === p.url
-                              ? 'bg-emerald-700 text-white border-emerald-700'
-                              : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-                          }`}
-                        >
-                          {p.label.split('(')[0]}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Judul & Hari */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
-                  <label className="block font-semibold text-slate-700 mb-1">Judul Menu / Paket</label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: Nasi, Ayam Goreng, Sayur Sop"
-                    value={editingMenuSlide.title}
-                    onChange={e => setEditingMenuSlide(prev => prev ? { ...prev, title: e.target.value } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Hari Siklus</label>
-                  <select
-                    value={editingMenuSlide.day}
-                    onChange={e => setEditingMenuSlide(prev => prev ? { ...prev, day: e.target.value } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 cursor-pointer focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                  >
-                    <option value="Senin">Senin</option>
-                    <option value="Selasa">Selasa</option>
-                    <option value="Rabu">Rabu</option>
-                    <option value="Kamis">Kamis</option>
-                    <option value="Jumat">Jumat</option>
-                    <option value="Sabtu">Sabtu</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Kategori & Kalori */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Kategori / Paket</label>
-                  <input
-                    type="text"
-                    value={editingMenuSlide.category}
-                    onChange={e => setEditingMenuSlide(prev => prev ? { ...prev, category: e.target.value } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Estimasi Energi & Gizi</label>
-                  <input
-                    type="text"
-                    value={editingMenuSlide.calories}
-                    onChange={e => setEditingMenuSlide(prev => prev ? { ...prev, calories: e.target.value } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Deskripsi */}
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Uraian Komponen Masakan</label>
-                <textarea
-                  rows={3}
-                  placeholder="Isi menu, takaran, dan keterangan gizi singkat..."
-                  value={editingMenuSlide.description}
-                  onChange={e => setEditingMenuSlide(prev => prev ? { ...prev, description: e.target.value } : null)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsMenuModalOpen(false)}
-                  className={`${BTN_SECONDARY}`}
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveMenuSlide}
-                  className={`${BTN_PRIMARY}`}
-                >
-                  Terapkan Slide
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 6. MODAL FORM: EDIT / TAMBAH KAJIAN VISUAL */}
-      {isVisualModalOpen && editingVisualItem && (
-        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl border border-slate-200 max-w-xl w-full p-4 sm:p-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
-                  <ImageIcon className="w-4 h-4" />
-                </div>
-                <h4 className="text-sm font-bold text-slate-900">
-                  {config.visualStudy.items.some(x => x.id === editingVisualItem.id) ? 'Edit Kajian Visual' : 'Tambah Kajian Visual'}
-                </h4>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsVisualModalOpen(false)}
-                className={`${ICON_BTN} text-slate-500 hover:text-slate-800 hover:bg-slate-100`}
-                aria-label="Tutup"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              {/* Foto Dokumentasi Upload / Preview */}
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Foto Dokumentasi Lapangan
-                </label>
-                <div className="flex items-start gap-3">
-                  <div className="w-28 h-24 rounded-lg bg-slate-900 overflow-hidden border border-slate-200 shrink-0">
-                    {visualImagePreview ? (
-                      <img src={visualImagePreview} alt="Preview Visual" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-500 text-[10px]">
-                        Belum ada foto
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <input
-                      type="file"
-                      ref={visualFileRef}
-                      accept="image/*"
-                      onChange={handleVisualImageUpload}
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => visualFileRef.current?.click()}
-                      disabled={isUploadingVisualImg}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-semibold cursor-pointer"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>{isUploadingVisualImg ? 'Memproses...' : 'Unggah Foto Baru'}</span>
-                    </button>
-                    <div className="text-[11px] text-slate-500">
-                      Pilihan foto arsip unit:
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {IMAGE_PRESETS.slice(2).map(p => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => {
-                            setVisualImagePreview(p.url);
-                            setEditingVisualItem(prev => prev ? { ...prev, imageUrl: p.url } : null);
-                          }}
-                          className={`px-2 py-0.5 rounded text-[10px] border transition-colors cursor-pointer ${
-                            visualImagePreview === p.url
-                              ? 'bg-emerald-700 text-white border-emerald-700'
-                              : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-                          }`}
-                        >
-                          {p.label.split('(')[0]}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Judul & Kategori */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Judul Dokumentasi</label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: Penataan nampan di ruang saji"
-                    value={editingVisualItem.title}
-                    onChange={e => setEditingVisualItem(prev => prev ? { ...prev, title: e.target.value } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Kategori Aspek</label>
-                  <input
-                    type="text"
-                    value={editingVisualItem.category}
-                    onChange={e => setEditingVisualItem(prev => prev ? { ...prev, category: e.target.value } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Badge & Tanggal */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Label / Badge</label>
-                  <input
-                    type="text"
-                    value={editingVisualItem.badge || ''}
-                    onChange={e => setEditingVisualItem(prev => prev ? { ...prev, badge: e.target.value } : null)}
-                    placeholder="Contoh: Food-Grade SUS 304"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Tanggal / Tim Penguji</label>
-                  <input
-                    type="text"
-                    value={editingVisualItem.date || ''}
-                    onChange={e => setEditingVisualItem(prev => prev ? { ...prev, date: e.target.value } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Keterangan */}
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Uraian / Keterangan Temuan Lapangan</label>
-                <textarea
-                  rows={3}
-                  placeholder="Apa yang terlihat di foto dan kenapa penting..."
-                  value={editingVisualItem.description}
-                  onChange={e => setEditingVisualItem(prev => prev ? { ...prev, description: e.target.value } : null)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsVisualModalOpen(false)}
-                  className={`${BTN_SECONDARY}`}
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveVisualItem}
-                  className={`${BTN_PRIMARY}`}
-                >
-                  Terapkan Dokumentasi
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       {/* 7. MODAL FORM: TAMBAH / EDIT VIDEO HERO */}
       {isHeroVideoModalOpen && editingHeroVideo && (
         <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">

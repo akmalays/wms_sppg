@@ -70,7 +70,16 @@ const STORAGE_KEYS = {
   USERS: 'sppg_users_v1',
   PURCHASE_ORDERS: 'sppg_purchase_orders_v1',
   BENEFICIARIES: 'sppg_school_beneficiaries_v1',
+  APP_SETTINGS: 'sppg_app_settings_v1',
 };
+
+export const APP_SETTINGS_CHANGED_EVENT = 'sppg_app_settings_changed';
+
+// Pengaturan yang dulu disimpan langsung di localStorage per perangkat, dipindah sekali ke app_settings.
+const LEGACY_SETTING_KEYS: Array<[legacyKey: string, settingKey: string]> = [
+  ['sppg_delivery_officers_v2', 'delivery_officers'],
+  ['sppg_delivery_class_breakdowns_v2', 'delivery_class_breakdowns'],
+];
 
 // Akun petugas SPPG Tumpang Jeru. ID USR-001..005 dipakai ulang agar akun dummy lama
 // yang tersimpan di browser tertimpa saat dimuat (lihat penggabungan di constructor).
@@ -2059,6 +2068,16 @@ export function purgeLocalStorageOperationalData(): void {
   });
 }
 
+export type SignerRole = 'KEPALA_SPPG' | 'AHLI_GIZI' | 'AKUNTAN' | 'KOORDINATOR' | 'ASLAP';
+
+const SIGNER_POSITIONS: Record<SignerRole, RegExp> = {
+  KEPALA_SPPG: /kepala\s+sppg/i,
+  AHLI_GIZI: /ahli\s+gizi/i,
+  AKUNTAN: /akuntan/i,
+  KOORDINATOR: /koordinator/i,
+  ASLAP: /asisten\s+lapangan/i,
+};
+
 class WarehouseDatabase {
   private items: ItemMaster[] = [];
   private suppliers: Supplier[] = [];
@@ -2074,6 +2093,7 @@ class WarehouseDatabase {
   private employees: Employee[] = [];
   private attendanceLogs: EmployeeAttendance[] = [];
   private users: User[] = [];
+  private appSettings: Record<string, unknown> = {};
   private purchaseOrders: PurchaseOrderNota[] = [];
   private schoolBeneficiaries: SchoolBeneficiaryAllocation[] = [];
   private isCloudInitialized = false;
@@ -2091,12 +2111,18 @@ class WarehouseDatabase {
       if (idx >= 0) {
         // Akun dummy lama ber-ID sama diganti seluruhnya (tidak membawa NIP/HP dummy).
         const wasLegacy = LEGACY_DUMMY_LOGINS.includes(this.users[idx].email.toLowerCase());
+        // Akun asli: perubahan nama/peran/email dari Profil atau Kelola Akun dipertahankan.
         this.users[idx] = wasLegacy
           ? { ...initUser }
-          : { ...this.users[idx], name: initUser.name, email: initUser.email, role: initUser.role, employeeId: this.users[idx].employeeId || initUser.employeeId };
+          : { ...initUser, ...this.users[idx], employeeId: this.users[idx].employeeId || initUser.employeeId };
       } else {
         this.users.push(initUser);
       }
+    });
+    // Versi lama menyimpan kata sandi di objek akun; kata sandi hanya boleh ada di penyimpanan sandi.
+    this.users = this.users.map(u => {
+      const { password: _pw, ...rest } = u as User & { password?: string };
+      return rest;
     });
     setStored(STORAGE_KEYS.USERS, this.users);
 
@@ -2147,6 +2173,17 @@ class WarehouseDatabase {
     this.employees = getStored<Employee[]>(STORAGE_KEYS.EMPLOYEES, [...REAL_EMPLOYEES]);
     this.attendanceLogs = getStored<EmployeeAttendance[]>(STORAGE_KEYS.ATTENDANCE, [...REAL_ATTENDANCE_LOGS]);
     this.schoolBeneficiaries = getStored<SchoolBeneficiaryAllocation[]>(STORAGE_KEYS.BENEFICIARIES, [...DEFAULT_SCHOOL_BENEFICIARIES]);
+    this.appSettings = getStored<Record<string, unknown>>(STORAGE_KEYS.APP_SETTINGS, {});
+    LEGACY_SETTING_KEYS.forEach(([legacyKey, key]) => {
+      if (this.appSettings[key] !== undefined) return;
+      try {
+        const raw = localStorage.getItem(legacyKey);
+        if (raw) this.appSettings[key] = JSON.parse(raw);
+      } catch {
+        // data lama rusak: abaikan, pengguna mengisi ulang
+      }
+    });
+    setStored(STORAGE_KEYS.APP_SETTINGS, this.appSettings);
 
     // 4. Inisialisasi Cloud Supabase & Realtime Subscription
     this.initCloudAndRealtime();
@@ -2433,6 +2470,28 @@ class WarehouseDatabase {
       this.opnames.forEach(o => this.pushOpname(o));
     }
 
+    // Pengaturan: nilai di cloud menang; kunci yang baru ada di browser ini diunggah.
+    const { data: settingRows, error: settingsErr } = await supabase.from('app_settings').select('key, value');
+    if (settingsErr) {
+      console.error('Supabase app_settings gagal dimuat:', settingsErr.message);
+    } else {
+      const cloudKeys = new Set((settingRows || []).map((r: any) => r.key as string));
+      const merged: Record<string, unknown> = { ...this.appSettings };
+      (settingRows || []).forEach((r: any) => { merged[r.key] = r.value; });
+      if (seed) {
+        const localOnly = Object.keys(this.appSettings).filter(k => !cloudKeys.has(k));
+        if (localOnly.length > 0) {
+          const { error: upErr } = await supabase
+            .from('app_settings')
+            .upsert(localOnly.map(k => ({ key: k, value: this.appSettings[k], updated_at: new Date().toISOString() })));
+          if (upErr) console.error('Supabase app_settings gagal diunggah:', upErr.message);
+        }
+      }
+      this.appSettings = merged;
+      setStored(STORAGE_KEYS.APP_SETTINGS, merged);
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(APP_SETTINGS_CHANGED_EVENT));
+    }
+
     // Riwayat aktivitas hanya bertambah: gabungkan cloud + catatan browser yang belum terunggah.
     const { data: cloudLogs, error: auditErr } = await supabase
       .from('audit_logs')
@@ -2474,6 +2533,16 @@ class WarehouseDatabase {
 
     this.realtimeChannel = supabase
       .channel('sppg_warehouse_realtime_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, (payload) => {
+        const row = (payload.eventType === 'DELETE' ? payload.old : payload.new) as { key?: string; value?: unknown };
+        if (!row?.key) return;
+        const next = { ...this.appSettings };
+        if (payload.eventType === 'DELETE') delete next[row.key];
+        else next[row.key] = row.value;
+        this.appSettings = next;
+        setStored(STORAGE_KEYS.APP_SETTINGS, next);
+        window.dispatchEvent(new CustomEvent(APP_SETTINGS_CHANGED_EVENT));
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'item_master' }, (payload) => {
         if (payload.eventType === 'INSERT') {
           const newItem = mapSupabaseToItem(payload.new);
@@ -3771,7 +3840,7 @@ class WarehouseDatabase {
     return [...this.purchaseOrders]
       .map(po => {
         if (!po.approvedBy || po.approvedBy.includes('Siti Rahma')) {
-          return { ...po, approvedBy: 'Rizky Iman Ramdhan, S.Pd' };
+          return { ...po, approvedBy: this.getSppgHeadName() };
         }
         return po;
       })
@@ -3782,7 +3851,7 @@ class WarehouseDatabase {
     const po = this.purchaseOrders.find(p => p.id === id || p.poNumber === id);
     if (!po) return undefined;
     if (!po.approvedBy || po.approvedBy.includes('Siti Rahma')) {
-      return { ...po, approvedBy: 'Rizky Iman Ramdhan, S.Pd' };
+      return { ...po, approvedBy: this.getSppgHeadName() };
     }
     return po;
   }
@@ -4683,6 +4752,36 @@ class WarehouseDatabase {
     setStored(STORAGE_KEYS.ATTENDANCE, this.attendanceLogs);
   }
 
+  /**
+   * Nama penanda tangan dokumen, diambil dari jabatan karyawan aktif (menu Karyawan).
+   * Kosong jika belum ada, agar dokumen mencetak garis isian, bukan nama yang salah.
+   */
+  public getSignerName(role: SignerRole): string {
+    const emp = this.employees.find(e => e.status === 'AKTIF' && SIGNER_POSITIONS[role].test(e.position));
+    if (emp) return emp.name;
+    if (role === 'KEPALA_SPPG') return this.users.find(u => u.role === 'KA_SPPG')?.name || '';
+    return '';
+  }
+
+  public getSppgHeadName(): string {
+    return this.getSignerName('KEPALA_SPPG');
+  }
+
+  // --- PENGATURAN APLIKASI (app_settings) ---
+  public getAppSetting<T>(key: string, fallback: T): T {
+    const value = this.appSettings[key];
+    return value === undefined ? fallback : (value as T);
+  }
+
+  public saveAppSetting<T>(key: string, value: T, user?: User): void {
+    this.appSettings = { ...this.appSettings, [key]: value };
+    setStored(STORAGE_KEYS.APP_SETTINGS, this.appSettings);
+    this.pushCloud('app_settings', () =>
+      supabase.from('app_settings').upsert({ key, value, updated_at: new Date().toISOString(), updated_by: user?.name || null })
+    );
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(APP_SETTINGS_CHANGED_EVENT));
+  }
+
   // --- USERS MANAGEMENT ---
   public getUsers(): User[] {
     return [...this.users];
@@ -4750,18 +4849,19 @@ class WarehouseDatabase {
   public updateUser(userId: string, data: Partial<User> & { password?: string }): User {
     const index = this.users.findIndex(u => u.id === userId);
     if (index === -1) throw new Error('Pengguna tidak ditemukan.');
-    const updated = {
+    const { password, ...fields } = data;
+    const updated: User = {
       ...this.users[index],
-      ...data,
-      name: data.name !== undefined ? data.name.trim() : this.users[index].name,
-      email: data.email !== undefined ? data.email.trim().toLowerCase() : this.users[index].email,
+      ...fields,
+      name: fields.name !== undefined ? fields.name.trim() : this.users[index].name,
+      email: fields.email !== undefined ? fields.email.trim().toLowerCase() : this.users[index].email,
     };
     this.users[index] = updated;
     setStored(STORAGE_KEYS.USERS, this.users);
 
-    if (data.password) {
+    if (password) {
       const passwords = getStored<Record<string, string>>('sppg_user_passwords_v1', {});
-      passwords[updated.email] = data.password;
+      passwords[updated.email] = password;
       setStored('sppg_user_passwords_v1', passwords);
     }
     return updated;
@@ -4783,3 +4883,9 @@ class WarehouseDatabase {
 
 // Export single singleton instance
 export const warehouseDb = new WarehouseDatabase();
+
+/** Garis isian untuk tanda tangan yang namanya belum tercatat. */
+export const SIGNER_BLANK = '..............................';
+
+/** Nama penanda tangan, atau garis isian jika jabatan itu belum ada di data karyawan. */
+export const signerName = (role: SignerRole): string => warehouseDb.getSignerName(role) || SIGNER_BLANK;

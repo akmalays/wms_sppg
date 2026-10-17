@@ -11,7 +11,7 @@ interface AuthContextType {
   loginAsUser: (userId: string) => void;
   logout: () => void;
   switchUser: (userId: string) => void;
-  updateProfile: (updatedData: { name?: string; role?: UserRole; password?: string }) => Promise<{ success: boolean; error?: string }>;
+  updateProfile: (updatedData: { name?: string; currentPassword?: string; password?: string }) => Promise<{ success: boolean; error?: string }>;
   registerUser: (userData: {
     name: string;
     email: string;
@@ -270,57 +270,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Peran tidak bisa diubah dari profil sendiri; hanya lewat Kelola Akun (MANAGE_USERS).
   const updateProfile = async (updatedData: {
     name?: string;
-    role?: UserRole;
+    currentPassword?: string;
     password?: string;
   }): Promise<{ success: boolean; error?: string }> => {
     try {
-      const newName = updatedData.name ? updatedData.name.trim() : currentUser.name;
-      const newRole = updatedData.role || currentUser.role;
-
+      const newName = updatedData.name !== undefined ? updatedData.name.trim() : currentUser.name;
       if (!newName) {
         return { success: false, error: 'Nama pengguna tidak boleh kosong.' };
       }
 
-      // 1. Supabase Auth password & profile sync if active
-      if (isSupabaseConfigured()) {
-        if (updatedData.password) {
-          const { error: pwdErr } = await supabase.auth.updateUser({ password: updatedData.password });
-          if (pwdErr) {
-            console.warn('Supabase password update error:', pwdErr.message);
-          }
+      // Akun lokal ber-ID USR-xxx ada di daftar pengguna aplikasi; selainnya akun Supabase Auth.
+      const isLocalAccount = warehouseDb.getUsers().some(u => u.id === currentUser.id);
+
+      if (updatedData.password) {
+        if (!updatedData.currentPassword) {
+          return { success: false, error: 'Masukkan kata sandi saat ini untuk mengganti kata sandi.' };
         }
-        try {
-          await supabase
-            .from('profiles')
-            .update({ name: newName, role: newRole })
-            .eq('id', currentUser.id);
-        } catch (e) {
-          // ignore offline
+        if (isLocalAccount) {
+          const check = warehouseDb.verifyUserCredentials(currentUser.email, updatedData.currentPassword);
+          if (!check.valid) return { success: false, error: 'Kata sandi saat ini salah.' };
+        } else {
+          const { error: verifyErr } = await supabase.auth.signInWithPassword({
+            email: currentUser.email,
+            password: updatedData.currentPassword,
+          });
+          if (verifyErr) return { success: false, error: 'Kata sandi saat ini salah.' };
+          const { error: pwdErr } = await supabase.auth.updateUser({ password: updatedData.password });
+          if (pwdErr) return { success: false, error: `Kata sandi gagal diganti: ${pwdErr.message}` };
         }
       }
 
-      // 2. Update state & local storage
-      const updatedUser: User = {
-        ...currentUser,
-        name: newName,
-        role: newRole,
-      };
+      if (isLocalAccount) {
+        warehouseDb.updateUser(currentUser.id, { name: newName, password: updatedData.password || undefined });
+      } else if (isSupabaseConfigured()) {
+        const { error: profileErr } = await supabase.from('profiles').update({ name: newName }).eq('id', currentUser.id);
+        if (profileErr) return { success: false, error: `Nama gagal disimpan: ${profileErr.message}` };
+      }
 
+      const updatedUser: User = { ...currentUser, name: newName };
       setCurrentUser(updatedUser);
       localStorage.setItem('sppg_active_user_name', newName);
-      localStorage.setItem('sppg_active_user_role', newRole);
       localStorage.setItem('sppg_active_user_id', currentUser.id);
-
-      // Cache update
-      const updatedList = warehouseDb.getUsers().map(u => {
-        if (u.id === currentUser.id) {
-          return { ...u, name: newName, role: newRole };
-        }
-        return u;
-      });
-      setAvailableUsers(updatedList);
+      setAvailableUsers(warehouseDb.getUsers());
 
       return { success: true };
     } catch (err: any) {

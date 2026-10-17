@@ -1,32 +1,26 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
-  Truck,
   Printer,
-  FileText,
-  Building2,
-  Calendar,
   ChevronLeft,
   ChevronRight,
   Search,
-  UtensilsCrossed,
   Clock,
   Phone,
   User,
   Plus,
   Trash2,
   RotateCcw,
-  Save,
   X,
   ShieldCheck,
-  CheckCircle2,
-  ClipboardCheck,
-  FileCheck2,
-  Star,
-  Layers,
-  Sparkles
+  CheckCircle2
 } from 'lucide-react';
 import { MenuOrder, SchoolBeneficiaryAllocation } from '../types/warehouse';
 import logoSppgImg from '../assets/logo sppg.png';
+import {localDateIso} from "../utils/localDate";
+import { useConfirm } from '../context/ConfirmContext';
+import { BTN_PRIMARY, BTN_SECONDARY, FIELD_INPUT, FOCUS_RING } from './common/FormDialog';
+import { warehouseDb, APP_SETTINGS_CHANGED_EVENT } from '../db/storage';
+import { useAuth } from '../context/AuthContext';
 
 export interface ClassBreakdownItem {
   id: string;
@@ -43,16 +37,32 @@ export interface DeliveryOfficerSettings {
   pickupTimeRange: string;
 }
 
+// Kosong sampai diisi: nama contoh akan ikut tercetak di surat jalan resmi.
 const DEFAULT_OFFICERS: DeliveryOfficerSettings = {
-  nutritionistName: 'Rizky Firmansyah, S.Gz',
+  nutritionistName: '',
   nutritionistTitle: 'Pemeriksa Ahli Gizi SPPG',
-  fieldAssistantName: 'Ahmad Fauzi',
-  vehicleNumber: 'N 1845 AB (Mobil Operasional SPPG)',
-  pickupTimeRange: '12:30 - 13:30 WIB'
+  fieldAssistantName: '',
+  vehicleNumber: '',
+  pickupTimeRange: ''
 };
 
-const STORAGE_KEY_CLASSES = 'sppg_delivery_class_breakdowns_v2';
-const STORAGE_KEY_OFFICERS = 'sppg_delivery_officers_v2';
+// Isian kosong di dokumen cetak dibiarkan bertitik agar diisi tangan, bukan diganti tebakan.
+const BLANK = '....................';
+
+// Disimpan di tabel app_settings (lihat warehouseDb.saveAppSetting) agar sama di semua perangkat.
+const SETTING_CLASSES = 'delivery_class_breakdowns';
+const SETTING_OFFICERS = 'delivery_officers';
+
+// Isian petugas yang kosong diisi dari jabatan karyawan aktif.
+const loadOfficers = (): DeliveryOfficerSettings => {
+  const saved = warehouseDb.getAppSetting<Partial<DeliveryOfficerSettings>>(SETTING_OFFICERS, {});
+  return {
+    ...DEFAULT_OFFICERS,
+    ...saved,
+    nutritionistName: saved.nutritionistName || warehouseDb.getSignerName('AHLI_GIZI'),
+    fieldAssistantName: saved.fieldAssistantName || warehouseDb.getSignerName('ASLAP'),
+  };
+};
 
 export function getDefaultClassesForSchool(
   category: string,
@@ -155,32 +165,36 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
   currentDate,
   onSelectDate
 }) => {
+  const askConfirm = useConfirm();
   const [selectedDate, setSelectedDate] = useState<string>(currentDate);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
 
   // Petugas Pengiriman
-  const [officerSettings, setOfficerSettings] = useState<DeliveryOfficerSettings>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_OFFICERS);
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // fallback
-    }
-    return DEFAULT_OFFICERS;
-  });
+  const { currentUser } = useAuth();
+  const [officerSettings, setOfficerSettings] = useState<DeliveryOfficerSettings>(loadOfficers);
   const [isOfficerModalOpen, setIsOfficerModalOpen] = useState(false);
+  const [officerDraft, setOfficerDraft] = useState<DeliveryOfficerSettings>(officerSettings);
+  const missingOfficerFields = [
+    !officerSettings.nutritionistName.trim() && 'pemeriksa ahli gizi',
+    !officerSettings.fieldAssistantName.trim() && 'asisten lapangan',
+    !officerSettings.vehicleNumber.trim() && 'kendaraan',
+  ].filter(Boolean) as string[];
 
   // Kustomisasi Rincian Kelas per sekolah (Key: schoolId_date atau schoolId)
-  const [customClassBreakdowns, setCustomClassBreakdowns] = useState<Record<string, ClassBreakdownItem[]>>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_CLASSES);
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // fallback
-    }
-    return {};
-  });
+  const [customClassBreakdowns, setCustomClassBreakdowns] = useState<Record<string, ClassBreakdownItem[]>>(
+    () => warehouseDb.getAppSetting<Record<string, ClassBreakdownItem[]>>(SETTING_CLASSES, {})
+  );
+
+  // Data dari cloud atau perangkat lain tiba setelah tab dibuka.
+  useEffect(() => {
+    const reload = () => {
+      setOfficerSettings(loadOfficers());
+      setCustomClassBreakdowns(warehouseDb.getAppSetting<Record<string, ClassBreakdownItem[]>>(SETTING_CLASSES, {}));
+    };
+    window.addEventListener(APP_SETTINGS_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(APP_SETTINGS_CHANGED_EVENT, reload);
+  }, []);
 
   // Modal Atur Kelas
   const [editingSchoolForClass, setEditingSchoolForClass] = useState<SchoolBeneficiaryAllocation | null>(null);
@@ -198,10 +212,44 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
     }
   }, [currentDate]);
 
+  const changeDate = (iso: string) => {
+    setSelectedOrderId('');
+    setSelectedDate(iso);
+    if (onSelectDate) onSelectDate(iso);
+  };
+
+  const shiftDate = (days: number) => {
+    const [y, m, dd] = selectedDate.split('-').map(Number);
+    const d = new Date(y, m - 1, dd);
+    d.setDate(d.getDate() + days);
+    changeDate(localDateIso(d));
+  };
+
+  useEffect(() => {
+    if (!isOfficerModalOpen && !editingSchoolForClass && !isPrintModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setIsOfficerModalOpen(false);
+      setEditingSchoolForClass(null);
+      setIsPrintModalOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOfficerModalOpen, editingSchoolForClass, isPrintModalOpen]);
+
+  // Satu tanggal bisa punya beberapa sesi makan (Pagi/Siang/Snack).
+  const [selectedOrderId, setSelectedOrderId] = useState('');
+  const dayOrders = useMemo(
+    () => orders
+      .filter(o => o.date === selectedDate)
+      .sort((a, b) => ['Pagi', 'Siang', 'Snack'].indexOf(a.mealSession) - ['Pagi', 'Siang', 'Snack'].indexOf(b.mealSession)),
+    [orders, selectedDate]
+  );
+
   // Order pada tanggal terpilih
   const currentOrder = useMemo(() => {
-    return orders.find(o => o.date === selectedDate);
-  }, [orders, selectedDate]);
+    return dayOrders.find(o => o.id === selectedOrderId) ?? dayOrders[0];
+  }, [dayOrders, selectedOrderId]);
 
   // Daftar tanggal order menu yang tersedia
   const distinctOrderDates = useMemo(() => {
@@ -262,19 +310,23 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
   };
 
   // Simpan hasil edit kelas
-  const handleSaveClassBreakdown = () => {
+  const handleSaveClassBreakdown = async () => {
     if (!editingSchoolForClass) return;
+    const target = (editingSchoolForClass as SchoolBeneficiaryAllocation & { dailyPortion?: number }).dailyPortion || editingSchoolForClass.portionCount;
+    const sum = tempClassItems.reduce((acc, c) => acc + (Number(c.portions) || 0), 0);
+    if (sum !== target && !(await askConfirm({
+      title: 'Total kelas tidak sama dengan porsi sekolah',
+      message: `Rincian kelas ${sum.toLocaleString('id-ID')} porsi, sedangkan porsi sekolah hari ini ${target.toLocaleString('id-ID')}. Surat jalan akan mencetak angka yang berbeda.`,
+      confirmText: 'Tetap simpan',
+      variant: 'warning',
+    }))) return;
     const key = `${editingSchoolForClass.id}_${selectedDate}`;
     const nextMap = {
       ...customClassBreakdowns,
       [key]: tempClassItems
     };
     setCustomClassBreakdowns(nextMap);
-    try {
-      localStorage.setItem(STORAGE_KEY_CLASSES, JSON.stringify(nextMap));
-    } catch {
-      // ignore
-    }
+    warehouseDb.saveAppSetting(SETTING_CLASSES, nextMap, currentUser || undefined);
     setEditingSchoolForClass(null);
   };
 
@@ -294,20 +346,23 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
   };
 
   // Buka modal cetak untuk seluruh sekolah aktif
+  const schoolsToPrint = filteredSchools.filter(s => s.dailyPortion > 0);
   const handlePrintAllSchools = () => {
-    if (filteredSchools.length === 0) return;
-    setPrintSchoolsQueue(filteredSchools);
+    if (schoolsToPrint.length === 0) return;
+    setPrintSchoolsQueue(schoolsToPrint);
     setPrintSheetTab('ALL');
     setIsPrintModalOpen(true);
   };
 
   // Simpan pengaturan petugas
+  const openOfficerModal = () => {
+    setOfficerDraft(officerSettings);
+    setIsOfficerModalOpen(true);
+  };
+
   const handleSaveOfficers = () => {
-    try {
-      localStorage.setItem(STORAGE_KEY_OFFICERS, JSON.stringify(officerSettings));
-    } catch {
-      // ignore
-    }
+    setOfficerSettings(officerDraft);
+    warehouseDb.saveAppSetting(SETTING_OFFICERS, officerDraft, currentUser || undefined);
     setIsOfficerModalOpen(false);
   };
 
@@ -318,179 +373,134 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* 1. Bar Navigasi Tanggal & Ringkasan Menu */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3 border-b border-slate-100">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-              <Calendar className="w-4 h-4 text-indigo-600" />
-              <span>Tanggal Distribusi:</span>
-            </span>
-
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => {
-                  const d = new Date(selectedDate);
-                  d.setDate(d.getDate() - 1);
-                  const nextIso = d.toISOString().slice(0, 10);
-                  setSelectedDate(nextIso);
-                  if (onSelectDate) onSelectDate(nextIso);
-                }}
-                className="p-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                title="H-1"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={e => {
-                  setSelectedDate(e.target.value);
-                  if (onSelectDate) onSelectDate(e.target.value);
-                }}
-                className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white font-mono"
-              />
-
-              <button
-                type="button"
-                onClick={() => {
-                  const d = new Date(selectedDate);
-                  d.setDate(d.getDate() + 1);
-                  const nextIso = d.toISOString().slice(0, 10);
-                  setSelectedDate(nextIso);
-                  if (onSelectDate) onSelectDate(nextIso);
-                }}
-                className="p-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                title="H+1"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Quick jump to dates with orders */}
-            <div className="flex items-center gap-1.5 text-xs">
-              <span className="text-slate-400">Pilih Jadwal Menu:</span>
+      {/* Tanggal, ringkasan, dan aksi */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => shiftDate(-1)} className={`${BTN_SECONDARY} px-2`} aria-label="Tanggal sebelumnya" title="Tanggal sebelumnya">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <input
+              type="date"
+              aria-label="Tanggal distribusi"
+              value={selectedDate}
+              onChange={e => e.target.value && changeDate(e.target.value)}
+              className={`${FIELD_INPUT} w-auto font-semibold`}
+            />
+            <button type="button" onClick={() => shiftDate(1)} className={`${BTN_SECONDARY} px-2`} aria-label="Tanggal berikutnya" title="Tanggal berikutnya">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            {distinctOrderDates.length > 0 && (
               <select
+                aria-label="Lompat ke tanggal bermenu"
                 value={distinctOrderDates.includes(selectedDate) ? selectedDate : ''}
-                onChange={e => {
-                  if (e.target.value) {
-                    setSelectedDate(e.target.value);
-                    if (onSelectDate) onSelectDate(e.target.value);
-                  }
-                }}
-                className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg text-slate-800 bg-white font-medium"
+                onChange={e => e.target.value && changeDate(e.target.value)}
+                className={`${FIELD_INPUT} w-auto max-w-[260px]`}
               >
-                <option value="">-- Pilih Tanggal Tersedia --</option>
+                <option value="">Lompat ke tanggal bermenu…</option>
                 {distinctOrderDates.map(d => (
                   <option key={d} value={d}>
-                    {formatShortDate(d)} - {orders.find(o => o.date === d)?.menuTitle.slice(0, 32)}...
+                    {formatShortDate(d)} · {orders.find(o => o.date === d)?.menuTitle}
                   </option>
                 ))}
               </select>
-            </div>
+            )}
+            {dayOrders.length > 1 && (
+              <div role="tablist" aria-label="Sesi makan" className="inline-flex gap-1 p-1 bg-slate-100 rounded-lg text-xs">
+                {dayOrders.map(o => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={currentOrder?.id === o.id}
+                    onClick={() => setSelectedOrderId(o.id)}
+                    className={`px-3 rounded-md cursor-pointer min-h-[44px] sm:min-h-[30px] ${FOCUS_RING} ${
+                      currentOrder?.id === o.id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'
+                    }`}
+                  >
+                    {o.mealSession}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Action Header: Petugas & Cetak Semua */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsOfficerModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-              title="Atur Nama Pemeriksa Ahli, Asisten Lapangan & No. Kendaraan"
-            >
-              <User className="w-3.5 h-3.5 text-slate-500" />
-              <span>Pengaturan Petugas</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={openOfficerModal} className={BTN_SECONDARY} title="Pemeriksa ahli gizi, asisten lapangan, dan kendaraan">
+              <User className="w-4 h-4" />
+              Petugas
             </button>
-
             <button
               type="button"
               onClick={handlePrintAllSchools}
-              disabled={filteredSchools.length === 0}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-800 disabled:opacity-50 text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer"
-              title="Cetak Surat Jalan & Berita Acara untuk seluruh sekolah terpilih (3 lembar per sekolah)"
+              disabled={schoolsToPrint.length === 0 || !currentOrder}
+              className={BTN_PRIMARY}
+              title="Surat jalan, berita acara alat, dan form uji organoleptik untuk tiap sekolah"
             >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Cetak Semua Sekolah (3 Lembar)</span>
+              <Printer className="w-4 h-4" />
+              Cetak semua ({schoolsToPrint.length} sekolah)
             </button>
           </div>
         </div>
 
-        {/* Day & Menu Banner */}
-        <div className="p-3.5 rounded-xl bg-slate-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-bold text-white">
-                {formatIndonesianDate(selectedDate)}
-              </span>
-              {currentOrder ? (
-                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Order Menu #{currentOrder.id} • Sesi {currentOrder.mealSession}
-                </span>
-              ) : (
-                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  Belum ada menu order resmi terdaftar pada tanggal ini
-                </span>
-              )}
-            </div>
-            <div className="text-xs text-slate-300 flex items-center gap-1.5">
-              <UtensilsCrossed className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <span>{currentOrder?.menuTitle || 'Menu Reguler Gizi Seimbang SPPG MLG TUMPANG JERU'}</span>
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 pt-3 border-t border-slate-200">
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-slate-900">{formatIndonesianDate(selectedDate)}</div>
+            <div className={`text-xs mt-0.5 truncate ${currentOrder ? 'text-slate-600' : 'text-amber-800'}`}>
+              {currentOrder ? `${currentOrder.mealSession} · ${currentOrder.menuTitle}` : 'Belum ada menu untuk tanggal ini. Catat menunya dulu di tab Menu & PO.'}
             </div>
           </div>
-
-          <div className="flex items-center gap-4 shrink-0">
-            <div className="text-right">
-              <div className="text-[11px] text-slate-400">Total Alokasi Hari Ini:</div>
-              <div className="text-lg font-bold font-mono text-emerald-400 tabular-nums">
-                {totalPortionsForDay.toLocaleString('id-ID')} <span className="text-xs font-normal text-slate-300">porsi</span>
-              </div>
+          <div className="flex items-end gap-5 shrink-0 text-right">
+            <div>
+              <div className="text-[11px] text-slate-600">Total porsi</div>
+              <div className="text-lg font-bold text-slate-900 tabular-nums">{totalPortionsForDay.toLocaleString('id-ID')}</div>
             </div>
-            <div className="text-right border-l border-slate-700 pl-4">
-              <div className="text-[11px] text-slate-400">Titik Penerima:</div>
-              <div className="text-lg font-bold font-mono text-indigo-300 tabular-nums">
-                {schoolAllocationsForDate.length} <span className="text-xs font-normal text-slate-300">sekolah</span>
-              </div>
+            <div>
+              <div className="text-[11px] text-slate-600">Sekolah</div>
+              <div className="text-lg font-bold text-slate-900 tabular-nums">{schoolAllocationsForDate.filter(x => x.dailyPortion > 0).length}</div>
             </div>
           </div>
         </div>
 
-        {/* Filter & Search Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={selectedCategory}
-              onChange={e => setSelectedCategory(e.target.value)}
-              className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white"
-            >
-              <option value="ALL">Semua Kategori ({schoolAllocationsForDate.length} Titik)</option>
-              <option value="SD / MI">Sekolah Dasar (SD / MI)</option>
-              <option value="SMP / MTs">Sekolah Menengah (SMP / MTs)</option>
-              <option value="PAUD / TK">PAUD / TK</option>
-              <option value="Ibu Hamil & Balita (B3)">Balita 3T & Ibu Hamil</option>
-            </select>
-
-            <span className="text-xs text-slate-400">
-              Menampilkan <strong>{filteredSchools.length}</strong> lembaga
+        {missingOfficerFields.length > 0 && (
+          <div role="note" className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-900">
+            <span>
+              Data petugas belum lengkap ({missingOfficerFields.join(', ')}). Bagian itu akan tercetak kosong di surat jalan.
             </span>
+            <button type="button" onClick={openOfficerModal} className={`${BTN_SECONDARY} shrink-0`}>
+              Isi petugas
+            </button>
           </div>
+        )}
 
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <select
+            aria-label="Kategori sekolah"
+            value={selectedCategory}
+            onChange={e => setSelectedCategory(e.target.value)}
+            className={`${FIELD_INPUT} w-auto`}
+          >
+            <option value="ALL">Semua kategori ({schoolAllocationsForDate.length})</option>
+            {Array.from(new Set(schoolAllocationsForDate.map(x => x.category))).map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
           <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
-              type="text"
-              placeholder="Cari nama sekolah, PIC, kontak..."
+              type="search"
+              aria-label="Cari sekolah"
+              placeholder="Cari sekolah, PIC, catatan..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1.5 w-64 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className={`${FIELD_INPUT} pl-8 w-full sm:w-64`}
             />
           </div>
         </div>
       </div>
 
       {/* 2. Daftar Sekolah & Status Dokumen Pengiriman */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
@@ -501,8 +511,8 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                 <th className="py-2.5 px-3 w-32 text-right">Porsi Hari Ini</th>
                 <th className="py-2.5 px-3 w-28">Jadwal Kirim</th>
                 <th className="py-2.5 px-4 w-44">PIC & Kontak</th>
-                <th className="py-2.5 px-3 min-w-[170px]">Rincian Kelas</th>
-                <th className="py-2.5 px-3 w-48 text-center">Aksi Dokumen</th>
+                <th className="py-2.5 px-3 min-w-[140px]">Kelas</th>
+                <th className="py-2.5 px-3 w-28 text-center">Dokumen</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -515,11 +525,11 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
 
                 return (
                   <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-3 text-center text-slate-400 font-mono">{idx + 1}</td>
+                    <td className="py-3 px-3 text-center text-slate-500 font-mono">{idx + 1}</td>
                     <td className="py-3 px-4">
                       <div className="font-bold text-slate-900">{s.schoolName}</div>
                       {s.notes && (
-                        <div className="text-[10px] text-slate-400 truncate max-w-xs">{s.notes}</div>
+                        <div className="text-[10px] text-slate-500 truncate max-w-xs">{s.notes}</div>
                       )}
                     </td>
                     <td className="py-3 px-3">
@@ -531,49 +541,50 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                       <span className="font-mono font-bold text-emerald-800 text-sm tabular-nums">
                         {s.dailyPortion.toLocaleString('id-ID')}
                       </span>
-                      <span className="text-[11px] text-slate-400 ml-1">porsi</span>
+                      <span className="text-[11px] text-slate-500 ml-1">porsi</span>
                     </td>
                     <td className="py-3 px-3 text-slate-600 font-mono text-[11px]">
                       <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-slate-400" />
-                        <span>{s.deliveryTime || '10:00 - 10:30'}</span>
+                        <Clock className="w-3 h-3 text-slate-500" />
+                        <span>{s.deliveryTime || '-'}</span>
                       </div>
                     </td>
                     <td className="py-3 px-4 text-slate-700 text-[11px]">
                       <div className="font-semibold text-slate-900">{s.contactPerson || '-'}</div>
                       <div className="text-slate-500 font-mono flex items-center gap-1 mt-0.5">
-                        <Phone className="w-2.5 h-2.5 text-slate-400" />
+                        <Phone className="w-2.5 h-2.5 text-slate-500" />
                         <span>{s.phone || '-'}</span>
                       </div>
                     </td>
                     <td className="py-3 px-3 text-[11px]">
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-slate-600 font-medium">
-                          {classCount} Rombel / Kelas
+                          {classCount} kelas
                         </span>
                         {hasCustom && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                            Kustom
+                          <span className="px-1.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                            Diatur
                           </span>
                         )}
                       </div>
                       <button
                         type="button"
                         onClick={() => handleOpenClassEditor(s)}
-                        className="text-[10px] text-indigo-700 hover:text-indigo-900 font-semibold hover:underline mt-0.5 cursor-pointer block text-left"
+                        className={`text-[11px] text-emerald-800 hover:underline font-semibold mt-0.5 cursor-pointer block text-left rounded ${FOCUS_RING}`}
                       >
-                        Atur Rincian Kelas
+                        Atur kelas
                       </button>
                     </td>
                     <td className="py-3 px-3 text-center">
                       <button
                         type="button"
                         onClick={() => handlePrintSingleSchool(s)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                        title="Lihat Pratinjau & Cetak 3 Lembar Dokumen"
+                        disabled={!currentOrder || s.dailyPortion <= 0}
+                        className={`${BTN_SECONDARY} disabled:opacity-50 disabled:cursor-not-allowed`}
+                        title="Pratinjau & cetak surat jalan, berita acara alat, dan form organoleptik"
                       >
-                        <Printer className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Cetak 3 Lembar</span>
+                        <Printer className="w-3.5 h-3.5" />
+                        Cetak
                       </button>
                     </td>
                   </tr>
@@ -589,7 +600,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                   {totalPortionsForDay.toLocaleString('id-ID')} <span className="text-xs font-normal">porsi</span>
                 </td>
                 <td colSpan={4} className="py-3 px-4 text-xs text-slate-500 font-normal">
-                  Setiap sekolah tercetak 3 lembar: 1) Surat Jalan Rincian Kelas, 2) Berita Acara Alat, 3) Form Uji Organoleptik
+                  Tiap sekolah 3 lembar: surat jalan per kelas, berita acara alat, form uji organoleptik.
                 </td>
               </tr>
             </tfoot>
@@ -601,8 +612,8 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
       {/* MODAL 1: PENGATURAN PETUGAS DISTRIBUSI & KENDARAAN                        */}
       {/* ========================================================================= */}
       {isOfficerModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="bg-white rounded-xl border border-slate-200 max-w-md w-full p-5 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-indigo-600" />
@@ -611,9 +622,10 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
               <button
                 type="button"
                 onClick={() => setIsOfficerModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                aria-label="Tutup"
+                className={`p-2 -m-1 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer ${FOCUS_RING}`}
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -624,9 +636,9 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                 </label>
                 <input
                   type="text"
-                  value={officerSettings.nutritionistName}
-                  onChange={e => setOfficerSettings(prev => ({ ...prev, nutritionistName: e.target.value }))}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  value={officerDraft.nutritionistName}
+                  onChange={e => setOfficerDraft(prev => ({ ...prev, nutritionistName: e.target.value }))}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-600"
                   placeholder="Nama Lengkap & Gelar Ahli Gizi..."
                 />
               </div>
@@ -637,9 +649,9 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                 </label>
                 <input
                   type="text"
-                  value={officerSettings.nutritionistTitle}
-                  onChange={e => setOfficerSettings(prev => ({ ...prev, nutritionistTitle: e.target.value }))}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  value={officerDraft.nutritionistTitle}
+                  onChange={e => setOfficerDraft(prev => ({ ...prev, nutritionistTitle: e.target.value }))}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-600"
                   placeholder="Jabatan..."
                 />
               </div>
@@ -650,9 +662,9 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                 </label>
                 <input
                   type="text"
-                  value={officerSettings.fieldAssistantName}
-                  onChange={e => setOfficerSettings(prev => ({ ...prev, fieldAssistantName: e.target.value }))}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  value={officerDraft.fieldAssistantName}
+                  onChange={e => setOfficerDraft(prev => ({ ...prev, fieldAssistantName: e.target.value }))}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-600"
                   placeholder="Nama Petugas Lapangan..."
                 />
               </div>
@@ -663,9 +675,9 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                 </label>
                 <input
                   type="text"
-                  value={officerSettings.vehicleNumber}
-                  onChange={e => setOfficerSettings(prev => ({ ...prev, vehicleNumber: e.target.value }))}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  value={officerDraft.vehicleNumber}
+                  onChange={e => setOfficerDraft(prev => ({ ...prev, vehicleNumber: e.target.value }))}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-600"
                   placeholder="Nomor Polisi / Jenis Kendaraan..."
                 />
               </div>
@@ -676,9 +688,9 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                 </label>
                 <input
                   type="text"
-                  value={officerSettings.pickupTimeRange}
-                  onChange={e => setOfficerSettings(prev => ({ ...prev, pickupTimeRange: e.target.value }))}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  value={officerDraft.pickupTimeRange}
+                  onChange={e => setOfficerDraft(prev => ({ ...prev, pickupTimeRange: e.target.value }))}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-600"
                   placeholder="12:30 - 13:30 WIB"
                 />
               </div>
@@ -688,16 +700,16 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
               <button
                 type="button"
                 onClick={() => setIsOfficerModalOpen(false)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                className={`${BTN_SECONDARY} border-transparent bg-transparent hover:bg-slate-100`}
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={handleSaveOfficers}
-                className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-700 hover:bg-indigo-800 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                className={BTN_PRIMARY}
               >
-                Simpan Petugas
+                Simpan
               </button>
             </div>
           </div>
@@ -708,8 +720,8 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
       {/* MODAL 2: ATUR RINCIAN KELAS / SASARAN PER SEKOLAH                        */}
       {/* ========================================================================= */}
       {editingSchoolForClass && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-xl w-full p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="bg-white rounded-xl border border-slate-200 max-w-xl w-full p-5 space-y-4 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
               <div>
                 <h3 className="font-bold text-slate-900 text-sm">
@@ -726,9 +738,10 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
               <button
                 type="button"
                 onClick={() => setEditingSchoolForClass(null)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                aria-label="Tutup"
+                className={`p-2 -m-1 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer ${FOCUS_RING}`}
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -742,7 +755,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                     className="text-[11px] font-semibold text-slate-600 hover:text-slate-800 flex items-center gap-1 cursor-pointer"
                     title="Hitung ulang otomatis porsi per kelas"
                   >
-                    <RotateCcw className="w-3 h-3 text-slate-400" />
+                    <RotateCcw className="w-3 h-3 text-slate-500" />
                     <span>Hitung Rata</span>
                   </button>
                   <button
@@ -768,7 +781,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                     key={item.id || idx}
                     className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 text-xs"
                   >
-                    <span className="text-slate-400 font-mono w-5 text-center">{idx + 1}</span>
+                    <span className="text-slate-500 font-mono w-5 text-center">{idx + 1}</span>
                     <input
                       type="text"
                       value={item.className}
@@ -794,14 +807,14 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                         }}
                         className="w-16 px-2 py-1 border border-slate-300 rounded font-mono font-bold text-right text-slate-900 bg-white"
                       />
-                      <span className="text-slate-400 text-[11px]">porsi</span>
+                      <span className="text-slate-500 text-[11px]">porsi</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => {
                         setTempClassItems(prev => prev.filter((_, i) => i !== idx));
                       }}
-                      className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
+                      className="p-1 text-slate-500 hover:text-red-600 transition-colors cursor-pointer"
                       title="Hapus Kelas"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -849,16 +862,16 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
               <button
                 type="button"
                 onClick={() => setEditingSchoolForClass(null)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                className={`${BTN_SECONDARY} border-transparent bg-transparent hover:bg-slate-100`}
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={handleSaveClassBreakdown}
-                className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-700 hover:bg-indigo-800 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                className={BTN_PRIMARY}
               >
-                Simpan Rincian Kelas
+                Simpan
               </button>
             </div>
           </div>
@@ -869,8 +882,8 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
       {/* MODAL 3: CETAK 3 LEMBAR DOKUMEN RESMI (PREVIEW & PRINT)                   */}
       {/* ========================================================================= */}
       {isPrintModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-2 sm:p-4 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl h-[94vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-2 sm:p-4">
+          <div className="bg-white rounded-xl border border-slate-200 w-full max-w-5xl h-[94vh] flex flex-col overflow-hidden">
             {/* Modal Header Controls (Non-Printable) */}
             <style>{`
               @media print {
@@ -974,7 +987,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                 <button
                   type="button"
                   onClick={handleTriggerPrint}
-                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold transition-colors cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>Cetak / Simpan PDF</span>
@@ -982,7 +995,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsPrintModalOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                  className="p-1.5 text-slate-500 hover:text-slate-600 rounded-lg cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1073,17 +1086,17 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                               <div className="flex">
                                 <span className="w-28 font-semibold text-slate-600">Waktu Kirim</span>
                                 <span className="w-2">:</span>
-                                <span className="font-mono text-slate-800">{school.deliveryTime || '10:00 - 10:30'} WIB</span>
+                                <span className="font-mono text-slate-800">{school.deliveryTime ? `${school.deliveryTime.replace(/\s*WIB\s*$/i, '')} WIB` : BLANK}</span>
                               </div>
                               <div className="flex">
                                 <span className="w-28 font-semibold text-slate-600">Petugas Driver</span>
                                 <span className="w-2">:</span>
-                                <span className="text-slate-800">{officerSettings.fieldAssistantName}</span>
+                                <span className="text-slate-800">{officerSettings.fieldAssistantName || BLANK}</span>
                               </div>
                               <div className="flex">
                                 <span className="w-28 font-semibold text-slate-600">Armada / Nopol</span>
                                 <span className="w-2">:</span>
-                                <span className="font-mono text-slate-800">{officerSettings.vehicleNumber}</span>
+                                <span className="font-mono text-slate-800">{officerSettings.vehicleNumber || BLANK}</span>
                               </div>
                             </div>
                           </div>
@@ -1093,7 +1106,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                             <div className="flex items-start">
                               <span className="w-28 font-semibold text-slate-700 shrink-0">Menu Masakan Hari Ini:</span>
                               <span className="font-bold text-slate-900 leading-snug">
-                                {currentOrder?.menuTitle || 'Nasi Putih, Lauk Protein Bergizi, Sayur Mayur Segar, Buah Musim'}
+                                {currentOrder?.menuTitle || BLANK}
                               </span>
                             </div>
                           </div>
@@ -1170,7 +1183,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                                 </div>
                                 <div className="mt-10 border-t border-slate-800 pt-1">
                                   <div className="font-bold text-slate-900 underline">
-                                    {officerSettings.nutritionistName}
+                                    {officerSettings.nutritionistName || BLANK}
                                   </div>
                                   <div className="text-[9.5px] text-slate-500">{officerSettings.nutritionistTitle}</div>
                                 </div>
@@ -1184,7 +1197,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                                 </div>
                                 <div className="mt-10 border-t border-slate-800 pt-1">
                                   <div className="font-bold text-slate-900 underline">
-                                    {officerSettings.fieldAssistantName}
+                                    {officerSettings.fieldAssistantName || BLANK}
                                   </div>
                                   <div className="text-[9.5px] text-slate-500">SPPG MLG TUMPANG JERU</div>
                                 </div>
@@ -1375,7 +1388,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                               2. Pihak sekolah memastikan sisa makanan padat telah dibuang ke kantong sampah sebelum tray ditumpuk ke kontainer.
                             </div>
                             <div>
-                              3. Seluruh peralatan akan dijemput kembali oleh Asisten Lapangan SPPG pada pukul <strong>{officerSettings.pickupTimeRange}</strong>.
+                              3. Seluruh peralatan akan dijemput kembali oleh Asisten Lapangan SPPG pada pukul <strong>{officerSettings.pickupTimeRange || BLANK}</strong>.
                             </div>
                             <div>
                               4. Penghitungan ulang jumlah unit dilakukan bersama saat penjemputan oleh Asisten Lapangan dan PIC Sekolah.
@@ -1393,7 +1406,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                                 </div>
                                 <div className="mt-12 border-t border-slate-800 pt-1">
                                   <div className="font-bold text-slate-900 underline">
-                                    {officerSettings.fieldAssistantName}
+                                    {officerSettings.fieldAssistantName || BLANK}
                                   </div>
                                   <div className="text-[9.5px] text-slate-500">Petugas Distribusi SPPG</div>
                                 </div>
@@ -1421,7 +1434,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                                 </div>
                                 <div className="mt-12 border-t border-slate-800 pt-1">
                                   <div className="font-bold text-slate-900 underline">
-                                    {officerSettings.nutritionistName}
+                                    {officerSettings.nutritionistName || BLANK}
                                   </div>
                                   <div className="text-[9.5px] text-slate-500">{officerSettings.nutritionistTitle}</div>
                                 </div>
@@ -1490,7 +1503,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                                 <span className="w-24 font-semibold text-slate-600">Menu Diuji</span>
                                 <span className="w-2">:</span>
                                 <span className="font-semibold text-slate-900 truncate">
-                                  {currentOrder?.menuTitle || 'Menu Lengkap Gizi SPPG'}
+                                  {currentOrder?.menuTitle || BLANK}
                                 </span>
                               </div>
                             </div>
@@ -1691,7 +1704,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                                 </div>
                                 <div className="mt-12 border-t border-slate-800 pt-1">
                                   <div className="font-bold text-slate-900 underline">
-                                    {officerSettings.fieldAssistantName}
+                                    {officerSettings.fieldAssistantName || BLANK}
                                   </div>
                                   <div className="text-[9.5px] text-slate-500">Asisten Lapangan Distribusi</div>
                                 </div>

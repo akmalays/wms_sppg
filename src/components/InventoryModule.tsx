@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useConfirm } from '../context/ConfirmContext';
 import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
-import { warehouseDb } from '../db/storage';
+import { warehouseDb, signerName } from '../db/storage';
 import {
   ItemMaster,
   StockStatus,
@@ -674,7 +674,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
               <div className="text-slate-500">Diverifikasi Oleh,</div>
               <div className="font-semibold text-slate-800">Akuntan SPPG</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
-                (Dewi Lestari, S.Ak)
+                ({signerName('AKUNTAN')})
               </div>
             </div>
 
@@ -682,7 +682,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
               <div className="font-semibold text-slate-800">Kepala SPPG MLG TUMPANG JERU</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
-                (Rizky Iman Ramdhan, S.Pd)
+                ({signerName('KEPALA_SPPG')})
               </div>
             </div>
           </div>
@@ -2735,7 +2735,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                     <div className="text-slate-500">Diverifikasi Oleh,</div>
                     <div className="font-semibold text-slate-800">Akuntan SPPG</div>
                     <div className="h-16 flex items-end justify-center font-bold text-slate-900">
-                      (Dewi Lestari, S.Ak)
+                      ({signerName('AKUNTAN')})
                     </div>
                   </div>
 
@@ -2743,7 +2743,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                     <div className="text-slate-500">Otorisasi / Persetujuan,</div>
                     <div className="font-semibold text-slate-800">Kepala SPPG MLG TUMPANG JERU</div>
                     <div className="h-16 flex items-end justify-center font-bold text-slate-900">
-                      ({viewingOpname.approvedByName && !viewingOpname.approvedByName.includes('Siti Rahma') ? viewingOpname.approvedByName : 'Rizky Iman Ramdhan, S.Pd'})
+                      ({viewingOpname.approvedByName && !viewingOpname.approvedByName.includes('Siti Rahma') ? viewingOpname.approvedByName : signerName('KEPALA_SPPG')})
                     </div>
                   </div>
                 </div>

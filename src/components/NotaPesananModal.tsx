@@ -22,6 +22,7 @@ import ttdRizkyImg from '../assets/ttd rizky.png';
 import { COMMON_GOODS_CATALOG } from './ReceivingModule';
 import { syncPoNumberWithDate } from '../utils/poNumberGenerator';
 import { useToast } from '../context/ToastContext';
+import { warehouseDb } from '../db/storage';
 
 export interface NotaPesananModalProps {
   isOpen: boolean;
@@ -111,7 +112,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
   const [signerName, setSignerName] = useState(
     formData.approvedBy && !formData.approvedBy.includes('Siti Rahma')
       ? formData.approvedBy
-      : 'Rizky Iman Ramdhan, S.Pd'
+      : warehouseDb.getSppgHeadName()
   );
   const [signerRole1, setSignerRole1] = useState('Kepala Satuan Pelayanan');
   const [signerRole2, setSignerRole2] = useState('Pemenuhan Gizi');
@@ -135,7 +136,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
     if (nota.approvedBy && !nota.approvedBy.includes('Siti Rahma')) {
       setSignerName(nota.approvedBy);
     } else {
-      setSignerName('Rizky Iman Ramdhan, S.Pd');
+      setSignerName(warehouseDb.getSppgHeadName());
     }
     // Jika jumlah item ringkas (1-5), aktifkan mode hemat kertas (2 rangkap) secara cerdas
     if ((nota.items?.length || 0) <= 5) {

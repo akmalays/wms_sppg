@@ -11,7 +11,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { PurchaseOrderNota } from '../types/warehouse';
-import { warehouseDb } from '../db/storage';
+import { warehouseDb, signerName } from '../db/storage';
 import logoSppgImg from '../assets/logo sppg.png';
 import ttdRizkyImg from '../assets/ttd rizky.png';
 
@@ -188,7 +188,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
 
     const displaySignerName =
       !nota.approvedBy || nota.approvedBy.includes('Siti Rahma')
-        ? 'Rizky Iman Ramdhan, S.Pd'
+        ? signerName('KEPALA_SPPG')
         : nota.approvedBy;
 
     return (

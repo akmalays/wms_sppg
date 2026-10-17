@@ -8,8 +8,6 @@ import {
   Globe,
   LogOut,
   Menu,
-  RotateCcw,
-  Trash2,
   UserCheck,
   X,
 } from 'lucide-react';
@@ -17,8 +15,6 @@ import {
 interface NavbarProps {
   activeTab: string;
   onSelectTab: (tab: string) => void;
-  onResetData: () => void;
-  onClearTransactions?: () => void;
   onViewLanding?: () => void;
 }
 
@@ -79,7 +75,7 @@ const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:rin
 const MENU_PANEL = 'absolute mt-2 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 z-50';
 const MENU_ITEM = `w-full text-left flex items-center gap-2.5 px-3.5 py-2 text-xs cursor-pointer min-h-[40px] transition-colors ${FOCUS}`;
 
-export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetData, onClearTransactions, onViewLanding }) => {
+export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onViewLanding }) => {
   const { currentUser, switchUser, logout, can } = useAuth();
   const allowed = (item: NavItem) => !item.permission || can(item.permission);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
@@ -273,34 +269,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onResetD
                         </button>
                       );
                     })}
-
-                    <div className="px-3.5 pt-2.5 pb-1 text-[11px] font-semibold text-slate-600">Mode demo: data</div>
-                    {onClearTransactions && (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setOpenMenu(null);
-                          onClearTransactions();
-                        }}
-                        className={`${MENU_ITEM} text-amber-800 hover:bg-amber-50`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        Bersihkan data transaksi
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setOpenMenu(null);
-                        onResetData();
-                      }}
-                      className={`${MENU_ITEM} text-rose-700 hover:bg-rose-50`}
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                      Reset ke data demo
-                    </button>
                   </div>
                 )}
 
