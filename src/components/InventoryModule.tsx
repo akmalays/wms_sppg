@@ -47,6 +47,7 @@ import {
 import { exportToExcel, downloadExcelTemplate } from '../lib/excelExport';
 import { SppgLogo } from './SppgLogo';
 import { useToast } from '../context/ToastContext';
+import { localDateIso } from '../utils/localDate';
 
 import {
   STANDARD_CATEGORIES,
@@ -79,65 +80,10 @@ export function getDetailedItemCategory(item: { name: string; category?: string;
   return normalizeToStandardCategory(item.category || item.subcategory, item.name);
 }
 
-// Realistic unit price reference for inventory asset value
-const DEFAULT_PRICE_MAP: Record<string, number> = {
-  ayam: 38000,
-  daging: 120000,
-  telur: 28000,
-  ikan: 35000,
-  bayam: 3500,
-  kangkung: 3000,
-  wortel: 12000,
-  labu: 9000,
-  pisang: 16000,
-  semangka: 8500,
-  pepaya: 7500,
-  tahu: 1000,
-  tempe: 4000,
-  beras: 14500,
-  minyak: 18000,
-  gula: 17500,
-  tepung: 12000,
-  garam: 4000,
-  kecap: 24000,
-  saus: 18000,
-  bawang: 38000,
-  bumbu: 3000,
-  hvs: 48000,
-  buku: 18000,
-  pulpen: 25000,
-  spidol: 9000,
-  map: 26000,
-  tinta: 85000,
-  sunlight: 18500,
-  karbol: 16000,
-  wipol: 16000,
-  spons: 14000,
-  kanebo: 15000,
-  trash: 28000,
-  sapu: 35000,
-  pel: 85000,
-  kresek: 15000,
-  mika: 135000,
-  'sarung tangan': 14000,
-  masker: 25000,
-  'nurse cap': 32000,
-  gas: 215000,
-  galon: 20000,
-  es: 15000,
-};
-
-function getItemEstimatedUnitPrice(name: string, category: string, explicitPrice?: number): number {
-  if (explicitPrice && explicitPrice > 0) return explicitPrice;
-  const lower = name.toLowerCase();
-  for (const key of Object.keys(DEFAULT_PRICE_MAP)) {
-    if (lower.includes(key)) return DEFAULT_PRICE_MAP[key];
-  }
-  if (category.includes('Basah')) return 25000;
-  if (category.includes('Kering')) return 15000;
-  if (category.includes('ATK')) return 20000;
-  if (category.includes('Kebersihan')) return 18000;
-  return 15000;
+// Unit price as recorded on the item master. Items without a price contribute no value:
+// a guessed price would show up as real money in the stock value and printed recap.
+function getItemEstimatedUnitPrice(_name: string, _category: string, explicitPrice?: number): number {
+  return explicitPrice && explicitPrice > 0 ? explicitPrice : 0;
 }
 
 interface BatchMasterItemRow {
@@ -150,9 +96,11 @@ interface BatchMasterItemRow {
   minStock: number;
   location: string;
   notes: string;
+  /** Set once the user picks a category by hand; until then it follows the typed name */
+  categoryTouched?: boolean;
 }
 
-export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData, initialTab = 'stock' }) => {
+export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = 'stock' }) => {
   const { currentUser, can } = useAuth();
   const toast = useToast();
 
@@ -166,6 +114,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   // Data states
   const [dataVersion, setDataVersion] = useState(0);
   const items = useMemo(() => warehouseDb.getItems(), [dataVersion]);
+  // Deactivated items stay in the master list but are not stock to count, report or reorder
+  const activeItems = useMemo(() => items.filter(i => i.isActive !== false), [items]);
   const opnames = useMemo(() => warehouseDb.getOpnames(), [dataVersion]);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -217,11 +167,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   const [batchMode, setBatchMode] = useState<'GRID' | 'PASTE'>('GRID');
   const [pasteRawText, setPasteRawText] = useState('');
   const [batchRows, setBatchRows] = useState<BatchMasterItemRow[]>([
-    { id: '1', sku: 'BBS-001', name: '', category: 'Bahan Basah', baseUnit: 'Kg', initialStock: 0, minStock: 15, location: 'Chiller Dapur - Bin C1 (Daging Ayam & Protein Unggas)', notes: '' },
-    { id: '2', sku: 'BKR-001', name: '', category: 'Bahan Kering', baseUnit: 'Kg', initialStock: 0, minStock: 20, location: 'Gudang Kering - Palet Tengah (Sembako Sak & Karung Curah)', notes: '' },
-    { id: '3', sku: 'ATK-001', name: '', category: 'ATK & Administrasi', baseUnit: 'Rim', initialStock: 0, minStock: 5, location: 'Ruang Kantor / Lemari ATK (Alat Tulis Kantor & Administrasi)', notes: '' },
-    { id: '4', sku: 'CLN-001', name: '', category: 'Alat Kebersihan', baseUnit: 'Pouch', initialStock: 0, minStock: 10, location: 'Gudang Non-Food - Rak N1 (Sabun, Kebersihan & Sanitasi Dapur)', notes: '' },
-    { id: '5', sku: 'PRL-001', name: '', category: 'Perlengkapan & APD', baseUnit: 'Pack', initialStock: 0, minStock: 10, location: 'Gudang Non-Food - Rak N2 (Plastik, Kemasan & Tissue Dapur)', notes: '' },
+    { id: '1', sku: '', name: '', category: 'Bahan Basah', baseUnit: 'Kg', initialStock: 0, minStock: 15, location: 'Chiller Dapur - Bin C1 (Daging Ayam & Protein Unggas)', notes: '' },
+    { id: '2', sku: '', name: '', category: 'Bahan Kering', baseUnit: 'Kg', initialStock: 0, minStock: 20, location: 'Gudang Kering - Palet Tengah (Sembako Sak & Karung Curah)', notes: '' },
+    { id: '3', sku: '', name: '', category: 'ATK & Administrasi', baseUnit: 'Rim', initialStock: 0, minStock: 5, location: 'Ruang Kantor / Lemari ATK (Alat Tulis Kantor & Administrasi)', notes: '' },
+    { id: '4', sku: '', name: '', category: 'Alat Kebersihan', baseUnit: 'Pouch', initialStock: 0, minStock: 10, location: 'Gudang Non-Food - Rak N1 (Sabun, Kebersihan & Sanitasi Dapur)', notes: '' },
+    { id: '5', sku: '', name: '', category: 'Perlengkapan & APD', baseUnit: 'Pack', initialStock: 0, minStock: 10, location: 'Gudang Non-Food - Rak N2 (Plastik, Kemasan & Tissue Dapur)', notes: '' },
   ]);
 
   // ----------------------------------------------------
@@ -230,18 +180,18 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   const [isCreateOpnameModalOpen, setIsCreateOpnameModalOpen] = useState(false);
   const [viewingOpname, setViewingOpname] = useState<StockOpnameSession | null>(null);
   const [opnameCategoryFilter, setOpnameCategoryFilter] = useState<SppgCategory>('Semua Kategori');
-  const [opnameFormDate, setOpnameFormDate] = useState(new Date().toISOString().slice(0, 10));
+  const [opnameFormDate, setOpnameFormDate] = useState(localDateIso());
   const [opnameFormLocation, setOpnameFormLocation] = useState('Gudang SPPG MLG TUMPANG JERU');
   const [opnameFormNotes, setOpnameFormNotes] = useState('');
   const [opnameStatusFilter, setOpnameStatusFilter] = useState<'ALL' | 'PENDING_APPROVAL' | 'APPROVED'>('ALL');
   const [opnameSearchQuery, setOpnameSearchQuery] = useState('');
   const [countingItems, setCountingItems] = useState<
-    { itemId: string; name: string; category: SppgCategory; unit: string; systemStock: number; physicalCount: number; variance: number; reason: string }[]
+    { itemId: string; name: string; category: SppgCategory; unit: string; systemStock: number; physicalCount: number | null; variance: number; reason: string }[]
   >([]);
 
+  // Reload only this module; the app-level refresh remounts the page and jumps back to the first tab.
   const refreshData = () => {
     setDataVersion(v => v + 1);
-    if (onRefreshData) onRefreshData();
   };
 
   useEffect(() => {
@@ -252,6 +202,22 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
     return () => {
       window.removeEventListener('sppg_storage_items_changed', handleStorageUpdate);
     };
+  }, []);
+
+  // Escape closes the short dialogs. Opname counting and batch entry are left out on purpose:
+  // a stray key press there would throw away a lot of typed data.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setAdjustingItem(null);
+      setItemToDelete(null);
+      setOpnameSessionToApprove(null);
+      setViewingOpname(null);
+      setIsPrintPreviewOpen(false);
+      setIsSingleModalOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   const showToast = (msg: string, title?: string) => {
@@ -274,7 +240,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
   // Filtered Items for Stock Tab
   const filteredItems = useMemo(() => {
-    return items.filter(item => {
+    return activeItems.filter(item => {
       const q = searchQuery.toLowerCase();
       const detailedCat = getDetailedItemCategory(item);
 
@@ -295,17 +261,18 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
       return matchesSearch && matchesCategory && matchesStatus;
     });
-  }, [items, searchQuery, selectedCategoryTab, filterStatus]);
+  }, [activeItems, searchQuery, selectedCategoryTab, filterStatus]);
 
   // Overall KPI Metrics for Stock Tab
   const stockMetrics = useMemo(() => {
     let totalAssetValue = 0;
+    let unpricedCount = 0;
     let normalCount = 0;
     let lowCount = 0;
     let outCount = 0;
 
     const categoryItemCounts: Record<SppgCategory, number> = {
-      'Semua Kategori': items.length,
+      'Semua Kategori': activeItems.length,
       'Bahan Basah': 0,
       'Bahan Kering': 0,
       'ATK & Administrasi': 0,
@@ -314,13 +281,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       'Operasional & Keperluan Lain': 0,
     };
 
-    items.forEach(i => {
+    activeItems.forEach(i => {
       const cat = getDetailedItemCategory(i);
       if (categoryItemCounts[cat] !== undefined) {
         categoryItemCounts[cat]++;
       }
       const price = getItemEstimatedUnitPrice(i.name, cat, i.estimatedPrice);
-      totalAssetValue += Math.max(0, i.currentStock) * price;
+      if (price > 0) totalAssetValue += Math.max(0, i.currentStock) * price;
+      else if (i.currentStock > 0) unpricedCount++;
 
       const status = getItemStockStatus(i);
       if (status === 'NORMAL') normalCount++;
@@ -329,14 +297,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
     });
 
     return {
-      totalItems: items.length,
+      totalItems: activeItems.length,
       totalAssetValue,
+      unpricedCount,
       normalCount,
       lowCount,
       outCount,
       categoryItemCounts,
     };
-  }, [items]);
+  }, [activeItems]);
 
   // Filtered Items for Master Barang Tab
   const filteredMasterItems = useMemo(() => {
@@ -516,11 +485,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 <th className="py-2 px-2.5 border-r border-slate-300 text-center w-8">No</th>
                 <th className="py-2 px-3 border-r border-slate-300">Kategori Barang</th>
                 <th className="py-2 px-2.5 border-r border-slate-300 text-center w-24">Jumlah Item</th>
-                <th className="py-2 px-2.5 border-r border-slate-300 text-right w-28">Total Saldo Stok</th>
+                <th className="py-2 px-2.5 border-r border-slate-300 text-center w-24">Ada Stok</th>
                 <th className="py-2 px-2 border-r border-slate-300 text-center w-16">Aman</th>
                 <th className="py-2 px-2 border-r border-slate-300 text-center w-16">Menipis</th>
                 <th className="py-2 px-2 border-r border-slate-300 text-center w-16">Habis</th>
-                <th className="py-2 px-3 border-r border-slate-300 text-right w-36">Estimasi Nilai Aset</th>
+                <th className="py-2 px-3 border-r border-slate-300 text-right w-36">Nilai (harga terisi)</th>
                 <th className="py-2 px-2.5 text-right w-16">Porsi (%)</th>
               </tr>
             </thead>
@@ -540,8 +509,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                     <td className="py-2 px-2.5 border-r border-slate-300 text-center">
                       {catSummary.items.length} item
                     </td>
-                    <td className="py-2 px-2.5 border-r border-slate-300 text-right font-medium">
-                      {catSummary.totalQty.toLocaleString('id-ID')}
+                    <td className="py-2 px-2.5 border-r border-slate-300 text-center font-medium">
+                      {catSummary.items.length - catSummary.outCount} item
                     </td>
                     <td className="py-2 px-2 border-r border-slate-300 text-center font-medium text-emerald-700">
                       {catSummary.normalCount}
@@ -568,8 +537,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 <td className="py-2.5 px-2.5 border-r border-slate-300 text-center">
                   {recapGrandTotals.totalItems} item
                 </td>
-                <td className="py-2.5 px-2.5 border-r border-slate-300 text-right">
-                  {recapGrandTotals.totalQty.toLocaleString('id-ID')}
+                <td className="py-2.5 px-2.5 border-r border-slate-300 text-center">
+                  {recapGrandTotals.totalItems - recapGrandTotals.outCount} item
                 </td>
                 <td className="py-2.5 px-2 border-r border-slate-300 text-center text-emerald-800">
                   {recapGrandTotals.normalCount}
@@ -596,7 +565,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
           </div>
 
           {filteredItems.length === 0 ? (
-            <div className="p-4 text-center text-slate-400 text-xs italic border border-dashed border-slate-200 rounded">
+            <div className="p-4 text-center text-slate-500 text-xs italic border border-dashed border-slate-200 rounded">
               Tidak ada data barang yang sesuai dengan filter saat ini.
             </div>
           ) : (
@@ -636,7 +605,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
                         return (
                           <tr key={item.id} className="hover:bg-slate-50/60">
-                            <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-400">
+                            <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-500">
                               {itIdx + 1}
                             </td>
                             <td className="py-1.5 px-2 border-r border-slate-300 font-mono text-slate-700">
@@ -661,10 +630,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                               {item.baseUnit}
                             </td>
                             <td className="py-1.5 px-2 border-r border-slate-300 text-right font-mono text-slate-600">
-                              Rp {price.toLocaleString('id-ID')}
+                              {price > 0 ? `Rp ${price.toLocaleString('id-ID')}` : '-'}
                             </td>
                             <td className="py-1.5 px-2 border-r border-slate-300 text-right font-mono font-bold text-slate-900">
-                              Rp {totalVal.toLocaleString('id-ID')}
+                              {price > 0 ? `Rp ${totalVal.toLocaleString('id-ID')}` : '-'}
                             </td>
                             <td className="py-1.5 px-2 text-center font-medium">
                               {status === 'NORMAL' ? (
@@ -682,9 +651,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                         <td colSpan={5} className="py-1.5 px-2 border-r border-slate-300 text-right">
                           Subtotal {catSummary.category}:
                         </td>
-                        <td className="py-1.5 px-2 border-r border-slate-300 text-right font-bold">
-                          {catSummary.totalQty.toLocaleString('id-ID')}
-                        </td>
+                        <td className="py-1.5 px-2 border-r border-slate-300"></td>
                         <td className="py-1.5 px-2 border-r border-slate-300"></td>
                         <td className="py-1.5 px-2 border-r border-slate-300"></td>
                         <td className="py-1.5 px-2 border-r border-slate-300 text-right font-bold text-slate-900">
@@ -737,7 +704,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   const handleOpenCreateOpname = (presetCategory?: SppgCategory) => {
     const chosenCat = presetCategory || (selectedCategoryTab !== 'Semua Kategori' ? selectedCategoryTab : 'Semua Kategori');
     setOpnameCategoryFilter(chosenCat);
-    setOpnameFormDate(new Date().toISOString().slice(0, 10));
+    setOpnameFormDate(localDateIso());
     setOpnameFormLocation(
       chosenCat === 'Bahan Basah'
         ? 'Chiller & Dapur Pengolahan'
@@ -749,15 +716,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
         ? 'Gudang Sanitasi & Kebersihan'
         : 'Gudang Utama SPPG MLG TUMPANG JERU'
     );
-    setOpnameFormNotes(`Stock Opname Berkala [${chosenCat}] SPPG MLG TUMPANG JERU`);
+    setOpnameFormNotes('');
     initOpnameItems(chosenCat);
     setIsCreateOpnameModalOpen(true);
   };
 
   const initOpnameItems = (cat: SppgCategory) => {
     const pool = cat === 'Semua Kategori'
-      ? items
-      : items.filter(i => getDetailedItemCategory(i) === cat);
+      ? activeItems
+      : activeItems.filter(i => getDetailedItemCategory(i) === cat);
 
     setCountingItems(
       pool.map(item => ({
@@ -766,7 +733,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
         category: getDetailedItemCategory(item),
         unit: item.baseUnit,
         systemStock: item.currentStock,
-        physicalCount: item.currentStock, // default to system stock for convenience
+        physicalCount: null, // counted by staff; "Sesuai" fills in the system figure on purpose
         variance: 0,
         reason: '',
       }))
@@ -774,21 +741,24 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   };
 
   const handleOpnameCategoryChange = (cat: SppgCategory) => {
+    const counted = countingItems.filter(c => c.physicalCount !== null).length;
+    if (counted > 0 && !window.confirm(`Ganti kategori akan menghapus ${counted} hasil hitung yang sudah diisi. Lanjutkan?`)) {
+      return;
+    }
     setOpnameCategoryFilter(cat);
-    setOpnameFormNotes(`Stock Opname Berkala [${cat}] SPPG MLG TUMPANG JERU`);
     initOpnameItems(cat);
   };
 
   const handlePhysicalCountChange = (index: number, val: string) => {
-    const count = parseFloat(val) || 0;
+    const count = val.trim() === '' ? null : Math.max(0, parseFloat(val) || 0);
     setCountingItems(prev => {
       const updated = [...prev];
-      const diff = Number((count - updated[index].systemStock).toFixed(2));
+      const diff = count === null ? 0 : Number((count - updated[index].systemStock).toFixed(2));
       updated[index] = {
         ...updated[index],
         physicalCount: count,
         variance: diff,
-        reason: diff === 0 ? '' : updated[index].reason || 'Susut alami / penimbangan',
+        reason: diff === 0 ? '' : updated[index].reason,
       };
       return updated;
     });
@@ -797,13 +767,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   const handleOpnameStep = (index: number, delta: number) => {
     setCountingItems(prev => {
       const updated = [...prev];
-      const nextCount = Math.max(0, Number((updated[index].physicalCount + delta).toFixed(2)));
+      const base = updated[index].physicalCount ?? updated[index].systemStock;
+      const nextCount = Math.max(0, Number((base + delta).toFixed(2)));
       const diff = Number((nextCount - updated[index].systemStock).toFixed(2));
       updated[index] = {
         ...updated[index],
         physicalCount: nextCount,
         variance: diff,
-        reason: diff === 0 ? '' : updated[index].reason || 'Susut alami / penimbangan',
+        reason: diff === 0 ? '' : updated[index].reason,
       };
       return updated;
     });
@@ -836,6 +807,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       return;
     }
 
+    const uncounted = countingItems.filter(c => c.physicalCount === null);
+    if (uncounted.length > 0) {
+      showError(
+        `${uncounted.length} barang belum dihitung: ${uncounted.slice(0, 5).map(c => c.name).join(', ')}${uncounted.length > 5 ? ', dan lainnya' : ''}. Isi jumlah fisik atau tekan "Sesuai" jika sama dengan sistem.`,
+        'Belum Selesai Dihitung'
+      );
+      return;
+    }
+
     // Validate variances
     for (const item of countingItems) {
       if (item.variance !== 0 && (!item.reason || item.reason.trim().length === 0)) {
@@ -850,7 +830,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
         opnameFormLocation,
         countingItems.map(c => ({
           itemId: c.itemId,
-          physicalCount: c.physicalCount,
+          physicalCount: c.physicalCount as number,
           reason: c.reason,
         })),
         currentUser,
@@ -859,9 +839,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
       if (directApprove && can('APPROVE_OPNAME')) {
         warehouseDb.approveStockOpname(session.id, currentUser);
-        showToast(`Stock Opname #${session.id} (${opnameCategoryFilter}) berhasil dibuat & langsung disetujui! Stok fisik telah diperbarui.`);
+        showToast(`Opname #${session.id} (${opnameCategoryFilter}) disimpan dan disetujui. Stok sudah diperbarui.`);
       } else {
-        showToast(`Sesi Stock Opname #${session.id} (${opnameCategoryFilter}) berhasil disimpan! Menunggu otorisasi manager.`);
+        showToast(`Opname #${session.id} (${opnameCategoryFilter}) disimpan. Stok berubah setelah disetujui.`);
       }
 
       setIsCreateOpnameModalOpen(false);
@@ -883,7 +863,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
     if (!opnameSessionToApprove) return;
     try {
       warehouseDb.approveStockOpname(opnameSessionToApprove.id, currentUser);
-      showToast(`Stock Opname #${opnameSessionToApprove.id} berhasil disetujui! Saldo stok gudang telah diperbarui.`);
+      showToast(`Opname #${opnameSessionToApprove.id} disetujui. Stok sudah diperbarui.`);
       refreshData();
       setViewingOpname(null);
       setOpnameSessionToApprove(null);
@@ -912,28 +892,32 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
   // ----------------------------------------------------
   const handleOpenAdjust = (item: ItemMaster) => {
     setAdjustingItem(item);
-    setAdjustQtyDelta(1);
+    setAdjustQtyDelta(0);
     setAdjustType('ADD');
-    setAdjustReason('Penyesuaian stok fisik');
+    setAdjustReason('');
   };
+
+  const adjustTargetStock = adjustingItem
+    ? adjustType === 'ADD'
+      ? adjustingItem.currentStock + adjustQtyDelta
+      : adjustType === 'SUBTRACT'
+      ? Math.max(0, adjustingItem.currentStock - adjustQtyDelta)
+      : Math.max(0, adjustQtyDelta)
+    : 0;
 
   const handleSaveAdjust = (e: React.FormEvent) => {
     e.preventDefault();
     if (!adjustingItem) return;
 
+    if (!can('MANAGE_ITEMS')) {
+      showError('Peran Anda tidak bisa mengoreksi stok. Minta admin gudang, atau lakukan stok opname.');
+      return;
+    }
+
     try {
-      let targetStock = adjustingItem.currentStock;
-      if (adjustType === 'ADD') targetStock = adjustingItem.currentStock + adjustQtyDelta;
-      else if (adjustType === 'SUBTRACT') targetStock = Math.max(0, adjustingItem.currentStock - adjustQtyDelta);
-      else if (adjustType === 'SET') targetStock = Math.max(0, adjustQtyDelta);
-
-      warehouseDb.saveItem({
-        ...adjustingItem,
-        currentStock: targetStock,
-        notes: `${adjustingItem.notes ? adjustingItem.notes + ' • ' : ''}[Penyesuaian: ${adjustReason}]`
-      }, currentUser, false);
-
-      showToast(`Stok ${adjustingItem.name} berhasil disesuaikan menjadi ${targetStock} ${adjustingItem.baseUnit}!`);
+      const targetStock = Number(adjustTargetStock.toFixed(3));
+      warehouseDb.adjustItemStock(adjustingItem.id, targetStock, adjustReason, currentUser);
+      showToast(`Stok ${adjustingItem.name} dikoreksi menjadi ${targetStock.toLocaleString('id-ID')} ${adjustingItem.baseUnit} dan tercatat di Buku Mutasi.`);
       setAdjustingItem(null);
       refreshData();
     } catch (err: any) {
@@ -979,7 +963,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
     setFormInitialStock(item.currentStock);
     setFormMinStock(item.minimumStock);
     setFormLocation(item.location);
-    setFormEstimatedPrice(item.estimatedPrice || getItemEstimatedUnitPrice(item.name, cat));
+    setFormEstimatedPrice(item.estimatedPrice || 0);
     setFormNotes(item.notes || '');
     setFormIsActive(item.isActive !== false);
     setFormError('');
@@ -1011,25 +995,34 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
     e.preventDefault();
     setFormError('');
 
-    if (!formName.trim()) {
-      setFormError('Nama barang wajib diisi.');
-      showError('Nama barang wajib diisi sebelum menyimpan data.', 'Validasi Form');
+    const invalid = !formName.trim()
+      ? 'Nama barang wajib diisi.'
+      : formCategory === 'Kategori Kustom' && !formCustomCategory.trim()
+      ? 'Isi nama kategori baru, atau pilih kategori yang ada.'
+      : formBaseUnit === 'Satuan Kustom' && !formCustomUnit.trim()
+      ? 'Isi nama satuan baru, atau pilih satuan yang ada.'
+      : !formLocation.trim()
+      ? 'Isi lokasi penyimpanan.'
+      : !editingItem && formInitialStock < 0
+      ? 'Stok awal tidak boleh negatif.'
+      : items.some(i => i.id !== editingItem?.id && i.name.trim().toLowerCase() === formName.trim().toLowerCase())
+      ? `Barang "${formName.trim()}" sudah ada di master.`
+      : null;
+    if (invalid) {
+      setFormError(invalid);
       return;
     }
 
     try {
       const isNew = !editingItem;
-      const finalCategory = formCategory === 'Kategori Kustom' && formCustomCategory.trim()
-        ? formCustomCategory.trim()
-        : formCategory;
-      const finalUnit = formBaseUnit === 'Satuan Kustom' && formCustomUnit.trim()
-        ? formCustomUnit.trim()
-        : formBaseUnit;
+      const finalCategory = formCategory === 'Kategori Kustom' ? formCustomCategory.trim() : formCategory;
+      const finalUnit = formBaseUnit === 'Satuan Kustom' ? formCustomUnit.trim() : formBaseUnit;
       const initialStockVal = Number(formInitialStock) || 0;
       const minStockVal = Math.max(0, Number(formMinStock) || 0);
       const estPriceVal = Math.max(0, Number(formEstimatedPrice) || 0);
 
-      const finalSku = formSku.trim() || generateAutoSku(formWarehouse, items);
+      // The SKU is the item's identity; editing must never retarget the save to another item
+      const finalSku = editingItem ? editingItem.id : formSku.trim().toUpperCase() || generateAutoSku(formWarehouse, items);
 
       const itemToSave: ItemMaster = {
         id: finalSku,
@@ -1123,7 +1116,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
     exportToExcel(
       rows,
-      `Katalog_Master_Barang_SPPG_MLG_TUMPANG_JERU_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      `Katalog_Master_Barang_SPPG_MLG_TUMPANG_JERU_${localDateIso()}.xlsx`,
       'Master Barang'
     );
   };
@@ -1137,7 +1130,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
     for (let i = 0; i < count; i++) {
       newRows.push({
         id: String(timestamp + Math.random() + i),
-        sku: `ITM-${String(timestamp + i).slice(-4)}`,
+        sku: '',
         name: '',
         category: 'Bahan Kering',
         baseUnit: 'Kg',
@@ -1150,29 +1143,41 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
     setBatchRows(prev => [...prev, ...newRows]);
   };
 
+  const applyBatchCategoryDefaults = (row: BatchMasterItemRow): BatchMasterItemRow => {
+    const r = { ...row };
+    if (r.category === 'Bahan Kering') {
+      r.location = 'Gudang Kering - Rak A1 (Sembako Beras & Karung Pangan)';
+      r.baseUnit = 'Kg';
+    } else if (r.category === 'Bahan Basah') {
+      r.location = 'Gudang Basah - Rak V1 (Sayuran Segar & Umbi Hijau)';
+      r.baseUnit = 'Kg';
+    } else if (r.category === 'ATK & Administrasi') {
+      r.location = 'Ruang Kantor / Lemari ATK (Alat Tulis Kantor & Administrasi)';
+      r.baseUnit = 'Rim';
+    } else if (r.category === 'Alat Kebersihan') {
+      r.location = 'Gudang Non-Food - Rak N1 (Sabun, Kebersihan & Sanitasi Dapur)';
+      r.baseUnit = 'Pouch';
+    } else {
+      r.location = 'Gudang Non-Food - Rak N2 (Plastik, Kemasan & Tissue Dapur)';
+      r.baseUnit = 'Pack';
+    }
+    return r;
+  };
+
   const handleUpdateBatchRow = (id: string, field: keyof BatchMasterItemRow, value: any) => {
     setBatchRows(prev =>
       prev.map(row => {
         if (row.id !== id) return row;
         const updated = { ...row, [field]: value };
-        if (field === 'category') {
-          if (value === 'Bahan Kering') {
-            updated.location = 'Gudang Kering - Rak A1 (Sembako Beras & Karung Pangan)';
-            updated.baseUnit = 'Kg';
-          } else if (value === 'Bahan Basah') {
-            updated.location = 'Gudang Basah - Rak V1 (Sayuran Segar & Umbi Hijau)';
-            updated.baseUnit = 'Kg';
-          } else if (value === 'ATK & Administrasi') {
-            updated.location = 'Ruang Kantor / Lemari ATK (Alat Tulis Kantor & Administrasi)';
-            updated.baseUnit = 'Rim';
-          } else if (value === 'Alat Kebersihan') {
-            updated.location = 'Gudang Non-Food - Rak N1 (Sabun, Kebersihan & Sanitasi Dapur)';
-            updated.baseUnit = 'Pouch';
-          } else {
-            updated.location = 'Gudang Non-Food - Rak N2 (Plastik, Kemasan & Tissue Dapur)';
-            updated.baseUnit = 'Pack';
+        if (field === 'category') updated.categoryTouched = true;
+        // Rows start with a placeholder category; follow the item name until the user chooses one
+        if (field === 'name' && !row.categoryTouched && String(value).trim()) {
+          const detected = getDetailedItemCategory({ name: String(value) });
+          if (detected !== row.category) {
+            return { ...applyBatchCategoryDefaults({ ...updated, category: detected }), categoryTouched: false };
           }
         }
+        if (field === 'category') return applyBatchCategoryDefaults(updated);
         return updated;
       })
     );
@@ -1214,14 +1219,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
         name = c0;
         unit = (c1 || 'Kg') as BaseUnit;
         stock = parseFloat(c2) || 0;
-        minStock = parseFloat(c3) || 10;
+        minStock = c3 === '' ? 10 : Math.max(0, parseFloat(c3) || 0);
       }
 
       if (name) {
         cat = getDetailedItemCategory({ name });
         parsedRows.push({
           id: String(Date.now() + Math.random() + idx),
-          sku: `ITM-${Date.now().toString().slice(-4)}-${idx + 1}`,
+          sku: '',
           name,
           category: cat,
           baseUnit: unit,
@@ -1250,10 +1255,30 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       showError('Harap isi minimal 1 nama barang pada tabel.');
       return;
     }
+    const existingNames = new Set(items.map(i => i.name.trim().toLowerCase()));
+    const seenNames = new Set<string>();
+    const duplicateNames = validRows
+      .map(r => r.name.trim())
+      .filter(name => {
+        const key = name.toLowerCase();
+        const dup = existingNames.has(key) || seenNames.has(key);
+        seenNames.add(key);
+        return dup;
+      });
+    if (duplicateNames.length > 0) {
+      showError(`Barang sudah ada di master: ${duplicateNames.join(', ')}. Hapus baris itu atau ubah stoknya lewat Koreksi.`, 'Barang Kembar');
+      return;
+    }
 
     try {
-      const itemsToSave: ItemMaster[] = validRows.map(r => ({
-        id: r.sku.trim() || `ITM-${Date.now().toString().slice(-4)}`,
+      // Empty SKU: next free code for the item's storage area, counting codes assigned earlier in this batch
+      const assigned: ItemMaster[] = [...items];
+      const itemsToSave: ItemMaster[] = validRows.map(r => {
+        const id = r.sku.trim() || generateAutoSku(detectWarehouseType(r.location, r.category), assigned);
+        assigned.push({ id } as ItemMaster);
+        return { ...r, sku: id };
+      }).map(r => ({
+        id: r.sku,
         name: r.name.trim(),
         itemType: r.category === 'Bahan Basah'
           ? 'FOOD_DAILY_FLOW'
@@ -1262,8 +1287,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
           : 'OPERATIONAL_CONSUMABLE',
         category: r.category,
         baseUnit: r.baseUnit,
-        minimumStock: Number(r.minStock) || 10,
-        reorderPoint: (Number(r.minStock) || 10) * 1.5,
+        minimumStock: Math.max(0, Number(r.minStock) || 0),
+        reorderPoint: Math.max(0, Number(r.minStock) || 0) * 1.5,
         currentStock: Number(r.initialStock) || 0,
         location: r.location.trim() || 'Gudang Utama',
         expiryTrackingEnabled: r.category === 'Bahan Basah' || r.category === 'Bahan Kering',
@@ -1274,7 +1299,17 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       warehouseDb.saveItemsBatch(itemsToSave, currentUser);
       refreshData();
       setIsBatchModalOpen(false);
-      showToast(`Berhasil menyimpan ${validRows.length} master barang baru sekaligus!`);
+      // Start the next batch empty so saved rows are not submitted twice
+      setBatchRows(prev => prev.slice(0, 5).map((r, i) => ({
+        ...r,
+        id: String(Date.now() + i),
+        sku: '',
+        name: '',
+        initialStock: 0,
+        notes: '',
+        categoryTouched: false,
+      })));
+      showToast(`${validRows.length} barang baru tersimpan ke master barang.`);
     } catch (err: any) {
       showError(err.message || 'Gagal menyimpan batch barang.');
     }
@@ -1309,7 +1344,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
     exportToExcel(
       rows,
-      `Data_Stok_Barang_SPPG_MLG_TUMPANG_JERU_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      `Data_Stok_Barang_SPPG_MLG_TUMPANG_JERU_${localDateIso()}.xlsx`,
       'Stok Barang'
     );
   };
@@ -1363,203 +1398,126 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
           </div>
         )}
 
-      {/* ========================================================================= */}
-      {/* MODULE HEADER BAR */}
-      {/* ========================================================================= */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      {/* HEADER */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-xl border border-slate-200">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            Stok Barang & Master Inventaris
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Monitoring saldo stok fisik real-time, pengelolaan katalog master barang kustom, serta pelaksanaan audit fisik (stock opname) berkala.
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Stok Barang</h1>
+          <p className="text-xs text-slate-600 mt-0.5">
+            Saldo stok tiap barang, data master barang, dan stok opname.
           </p>
         </div>
 
-        {/* Sub-Tab Navigation Switcher (Sederhana, Ramping & 1 Baris) */}
-        <div className="inline-flex items-center p-0.5 bg-slate-100/90 rounded-lg border border-slate-200/70 text-xs shrink-0 self-start lg:self-auto">
-          <button
-            type="button"
-            onClick={() => setActiveMainTab('stock')}
-            className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-md font-medium transition-all cursor-pointer whitespace-nowrap ${
-              activeMainTab === 'stock'
-                ? 'bg-white text-emerald-900 font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Boxes className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Data Stok</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveMainTab('master')}
-            className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-md font-medium transition-all cursor-pointer whitespace-nowrap ${
-              activeMainTab === 'master'
-                ? 'bg-white text-emerald-900 font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Package className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Master Barang</span>
-            <span className="text-[10px] font-mono px-1 rounded bg-slate-200/70 text-slate-700">
-              {items.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveMainTab('opname')}
-            className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-md font-medium transition-all cursor-pointer whitespace-nowrap ${
-              activeMainTab === 'opname'
-                ? 'bg-white text-emerald-900 font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <ClipboardCheck className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Stok Opname</span>
-            {opnames.filter(o => o.status === 'PENDING_APPROVAL').length > 0 && (
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="Ada persetujuan pending" />
-            )}
-          </button>
+        <div role="tablist" aria-label="Bagian halaman stok" className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg text-xs self-start lg:self-auto">
+          {([
+            { id: 'stock', label: 'Saldo Stok', badge: null },
+            { id: 'master', label: 'Master Barang', badge: items.length },
+            { id: 'opname', label: 'Stok Opname', badge: opnames.filter(o => o.status === 'PENDING_APPROVAL').length > 0 ? `${opnames.filter(o => o.status === 'PENDING_APPROVAL').length} menunggu` : null },
+          ] as const).map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeMainTab === tab.id}
+              onClick={() => setActiveMainTab(tab.id)}
+              className={`inline-flex items-center gap-1.5 px-3 rounded-md whitespace-nowrap cursor-pointer min-h-[44px] sm:min-h-[32px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+                activeMainTab === tab.id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'
+              }`}
+            >
+              {tab.label}
+              {tab.badge !== null && (
+                <span
+                  className={`text-[11px] font-mono px-1.5 rounded-md ${
+                    tab.id === 'opname' ? 'bg-indigo-50 text-indigo-700 font-sans font-semibold' : 'bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* VIEW 1: DATA STOK KESELURUHAN BARANG */}
-      {/* ========================================================================= */}
+      {/* SALDO STOK */}
       {activeMainTab === 'stock' && (
-        <div className="space-y-5">
-          {/* KPI Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-            {/* Total Items */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-xs font-semibold">Total Macam Barang</span>
-                <Boxes className="w-4 h-4 text-slate-400" />
-              </div>
-              <div className="text-xl font-bold text-slate-900">
-                {stockMetrics.totalItems} <span className="text-xs font-normal text-slate-500">jenis</span>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">Aktif di sistem inventaris</p>
-            </div>
-
-            {/* Total Asset Value */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-xs font-semibold">Nilai Aset Fisik</span>
-                <ShoppingBag className="w-4 h-4 text-emerald-600" />
-              </div>
-              <div className="text-xl font-bold text-emerald-700 font-mono">
-                Rp {stockMetrics.totalAssetValue.toLocaleString('id-ID')}
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">Estimasi nilai total stok</p>
-            </div>
-
-            {/* Stock Normal */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-xs font-semibold">Stok Aman</span>
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              </div>
-              <div className="text-xl font-bold text-emerald-800">
-                {stockMetrics.normalCount} <span className="text-xs font-normal text-slate-500">jenis</span>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">Di atas batas minimum</p>
-            </div>
-
-            {/* Stock Low */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-xs font-semibold">Stok Menipis</span>
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
-              </div>
-              <div className="text-xl font-bold text-amber-700">
-                {stockMetrics.lowCount} <span className="text-xs font-normal text-slate-500">jenis</span>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">Perlu segera di-reorder</p>
-            </div>
-
-            {/* Stock Out */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-xs font-semibold">Stok Habis</span>
-                <XCircle className="w-4 h-4 text-rose-500" />
-              </div>
-              <div className="text-xl font-bold text-rose-700">
-                {stockMetrics.outCount} <span className="text-xs font-normal text-slate-500">jenis</span>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">Saldo stok 0 (kritis)</p>
-            </div>
+        <div className="space-y-4">
+          {/* Status tiles double as filters: the question each morning is what is low or empty */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+            {([
+              { id: 'ALL', label: 'Semua barang aktif', value: stockMetrics.totalItems, tone: 'text-slate-900', active: 'ring-slate-900' },
+              { id: 'OUT_OF_STOCK', label: 'Habis', value: stockMetrics.outCount, tone: 'text-rose-700', active: 'ring-rose-600' },
+              { id: 'LOW', label: 'Menipis', value: stockMetrics.lowCount, tone: 'text-amber-800', active: 'ring-amber-600' },
+              { id: 'NORMAL', label: 'Aman', value: stockMetrics.normalCount, tone: 'text-emerald-800', active: 'ring-emerald-600' },
+            ] as const).map(tile => (
+              <button
+                key={tile.id}
+                type="button"
+                onClick={() => setFilterStatus(tile.id)}
+                aria-pressed={filterStatus === tile.id}
+                className={`text-left bg-white p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+                  filterStatus === tile.id ? `ring-2 ${tile.active}` : ''
+                }`}
+              >
+                <span className="block text-[11px] font-medium text-slate-600">{tile.label}</span>
+                <span className={`block mt-1 text-2xl font-bold font-mono tabular-nums ${tile.tone}`}>{tile.value}</span>
+                <span className="block text-[11px] text-slate-600">jenis barang</span>
+              </button>
+            ))}
           </div>
 
-          {/* Action Header & Fast Opname Launch */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200">
+            <p className="text-xs text-slate-600">
+              Nilai stok:{' '}
+              <strong className="font-mono text-slate-900">Rp {stockMetrics.totalAssetValue.toLocaleString('id-ID')}</strong>
+              {stockMetrics.unpricedCount > 0 && (
+                <span className="text-slate-600">
+                  {' '}(belum termasuk {stockMetrics.unpricedCount} barang yang harganya belum diisi)
+                </span>
+              )}
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               {can('MANAGE_ITEMS') && (
                 <button
                   type="button"
                   onClick={handleOpenNewSingleItem}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors cursor-pointer"
-                  title="Tambah dan daftarkan item baru kustom langsung ke inventaris"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
                 >
-                  <Plus className="w-4 h-4 text-emerald-100" />
-                  <span>Tambah Item Custom</span>
+                  <Plus className="w-4 h-4" />
+                  Tambah Barang
                 </button>
               )}
-
-              <button
-                type="button"
-                onClick={() => setActiveMainTab('master')}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-900 text-white shadow-2xs transition-colors cursor-pointer"
-                title="Buka katalog dan kelola seluruh master barang"
-              >
-                <Package className="w-4 h-4 text-emerald-400" />
-                <span>Buka Master Barang</span>
-              </button>
-
-              {/* Fast Launch Opname for Active Category */}
               <button
                 type="button"
                 onClick={() => {
                   setActiveMainTab('opname');
                   handleOpenCreateOpname(selectedCategoryTab !== 'Semua Kategori' ? selectedCategoryTab : undefined);
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer"
-                title="Lakukan audit fisik stok untuk kategori ini"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
               >
-                <ClipboardCheck className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Opname Kategori Ini</span>
+                <ClipboardCheck className="w-4 h-4 text-slate-500" />
+                {selectedCategoryTab !== 'Semua Kategori' ? `Opname ${selectedCategoryTab}` : 'Mulai Opname'}
               </button>
-            </div>
-
-            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleExportStockExcel}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
               >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Ekspor Excel</span>
+                <FileSpreadsheet className="w-4 h-4 text-slate-500" />
+                Ekspor Excel
               </button>
-
               <button
                 type="button"
                 onClick={() => setIsPrintPreviewOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer shadow-2xs"
-                title="Buka pratinjau dan cetak rekapitulasi stok resmi SPPG"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
               >
-                <Printer className="w-3.5 h-3.5 text-slate-600" />
-                <span>Cetak Rekap</span>
+                <Printer className="w-4 h-4 text-slate-500" />
+                Cetak Rekap
               </button>
             </div>
           </div>
 
-          {/* Main Table Container */}
-          <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
-            {/* Category Filter Tabs & Search Bar */}
-            <div className="p-4 border-b border-slate-150 bg-slate-50/50 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              {/* Category Filter Tabs (Clean Segmented / Pill Bar) */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="p-3.5 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-1">
                 {SPPG_STOCK_CATEGORIES.map(cat => {
                   const count = stockMetrics.categoryItemCounts[cat] || 0;
@@ -1569,184 +1527,190 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                       key={cat}
                       type="button"
                       onClick={() => setSelectedCategoryTab(cat)}
-                      className={`h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                      aria-pressed={isSelected}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs cursor-pointer flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
                         isSelected
-                          ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                          : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/70'
+                          ? 'bg-slate-900 text-white font-semibold'
+                          : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 font-medium'
                       }`}
                     >
-                      <span>{cat}</span>
-                      <span
-                        className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                          isSelected
-                            ? 'bg-slate-800 text-slate-200'
-                            : 'bg-slate-100 text-slate-500'
-                        }`}
-                      >
-                        {count}
-                      </span>
+                      {cat === 'Semua Kategori' ? 'Semua' : cat}
+                      <span className={`text-[11px] font-mono ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>{count}</span>
                     </button>
                   );
                 })}
               </div>
-
-              {/* Status and Search Filter */}
-              <div className="flex items-center gap-2 shrink-0">
-                <select
-                  value={filterStatus}
-                  onChange={e => setFilterStatus(e.target.value)}
-                  className="h-8 px-2.5 text-xs border border-slate-200 rounded-lg bg-white text-slate-700 font-medium hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 cursor-pointer shadow-2xs"
-                >
-                  <option value="ALL">Semua Status</option>
-                  <option value="NORMAL">Stok Aman</option>
-                  <option value="LOW">Stok Menipis</option>
-                  <option value="OUT_OF_STOCK">Stok Habis (0)</option>
-                </select>
-
-                <div className="relative w-48 sm:w-56">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type="text"
-                    placeholder="Cari barang / lokasi..."
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    className="w-full h-8 pl-8 pr-7 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 placeholder:text-slate-400 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 transition-colors shadow-2xs"
-                  />
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-0.5 cursor-pointer"
-                      title="Hapus pencarian"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
+              <div className="relative w-full lg:w-64 shrink-0">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+                <input
+                  type="search"
+                  placeholder="Cari nama, SKU, lokasi"
+                  aria-label="Cari barang"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-500 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                />
               </div>
             </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200/80">
-                  <tr>
-                    <th className="py-2.5 px-3 w-10 text-center font-normal">#</th>
-                    <th className="py-2.5 px-3 w-28 font-medium">Kode SKU</th>
-                    <th className="py-2.5 px-3 min-w-[200px] font-medium">Nama Barang & Lokasi Simpan</th>
-                    <th className="py-2.5 px-3 w-36 font-medium">Kategori</th>
-                    <th className="py-2.5 px-3 w-32 text-right font-medium">Saldo Stok Fisik</th>
-                    <th className="py-2.5 px-3 w-28 text-center font-medium">Status</th>
-                    <th className="py-2.5 px-3 w-28 text-right font-medium">Min. Stok</th>
-                    <th className="py-2.5 px-3 w-32 text-right font-medium">Estimasi Aset</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="py-12 text-center text-slate-500">
-                        {items.length === 0 ? (
-                          <div className="max-w-md mx-auto space-y-2">
-                            <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
-                              <Package className="w-5 h-5" />
-                            </div>
-                            <div className="font-semibold text-slate-800 text-xs">
-                              Belum Ada Data Stok Barang
-                            </div>
-                            <p className="text-[11px] text-slate-500">
-                              Master inventaris kosong. Silakan buka tab <strong className="text-emerald-700 cursor-pointer" onClick={() => setActiveMainTab('master')}>Master Barang</strong> untuk menambahkan item baru.
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="italic text-slate-400">
-                            Tidak ada data barang yang sesuai dengan filter kategori & pencarian saat ini.
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredItems.map((item, idx) => {
-                      const cat = getDetailedItemCategory(item);
-                      const status = getItemStockStatus(item);
-                      const unitPrice = getItemEstimatedUnitPrice(item.name, cat, item.estimatedPrice);
-                      const assetValue = Math.max(0, item.currentStock) * unitPrice;
-
-                      let statusBadge = (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Aman
-                        </span>
-                      );
-                      if (status === 'LOW') {
-                        statusBadge = (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700">
-                            <AlertTriangle className="w-3 h-3 text-amber-600" /> Menipis
-                          </span>
+            {filteredItems.length === 0 ? (
+              <div className="py-12 px-4 text-center">
+                <p className="text-xs font-semibold text-slate-800">
+                  {activeItems.length === 0 ? 'Belum ada barang di master.' : 'Tidak ada barang yang cocok dengan filter.'}
+                </p>
+                <p className="text-[11px] text-slate-600 mt-1">
+                  {activeItems.length === 0
+                    ? 'Tambahkan barang di tab Master Barang.'
+                    : 'Ubah kategori, status, atau kata kunci pencarian.'}
+                </p>
+                {activeItems.length > 0 && (filterStatus !== 'ALL' || selectedCategoryTab !== 'Semua Kategori' || searchQuery) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterStatus('ALL');
+                      setSelectedCategoryTab('Semua Kategori');
+                      setSearchQuery('');
+                    }}
+                    className="mt-3 text-xs font-semibold text-emerald-700 hover:underline cursor-pointer"
+                  >
+                    Hapus semua filter
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-3 min-w-[220px]">Barang</th>
+                        <th className="py-2.5 px-3 w-36">Kategori</th>
+                        <th className="py-2.5 px-3 w-32 text-right">Stok</th>
+                        <th className="py-2.5 px-3 w-28 text-right">Minimum</th>
+                        <th className="py-2.5 px-3 w-24">Status</th>
+                        <th className="py-2.5 px-3 w-32 text-right">Nilai</th>
+                        {can('MANAGE_ITEMS') && <th className="py-2.5 px-3 w-20"><span className="sr-only">Aksi</span></th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredItems.map(item => {
+                        const cat = getDetailedItemCategory(item);
+                        const status = getItemStockStatus(item);
+                        const unitPrice = getItemEstimatedUnitPrice(item.name, cat, item.estimatedPrice);
+                        const rackSpec = getStorageLocationDetails(item.location);
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-50">
+                            <td className="py-2.5 px-3">
+                              <div className="font-semibold text-slate-900">{item.name}</div>
+                              <div className="text-[11px] text-slate-600 mt-0.5">
+                                <span className="font-mono">{item.id}</span> · {rackSpec.rackCode} {rackSpec.shortName}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-700">{cat}</td>
+                            <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                              <span
+                                className={`font-mono font-semibold ${
+                                  status === 'OUT_OF_STOCK' ? 'text-rose-700' : status === 'LOW' ? 'text-amber-800' : 'text-slate-900'
+                                }`}
+                              >
+                                {item.currentStock.toLocaleString('id-ID')}
+                              </span>{' '}
+                              <span className="text-slate-600 text-[11px]">{item.baseUnit}</span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono text-slate-600 whitespace-nowrap">
+                              {item.minimumStock.toLocaleString('id-ID')} {item.baseUnit}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span
+                                className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold ${
+                                  status === 'OUT_OF_STOCK'
+                                    ? 'bg-rose-50 text-rose-700'
+                                    : status === 'LOW'
+                                    ? 'bg-amber-50 text-amber-800'
+                                    : 'bg-emerald-50 text-emerald-800'
+                                }`}
+                              >
+                                {status === 'OUT_OF_STOCK' ? 'Habis' : status === 'LOW' ? 'Menipis' : 'Aman'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              {unitPrice > 0 ? (
+                                <>
+                                  <div className="font-mono text-slate-900">
+                                    Rp {(Math.max(0, item.currentStock) * unitPrice).toLocaleString('id-ID')}
+                                  </div>
+                                  <div className="text-[11px] text-slate-600 font-mono">@ Rp {unitPrice.toLocaleString('id-ID')}</div>
+                                </>
+                              ) : (
+                                <span className="text-[11px] text-slate-600">Harga belum diisi</span>
+                              )}
+                            </td>
+                            {can('MANAGE_ITEMS') && (
+                              <td className="py-2.5 px-3 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenAdjust(item)}
+                                  className="text-xs font-semibold text-emerald-700 hover:underline cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                                >
+                                  Koreksi
+                                </button>
+                              </td>
+                            )}
+                          </tr>
                         );
-                      } else if (status === 'OUT_OF_STOCK') {
-                        statusBadge = (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 text-rose-700">
-                            <XCircle className="w-3 h-3 text-rose-500" /> Habis
-                          </span>
-                        );
-                      }
+                      })}
+                    </tbody>
+                  </table>
+                </div>
 
-                      return (
-                        <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
-                            {idx + 1}
-                          </td>
-                          <td className="py-2.5 px-3 font-mono text-slate-600 font-medium">
-                            {item.id}
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <div className="font-semibold text-slate-900">{item.name}</div>
-                            {(() => {
-                              const rackSpec = getStorageLocationDetails(item.location);
-                              return (
-                                <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-1.5 mt-1">
-                                  <span className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200/70 shrink-0">
-                                    <Store className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
-                                    {rackSpec.rackCode}
-                                  </span>
-                                  <span className="text-slate-700 font-medium">{rackSpec.shortName}</span>
-                                  <span className="text-slate-500 text-[10px]">({rackSpec.commodityDetail})</span>
-                                  {item.notes && <span className="italic text-slate-400 text-[10px] truncate">• {item.notes}</span>}
-                                </div>
-                              );
-                            })()}
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <span className="inline-block px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600">
-                              {cat}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 text-right">
-                            <span className="font-mono font-semibold text-slate-900">
-                              {item.currentStock.toLocaleString('id-ID')}
-                            </span>{' '}
-                            <span className="text-slate-500 text-[11px]">{item.baseUnit}</span>
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
-                            {statusBadge}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono text-slate-500 text-xs">
-                            {item.minimumStock} {item.baseUnit}
-                          </td>
-                          <td className="py-2.5 px-3 text-right">
-                            <div className="font-mono font-medium text-slate-900">
-                              Rp {assetValue.toLocaleString('id-ID')}
-                            </div>
-                            <div className="text-[10px] text-slate-400 font-mono">
-                              @ Rp {unitPrice.toLocaleString('id-ID')}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                <ul className="md:hidden divide-y divide-slate-100">
+                  {filteredItems.map(item => {
+                    const status = getItemStockStatus(item);
+                    const rackSpec = getStorageLocationDetails(item.location);
+                    return (
+                      <li key={item.id} className="p-4 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-slate-900 leading-snug">{item.name}</div>
+                          <div className="text-[11px] text-slate-600 mt-0.5">
+                            {getDetailedItemCategory(item)} · {rackSpec.rackCode}
+                          </div>
+                          <div className="text-[11px] text-slate-600">Minimum {item.minimumStock.toLocaleString('id-ID')} {item.baseUnit}</div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div
+                            className={`font-mono text-sm font-semibold ${
+                              status === 'OUT_OF_STOCK' ? 'text-rose-700' : status === 'LOW' ? 'text-amber-800' : 'text-slate-900'
+                            }`}
+                          >
+                            {item.currentStock.toLocaleString('id-ID')} <span className="text-[11px] font-sans font-normal text-slate-600">{item.baseUnit}</span>
+                          </div>
+                          <span
+                            className={`inline-block mt-1 px-1.5 py-0.5 rounded-md text-[11px] font-semibold ${
+                              status === 'OUT_OF_STOCK'
+                                ? 'bg-rose-50 text-rose-700'
+                                : status === 'LOW'
+                                ? 'bg-amber-50 text-amber-800'
+                                : 'bg-emerald-50 text-emerald-800'
+                            }`}
+                          >
+                            {status === 'OUT_OF_STOCK' ? 'Habis' : status === 'LOW' ? 'Menipis' : 'Aman'}
+                          </span>
+                          {can('MANAGE_ITEMS') && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAdjust(item)}
+                              className="block ml-auto mt-1 px-2 text-xs font-semibold text-emerald-700 cursor-pointer min-h-[44px]"
+                            >
+                              Koreksi
+                            </button>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1757,14 +1721,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {activeMainTab === 'master' && (
         <div className="space-y-5">
           {/* Header Action Card for Master Barang */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
             <div>
               <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <Package className="w-5 h-5 text-emerald-600" />
-                Katalog Master Barang SPPG
+                Master Barang
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Kelola spesifikasi item resmi, satuan, batas minimum stok, lokasi simpan, serta registrasi item custom baru.
+                Data tiap barang: SKU, satuan, batas minimum, lokasi simpan, dan harga satuan.
               </p>
             </div>
 
@@ -1777,7 +1741,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                   title="Tambah item custom baru"
                 >
                   <Plus className="w-4 h-4 text-emerald-100" />
-                  <span>Tambah Item Custom</span>
+                  <span>Tambah Barang</span>
                 </button>
               )}
 
@@ -1793,7 +1757,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                   title="Input masal banyak item sekaligus"
                 >
                   <TableProperties className="w-4 h-4 text-slate-600" />
-                  <span>Input Masal (Batch)</span>
+                  <span>Tambah Banyak</span>
                 </button>
               )}
 
@@ -1804,7 +1768,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 title="Unduh seluruh data master barang ke Excel"
               >
                 <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                <span>Ekspor Master Excel</span>
+                <span>Ekspor Excel</span>
               </button>
             </div>
           </div>
@@ -1814,7 +1778,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
               <div className="flex items-center justify-between text-slate-500 mb-1">
                 <span className="text-xs font-semibold">Total Master Item</span>
-                <Package className="w-4 h-4 text-slate-400" />
+                <Package className="w-4 h-4 text-slate-500" />
               </div>
               <div className="text-xl font-bold text-slate-900">
                 {masterMetrics.total} <span className="text-xs font-normal text-slate-500">item</span>
@@ -1858,7 +1822,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
               <div className="flex items-center justify-between text-slate-500 mb-1">
                 <span className="text-xs font-semibold">Non-Pangan</span>
-                <Layers className="w-4 h-4 text-slate-400" />
+                <Layers className="w-4 h-4 text-slate-500" />
               </div>
               <div className="text-xl font-bold text-slate-700">
                 {masterMetrics.nonFood} <span className="text-xs font-normal text-slate-500">jenis</span>
@@ -1907,13 +1871,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 </select>
 
                 <div className="relative w-64">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
                   <input
                     type="text"
                     placeholder="Cari SKU, nama, lokasi, catatan..."
                     value={masterSearchQuery}
                     onChange={e => setMasterSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
               </div>
@@ -1932,7 +1896,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                     <th className="py-3 px-3 w-28 text-right">Min. Stok</th>
                     <th className="py-3 px-3 w-28 text-right">Saldo Saat Ini</th>
                     <th className="py-3 px-3 w-36">Lokasi Gudang</th>
-                    <th className="py-3 px-3 w-28 text-right">Estimasi Harga</th>
+                    <th className="py-3 px-3 w-28 text-right">Harga Satuan</th>
                     <th className="py-3 px-3 w-20 text-center">Status</th>
                     <th className="py-3 px-3 w-28 text-center">Aksi Master</th>
                   </tr>
@@ -1943,7 +1907,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                       <td colSpan={11} className="py-12 text-center text-slate-500">
                         {items.length === 0 ? (
                           <div className="max-w-md mx-auto space-y-3">
-                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+                            <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
                               <Package className="w-6 h-6" />
                             </div>
                             <div className="font-bold text-slate-800 text-sm">
@@ -1978,7 +1942,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                             )}
                           </div>
                         ) : (
-                          <div className="italic text-slate-400">
+                          <div className="italic text-slate-500">
                             Tidak ada data master barang yang sesuai dengan filter dan pencarian saat ini.
                           </div>
                         )}
@@ -1992,7 +1956,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
                       return (
                         <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3 px-3 text-center text-slate-400 font-mono text-[11px]">
+                          <td className="py-3 px-3 text-center text-slate-500 font-mono text-[11px]">
                             {idx + 1}
                           </td>
                           <td className="py-3 px-3 font-mono font-semibold text-slate-700">
@@ -2001,7 +1965,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                           <td className="py-3 px-3">
                             <div className="font-bold text-slate-900">{item.name}</div>
                             {item.notes && (
-                              <div className="text-[10px] text-slate-400 mt-0.5 italic">
+                              <div className="text-[10px] text-slate-500 mt-0.5 italic">
                                 {item.notes}
                               </div>
                             )}
@@ -2029,7 +1993,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                               return (
                                 <div className="flex flex-col gap-0.5 max-w-xs">
                                   <div className="text-slate-800 text-[11px] font-semibold flex items-center gap-1.5">
-                                    <span className="font-mono text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+                                    <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
                                       {rackSpec.rackCode}
                                     </span>
                                     <span className="truncate">{rackSpec.shortName}</span>
@@ -2042,7 +2006,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                             })()}
                           </td>
                           <td className="py-3 px-3 text-right font-mono text-slate-700">
-                            Rp {unitPrice.toLocaleString('id-ID')}
+                            {unitPrice > 0 ? `Rp ${unitPrice.toLocaleString('id-ID')}` : <span className="font-sans text-[11px] text-slate-600">Belum diisi</span>}
                           </td>
                           <td className="py-3 px-3 text-center">
                             {isActive ? (
@@ -2057,20 +2021,24 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                           </td>
                           <td className="py-3 px-3 text-center">
                             <div className="flex items-center justify-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenAdjust(item)}
-                                className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors cursor-pointer"
-                                title="Koreksi / Penyesuaian Cepat Stok Fisik"
-                              >
-                                <RefreshCw className="w-3.5 h-3.5" />
-                              </button>
+                              {can('MANAGE_ITEMS') && isActive && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenAdjust(item)}
+                                  className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors cursor-pointer"
+                                  title="Koreksi stok"
+                                  aria-label={`Koreksi stok ${item.name}`}
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                               {can('MANAGE_ITEMS') && (
                                 <button
                                   type="button"
                                   onClick={() => handleOpenEditItem(item)}
                                   className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                                  title="Edit data & spesifikasi master barang"
+                                  title="Edit data barang"
+                                  aria-label={`Edit ${item.name}`}
                                 >
                                   <Edit2 className="w-3.5 h-3.5" />
                                 </button>
@@ -2079,8 +2047,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                                 <button
                                   type="button"
                                   onClick={() => handleToggleActive(item)}
-                                  className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors cursor-pointer"
-                                  title={isActive ? 'Nonaktifkan item ini' : 'Aktifkan kembali item ini'}
+                                  className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors cursor-pointer"
+                                  title={isActive ? 'Nonaktifkan barang ini' : 'Aktifkan kembali barang ini'}
+                                  aria-label={isActive ? `Nonaktifkan ${item.name}` : `Aktifkan ${item.name}`}
                                 >
                                   {isActive ? <Minus className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
                                 </button>
@@ -2089,8 +2058,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteItem(item)}
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
-                                  title="Hapus master barang dari sistem"
+                                  className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                                  title="Hapus barang dari master"
+                                  aria-label={`Hapus ${item.name}`}
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -2114,14 +2084,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {activeMainTab === 'opname' && (
         <div className="space-y-5">
           {/* Header Action Card for Opname */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
             <div>
               <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <ClipboardCheck className="w-5 h-5 text-emerald-600" />
-                Audit Fisik Stok Opname SPPG
+                Stok Opname
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Lakukan pencocokan stok fisik di gudang dengan data sistem. Anda dapat membuat sesi opname spesifik per kategori (misal: Bahan Basah saja, Bahan Kering saja, dll.) atau seluruh gudang.
+                Hitung ulang stok fisik di gudang dan cocokkan dengan sistem. Selisih baru mengubah stok setelah disetujui pejabat yang berwenang.
               </p>
             </div>
 
@@ -2132,7 +2102,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer whitespace-nowrap"
               >
                 <Plus className="w-4 h-4 text-emerald-100" />
-                <span>Stock Opname</span>
+                <span>Mulai Opname</span>
               </button>
             </div>
           </div>
@@ -2141,7 +2111,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
             <div className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Pilih Kategori untuk Audit Fisik Cepat:</span>
+              <span>Opname per kategori:</span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {SPPG_STOCK_CATEGORIES.map(cat => {
@@ -2154,7 +2124,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-200 transition-colors cursor-pointer"
                   >
                     <span>{cat}</span>
-                    <span className="font-mono text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded-full">
+                    <span className="font-mono text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full">
                       {count}
                     </span>
                   </button>
@@ -2167,7 +2137,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
             <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-800">Riwayat Sesi Stock Opname</span>
+                <span className="text-xs font-bold text-slate-800">Riwayat Opname</span>
                 <select
                   value={opnameStatusFilter}
                   onChange={e => setOpnameStatusFilter(e.target.value as any)}
@@ -2180,13 +2150,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               </div>
 
               <div className="relative w-64">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
                 <input
                   type="text"
                   placeholder="Cari no sesi, area, atau pemeriksa..."
                   value={opnameSearchQuery}
                   onChange={e => setOpnameSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
             </div>
@@ -2207,8 +2177,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {filteredOpnames.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-400 italic">
-                        Belum ada riwayat sesi stock opname yang sesuai filter.
+                      <td colSpan={7} className="py-12 text-center text-slate-600">
+                        Belum ada opname yang cocok dengan filter.
                       </td>
                     </tr>
                   ) : (
@@ -2229,7 +2199,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                           </td>
                           <td className="py-3 px-4 text-slate-700">
                             <div className="font-semibold text-slate-900">{session.date}</div>
-                            <div className="text-[10px] text-slate-400">
+                            <div className="text-[10px] text-slate-500">
                               Dibuat: {session.createdAt.slice(0, 16).replace('T', ' ')}
                             </div>
                           </td>
@@ -2303,111 +2273,89 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {/* MODAL: FORMULIR PELAKSANAAN STOCK OPNAME BARU (BISA PER KATEGORI) */}
       {/* ========================================================================= */}
       {isCreateOpnameModalOpen && (
-        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Pelaksanaan Stock Opname Fisik
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Pilih kategori yang diaudit dan masukkan hasil perhitungan fisik aktual di gudang.
+                <h3 className="text-base font-bold text-slate-900">Stok Opname</h3>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Isi jumlah fisik tiap barang. Kalau sama dengan sistem, cukup tekan Sesuai.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsCreateOpnameModalOpen(false)}
-                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                title="Tutup dialog"
+                aria-label="Tutup"
+                className="p-2 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Body */}
-            <div className="p-6 overflow-y-auto space-y-4 flex-1">
-              {/* Opname Parameters */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 p-4 bg-slate-50/80 rounded-xl border border-slate-200 text-xs">
-                {/* Kategori Selector */}
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">
-                    Kategori Barang
-                  </label>
-                  <select
-                    value={opnameCategoryFilter}
-                    onChange={e => handleOpnameCategoryChange(e.target.value as SppgCategory)}
-                    className="w-full text-xs font-medium border border-slate-200 rounded-lg p-2 bg-white text-slate-800 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 cursor-pointer transition-colors"
-                  >
-                    {SPPG_STOCK_CATEGORIES.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Tanggal Opname */}
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">
-                    Tanggal Pelaksanaan
-                  </label>
-                  <input
-                    type="date"
-                    value={opnameFormDate}
-                    onChange={e => setOpnameFormDate(e.target.value)}
-                    className="w-full text-xs border border-slate-200 rounded-lg p-2 bg-white text-slate-800 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 cursor-pointer transition-colors"
-                  />
-                </div>
-
-                {/* Lokasi Gudang */}
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">
-                    Lokasi Gudang
-                  </label>
-                  <input
-                    type="text"
-                    value={opnameFormLocation}
-                    onChange={e => setOpnameFormLocation(e.target.value)}
-                    className="w-full text-xs border border-slate-200 rounded-lg p-2 bg-white text-slate-800 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-colors"
-                  />
-                </div>
-
-                {/* Pemeriksa */}
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">
-                    Petugas Pemeriksa
-                  </label>
-                  <div className="w-full border border-slate-200 rounded-lg p-2 bg-slate-100 text-slate-700 font-medium truncate">
-                    {currentUser.name} ({currentUser.role})
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
+              {/* Opname Parameters: category decides the list, so it stays visible; the rest folds away */}
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                  <div>
+                    <label htmlFor="opname-category" className="block font-semibold text-slate-700 mb-1">Kategori yang dihitung</label>
+                    <select
+                      id="opname-category"
+                      value={opnameCategoryFilter}
+                      onChange={e => handleOpnameCategoryChange(e.target.value as SppgCategory)}
+                      className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                    >
+                      {SPPG_STOCK_CATEGORIES.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
                   </div>
+                  <p className="text-[11px] text-slate-600 sm:pb-2">
+                    Pemeriksa: <strong className="text-slate-800">{currentUser.name}</strong> · {opnameFormDate}
+                  </p>
                 </div>
 
-                {/* Keterangan */}
-                <div className="sm:col-span-2 lg:col-span-4">
-                  <label className="block font-medium text-slate-700 mb-1">
-                    Catatan Sesi
-                  </label>
-                  <input
-                    type="text"
-                    value={opnameFormNotes}
-                    onChange={e => setOpnameFormNotes(e.target.value)}
-                    placeholder="Catatan audit atau kondisi fisik gudang (opsional)..."
-                    className="w-full text-xs border border-slate-200 rounded-lg p-2 bg-white text-slate-800 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 transition-colors"
-                  />
-                </div>
+                <details className="group">
+                  <summary className="cursor-pointer select-none font-semibold text-emerald-700 min-h-[44px] sm:min-h-0 flex items-center">
+                    Ubah tanggal, lokasi, atau catatan
+                  </summary>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                    <div>
+                      <label htmlFor="opname-date" className="block font-semibold text-slate-700 mb-1">Tanggal</label>
+                      <input id="opname-date" type="date" value={opnameFormDate} onChange={e => setOpnameFormDate(e.target.value)} className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" />
+                    </div>
+                    <div>
+                      <label htmlFor="opname-location" className="block font-semibold text-slate-700 mb-1">Lokasi gudang</label>
+                      <input id="opname-location" type="text" value={opnameFormLocation} onChange={e => setOpnameFormLocation(e.target.value)} className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" />
+                    </div>
+                    <div>
+                      <label htmlFor="opname-notes" className="block font-semibold text-slate-700 mb-1">Catatan</label>
+                      <input
+                        id="opname-notes"
+                        type="text"
+                        value={opnameFormNotes}
+                        onChange={e => setOpnameFormNotes(e.target.value)}
+                        placeholder="Opsional"
+                        className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                      />
+                    </div>
+                  </div>
+                </details>
               </div>
 
               {/* Items Counting Table */}
               <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
+                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
                   <div className="font-semibold text-slate-800">
                     Daftar Barang ({countingItems.length} item • {opnameCategoryFilter})
                   </div>
                   <div className="text-slate-500 text-[11px]">
-                    Gunakan tombol <strong>Samakan</strong> jika stok fisik sama dengan stok sistem
+                    Tekan <strong>Sesuai</strong> jika jumlah fisik sama dengan sistem
                   </div>
                 </div>
 
-                <div className="overflow-x-auto max-h-[50vh]">
+                <div className="hidden md:block overflow-x-auto max-h-[50vh]">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 sticky top-0 z-10">
                       <tr>
@@ -2425,12 +2373,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
                         return (
                           <tr key={item.itemId} className={hasVariance ? 'bg-amber-50/40' : 'hover:bg-slate-50/70 transition-colors'}>
-                            <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
+                            <td className="py-2.5 px-3 text-center text-slate-500 font-mono text-[11px]">
                               {idx + 1}
                             </td>
                             <td className="py-2.5 px-3">
                               <div className="font-semibold text-slate-900">{item.name}</div>
-                              <div className="text-[11px] text-slate-400 font-mono mt-0.5">{item.itemId} • {item.category}</div>
+                              <div className="text-[11px] text-slate-500 font-mono mt-0.5">{item.itemId} • {item.category}</div>
                             </td>
                             <td className="py-2.5 px-3 text-right">
                               <span className="font-mono font-semibold text-slate-800 text-sm">
@@ -2452,9 +2400,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                                   <input
                                     type="number"
                                     step="any"
-                                    value={item.physicalCount}
+                                    min="0"
+                                    value={item.physicalCount ?? ''}
+                                    placeholder="?"
+                                    aria-label={`Jumlah fisik ${item.name}`}
                                     onChange={e => handlePhysicalCountChange(idx, e.target.value)}
-                                    className="w-16 h-7 text-xs text-center font-mono font-semibold text-slate-900 border-x border-slate-200 focus:outline-none focus:bg-emerald-50/50"
+                                    className="w-16 h-7 text-xs text-center font-mono font-semibold text-slate-900 border-x border-slate-200 focus:outline-none focus:bg-emerald-50/50 placeholder:text-slate-500"
                                   />
                                   <button
                                     type="button"
@@ -2469,14 +2420,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                                   type="button"
                                   onClick={() => handleOpnameMatch(idx)}
                                   className="h-7 px-2.5 text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200/80 transition-colors cursor-pointer"
-                                  title="Samakan dengan stok sistem"
+                                  title="Hasil hitung sama dengan stok sistem"
                                 >
-                                  Samakan
+                                  Sesuai
                                 </button>
                               </div>
                             </td>
                             <td className="py-2.5 px-3 text-center">
-                              {item.variance === 0 ? (
+                              {item.physicalCount === null ? (
+                                <span className="text-[11px] text-slate-600">Belum dihitung</span>
+                              ) : item.variance === 0 ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600">
                                   0 (Sesuai)
                                 </span>
@@ -2515,7 +2468,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                                   </div>
                                 </div>
                               ) : (
-                                <span className="text-slate-400 text-xs">-</span>
+                                <span className="text-slate-500 text-xs">-</span>
                               )}
                             </td>
                           </tr>
@@ -2524,26 +2477,105 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                     </tbody>
                   </table>
                 </div>
+
+                {/* HP: satu kartu per barang, dipakai sambil berkeliling gudang */}
+                <ul className="md:hidden divide-y divide-slate-100">
+                  {countingItems.map((item, idx) => (
+                    <li key={item.itemId} className={`p-3.5 ${item.physicalCount !== null && item.variance !== 0 ? 'bg-amber-50/50' : ''}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-slate-900 leading-snug">{item.name}</div>
+                          <div className="text-[11px] text-slate-600 mt-0.5">
+                            Sistem: <span className="font-mono font-semibold text-slate-800">{item.systemStock}</span> {item.unit}
+                          </div>
+                        </div>
+                        <span className="text-[11px] shrink-0">
+                          {item.physicalCount === null ? (
+                            <span className="text-slate-600">Belum dihitung</span>
+                          ) : item.variance === 0 ? (
+                            <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-semibold">Sesuai</span>
+                          ) : (
+                            <span className={`px-1.5 py-0.5 rounded-md font-semibold font-mono ${item.variance < 0 ? 'bg-rose-50 text-rose-700' : 'bg-sky-50 text-sky-700'}`}>
+                              {item.variance > 0 ? '+' : ''}{item.variance} {item.unit}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="inline-flex items-center rounded-lg border border-slate-300 bg-white overflow-hidden">
+                          <button type="button" onClick={() => handleOpnameStep(idx, -1)} aria-label={`Kurangi 1 ${item.name}`} className="w-11 h-11 text-base font-semibold text-slate-700 cursor-pointer">-</button>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            step="any"
+                            value={item.physicalCount ?? ''}
+                            placeholder="?"
+                            aria-label={`Jumlah fisik ${item.name}`}
+                            onChange={e => handlePhysicalCountChange(idx, e.target.value)}
+                            className="w-20 h-11 text-sm text-center font-mono font-semibold text-slate-900 border-x border-slate-300 focus:outline-none focus:bg-emerald-50 placeholder:text-slate-500"
+                          />
+                          <button type="button" onClick={() => handleOpnameStep(idx, 1)} aria-label={`Tambah 1 ${item.name}`} className="w-11 h-11 text-base font-semibold text-slate-700 cursor-pointer">+</button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpnameMatch(idx)}
+                          className="h-11 px-3 text-xs font-semibold text-emerald-800 bg-emerald-50 rounded-lg border border-emerald-200 cursor-pointer"
+                        >
+                          Sesuai
+                        </button>
+                      </div>
+                      {item.physicalCount !== null && item.variance !== 0 && (
+                        <div className="mt-2 space-y-1.5">
+                          <input
+                            type="text"
+                            value={item.reason}
+                            onChange={e => handleOpnameReasonChange(idx, e.target.value)}
+                            placeholder="Alasan selisih..."
+                            aria-label={`Alasan selisih ${item.name}`}
+                            className="w-full text-xs border border-amber-300 rounded-lg px-2.5 py-2.5 bg-white text-slate-900"
+                          />
+                          <div className="flex flex-wrap gap-1">
+                            {['Susut alami', 'Rusak / kadaluarsa', 'Belum tercatat'].map(preset => (
+                              <button
+                                key={preset}
+                                type="button"
+                                onClick={() => handleOpnameReasonChange(idx, preset)}
+                                className="text-[11px] bg-slate-100 text-slate-700 px-2.5 py-1.5 rounded-md cursor-pointer"
+                              >
+                                {preset}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               </div>
             </div>
 
             {/* Footer Summary & Buttons */}
-            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-3 text-slate-500 text-xs">
+            <div className="px-4 sm:px-6 py-4 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-600 text-xs">
                 <span>Total: <strong className="text-slate-800">{countingItems.length}</strong> item</span>
                 <span>•</span>
-                <span className="text-emerald-700 font-medium"><strong>{countingItems.filter(i => i.variance === 0).length}</strong> sesuai</span>
+                <span className={countingItems.some(i => i.physicalCount === null) ? 'text-amber-800 font-semibold' : 'text-slate-600'}>
+                  <strong>{countingItems.filter(i => i.physicalCount === null).length}</strong> belum dihitung
+                </span>
+                <span>•</span>
+                <span className="text-emerald-700 font-medium"><strong>{countingItems.filter(i => i.physicalCount !== null && i.variance === 0).length}</strong> sesuai</span>
                 <span>•</span>
                 <span className={countingItems.some(i => i.variance !== 0) ? 'text-amber-700 font-semibold' : 'text-slate-500'}>
                   <strong>{countingItems.filter(i => i.variance !== 0).length}</strong> selisih
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsCreateOpnameModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-700 hover:bg-slate-100 rounded-lg font-medium transition-colors cursor-pointer"
+                  className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg font-medium cursor-pointer min-h-[44px] sm:min-h-[36px]"
                 >
                   Batal
                 </button>
@@ -2551,7 +2583,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 <button
                   type="button"
                   onClick={() => handleSubmitOpnameSession(false)}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium shadow-2xs transition-colors cursor-pointer"
+                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px]"
                 >
                   Simpan Sesi Opname
                 </button>
@@ -2560,9 +2592,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                   <button
                     type="button"
                     onClick={() => handleSubmitOpnameSession(true)}
-                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-medium shadow-2xs transition-colors cursor-pointer"
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px]"
                   >
-                    Setujui & Terapkan Stok
+                    Simpan & Setujui Langsung
                   </button>
                 )}
               </div>
@@ -2575,12 +2607,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {/* MODAL: BERITA ACARA STOCK OPNAME RESMI */}
       {/* ========================================================================= */}
       {viewingOpname && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white print:static print:z-auto">
-          <div id="print-opname-modal-area" className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150 print:max-w-none print:max-h-none print:shadow-none print:border-none print:rounded-none">
-            <div className="no-print px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-2.5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 overflow-y-auto print:p-0 print:bg-white print:static print:z-auto">
+          <div id="print-opname-modal-area" className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150 print:max-w-none print:max-h-none print:shadow-none print:border-none print:rounded-none">
+            <div className="no-print px-4 sm:px-6 py-4 border-b border-slate-200 flex items-start justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base font-bold text-slate-900">
-                  Berita Acara Hasil Stock Opname: {viewingOpname.id}
+                  Berita Acara Opname {viewingOpname.id}
                 </h3>
                 <span
                   className={`px-2 py-0.5 rounded-md text-[11px] font-medium border ${
@@ -2589,20 +2621,25 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                       : 'bg-amber-50 text-amber-800 border-amber-200'
                   }`}
                 >
-                  {viewingOpname.status === 'APPROVED' ? 'Disetujui' : 'Menunggu Otorisasi'}
+                  {viewingOpname.status === 'APPROVED' ? 'Disetujui' : 'Menunggu persetujuan'}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => setViewingOpname(null)}
-                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                title="Tutup dialog"
+                aria-label="Tutup"
+                className="p-2 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto space-y-4 text-xs print:p-0 print:overflow-visible">
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs print:p-0 print:overflow-visible">
+              {viewingOpname.status !== 'APPROVED' && (
+                <p className="p-2.5 rounded-lg border-2 border-amber-400 bg-amber-50 text-amber-900 font-semibold text-center print:border-slate-900 print:bg-white print:text-slate-900">
+                  DRAF: opname ini belum disetujui. Stok belum berubah.
+                </p>
+              )}
               {/* Kop Surat Resmi Standar SPPG (Tampil saat cetak) */}
               <div className="border-b-2 border-slate-900 pb-4 mb-4 hidden print:flex items-start justify-between">
                 <div className="flex items-center gap-3.5">
@@ -2632,19 +2669,19 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                 <div>
-                  <span className="text-slate-400 block text-[10px]">Tanggal Opname</span>
+                  <span className="text-slate-500 block text-[10px]">Tanggal Opname</span>
                   <span className="font-bold text-slate-800">{viewingOpname.date}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px]">Lokasi Gudang</span>
+                  <span className="text-slate-500 block text-[10px]">Lokasi Gudang</span>
                   <span className="font-bold text-slate-800">{viewingOpname.location}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px]">Pencatat Fisik</span>
+                  <span className="text-slate-500 block text-[10px]">Pencatat Fisik</span>
                   <span className="font-bold text-slate-800">{viewingOpname.createdByName}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px]">Otorisasi / Approval</span>
+                  <span className="text-slate-500 block text-[10px]">Otorisasi / Approval</span>
                   <span className="font-bold text-slate-800">{viewingOpname.approvedByName || 'Belum Disetujui'}</span>
                 </div>
               </div>
@@ -2655,8 +2692,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 </div>
               )}
 
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs">
+              <div className="border border-slate-200 rounded-xl overflow-x-auto print:overflow-visible">
+                <table className="w-full min-w-[560px] text-left text-xs">
                   <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
                     <tr>
                       <th className="py-2.5 px-3">Nama Barang</th>
@@ -2682,12 +2719,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                             {i.variance === 0 ? (
                               <span className="text-emerald-700">0</span>
                             ) : (
-                              <span className={i.variance < 0 ? 'text-rose-600' : 'text-blue-600'}>
+                              <span className={i.variance < 0 ? 'text-rose-700' : 'text-sky-700'}>
                                 {i.variance > 0 ? `+${i.variance}` : i.variance} {i.unit}
                               </span>
                             )}
                           </td>
-                          <td className="py-2.5 px-3 text-slate-700 italic">{i.reason || '-'}</td>
+                          <td className="py-2.5 px-3 text-slate-700">{i.reason || '-'}</td>
                         </tr>
                       );
                     })}
@@ -2725,7 +2762,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               </div>
             </div>
 
-            <div className="no-print flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50 text-xs">
+            <div className="no-print flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 py-4 border-t border-slate-200 bg-slate-50 text-xs">
               <button
                 type="button"
                 onClick={() => window.print()}
@@ -2747,10 +2784,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                   <button
                     type="button"
                     onClick={() => handleApproveOpname(viewingOpname)}
-                    className="inline-flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-xs cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px]"
                   >
                     <Check className="w-4 h-4" />
-                    Setujui & Terapkan Saldo Stok Fisik
+                    Setujui dan Perbarui Stok
                   </button>
                 )}
               </div>
@@ -2763,24 +2800,27 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {/* MODAL: PENYESUAIAN STOK CEPAT (QUICK ADJUSTMENT) */}
       {/* ========================================================================= */}
       {adjustingItem && (
-        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Penyesuaian Stok Cepat</h3>
-                <p className="text-[11px] text-slate-500">{adjustingItem.name} ({adjustingItem.id})</p>
+                <h3 className="text-sm font-bold text-slate-900">Koreksi Stok</h3>
+                <p className="text-[11px] text-slate-600">{adjustingItem.name} ({adjustingItem.id})</p>
               </div>
               <button
                 type="button"
                 onClick={() => setAdjustingItem(null)}
-                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 rounded-md text-slate-500 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
                 title="Tutup dialog"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveAdjust} className="p-6 space-y-4 text-xs">
+            <form onSubmit={handleSaveAdjust} className="p-4 sm:p-6 space-y-4 text-xs">
+              <p className="p-2.5 rounded-lg bg-sky-50 border border-sky-200 text-[11px] text-sky-800">
+                Koreksi tercatat di Buku Mutasi dengan nama Anda. Untuk hitung ulang banyak barang, pakai Stok Opname.
+              </p>
               <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
                 <span className="text-slate-500">Stok Saat Ini:</span>
                 <span className="font-mono font-bold text-base text-slate-900">
@@ -2813,10 +2853,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                     type="button"
                     onClick={() => setAdjustType('SET')}
                     className={`py-1.5 px-2 rounded-lg font-semibold text-center border cursor-pointer ${
-                      adjustType === 'SET' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200'
+                      adjustType === 'SET' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-200'
                     }`}
                   >
-                    Set Total
+                    Jadi Jumlah
                   </button>
                 </div>
               </div>
@@ -2829,23 +2869,45 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                   type="number"
                   step="any"
                   min="0.01"
-                  value={adjustQtyDelta}
-                  onChange={e => setAdjustQtyDelta(parseFloat(e.target.value) || 0)}
+                  value={adjustQtyDelta || ''}
+                  placeholder="0"
+                  onChange={e => setAdjustQtyDelta(Math.max(0, parseFloat(e.target.value) || 0))}
                   required
                   className="w-full border border-slate-300 rounded-lg p-2.5 font-bold font-mono text-slate-900 text-right focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Alasan Penyesuaian</label>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Alasan <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="text"
                   value={adjustReason}
                   onChange={e => setAdjustReason(e.target.value)}
-                  placeholder="Koreksi fisik, susut, dsb..."
+                  placeholder="Contoh: salah input saat penerimaan 15/10"
                   required
                   className="w-full border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {['Salah input', 'Rusak / busuk', 'Dipakai belum tercatat', 'Hasil hitung ulang'].map(preset => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setAdjustReason(preset)}
+                      className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-md cursor-pointer"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <span className="text-slate-600">Stok setelah koreksi</span>
+                <span className="font-mono font-bold text-base text-slate-900">
+                  {Number(adjustTargetStock.toFixed(3)).toLocaleString('id-ID')} {adjustingItem.baseUnit}
+                </span>
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
@@ -2860,7 +2922,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                   type="submit"
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-2xs cursor-pointer"
                 >
-                  Simpan Penyesuaian
+                  Simpan Koreksi
                 </button>
               </div>
             </form>
@@ -2872,375 +2934,281 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {/* MODAL: TAMBAH / EDIT MASTER BARANG SATUAN & CUSTOM */}
       {/* ========================================================================= */}
       {isSingleModalOpen && (
-        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="item-form-title"
+            className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-xl w-full max-h-[92vh] flex flex-col overflow-hidden"
+          >
+            <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
               <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  {editingItem ? 'Edit Data Master Barang' : 'Tambah Item Custom Master Barang'}
+                <h3 id="item-form-title" className="text-base font-bold text-slate-900">
+                  {editingItem ? `Edit ${editingItem.name}` : 'Tambah Barang'}
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-600 mt-0.5">
                   {editingItem
-                    ? 'Perbarui spesifikasi, satuan, lokasi, atau batasan minimum stok barang.'
-                    : 'Daftarkan item custom baru ke master inventaris dan tentukan saldo stok awalnya.'}
+                    ? 'Ubah data barang. Stok tidak berubah di sini, pakai Koreksi atau Stok Opname.'
+                    : 'Daftarkan barang baru ke master barang.'}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSingleModalOpen(false)}
-                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                title="Tutup dialog"
+                aria-label="Tutup"
+                className="p-2 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveSingleItem} className="p-6 space-y-3.5 text-xs overflow-y-auto flex-1">
+            <form onSubmit={handleSaveSingleItem} noValidate className="p-4 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
               {formError && (
-                <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg font-medium">
+                <div role="alert" className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg font-medium">
                   {formError}
                 </div>
               )}
 
-              {/* Pilihan Gudang & Auto SKU Berurutan */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Pilihan Gudang / Area Penyimpanan
-                    </label>
-                    <select
-                      value={formWarehouse}
-                      onChange={e => handleWarehouseChange(e.target.value as WarehouseSkuType)}
-                      disabled={!!editingItem}
-                      className="w-full border border-slate-300 rounded-lg p-2 bg-white text-slate-900 font-medium text-xs focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-100"
-                    >
-                      {Object.values(WAREHOUSE_SKU_DEFINITIONS).map(wh => (
-                        <option key={wh.key} value={wh.key}>
-                          {wh.label} [{wh.prefix}]
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="font-semibold text-slate-700">Kode SKU</label>
-                      {!editingItem && (
-                        <button
-                          type="button"
-                          onClick={handleRegenerateAutoSku}
-                          className="text-[10px] text-emerald-700 hover:text-emerald-800 font-semibold cursor-pointer flex items-center gap-1"
-                          title="Generate nomor urut SKU berikutnya untuk gudang ini"
-                        >
-                          <RefreshCw className="w-2.5 h-2.5" />
-                          Auto SKU
-                        </button>
-                      )}
-                    </div>
-                    <input
-                      type="text"
-                      value={formSku}
-                      onChange={e => setFormSku(e.target.value)}
-                      placeholder="Contoh: ITM-KRG-001"
-                      className="w-full border border-slate-300 rounded-lg p-2 font-mono font-semibold text-slate-900 bg-white text-xs uppercase"
-                    />
-                  </div>
-                </div>
-                <div className="text-[11px] text-slate-500 flex items-center justify-between pt-0.5 border-t border-slate-200/60">
-                  <span>
-                    Format: <strong className="font-mono text-emerald-700">{WAREHOUSE_SKU_DEFINITIONS[formWarehouse].prefix}-[No Seri]</strong> • {WAREHOUSE_SKU_DEFINITIONS[formWarehouse].temperature}
-                  </span>
-                  <span className="text-slate-400">
-                    *Konsisten di Cetak Rak & SO
-                  </span>
-                </div>
-              </div>
-
+              {/* 1. Identitas barang */}
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Kategori Standar</label>
-                <select
-                  value={formCategory}
-                  onChange={e => setFormCategory(e.target.value as SppgCategory)}
-                  className="w-full border border-slate-300 rounded-lg p-2 bg-white text-slate-900 font-medium"
-                >
-                  {SPPG_STOCK_CATEGORIES.filter(c => c !== 'Semua Kategori').map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                  <option value="Kategori Kustom">+ Kategori Kustom...</option>
-                </select>
-              </div>
-
-              {formCategory === 'Kategori Kustom' && (
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Nama Kategori Kustom <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formCustomCategory}
-                    onChange={e => setFormCustomCategory(e.target.value)}
-                    placeholder="Ketik kategori baru..."
-                    className="w-full border border-emerald-300 bg-emerald-50/30 rounded-lg p-2 text-slate-900"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Nama Barang / Item <span className="text-rose-500">*</span>
+                <label htmlFor="item-name" className="block font-semibold text-slate-700 mb-1">
+                  Nama barang <span className="text-rose-600">*</span>
                 </label>
                 <input
+                  id="item-name"
                   type="text"
                   value={formName}
                   onChange={e => setFormName(e.target.value)}
-                  placeholder="Contoh: Ayam Broiler Potong, Beras Pandan Wangi, Mika Bento..."
-                  required
-                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-900 focus:ring-1 focus:ring-emerald-500"
+                  placeholder="Contoh: Beras Medium, Ayam Broiler Karkas"
+                  className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Satuan Dasar</label>
+                  <label htmlFor="item-category" className="block font-semibold text-slate-700 mb-1">Kategori</label>
                   <select
+                    id="item-category"
+                    value={formCategory}
+                    onChange={e => setFormCategory(e.target.value as SppgCategory)}
+                    className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  >
+                    {SPPG_STOCK_CATEGORIES.filter(c => c !== 'Semua Kategori').map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                    <option value="Kategori Kustom">Kategori lain...</option>
+                  </select>
+                  {formCategory === 'Kategori Kustom' && (
+                    <input
+                      type="text"
+                      value={formCustomCategory}
+                      onChange={e => setFormCustomCategory(e.target.value)}
+                      placeholder="Nama kategori baru"
+                      aria-label="Nama kategori baru"
+                      className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 mt-1.5"
+                    />
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="item-unit" className="block font-semibold text-slate-700 mb-1">Satuan</label>
+                  <select
+                    id="item-unit"
                     value={formBaseUnit}
                     onChange={e => setFormBaseUnit(e.target.value as BaseUnit)}
-                    className="w-full border border-slate-300 rounded-lg p-2 bg-white text-slate-900 font-medium"
+                    className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                   >
-                    <option value="Kg">Kg (Kilogram)</option>
-                    <option value="Gram">Gram</option>
-                    <option value="Liter">Liter</option>
-                    <option value="Pack">Pack</option>
-                    <option value="Pcs">Pcs (Buah)</option>
-                    <option value="Dus">Dus / Karton</option>
-                    <option value="Ikat">Ikat</option>
-                    <option value="Butir">Butir</option>
-                    <option value="Roll">Roll</option>
-                    <option value="Botol">Botol</option>
-                    <option value="Jerigen">Jerigen</option>
-                    <option value="Pouch">Pouch</option>
-                    <option value="Rim">Rim</option>
-                    <option value="Satuan Kustom">+ Satuan Kustom...</option>
+                    {['Kg', 'Gram', 'Liter', 'Pcs', 'Pack', 'Dus', 'Ikat', 'Butir', 'Roll', 'Botol', 'Jerigen', 'Pouch', 'Rim'].map(u => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                    <option value="Satuan Kustom">Satuan lain...</option>
                   </select>
-                </div>
-                {formBaseUnit === 'Satuan Kustom' ? (
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Ketik Satuan Kustom <span className="text-rose-500">*</span>
-                    </label>
+                  {formBaseUnit === 'Satuan Kustom' && (
                     <input
                       type="text"
                       value={formCustomUnit}
                       onChange={e => setFormCustomUnit(e.target.value)}
-                      placeholder="Contoh: Kaleng, Slop, Keranjang..."
-                      className="w-full border border-emerald-300 bg-emerald-50/30 rounded-lg p-2 text-slate-900"
+                      placeholder="Contoh: Kaleng, Slop"
+                      aria-label="Nama satuan baru"
+                      className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 mt-1.5"
                     />
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      {editingItem ? 'Saldo Stok Fisik' : 'Saldo Stok Awal'}
-                    </label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={formInitialStock}
-                      onChange={e => setFormInitialStock(parseFloat(e.target.value) || 0)}
-                      disabled={!!editingItem}
-                      className="w-full border border-slate-300 rounded-lg p-2 text-right font-mono text-slate-900 disabled:bg-slate-100"
-                    />
-                    {!editingItem && (
-                      <span className="text-[10px] text-slate-400 mt-0.5 block">
-                        *Langsung muncul di Stok Barang
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {formBaseUnit === 'Satuan Kustom' && (
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    {editingItem ? 'Saldo Stok Fisik' : 'Saldo Stok Awal'}
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={formInitialStock}
-                    onChange={e => setFormInitialStock(parseFloat(e.target.value) || 0)}
-                    disabled={!!editingItem}
-                    className="w-full border border-slate-300 rounded-lg p-2 text-right font-mono text-slate-900 disabled:bg-slate-100"
-                  />
-                  {!editingItem && (
-                    <span className="text-[10px] text-slate-400 mt-0.5 block">
-                      *Langsung muncul di Stok Barang
-                    </span>
                   )}
                 </div>
-              )}
+              </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* 2. Angka stok */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Batas Min. Stok (Buffer)</label>
+                  <label htmlFor="item-stock" className="block font-semibold text-slate-700 mb-1">
+                    {editingItem ? 'Stok sekarang' : 'Stok awal'}
+                  </label>
                   <input
+                    id="item-stock"
                     type="number"
+                    min="0"
                     step="any"
-                    value={formMinStock}
-                    onChange={e => setFormMinStock(parseFloat(e.target.value) || 0)}
-                    className="w-full border border-slate-300 rounded-lg p-2 text-right font-mono text-slate-900"
+                    value={editingItem ? editingItem.currentStock : formInitialStock || ''}
+                    placeholder="0"
+                    onChange={e => setFormInitialStock(parseFloat(e.target.value) || 0)}
+                    disabled={!!editingItem}
+                    className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 text-right font-mono disabled:bg-slate-100 disabled:text-slate-700"
                   />
+                  <span className="text-[11px] text-slate-600 mt-0.5 block">
+                    {editingItem ? 'Ubah lewat Koreksi.' : 'Tercatat di Buku Mutasi.'}
+                  </span>
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Estimasi Harga Satuan (Rp)</label>
+                  <label htmlFor="item-min" className="block font-semibold text-slate-700 mb-1">Batas minimum</label>
                   <input
+                    id="item-min"
                     type="number"
+                    min="0"
                     step="any"
-                    value={formEstimatedPrice}
-                    onChange={e => setFormEstimatedPrice(parseFloat(e.target.value) || 0)}
-                    placeholder="Contoh: 35000"
-                    className="w-full border border-slate-300 rounded-lg p-2 text-right font-mono text-slate-900"
+                    value={formMinStock}
+                    onChange={e => setFormMinStock(Math.max(0, parseFloat(e.target.value) || 0))}
+                    className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 text-right font-mono"
                   />
+                  <span className="text-[11px] text-slate-600 mt-0.5 block">Di bawah ini ditandai menipis.</span>
+                </div>
+                <div>
+                  <label htmlFor="item-price" className="block font-semibold text-slate-700 mb-1">Harga satuan (Rp)</label>
+                  <input
+                    id="item-price"
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={formEstimatedPrice || ''}
+                    onChange={e => setFormEstimatedPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                    placeholder="Belum diisi"
+                    className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 text-right font-mono"
+                  />
+                  <span className="text-[11px] text-slate-600 mt-0.5 block">Untuk menghitung nilai stok.</span>
                 </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Lokasi Penyimpanan di Gudang
-                </label>
-                <select
-                  value={
-                    ALL_STANDARD_LOCATIONS.includes(formLocation)
-                      ? formLocation
-                      : 'LOKASI_KUSTOM'
-                  }
-                  onChange={e => {
-                    const val = e.target.value;
-                    if (val === 'LOKASI_KUSTOM') {
-                      setFormLocation('');
-                    } else {
-                      setFormLocation(val);
-                    }
-                  }}
-                  className="w-full border border-slate-300 rounded-lg p-2 bg-white text-slate-900 font-medium text-xs focus:ring-1 focus:ring-emerald-500"
-                >
-                  <optgroup label={`Rekomendasi ${WAREHOUSE_SKU_DEFINITIONS[formWarehouse]?.label || 'Gudang Terpilih'}`}>
-                    {(WAREHOUSE_SKU_DEFINITIONS[formWarehouse]?.suggestedLocations || []).map(loc => (
-                      <option key={loc} value={loc}>
-                        {loc}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Area & Rak Gudang Lainnya">
-                    {ALL_STANDARD_LOCATIONS.filter(
-                      loc => !(WAREHOUSE_SKU_DEFINITIONS[formWarehouse]?.suggestedLocations || []).includes(loc)
-                    ).map(loc => (
-                      <option key={loc} value={loc}>
-                        {loc}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <option value="LOKASI_KUSTOM">+ Lokasi Kustom...</option>
-                </select>
+              {/* 3. Lokasi dan SKU */}
+              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="item-area" className="block font-semibold text-slate-700 mb-1">Area gudang</label>
+                    <select
+                      id="item-area"
+                      value={formWarehouse}
+                      onChange={e => handleWarehouseChange(e.target.value as WarehouseSkuType)}
+                      className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                    >
+                      {Object.values(WAREHOUSE_SKU_DEFINITIONS).map(wh => (
+                        <option key={wh.key} value={wh.key}>{wh.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="item-sku" className="block font-semibold text-slate-700 mb-1">SKU</label>
+                    <div className="flex gap-1.5">
+                      <input
+                        id="item-sku"
+                        type="text"
+                        value={formSku}
+                        onChange={e => setFormSku(e.target.value)}
+                        readOnly={!!editingItem}
+                        placeholder="Dibuat otomatis"
+                        className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-mono uppercase read-only:bg-slate-100 read-only:text-slate-700"
+                      />
+                      {!editingItem && (
+                        <button
+                          type="button"
+                          onClick={handleRegenerateAutoSku}
+                          className="shrink-0 px-2.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px]"
+                          title="Isi SKU berikutnya untuk area ini"
+                        >
+                          Otomatis
+                        </button>
+                      )}
+                    </div>
+                    {editingItem && <span className="text-[11px] text-slate-600 mt-0.5 block">SKU tidak bisa diubah.</span>}
+                  </div>
+                </div>
 
-                {(!ALL_STANDARD_LOCATIONS.includes(formLocation) || formLocation === '') && (
-                  <div className="mt-2">
-                    <label className="block font-semibold text-slate-600 text-[11px] mb-1">
-                      Ketik Nama Lokasi / Rak Kustom <span className="text-rose-500">*</span>
-                    </label>
+                <div>
+                  <label htmlFor="item-location" className="block font-semibold text-slate-700 mb-1">Rak / lokasi simpan</label>
+                  <select
+                    id="item-location"
+                    value={ALL_STANDARD_LOCATIONS.includes(formLocation) ? formLocation : 'LOKASI_KUSTOM'}
+                    onChange={e => setFormLocation(e.target.value === 'LOKASI_KUSTOM' ? '' : e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  >
+                    <optgroup label={`Disarankan untuk ${WAREHOUSE_SKU_DEFINITIONS[formWarehouse]?.label || 'area ini'}`}>
+                      {(WAREHOUSE_SKU_DEFINITIONS[formWarehouse]?.suggestedLocations || []).map(loc => (
+                        <option key={loc} value={loc}>{loc}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Lokasi lain">
+                      {ALL_STANDARD_LOCATIONS.filter(
+                        loc => !(WAREHOUSE_SKU_DEFINITIONS[formWarehouse]?.suggestedLocations || []).includes(loc)
+                      ).map(loc => (
+                        <option key={loc} value={loc}>{loc}</option>
+                      ))}
+                    </optgroup>
+                    <option value="LOKASI_KUSTOM">Lokasi lain (ketik sendiri)...</option>
+                  </select>
+                  {!ALL_STANDARD_LOCATIONS.includes(formLocation) && (
                     <input
                       type="text"
                       value={formLocation}
                       onChange={e => setFormLocation(e.target.value)}
-                      placeholder="Contoh: Rak Khusus B2, Palet Tambahan, Bin Chiller 3..."
-                      required
-                      className="w-full border border-emerald-300 bg-emerald-50/30 rounded-lg p-2 text-slate-900 text-xs focus:ring-1 focus:ring-emerald-500"
+                      placeholder="Contoh: Rak Khusus B2"
+                      aria-label="Nama lokasi"
+                      className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 mt-1.5"
                     />
-                  </div>
-                )}
-
-                {/* Detail Spesifikasi & Panduan Rak Gudang */}
-                {(() => {
-                  const rackSpec = getStorageLocationDetails(formLocation);
-                  return (
-                    <div className="mt-2.5 rounded-lg border border-emerald-200/80 bg-emerald-50/40 p-3 text-xs space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-600 text-white">
-                            {rackSpec.rackCode}
-                          </span>
-                          <span className="font-semibold text-slate-900">
-                            {rackSpec.shortName}
-                          </span>
-                          <span className="text-emerald-700 font-medium text-[11px]">
-                            • {rackSpec.commodityDetail}
-                          </span>
-                        </div>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 shrink-0">
-                          Rotasi: {rackSpec.rotationMethod}
-                        </span>
-                      </div>
-
-                      <p className="text-[11px] text-slate-700 leading-relaxed">
-                        {rackSpec.description}
+                  )}
+                  {ALL_STANDARD_LOCATIONS.includes(formLocation) && (() => {
+                    const rackSpec = getStorageLocationDetails(formLocation);
+                    return (
+                      <p className="mt-1.5 text-[11px] text-slate-600 leading-relaxed">
+                        <strong className="text-slate-800">{rackSpec.zone}</strong> ({rackSpec.temperature}). {rackSpec.storageRule}
                       </p>
-
-                      <div className="pt-2 border-t border-emerald-200/60 flex flex-col gap-1 text-[10.5px]">
-                        <div className="flex items-start gap-1 text-slate-600">
-                          <span className="font-semibold text-emerald-900 shrink-0">Zona & Suhu:</span>
-                          <span>{rackSpec.zone} ({rackSpec.temperature})</span>
-                        </div>
-                        <div className="flex items-start gap-1 text-slate-600">
-                          <span className="font-semibold text-emerald-900 shrink-0">Aturan Simpan:</span>
-                          <span className="text-slate-700">{rackSpec.storageRule}</span>
-                        </div>
-                        {rackSpec.capacityMax && (
-                          <div className="flex items-start gap-1 text-slate-600">
-                            <span className="font-semibold text-emerald-900 shrink-0">Kapasitas Maksimal:</span>
-                            <span className="font-mono text-slate-800">{rackSpec.capacityMax}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
+                    );
+                  })()}
+                </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Catatan / Spesifikasi</label>
+                <label htmlFor="item-notes" className="block font-semibold text-slate-700 mb-1">Catatan</label>
                 <input
+                  id="item-notes"
                   type="text"
                   value={formNotes}
                   onChange={e => setFormNotes(e.target.value)}
-                  placeholder="Keterangan mutu, ukuran, kemasan, atau supplier umum..."
-                  className="w-full border border-slate-300 rounded-lg p-2 text-slate-900"
+                  placeholder="Contoh: kemasan 5 kg, merek biasa dipakai"
+                  className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 />
               </div>
 
-              <div className="pt-2 flex items-center justify-between">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={formIsActive}
-                    onChange={e => setFormIsActive(e.target.checked)}
-                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
-                  />
-                  <span className="font-semibold text-slate-700">Item Aktif (Digunakan Operasional)</span>
-                </label>
-              </div>
+              <label className="flex items-start gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={formIsActive}
+                  onChange={e => setFormIsActive(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+                />
+                <span>
+                  <span className="font-semibold text-slate-800">Barang aktif</span>
+                  <span className="block text-[11px] text-slate-600">Barang nonaktif tidak muncul di saldo stok dan opname.</span>
+                </span>
+              </label>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsSingleModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer"
+                  className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px]"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-2xs cursor-pointer"
+                  className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
                 >
-                  Simpan Barang
+                  {editingItem ? 'Simpan Perubahan' : 'Simpan Barang'}
                 </button>
               </div>
             </form>
@@ -3252,19 +3220,17 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {/* MODAL: INPUT MASAL MASTER BARANG */}
       {/* ========================================================================= */}
       {isBatchModalOpen && (
-        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 overflow-y-auto">
+          <div role="dialog" aria-modal="true" aria-label="Tambah banyak barang" className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Input Masal Master Barang Baru
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Tambahkan banyak barang sekaligus menggunakan tabel atau tempel langsung data dari Excel.
+                <h3 className="text-base font-bold text-slate-900">Tambah Banyak Barang</h3>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Isi tabel atau tempel dari Excel. SKU dan kategori terisi otomatis dari nama barang.
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <div className="flex bg-slate-200/80 p-0.5 rounded-lg text-xs">
                   <button
                     type="button"
@@ -3273,7 +3239,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                       batchMode === 'GRID' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
                     }`}
                   >
-                    Tabel Cepat
+                    Isi Tabel
                   </button>
                   <button
                     type="button"
@@ -3290,28 +3256,28 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 <button
                   type="button"
                   onClick={() => setIsBatchModalOpen(false)}
-                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer ml-2"
-                  title="Tutup dialog"
+                  aria-label="Tutup"
+                  className="p-2 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer ml-auto sm:ml-2"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
               {batchMode === 'GRID' && (
                 <div className="space-y-3">
-                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                    <table className="w-full text-left text-xs">
+                  <div className="border border-slate-200 rounded-xl overflow-x-auto">
+                    <table className="w-full min-w-[820px] text-left text-xs">
                       <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                         <tr>
                           <th className="py-2.5 px-2 text-center w-8">#</th>
-                          <th className="py-2.5 px-2 w-28">Kode SKU</th>
+                          <th className="py-2.5 px-2 w-28">SKU</th>
                           <th className="py-2.5 px-2 min-w-[180px]">Nama Barang <span className="text-rose-500">*</span></th>
                           <th className="py-2.5 px-2 w-36">Kategori</th>
                           <th className="py-2.5 px-2 w-20">Satuan</th>
                           <th className="py-2.5 px-2 w-24 text-right">Stok Awal</th>
-                          <th className="py-2.5 px-2 w-24 text-right">Min. Stok</th>
+                          <th className="py-2.5 px-2 w-24 text-right">Minimum</th>
                           <th className="py-2.5 px-2 min-w-[120px]">Lokasi</th>
                           <th className="py-2.5 px-1 text-center w-8"></th>
                         </tr>
@@ -3319,13 +3285,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                       <tbody className="divide-y divide-slate-100">
                         {batchRows.map((row, index) => (
                           <tr key={row.id} className="hover:bg-slate-50/80">
-                            <td className="py-1.5 px-2 text-center text-slate-400 text-[11px]">{index + 1}</td>
+                            <td className="py-1.5 px-2 text-center text-slate-500 text-[11px]">{index + 1}</td>
                             <td className="py-1.5 px-2">
                               <input
                                 type="text"
                                 value={row.sku}
-                                onChange={e => handleUpdateBatchRow(row.id, 'sku', e.target.value)}
-                                className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 font-mono"
+                                onChange={e => handleUpdateBatchRow(row.id, 'sku', e.target.value.toUpperCase())}
+                                placeholder="Otomatis"
+                                aria-label={`SKU baris ${index + 1}`}
+                                className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 font-mono placeholder:text-slate-500 placeholder:font-sans"
                               />
                             </td>
                             <td className="py-1.5 px-2">
@@ -3334,7 +3302,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                                 value={row.name}
                                 onChange={e => handleUpdateBatchRow(row.id, 'name', e.target.value)}
                                 placeholder="Nama barang..."
-                                className="w-full text-xs border border-slate-200 rounded px-2 py-1"
+                                aria-label={`Nama barang baris ${index + 1}`}
+                                className="w-full text-xs border border-slate-200 rounded px-2 py-1 placeholder:text-slate-500"
                               />
                             </td>
                             <td className="py-1.5 px-2">
@@ -3352,23 +3321,30 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                               <input
                                 type="text"
                                 value={row.baseUnit}
+                                list="batch-unit-list"
                                 onChange={e => handleUpdateBatchRow(row.id, 'baseUnit', e.target.value)}
+                                aria-label={`Satuan baris ${index + 1}`}
                                 className="w-full text-xs border border-slate-200 rounded px-1 py-1"
                               />
                             </td>
                             <td className="py-1.5 px-2 text-right">
                               <input
                                 type="number"
-                                value={row.initialStock}
-                                onChange={e => handleUpdateBatchRow(row.id, 'initialStock', Number(e.target.value))}
+                                min="0"
+                                value={row.initialStock || ''}
+                                placeholder="0"
+                                aria-label={`Stok awal baris ${index + 1}`}
+                                onChange={e => handleUpdateBatchRow(row.id, 'initialStock', Math.max(0, Number(e.target.value) || 0))}
                                 className="w-full text-xs border border-slate-200 rounded px-1 py-1 text-right font-mono"
                               />
                             </td>
                             <td className="py-1.5 px-2 text-right">
                               <input
                                 type="number"
+                                min="0"
                                 value={row.minStock}
-                                onChange={e => handleUpdateBatchRow(row.id, 'minStock', Number(e.target.value))}
+                                aria-label={`Batas minimum baris ${index + 1}`}
+                                onChange={e => handleUpdateBatchRow(row.id, 'minStock', Math.max(0, Number(e.target.value) || 0))}
                                 className="w-full text-xs border border-slate-200 rounded px-1 py-1 text-right font-mono"
                               />
                             </td>
@@ -3387,7 +3363,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                                 type="button"
                                 onClick={() => handleRemoveBatchRow(row.id)}
                                 disabled={batchRows.length <= 1}
-                                className="text-slate-300 hover:text-rose-500 disabled:opacity-20 p-1 cursor-pointer"
+                                aria-label={`Hapus baris ${index + 1}`}
+                                className="text-slate-500 hover:text-rose-600 disabled:opacity-30 p-1.5 cursor-pointer"
                               >
                                 <X className="w-3.5 h-3.5" />
                               </button>
@@ -3404,8 +3381,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                       <option key={loc} value={loc} />
                     ))}
                   </datalist>
+                  <datalist id="batch-unit-list">
+                    {['Kg', 'Gram', 'Liter', 'Pcs', 'Pack', 'Dus', 'Ikat', 'Butir', 'Roll', 'Botol', 'Jerigen', 'Pouch', 'Rim'].map(u => (
+                      <option key={u} value={u} />
+                    ))}
+                  </datalist>
 
-                  <div className="flex items-center justify-between pt-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -3425,8 +3407,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                       </button>
                     </div>
 
-                    <span className="text-xs text-slate-500">
-                      Total baris: <strong>{batchRows.length}</strong> (terisi: {batchRows.filter(r => r.name.trim() !== '').length})
+                    <span className="text-xs text-slate-600">
+                      {batchRows.filter(r => r.name.trim() !== '').length} dari {batchRows.length} baris terisi
                     </span>
                   </div>
                 </div>
@@ -3437,12 +3419,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                   <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-950 flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-semibold mb-0.5">Format Tempel dari Excel / Google Sheet:</p>
+                      <p className="font-semibold mb-0.5">Urutan kolom dari Excel / Google Sheet:</p>
                       <p className="text-[11px] text-emerald-900">
                         Salin (Ctrl+C) data kolom dari Excel lalu tempel (Ctrl+V) ke kotak teks di bawah:
                         <br />
                         <code className="bg-emerald-100 px-1 rounded font-mono text-[10px]">
-                          [Nama Barang] [Tab] [Satuan] [Tab] [Stok Awal] [Tab] [Min Stok]
+                          Nama barang | Satuan | Stok awal | Batas minimum | Catatan
                         </code>.
                       </p>
                     </div>
@@ -3470,21 +3452,24 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               )}
             </div>
 
-            <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setIsBatchModalOpen(false)}
-                className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-lg text-xs font-semibold cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveAllBatchMaster}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-2xs cursor-pointer"
-              >
-                Simpan Semua Master Barang
-              </button>
+            <div className="px-4 sm:px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <span className="text-[11px] text-slate-600">Stok awal tercatat di Buku Mutasi.</span>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBatchModalOpen(false)}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px]"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAllBatchMaster}
+                  className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px]"
+                >
+                  Simpan {batchRows.filter(r => r.name.trim() !== '').length || ''} Barang
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3494,8 +3479,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {/* MODAL PRATINJAU CETAK REKAPITULASI STOK RESMI SPPG */}
       {/* ========================================================================= */}
       {isPrintPreviewOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 print:p-0 print:bg-white print:static print:z-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 print:max-w-none print:max-h-none print:shadow-none print:border-none print:rounded-none">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 flex items-center justify-center p-3 sm:p-5 print:p-0 print:bg-white print:static print:z-auto">
+          <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 print:max-w-none print:max-h-none print:shadow-none print:border-none print:rounded-none">
             {/* Modal Toolbar (hidden during printing) */}
             <div className="no-print px-6 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -3535,8 +3520,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {/* MODAL KONFIRMASI: HAPUS MASTER BARANG (SINGLE ITEM) */}
       {/* ========================================================================= */}
       {itemToDelete && (
-        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 animate-in fade-in duration-150">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Header Dialog */}
             <div className="p-5 sm:p-6 pb-4">
               <div className="flex items-start gap-3.5">
@@ -3554,7 +3539,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 <button
                   type="button"
                   onClick={() => setItemToDelete(null)}
-                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="p-1 rounded-md text-slate-500 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
                   title="Tutup dialog"
                 >
                   <X className="w-4 h-4" />
@@ -3565,7 +3550,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
               <div className="mt-4 p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5 text-xs">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <span className="text-[10px] font-semibold text-slate-400 block">
+                    <span className="text-[10px] font-semibold text-slate-500 block">
                       Nama Bahan Pangan / Barang
                     </span>
                     <div className="font-bold text-slate-900 text-sm mt-0.5 truncate">
@@ -3579,21 +3564,21 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
 
                 <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 pt-2 border-t border-slate-200/70">
                   <div>
-                    <span className="text-slate-400 block text-[10px]">Kategori</span>
+                    <span className="text-slate-500 block text-[10px]">Kategori</span>
                     <span className="font-medium text-slate-800">{itemToDelete.category || 'Bahan Kering'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[10px]">Lokasi Gudang</span>
+                    <span className="text-slate-500 block text-[10px]">Lokasi Gudang</span>
                     <span className="font-medium text-slate-800 truncate block">{itemToDelete.location || '-'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[10px]">Satuan / Min. Stok</span>
+                    <span className="text-slate-500 block text-[10px]">Satuan / Min. Stok</span>
                     <span className="font-medium text-slate-800">
                       {itemToDelete.baseUnit} (Min. {itemToDelete.minimumStock} {itemToDelete.baseUnit})
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[10px]">Saldo Stok Tercatat</span>
+                    <span className="text-slate-500 block text-[10px]">Saldo Stok Tercatat</span>
                     <span className={`font-mono font-bold ${itemToDelete.currentStock > 0 ? 'text-amber-700' : 'text-slate-800'}`}>
                       {itemToDelete.currentStock.toLocaleString('id-ID')} {itemToDelete.baseUnit}
                     </span>
@@ -3604,33 +3589,45 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                   <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px] flex items-start gap-2 font-medium">
                     <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
                     <p className="leading-relaxed">
-                      Perhatian: Item ini masih memiliki saldo stok fisik sebesar <strong>{itemToDelete.currentStock} {itemToDelete.baseUnit}</strong>.
+                      Barang ini masih punya stok <strong>{itemToDelete.currentStock} {itemToDelete.baseUnit}</strong>. Kalau dihapus, stok itu hilang dari sistem tanpa tercatat di Buku Mutasi. Lebih aman dinonaktifkan: barang hilang dari saldo stok, tapi datanya tetap ada.
                     </p>
                   </div>
                 ) : (
                   <p className="text-[11px] text-slate-500 italic">
-                    Riwayat dokumen dan transaksi lama yang pernah menggunakan SKU ini tetap tersimpan secara historis.
+                    Riwayat transaksi lama dengan SKU ini tetap tersimpan.
                   </p>
                 )}
               </div>
             </div>
 
             {/* Footer Aksi */}
-            <div className="px-5 sm:px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+            <div className="px-5 sm:px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setItemToDelete(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 cursor-pointer min-h-[44px] sm:min-h-[36px]"
               >
                 Batal
               </button>
+              {itemToDelete.isActive !== false && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleToggleActive(itemToDelete);
+                    setItemToDelete(null);
+                  }}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 cursor-pointer min-h-[44px] sm:min-h-[36px]"
+                >
+                  Nonaktifkan saja
+                </button>
+              )}
               <button
                 type="button"
                 onClick={confirmDeleteItem}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 shadow-xs transition-colors cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Ya, Hapus Master Barang</span>
+                <span>Hapus</span>
               </button>
             </div>
           </div>
@@ -3643,8 +3640,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
       {/* MODAL KONFIRMASI: PERSETUJUAN STOCK OPNAME */}
       {/* ========================================================================= */}
       {opnameSessionToApprove && (
-        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
+        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 animate-in fade-in duration-150">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
             <div className="p-5 sm:p-6 pb-4">
               <div className="flex items-start gap-3.5">
                 <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center shrink-0 shadow-2xs">
@@ -3661,7 +3658,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ onRefreshData,
                 <button
                   type="button"
                   onClick={() => setOpnameSessionToApprove(null)}
-                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="p-1 rounded-md text-slate-500 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
                   title="Tutup dialog"
                 >
                   <X className="w-4 h-4" />

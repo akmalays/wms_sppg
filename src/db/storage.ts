@@ -1626,6 +1626,52 @@ export function mapSupabaseToPo(row: any): PurchaseOrderNota {
   };
 }
 
+const WASTE_NUTRITION_CATEGORIES = new Set(['karbohidrat', 'sayur', 'protein hewani', 'protein nabati', 'buah']);
+
+const WASTE_DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+function wasteDayName(date: string): string {
+  const [y, m, d] = (date || '').split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return WASTE_DAY_NAMES[new Date(y, m - 1, d).getDay()] || '';
+}
+
+// Tabel waste_logs tidak punya kolom hari; hari dihitung ulang dari tanggal.
+export function mapWasteToSupabase(w: WasteLog) {
+  return {
+    id: w.id,
+    date: w.date,
+    waste_category: w.wasteCategory,
+    item_name: w.itemName || w.wasteCategory,
+    quantity: Number(w.quantity) || 0,
+    unit: w.unit || 'Kg',
+    source_area: w.sourceArea || '-',
+    reason: w.reason || '-',
+    disposal_method: w.disposalMethod,
+    recorded_by: w.recordedBy || '-',
+    notes: w.notes || null,
+    created_at: w.createdAt || new Date().toISOString(),
+  };
+}
+
+export function mapSupabaseToWaste(row: any): WasteLog {
+  return {
+    id: row.id,
+    day: wasteDayName(row.date),
+    date: row.date,
+    wasteCategory: row.waste_category,
+    itemName: row.item_name || undefined,
+    quantity: Number(row.quantity) || 0,
+    unit: row.unit || 'Kg',
+    sourceArea: row.source_area || '',
+    reason: row.reason && row.reason !== '-' ? row.reason : undefined,
+    disposalMethod: row.disposal_method,
+    recordedBy: row.recorded_by || '',
+    notes: row.notes || undefined,
+    createdAt: row.created_at,
+  };
+}
+
 export function mapExpenseToSupabase(e: NonFoodExpense) {
   return {
     id: e.id,
@@ -1997,6 +2043,17 @@ class WarehouseDatabase {
           notes: m.notes || undefined,
           createdAt: m.created_at || new Date().toISOString(),
         }));
+      }
+
+      // 9. Rekap Limbah
+      const { data: dbWaste, error: wasteErr } = await supabase
+        .from('waste_logs')
+        .select('*')
+        .order('date', { ascending: false });
+      if (wasteErr) {
+        console.error('Supabase waste_logs load error:', wasteErr);
+      } else if (dbWaste) {
+        this.wasteLogs = dbWaste.map(mapSupabaseToWaste);
       }
 
       // Beritahu seluruh komponen bahwa data cloud telah siap
@@ -2711,6 +2768,9 @@ class WarehouseDatabase {
     } else {
       const idx = this.items.findIndex(i => i.id === item.id);
       if (idx < 0) throw new Error('Item tidak ditemukan untuk diperbarui.');
+      // Editing master data never changes stock: stock only moves through recorded transactions
+      // (receiving, consumption, opname, adjustItemStock). Keep the stored balance, not the form's copy.
+      item = { ...item, currentStock: this.items[idx].currentStock, lastMovementDate: this.items[idx].lastMovementDate };
       this.items[idx] = item;
       this.logAudit(user, 'ITEM_MASTER_UPDATED', 'ITEM_MASTER', item.id, `Memperbarui data item: ${item.name}.`);
     }
@@ -2782,9 +2842,75 @@ class WarehouseDatabase {
     return item;
   }
 
+  /** Manual stock correction, recorded as an ADJUSTMENT transaction so the ledger stays in sync. */
+  public adjustItemStock(itemId: string, newStock: number, reason: string, user: User): ItemMaster {
+    const idx = this.items.findIndex(i => i.id === itemId);
+    if (idx < 0) throw new Error('Barang tidak ditemukan.');
+    if (!reason.trim()) throw new Error('Alasan koreksi wajib diisi.');
+    if (!Number.isFinite(newStock) || newStock < 0) throw new Error('Stok baru tidak boleh negatif.');
+
+    const item = this.items[idx];
+    const delta = Number((newStock - item.currentStock).toFixed(3));
+    if (delta === 0) throw new Error('Stok baru sama dengan stok sekarang.');
+
+    const nowIso = new Date().toISOString();
+    const tx: InventoryTransaction = {
+      id: `TX-ADJ-${Date.now().toString().slice(-6)}`,
+      timestamp: nowIso,
+      itemId: item.id,
+      itemName: item.name,
+      itemType: item.itemType,
+      category: item.category,
+      location: item.location,
+      quantity: delta,
+      unit: item.baseUnit,
+      transactionType: 'ADJUSTMENT',
+      referenceDocument: `ADJ-${Date.now().toString().slice(-6)}`,
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      notes: reason.trim(),
+      balanceAfter: newStock,
+    };
+    const updated: ItemMaster = { ...item, currentStock: newStock, lastMovementDate: nowIso, updatedAt: nowIso };
+    this.items[idx] = updated;
+    this.transactions.unshift(tx);
+
+    if (isSupabaseConfigured()) {
+      supabase.from('item_master').upsert(mapItemToSupabase(updated)).then(({ error }) => {
+        if (error) console.error('Supabase item upsert error:', error);
+      });
+      supabase.from('inventory_transactions').insert(mapTxToSupabase(tx)).then();
+    }
+
+    this.logAudit(
+      user,
+      'STOCK_ADJUSTED',
+      'ITEM_MASTER',
+      item.id,
+      `Koreksi stok ${item.name}: ${item.currentStock} -> ${newStock} ${item.baseUnit}. Alasan: ${reason.trim()}`
+    );
+    this.notifyAllChanged();
+    return updated;
+  }
+
   public saveItemsBatch(newItems: ItemMaster[], user: User): ItemMaster[] {
     const saved: ItemMaster[] = [];
     const now = new Date().toISOString();
+
+    // Batch registration only adds new items. Reusing an existing SKU used to silently overwrite
+    // that item, including its stock, so reject the whole batch before changing anything.
+    const seen = new Set<string>();
+    const clashes: string[] = [];
+    newItems.forEach(item => {
+      const id = (item.id || '').trim().toLowerCase();
+      if (!id) return;
+      if (seen.has(id) || this.items.some(it => it.id.toLowerCase() === id)) clashes.push(item.id.trim());
+      seen.add(id);
+    });
+    if (clashes.length > 0) {
+      throw new Error(`SKU sudah dipakai: ${clashes.join(', ')}. Ganti SKU atau kosongkan agar dibuat otomatis.`);
+    }
 
     for (let i = 0; i < newItems.length; i++) {
       const item = newItems[i];
@@ -2815,6 +2941,31 @@ class WarehouseDatabase {
         this.items.push(itemToSave);
       }
       saved.push(itemToSave);
+
+      if (existingIdx < 0 && itemToSave.currentStock > 0) {
+        const initTx: InventoryTransaction = {
+          id: `TX-INIT-${Date.now().toString().slice(-6)}-${i + 1}`,
+          timestamp: now,
+          itemId: itemToSave.id,
+          itemName: itemToSave.name,
+          itemType: itemToSave.itemType,
+          category: itemToSave.category,
+          location: itemToSave.location,
+          quantity: itemToSave.currentStock,
+          unit: itemToSave.baseUnit,
+          transactionType: 'ADJUSTMENT',
+          referenceDocument: 'INIT-MASTER-BATCH',
+          userId: user.id,
+          userName: user.name,
+          userRole: user.role,
+          notes: 'Saldo stok awal saat registrasi masal di Master Barang',
+          balanceAfter: itemToSave.currentStock,
+        };
+        this.transactions.unshift(initTx);
+        if (isSupabaseConfigured()) {
+          supabase.from('inventory_transactions').insert(mapTxToSupabase(initTx)).then();
+        }
+      }
     }
 
     // Direct batch upsert to Supabase Cloud
@@ -3223,6 +3374,10 @@ class WarehouseDatabase {
     }
 
     const po = this.purchaseOrders[poIndex];
+    // A completed PO already posted its stock and expenses; receiving it again would double both.
+    if (po.status === 'SELESAI') {
+      return { success: false, message: `PO ${po.poNumber} sudah diterima sebelumnya. Penerimaan tidak bisa disimpan dua kali.` };
+    }
     const nowIso = new Date().toISOString();
     const todayStr = metadata.date || nowIso.slice(0, 10);
     const arrivalTime = metadata.arrivalTime || new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -3236,7 +3391,7 @@ class WarehouseDatabase {
       category: item.category as any,
       quantity: item.actualQty,
       unit: item.unit as any,
-      conditionNote: item.conditionNote || 'Diterima dalam kondisi baik & segar',
+      conditionNote: item.conditionNote || '',
     }));
 
     const receivingDoc: ReceivingDocument = {
@@ -3245,7 +3400,7 @@ class WarehouseDatabase {
       arrivalTime: arrivalTime,
       supplierId: metadata.supplierId || po.supplierId || 'SUP-DIRECT',
       supplierName: po.supplierName,
-      deliveryNoteNo: metadata.deliveryNoteNo || `SJ-${po.poNumber.replace(/[^\w]/g, '-')}`,
+      deliveryNoteNo: metadata.deliveryNoteNo || undefined,
       receiverId: user.id,
       receiverName: user.name,
       receiverRole: user.role,
@@ -3560,58 +3715,58 @@ class WarehouseDatabase {
 
   // --- WASTE LOGS ---
   public getWasteLogs(): WasteLog[] {
-    return [...this.wasteLogs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return [...this.wasteLogs].sort((a, b) => b.date.localeCompare(a.date));
+  }
+
+  private nextWasteId(suffix?: number): string {
+    const base = `WST-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    return suffix !== undefined ? `${base}-${suffix}` : base;
+  }
+
+  private syncWasteUpsert(logs: WasteLog[]): void {
+    if (!isSupabaseConfigured() || logs.length === 0) return;
+    supabase.from('waste_logs').upsert(logs.map(mapWasteToSupabase)).then(({ error }) => {
+      if (error) console.error('Supabase waste_logs upsert error:', error);
+    });
+  }
+
+  private syncWasteDelete(ids: string[]): void {
+    if (!isSupabaseConfigured() || ids.length === 0) return;
+    supabase.from('waste_logs').delete().in('id', ids).then(({ error }) => {
+      if (error) console.error('Supabase waste_logs delete error:', error);
+    });
   }
 
   public recordWasteLog(
     log: Omit<WasteLog, 'id' | 'createdAt'>,
     user: User
   ): WasteLog {
-    const newId = `WST-${Date.now().toString().slice(-6)}`;
-    const newLog: WasteLog = {
-      ...log,
-      id: newId,
-      createdAt: new Date().toISOString(),
-    };
-    this.wasteLogs.unshift(newLog);
-    setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
-
-    this.logAudit(
-      user,
-      'WASTE_RECORDED',
-      'OPERATIONAL',
-      newId,
-      `Pencatatan Limbah [${newLog.wasteCategory}]: ${newLog.itemName} (${newLog.quantity} ${newLog.unit}) ditangani via ${newLog.disposalMethod}`
-    );
-    return newLog;
+    return this.recordWasteBatch([log], user)[0];
   }
 
   public recordWasteBatch(
     logs: Omit<WasteLog, 'id' | 'createdAt'>[],
     user: User
   ): WasteLog[] {
-    const timestamp = Date.now();
-    const createdLogs: WasteLog[] = [];
+    const createdAt = new Date().toISOString();
+    const createdLogs: WasteLog[] = logs.map((log, index) => ({
+      ...log,
+      day: wasteDayName(log.date),
+      id: this.nextWasteId(index + 1),
+      createdAt,
+    }));
 
-    logs.forEach((log, index) => {
-      const newId = `WST-${timestamp.toString().slice(-6)}-${index + 1}`;
-      const newLog: WasteLog = {
-        ...log,
-        id: newId,
-        createdAt: new Date().toISOString(),
-      };
-      createdLogs.push(newLog);
-      this.wasteLogs.unshift(newLog);
-    });
-
-    setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
+    this.wasteLogs = [...createdLogs, ...this.wasteLogs];
+    this.syncWasteUpsert(createdLogs);
 
     this.logAudit(
       user,
       'WASTE_BATCH_RECORDED',
       'OPERATIONAL',
-      `BATCH-${timestamp}`,
-      `Pencatatan Batch Limbah: ${createdLogs.length} butir limbah dicatat sekaligus.`
+      createdLogs[0]?.id || 'WST',
+      `Pencatatan limbah: ${createdLogs
+        .map(l => `${l.itemName || l.wasteCategory} ${l.quantity} ${l.unit}`)
+        .join(', ')}`
     );
 
     return createdLogs;
@@ -3622,7 +3777,7 @@ class WarehouseDatabase {
     if (idx < 0) return false;
     const removed = this.wasteLogs[idx];
     this.wasteLogs.splice(idx, 1);
-    setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
+    this.syncWasteDelete([id]);
 
     this.logAudit(
       user,
@@ -3636,7 +3791,7 @@ class WarehouseDatabase {
 
   public saveDailyNutritionLog(
     date: string,
-    day: string,
+    _day: string,
     items: {
       category: 'karbohidrat' | 'sayur' | 'protein hewani' | 'protein nabati' | 'buah';
       quantity: number;
@@ -3646,58 +3801,56 @@ class WarehouseDatabase {
     }[],
     user: User
   ): WasteLog[] {
-    const nutritionCats = new Set(['karbohidrat', 'sayur', 'protein hewani', 'protein nabati', 'buah']);
-    // Remove existing nutrition records for this specific date to avoid duplicate entries
-    this.wasteLogs = this.wasteLogs.filter(
-      w => !(w.date === date && nutritionCats.has(w.wasteCategory.toLowerCase() as any))
-    );
+    // Simpan ulang 5 kategori sisa makanan untuk tanggal ini; catatan limbah lain di tanggal yang sama tidak disentuh.
+    const replaced = this.wasteLogs.filter(w => w.date === date && WASTE_NUTRITION_CATEGORIES.has(w.wasteCategory.toLowerCase()));
+    this.wasteLogs = this.wasteLogs.filter(w => !replaced.includes(w));
 
-    const timestamp = Date.now();
+    const createdAt = new Date().toISOString();
     const createdLogs: WasteLog[] = items.map((item, idx) => ({
-      id: `WST-${timestamp.toString().slice(-6)}-${idx + 1}`,
-      day: day.toLowerCase(),
+      id: this.nextWasteId(idx + 1),
+      day: wasteDayName(date),
       date,
       wasteCategory: item.category,
-      itemName: `Limbah ${item.category}`,
+      itemName: `Sisa ${item.category}`,
       quantity: Number(item.quantity) || 0,
       unit: item.unit || 'Kg',
-      sourceArea: 'SPPG MLG TUMPANG JERU',
-      reason: 'Sisa preparasi & porsi olahan dapur',
+      sourceArea: 'Dapur SPPG Tumpang Jeru',
+      reason: undefined,
       disposalMethod: item.disposalMethod || 'Pakan Ternak & Kompos Organik',
       recordedBy: user.name,
-      notes: item.notes,
-      createdAt: new Date().toISOString(),
+      notes: item.notes || undefined,
+      createdAt,
     }));
 
     this.wasteLogs = [...createdLogs, ...this.wasteLogs];
-    setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
+    this.syncWasteDelete(replaced.map(w => w.id));
+    this.syncWasteUpsert(createdLogs);
 
     this.logAudit(
       user,
-      'WASTE_DAILY_RECORDED',
+      replaced.length > 0 ? 'WASTE_DAILY_UPDATED' : 'WASTE_DAILY_RECORDED',
       'OPERATIONAL',
       `DAY-${date}`,
-      `Input Rekap Limbah Harian [${date} (${day})]: ${items.map(i => `${i.category}: ${i.quantity} kg`).join(', ')}`
+      `${replaced.length > 0 ? 'Ubah' : 'Input'} rekap sisa makanan ${date}: ${items.map(i => `${i.category} ${i.quantity} kg`).join(', ')}`
     );
 
     return createdLogs;
   }
 
+  // Hanya menghapus 5 kategori sisa makanan pada tanggal itu, bukan limbah dapur lain.
   public deleteDailyWasteLogs(date: string, user: User): boolean {
-    const beforeCount = this.wasteLogs.length;
-    this.wasteLogs = this.wasteLogs.filter(w => w.date !== date);
-    if (this.wasteLogs.length !== beforeCount) {
-      setStored(STORAGE_KEYS.WASTE_LOGS, this.wasteLogs);
-      this.logAudit(
-        user,
-        'WASTE_DAILY_DELETED',
-        'OPERATIONAL',
-        `DAY-${date}`,
-        `Menghapus seluruh catatan limbah tanggal ${date}`
-      );
-      return true;
-    }
-    return false;
+    const removed = this.wasteLogs.filter(w => w.date === date && WASTE_NUTRITION_CATEGORIES.has(w.wasteCategory.toLowerCase()));
+    if (removed.length === 0) return false;
+    this.wasteLogs = this.wasteLogs.filter(w => !removed.includes(w));
+    this.syncWasteDelete(removed.map(w => w.id));
+    this.logAudit(
+      user,
+      'WASTE_DAILY_DELETED',
+      'OPERATIONAL',
+      `DAY-${date}`,
+      `Menghapus rekap sisa makanan tanggal ${date}`
+    );
+    return true;
   }
 
   // --- DAILY TODOS ---
@@ -3941,6 +4094,7 @@ class WarehouseDatabase {
       supabase.from('inventory_transactions').delete().neq('id', '___').then();
       supabase.from('non_food_expenses').delete().neq('id', '___').then();
       supabase.from('purchase_orders').delete().neq('id', '___').then();
+      supabase.from('waste_logs').delete().neq('id', '___').then();
       supabase.from('item_master').update({ current_stock: 0, updated_at: new Date().toISOString() }).neq('id', '___').then();
     }
 

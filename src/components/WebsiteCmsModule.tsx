@@ -18,6 +18,7 @@ import {
   IMAGE_PRESETS
 } from '../db/websiteConfigStorage';
 import QRCode from 'qrcode';
+import { MenuTodayKidsEditor } from './MenuTodayKidsEditor';
 import { compressImageToWebP } from '../utils/imageCompressor';
 import {
   Globe,
@@ -2799,6 +2800,19 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
               </div>
             </div>
 
+            {/* Konten edukasi anak: Pahlawan Gizi & Kebiasaan Baik */}
+            <MenuTodayKidsEditor
+              menuToday={menuToday}
+              onNotify={showNotification}
+              onChange={patch => setConfig(prev => ({
+                ...prev,
+                menuToday: {
+                  ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                  ...patch
+                }
+              }))}
+            />
+
             {/* Bottom Save Bar */}
             <div className="flex items-center justify-between p-4 bg-emerald-50 rounded-2xl border border-emerald-200">
               <div className="text-xs text-emerald-900">
@@ -3567,6 +3581,32 @@ export const WebsiteCmsModule: React.FC<WebsiteCmsModuleProps> = ({ onViewLandin
                   value={editingIngredient.healthBenefits}
                   onChange={e => setEditingIngredient(prev => prev ? { ...prev, healthBenefits: e.target.value } : null)}
                   placeholder="Contoh: Mendukung perkembangan massa otot anak, menjaga fokus belajar di kelas, dan mencegah anemia."
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                />
+              </div>
+
+              {/* Konten anak di halaman publik */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Mengapa baik untukmu? (satu poin per baris, opsional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={(editingIngredient.whyGood || []).join('\n')}
+                  onChange={e => setEditingIngredient(prev => prev ? { ...prev, whyGood: e.target.value.split('\n') } : null)}
+                  placeholder="Kosongkan untuk memakai kalimat dari Manfaat Kesehatan"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Tahukah kamu? (opsional)
+                </label>
+                <input
+                  type="text"
+                  value={editingIngredient.funFact || ''}
+                  onChange={e => setEditingIngredient(prev => prev ? { ...prev, funFact: e.target.value } : null)}
+                  placeholder="Kosongkan untuk menyembunyikan kotak ini"
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
                 />
               </div>

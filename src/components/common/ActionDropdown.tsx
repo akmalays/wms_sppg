@@ -23,7 +23,7 @@ export interface SplitActionConfig {
   onClick: () => void;
   title?: string;
   disabled?: boolean;
-  variant?: 'emerald' | 'primary' | 'slate' | 'rose' | 'amber';
+  variant?: 'emerald' | 'primary' | 'slate' | 'rose' | 'amber' | 'white';
 }
 
 export interface ActionDropdownProps {
@@ -113,6 +113,8 @@ export const ActionDropdown: React.FC<ActionDropdownProps> = ({
         return 'bg-rose-600 hover:bg-rose-700 text-white';
       case 'amber':
         return 'bg-amber-600 hover:bg-amber-700 text-white';
+      case 'white':
+        return 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300';
       default:
         return 'bg-emerald-600 hover:bg-emerald-700 text-white';
     }
@@ -130,6 +132,8 @@ export const ActionDropdown: React.FC<ActionDropdownProps> = ({
         return 'bg-rose-700 hover:bg-rose-800 text-white border-l border-rose-500/40';
       case 'amber':
         return 'bg-amber-700 hover:bg-amber-800 text-white border-l border-amber-500/40';
+      case 'white':
+        return 'bg-white hover:bg-slate-50 text-slate-600 border border-l-0 border-slate-300';
       default:
         return 'bg-emerald-700 hover:bg-emerald-800 text-white border-l border-emerald-500/40';
     }

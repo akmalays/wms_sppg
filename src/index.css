@@ -13,6 +13,11 @@
     letter-spacing: -0.02em;
   }
 
+  /* Judul halaman publik Menu MBG: bulat dan ramah anak */
+  .font-kids {
+    font-family: 'Baloo 2', var(--font-sans);
+  }
+
   .font-serif-display {
     font-family: var(--font-serif);
     font-optical-sizing: auto;
@@ -74,4 +79,11 @@
   ::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
   }
+}
+
+/* Umpan balik singkat di halaman publik menu (kuis benar, kebiasaan selesai) */
+@keyframes pop-in {
+  0% { transform: scale(0.92); opacity: 0; }
+  60% { transform: scale(1.03); opacity: 1; }
+  100% { transform: scale(1); }
 }

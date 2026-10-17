@@ -68,6 +68,7 @@ import { LoadingOverlay } from './common/LoadingOverlay';
 import { ActionDropdown } from './common/ActionDropdown';
 import { angkaTerbilang } from './ToolsPrintModule';
 import { generateNextPoNumber } from '../utils/poNumberGenerator';
+import { localDateIso } from '../utils/localDate';
 import {
   getPrintPoolIds,
   addToPrintPool,
@@ -287,7 +288,7 @@ function parseExpenseDate(dateStr: string): Date | null {
   return isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData, onNavigate }) => {
+export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) => {
   const { currentUser, can } = useAuth();
   const toast = useToast();
 
@@ -392,8 +393,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
     const updated = addToPrintPool(id);
     setPoolNotaIds(updated);
     refreshAll();
-    toast.success('Nota berhasil dimasukkan ke antrean pool cetak!', 'Pool Cetak');
-    setSuccessMessage('Nota berhasil dimasukkan ke antrean pool cetak!');
+    toast.success('Nota berhasil dimasukkan ke antrean cetak!', 'Antrean Cetak');
+    setSuccessMessage('Nota berhasil dimasukkan ke antrean cetak!');
     setTimeout(() => setSuccessMessage(''), 3000);
   };
 
@@ -401,14 +402,14 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
     const updated = removeFromPrintPool(id);
     setPoolNotaIds(updated);
     refreshAll();
-    toast.info('Nota dihapus dari antrean pool cetak.', 'Pool Cetak');
+    toast.info('Nota dihapus dari antrean cetak.', 'Antrean Cetak');
   };
 
   const handleClearPool = () => {
     clearPrintPool();
     setPoolNotaIds([]);
     refreshAll();
-    toast.info('Antrean pool cetak nota berhasil dikosongkan.', 'Pool Cetak');
+    toast.info('Antrean pool cetak nota berhasil dikosongkan.', 'Antrean Cetak');
     setSuccessMessage('Antrean pool cetak nota berhasil dikosongkan.');
     setTimeout(() => setSuccessMessage(''), 3000);
   };
@@ -433,23 +434,23 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
   // Period & Filter States (Standardized Filter System)
   const [periodType, setPeriodType] = useState<PeriodType>('WEEKLY');
   const [selectedDailyDate, setSelectedDailyDate] = useState<string>(
-    new Date().toISOString().slice(0, 10)
+    localDateIso()
   );
 
   // Range for Weekly / Custom (Default to last 7 days)
   const defaultWeekStart = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
-    return d.toISOString().slice(0, 10);
+    return localDateIso(d);
   }, []);
   const [startDate, setStartDate] = useState<string>(defaultWeekStart);
   const [endDate, setEndDate] = useState<string>(
-    new Date().toISOString().slice(0, 10)
+    localDateIso()
   );
 
   // Selected Month (YYYY-MM)
   const [selectedMonth, setSelectedMonth] = useState<string>(
-    new Date().toISOString().slice(0, 7)
+    localDateIso().slice(0, 7)
   );
 
   // Category filter: 'ALL' | 'Bahan Basah' | 'Bahan Kering' | 'Bahan Peralatan' | 'SURAT_JALAN'
@@ -462,16 +463,16 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
   const handleSetThisWeek = () => {
     const end = new Date();
     const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
-    setStartDate(start.toISOString().slice(0, 10));
-    setEndDate(end.toISOString().slice(0, 10));
+    setStartDate(localDateIso(start));
+    setEndDate(localDateIso(end));
     setPeriodType('WEEKLY');
   };
 
   const handleSetLastWeek = () => {
     const end = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
-    setStartDate(start.toISOString().slice(0, 10));
-    setEndDate(end.toISOString().slice(0, 10));
+    setStartDate(localDateIso(start));
+    setEndDate(localDateIso(end));
     setPeriodType('WEEKLY');
   };
 
@@ -509,7 +510,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
     return { start: s, end: e, label: `${startDate} s/d ${endDate}` };
   }, [periodType, selectedDailyDate, startDate, endDate, selectedMonth]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateIso();
   const defaultCurrentTime = new Date()
     .toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
     .replace(':', '.');
@@ -525,7 +526,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
   const [singleUnit, setSingleUnit] = useState('Kg');
   const [singleUnitPrice, setSingleUnitPrice] = useState<number>(0);
   const [singleSupplier, setSingleSupplier] = useState('');
-  const [singlePic, setSinglePic] = useState('Akmal');
+  const [singlePic, setSinglePic] = useState(currentUser.name);
   const [singleVolunteer, setSingleVolunteer] = useState('');
   const [singleNotes, setSingleNotes] = useState('');
   const [singleReceiptRef, setSingleReceiptRef] = useState('');
@@ -570,7 +571,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
   // Batch Input Form State
   // ----------------------------------------------------
   const [batchDate, setBatchDate] = useState(today);
-  const [batchPic, setBatchPic] = useState('Akmal');
+  const [batchPic, setBatchPic] = useState(currentUser.name);
   const [batchInputMode, setBatchInputMode] = useState<'GRID' | 'PASTE'>('GRID');
   const [batchRawPaste, setBatchRawPaste] = useState('');
   const [batchRows, setBatchRows] = useState<BatchInputRow[]>([
@@ -616,16 +617,17 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
       itemId: items[0]?.id || '',
       itemName: items[0]?.name || '',
       category: items[0]?.category || 'Sembako',
-      quantity: 1,
+      quantity: 0,
       unit: items[0]?.baseUnit || 'Kg',
-      conditionNote: 'Kondisi kemasan baik & bersih',
+      conditionNote: '',
       batchNumber: '',
     },
   ]);
 
+  // Reload only this module's data. Calling the app-level refresh remounts the whole page
+  // (App keys the content on dataVersion), which wiped the post-save prompt and open modals.
   const refreshAll = () => {
     setDataVersion(v => v + 1);
-    if (onRefreshData) onRefreshData();
   };
 
   const showToast = (msg: string, type: 'success' | 'error' | 'warning' | 'info' = 'success') => {
@@ -638,7 +640,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
   // Handlers for Single Input
   // ----------------------------------------------------
   const handleOpenSingleModal = () => {
-    setSingleDate(new Date().toISOString().slice(0, 10));
+    setSingleDate(localDateIso());
     setSingleTime(
       new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(':', '.')
     );
@@ -648,7 +650,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
     setSingleUnit('Kg');
     setSingleUnitPrice(0);
     setSingleSupplier('');
-    setSinglePic('Akmal');
+    setSinglePic(currentUser.name);
     setSingleVolunteer('');
     setSingleNotes('');
     setSingleReceiptRef('');
@@ -664,7 +666,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
     const catalog = getItemCatalogInfo(val);
     if (catalog) {
       setSingleUnit(catalog.unit);
-      setSingleUnitPrice(catalog.price);
     }
   };
 
@@ -675,9 +676,14 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
       return;
     }
 
+    const numQty = parseFloat(singleQty);
+    if (!(numQty > 0)) {
+      toast.error('Jumlah harus lebih dari 0.', 'Gagal Menyimpan');
+      return;
+    }
+
     try {
-      const numQty = parseFloat(singleQty) || 1;
-      const finalPrice = singleUnitPrice > 0 ? singleUnitPrice : (getItemCatalogInfo(singleItemName)?.price || 0);
+      const finalPrice = singleUnitPrice;
       const totalCost = numQty * finalPrice;
 
       const matchedSupplier = suppliers.find(
@@ -691,11 +697,11 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
           time: singleTime.trim() || defaultCurrentTime,
           itemName: singleItemName.trim(),
           category: singleCategory,
-          quantity: singleQty.trim() || '1',
+          quantity: singleQty.trim(),
           unit: singleUnit.trim() || 'Pcs',
           unitPrice: finalPrice,
           totalCost: totalCost,
-          pic: singlePic.trim() || 'Akmal',
+          pic: singlePic.trim() || currentUser.name,
           volunteer: singleVolunteer.trim() || undefined,
           department: singleCategory.includes('ATK')
             ? 'Administrasi & Kantor'
@@ -709,10 +715,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
       );
 
       toast.success(
-        `Berhasil mencatat input barang: "${singleItemName.trim()}" (${singleQty} ${singleUnit})!`,
+        `Belanja "${singleItemName.trim()}" (${singleQty} ${singleUnit}) tersimpan.`,
         'Berhasil Disimpan'
       );
-      showToast(`Berhasil mencatat input barang: "${singleItemName.trim()}" (${singleQty} ${singleUnit})!`);
+      showToast(`Belanja "${singleItemName.trim()}" (${singleQty} ${singleUnit}) tersimpan.`);
       setIsSingleInputModalOpen(false);
       refreshAll();
 
@@ -728,8 +734,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
         notes: singleNotes.trim() || undefined,
       };
       setJustSavedPrompt({
-        title: 'Input Barang Berhasil Disimpan!',
-        subtitle: `Catatan belanja "${singleItemName.trim()}" (${singleQty} ${singleUnit}) telah tersimpan ke sistem.`,
+        title: 'Belanja Tersimpan',
+        subtitle: `"${singleItemName.trim()}" (${singleQty} ${singleUnit}) masuk ke laporan pengeluaran.`,
         supplierName: finalSupplierName || 'Toko / Pasar Belanja Rutin',
         items: [item],
         refId: newRecord.id,
@@ -744,8 +750,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
   // Handlers for Batch Input
   // ----------------------------------------------------
   const handleOpenBatchModal = () => {
-    setBatchDate(new Date().toISOString().slice(0, 10));
-    setBatchPic('Akmal');
+    setBatchDate(localDateIso());
+    setBatchPic(currentUser.name);
     setBatchInputMode('GRID');
     setBatchRawPaste('');
     // Pertahankan supplier yang masih dipakai baris yang belum tersimpan
@@ -981,7 +987,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
           const cat = getItemCatalogInfo(value);
           if (cat) {
             updated.unit = cat.unit;
-            updated.unitPrice = cat.price;
           }
         }
         return updated;
@@ -1044,7 +1049,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
       if (itemName) {
         const cat = autoDetectCategory(itemName);
         const catalog = getItemCatalogInfo(itemName);
-        if (catalog && price === 0) price = catalog.price;
         if (catalog && (!c2 || unit === 'Pcs')) unit = catalog.unit;
 
         parsedRows.push({
@@ -1098,18 +1102,24 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
       toast.warning('Isi minimal 1 nama barang pada tabel sebelum menyimpan.');
       return;
     }
+    const invalidQtyRows = validRows.filter(r => !(parseFloat(r.qty) > 0));
+    if (invalidQtyRows.length > 0) {
+      toast.error(
+        `Jumlah harus lebih dari 0: ${invalidQtyRows.map(r => r.itemName).join(', ')}.`,
+        'Periksa Jumlah'
+      );
+      return;
+    }
 
     const totalBatchNominal = validRows.reduce((sum, r) => {
-      const numQty = parseFloat(r.qty) || 1;
-      const price = r.unitPrice > 0 ? r.unitPrice : (getItemCatalogInfo(r.itemName)?.price || 0);
-      return sum + numQty * price;
+      return sum + parseFloat(r.qty) * r.unitPrice;
     }, 0);
 
     // Standard Confirmation Modal
     setConfirmDialog({
       isOpen: true,
-      title: 'Simpan Pengeluaran Masal?',
-      message: `Simpan ${validRows.length} macam barang belanja operasional senilai Rp ${totalBatchNominal.toLocaleString('id-ID')} ke sistem gudang?`,
+      title: 'Simpan Belanja?',
+      message: `Simpan ${validRows.length} barang belanja senilai Rp ${totalBatchNominal.toLocaleString('id-ID')} ke laporan pengeluaran? Stok gudang tidak berubah.`,
       confirmText: `Ya, Simpan (${validRows.length} Barang)`,
       cancelText: 'Periksa Kembali',
       variant: 'primary',
@@ -1117,8 +1127,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
         count: validRows.length,
         totalNominal: totalBatchNominal,
         items: validRows.map(r => {
-          const numQty = parseFloat(r.qty) || 1;
-          const price = r.unitPrice > 0 ? r.unitPrice : (getItemCatalogInfo(r.itemName)?.price || 0);
+          const numQty = parseFloat(r.qty);
+          const price = r.unitPrice;
           return {
             name: r.itemName,
             qty: r.qty,
@@ -1133,32 +1143,32 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
         setActionLoading({
           isLoading: true,
           message: 'Menyimpan Barang Belanja...',
-          submessage: `Memproses ${validRows.length} catatan pengeluaran & update stok gudang...`,
+          submessage: `Memproses ${validRows.length} catatan belanja...`,
         });
 
         try {
           await new Promise(r => setTimeout(r, 450));
 
           const payload = validRows.map(r => {
-            const numQty = parseFloat(r.qty) || 1;
-            const price = r.unitPrice > 0 ? r.unitPrice : (getItemCatalogInfo(r.itemName)?.price || 0);
+            const numQty = parseFloat(r.qty);
+            const price = r.unitPrice;
             return {
               date: batchDate,
               time: r.time.trim() || defaultCurrentTime,
               itemName: r.itemName.trim(),
               category: r.category,
-              quantity: r.qty.trim() || '1',
+              quantity: r.qty.trim(),
               unit: r.unit.trim() || 'Pcs',
               unitPrice: price,
               totalCost: numQty * price,
-              pic: batchPic.trim() || 'Akmal',
+              pic: batchPic.trim() || currentUser.name,
               volunteer: r.volunteer.trim() || undefined,
               department: r.category.includes('ATK')
                 ? 'Administrasi & Kantor'
                 : r.category.includes('Kebersihan')
                 ? 'Area Cuci & Sanitasi'
                 : 'Dapur Pengolahan Utama',
-              notes: `${r.supplier ? `[Toko: ${r.supplier}] ` : ''}${r.notes.trim()}`.trim() || undefined,
+              notes: `${r.supplier ? `[Toko/Supplier: ${r.supplier}] ` : ''}${r.notes.trim()}`.trim() || undefined,
             };
           });
 
@@ -1172,8 +1182,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
 
           // Trigger post-input prompt for printing Nota Pesanan
           const batchItems: PurchaseOrderItem[] = validRows.map((r, i) => {
-            const numQty = parseFloat(r.qty) || 1;
-            const price = r.unitPrice > 0 ? r.unitPrice : (getItemCatalogInfo(r.itemName)?.price || 0);
+            const numQty = parseFloat(r.qty);
+            const price = r.unitPrice;
             return {
               id: `POI-${Date.now()}-${i}`,
               name: r.itemName.trim(),
@@ -1187,8 +1197,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
           });
           const firstSupplier = validRows.find(r => r.supplier?.trim())?.supplier?.trim() || 'Supplier Belanja Bersama';
           setJustSavedPrompt({
-            title: 'Input Masal Berhasil Disimpan!',
-            subtitle: `Sebanyak ${validRows.length} barang belanja operasional telah tersimpan ke sistem.`,
+            title: 'Belanja Tersimpan',
+            subtitle: `${validRows.length} barang belanja masuk ke laporan pengeluaran.`,
             supplierName: firstSupplier,
             items: batchItems,
             refId: createdExpenses[0]?.id,
@@ -1207,8 +1217,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
   // Handlers for Delivery Order (Penerimaan Supplier Resmi)
   // ----------------------------------------------------
   const handleOpenDeliveryOrder = () => {
-    setFormSupplierId(suppliers[0]?.id || '');
-    setFormDate(new Date().toISOString().slice(0, 10));
+    setFormSupplierId('');
+    setFormDate(localDateIso());
     setFormTime(new Date().toTimeString().slice(0, 5));
     setFormDeliveryNote('');
     setFormNotes('');
@@ -1223,9 +1233,9 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
           itemId: items[0].id,
           itemName: items[0].name,
           category: items[0].category,
-          quantity: 1,
+          quantity: 0,
           unit: items[0].baseUnit,
-          conditionNote: 'Kondisi kemasan baik & bersih',
+          conditionNote: '',
           batchNumber: '',
         },
       ]);
@@ -1276,7 +1286,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
         itemId: defaultItem.id,
         itemName: defaultItem.name,
         category: defaultItem.category,
-        quantity: 1,
+        quantity: 0,
         unit: defaultItem.baseUnit,
         conditionNote: '',
         batchNumber: '',
@@ -1313,7 +1323,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
 
     for (const [idx, line] of lines.entries()) {
       if (line.quantity <= 0) {
-        const msg = `Baris #${idx + 1} (${line.itemName}): Kuantitas harus lebih dari 0.`;
+        const msg = `Baris ${idx + 1} (${line.itemName}): isi jumlah hasil timbang.`;
         setErrorMessage(msg);
         toast.error(msg, 'Validasi Gagal');
         return;
@@ -1334,7 +1344,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
           notes: formNotes || undefined,
           lines: lines as any,
           supplierSignature: formSupplierSign || `TERVERIFIKASI: Staf Pengirim ${selectedSupplier.name}`,
-          receiverSignature: formReceiverSign || `TERVERIFIKASI: Akmal (Admin Gudang)`,
+          receiverSignature: formReceiverSign || `TERVERIFIKASI: ${currentUser.name} (${currentUser.role})`,
           documentationPhotos: formPhotos.length > 0 ? formPhotos : undefined,
         },
         currentUser
@@ -1348,7 +1358,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
 
       // Trigger post-input prompt for printing Nota Pesanan
       const doItems: PurchaseOrderItem[] = lines.map((l, i) => {
-        const price = getItemCatalogInfo(l.itemName)?.price || 0;
+        const price = 0;
         return {
           id: `POI-${Date.now()}-${i}`,
           name: l.itemName,
@@ -1361,7 +1371,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
         };
       });
       setJustSavedPrompt({
-        title: 'Penerimaan Surat Jalan Berhasil Diposting!',
+        title: 'Barang Masuk Stok',
         subtitle: `Penerimaan #${formDeliveryNote || newDoc.id} dari ${selectedSupplier.name} telah masuk ke stok gudang.`,
         supplierName: selectedSupplier.name,
         supplierId: selectedSupplier.id,
@@ -1466,7 +1476,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
   };
 
   const handleCreateSingleItemNota = (r: UnifiedRecord) => {
-    const targetDate = r.date || new Date().toISOString().slice(0, 10);
+    const targetDate = r.date || localDateIso();
     const nextPoNum = generateNextPoNumber(purchaseOrders, targetDate);
     const suppObj = suppliers.find(s => s.name.toLowerCase() === r.supplierOrStore.toLowerCase());
     const numQty = parseFloat(String(r.quantity)) || 1;
@@ -1486,8 +1496,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
     const newNota: PurchaseOrderNota = {
       id: `PO-${Date.now()}`,
       poNumber: nextPoNum,
-      date: r.date || new Date().toISOString().slice(0, 10),
-      deliveryDate: r.date || new Date().toISOString().slice(0, 10),
+      date: r.date || localDateIso(),
+      deliveryDate: r.date || localDateIso(),
       supplierId: suppObj?.id,
       supplierName: r.supplierOrStore !== '-' ? r.supplierOrStore : (suppObj?.name || 'Toko / Rekanan'),
       supplierContact: suppObj?.phone ? `${suppObj.phone} (${suppObj.contactPerson})` : '',
@@ -1536,7 +1546,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
     }
 
     const suppObj = suppliers.find(s => s.name.toLowerCase().trim() === supplierName.toLowerCase().trim());
-    const targetDate = targetDateOverride || rawRecords[0].date || new Date().toISOString().slice(0, 10);
+    const targetDate = targetDateOverride || rawRecords[0].date || localDateIso();
     const nextPoNum = generateNextPoNumber(purchaseOrders, targetDate);
 
     const poItems: PurchaseOrderItem[] = rawRecords.map((r, i) => {
@@ -1610,7 +1620,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
   const handleStartNotaFromPrompt = () => {
     if (!justSavedPrompt) return;
     const info = justSavedPrompt;
-    const targetDate = new Date().toISOString().slice(0, 10);
+    const targetDate = localDateIso();
     const nextPoNum = generateNextPoNumber(purchaseOrders, targetDate);
     const suppObj = suppliers.find(s => s.name.toLowerCase() === info.supplierName.toLowerCase() || s.id === info.supplierId);
     const subtotal = info.items.reduce((sum, it) => sum + (it.subtotal || it.quantity * it.unitPrice), 0);
@@ -1622,8 +1632,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
     const newNota: PurchaseOrderNota = {
       id: `PO-${Date.now()}`,
       poNumber: nextPoNum,
-      date: new Date().toISOString().slice(0, 10),
-      deliveryDate: new Date().toISOString().slice(0, 10),
+      date: localDateIso(),
+      deliveryDate: localDateIso(),
       supplierId: suppObj?.id,
       supplierName: suppObj?.name || info.supplierName,
       supplierContact: suppObj?.phone ? `${suppObj.phone} (${suppObj.contactPerson})` : '',
@@ -1703,8 +1713,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
     // Add manual / batch inputs
     expenses.forEach(exp => {
       const cat = exp.category;
-      const numQty = typeof exp.quantity === 'number' ? exp.quantity : parseFloat(String(exp.quantity)) || 1;
-      const price = exp.unitPrice || (getItemCatalogInfo(exp.itemName)?.price || 0);
+      const numQty = typeof exp.quantity === 'number' ? exp.quantity : parseFloat(String(exp.quantity)) || 0;
+      const price = exp.unitPrice || 0;
       const total = exp.totalCost || numQty * price;
 
       list.push({
@@ -1720,9 +1730,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
         unit: exp.unit || 'Pcs',
         unitPrice: price,
         nominal: total,
-        supplierOrStore: exp.notes && (exp.notes.includes('[Toko') || exp.notes.includes('[Supplier'))
-          ? (exp.notes.match(/\[(?:Toko|Supplier|Toko\/Supplier):\s*([^\]]+)\]/i)?.[1] || '-')
-          : '-',
+        supplierOrStore:
+          exp.notes?.match(/\[(?:Toko\/Supplier|Toko|Supplier):\s*([^\]]+)\]/i)?.[1] || exp.recipient || '-',
         picOrUser: exp.pic || exp.recordedBy || currentUser.name,
         volunteer: exp.volunteer,
         notes: exp.notes,
@@ -1733,8 +1742,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
     receivings.forEach(rec => {
       rec.lines.forEach((l, idx) => {
         const cat = autoDetectCategory(l.itemName);
-        const price = getItemCatalogInfo(l.itemName)?.price || 0;
-        const total = l.quantity * price;
 
         list.push({
           id: `${rec.id}-${idx}`,
@@ -1747,8 +1754,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
           itemName: l.itemName,
           quantity: l.quantity,
           unit: l.unit,
-          unitPrice: price,
-          nominal: total,
+          unitPrice: 0,
+          nominal: 0,
           supplierOrStore: rec.supplierName,
           picOrUser: rec.receiverName,
           volunteer: undefined,
@@ -1948,318 +1955,278 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* HEADER BAR */}
-      {/* ========================================================================= */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            Input Barang & Belanja Operasional
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Pusat pencatatan barang datang, belanja bahan basah, bahan kering, serta pengeluaran operasional (ATK, alat kebersihan, APD, & keperluan lain).
-          </p>
+      {/* HEADER: two clearly separated entry points, stock vs expense */}
+      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Barang Datang</h1>
+            <p className="text-xs text-slate-600 mt-0.5 max-w-2xl">
+              Terima barang dari supplier ke stok gudang, atau catat belanja yang langsung dipakai.
+            </p>
+          </div>
+
+          {!isCreatingDeliveryOrder && (
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {can('RECEIVE_GOODS') && (
+                <button
+                  type="button"
+                  onClick={handleOpenDeliveryOrder}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold transition-colors cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                >
+                  <PackageCheck className="w-4 h-4" />
+                  Terima Barang
+                </button>
+              )}
+              <ActionDropdown
+                splitAction={{
+                  label: 'Catat Belanja',
+                  icon: Receipt,
+                  onClick: handleOpenSingleModal,
+                  title: 'Catat 1 barang belanja ke laporan pengeluaran',
+                  variant: can('RECEIVE_GOODS') ? 'white' : 'emerald',
+                }}
+                header="Catat belanja (stok tidak berubah)"
+                widthClass="w-72"
+                items={[
+                  {
+                    id: 'input-satuan',
+                    label: 'Catat 1 barang',
+                    description: 'Belanja cepat satu jenis barang',
+                    icon: Plus,
+                    iconBgClass: 'bg-slate-100 text-slate-700',
+                    iconColorClass: 'text-slate-600',
+                    onClick: handleOpenSingleModal,
+                  },
+                  {
+                    id: 'input-batch',
+                    label: 'Catat banyak barang',
+                    description: 'Isi tabel atau tempel dari Excel',
+                    icon: TableProperties,
+                    iconBgClass: 'bg-slate-100 text-slate-700',
+                    iconColorClass: 'text-slate-600',
+                    onClick: handleOpenBatchModal,
+                  },
+                ]}
+              />
+              <button
+                type="button"
+                onClick={() => setIsBatchPrintModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                title="Kumpulkan nota untuk dicetak 2 nota per lembar A4"
+              >
+                <Printer className="w-4 h-4 text-slate-500" />
+                Antrean Cetak
+                {poolNotaIds.length > 0 && (
+                  <span className="px-1.5 rounded-md bg-emerald-700 text-white text-[11px] font-semibold font-mono">
+                    {poolNotaIds.length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                title="Unduh riwayat sesuai filter ke Excel"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-slate-500" />
+                Ekspor Excel
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Action Buttons */}
+        {/* Plain-language difference between the two entry points */}
         {!isCreatingDeliveryOrder && (
-          <div className="flex items-center gap-2.5 shrink-0">
-            {/* Standard ActionDropdown: Primary Input Satuan + Dropdown for Other Input Modes */}
-            <ActionDropdown
-              splitAction={{
-                label: 'Input Satuan',
-                icon: Plus,
-                onClick: handleOpenSingleModal,
-                title: 'Catat belanja atau penerimaan 1 jenis barang',
-                variant: 'emerald',
-              }}
-              header="Opsi Input Barang & Master"
-              widthClass="w-72"
-              items={[
-                {
-                  id: 'input-satuan',
-                  label: 'Input Satuan',
-                  description: 'Catat 1 barang atau belanja cepat',
-                  icon: Plus,
-                  iconBgClass: 'bg-emerald-100 text-emerald-800',
-                  iconColorClass: 'text-emerald-700',
-                  onClick: handleOpenSingleModal,
-                },
-                {
-                  id: 'input-batch',
-                  label: 'Input Masal (Batch)',
-                  description: 'Banyak barang lewat tabel / Excel',
-                  icon: TableProperties,
-                  iconBgClass: 'bg-emerald-100 text-emerald-800',
-                  iconColorClass: 'text-emerald-700',
-                  onClick: handleOpenBatchModal,
-                },
-                ...(can('RECEIVE_GOODS')
-                  ? [
-                      {
-                        id: 'surat-jalan',
-                        label: 'Surat Jalan Supplier',
-                        description: 'Penerimaan resmi & tanda tangan',
-                        icon: FileText,
-                        iconBgClass: 'bg-slate-100 text-slate-700',
-                        iconColorClass: 'text-slate-600',
-                        dividerAbove: true,
-                        onClick: handleOpenDeliveryOrder,
-                      },
-                    ]
-                  : []),
-                {
-                  id: 'master-supplier',
-                  label: 'Master Data Supplier',
-                  description: 'Kelola, tambah & edit rekanan di modul supplier',
-                  icon: Building2,
-                  iconBgClass: 'bg-emerald-100 text-emerald-800',
-                  iconColorClass: 'text-emerald-700',
-                  dividerAbove: true,
-                  onClick: () => {
-                    if (onNavigate) {
-                      onNavigate('suppliers');
-                    }
-                  },
-                },
-              ]}
-            />
-
-            {/* Tombol Pool Cetak Nota */}
-            <button
-              type="button"
-              onClick={() => setIsBatchPrintModalOpen(true)}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl border shadow-2xs transition-all cursor-pointer relative ${
-                poolNotaIds.length > 0
-                  ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100 hover:scale-102'
-                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-              }`}
-              title="Buka Pool Antrean Cetak: Kumpulkan nota kecil untuk dicetak gabung 2 nota per lembar A4"
-            >
-              <Layers className="w-4 h-4 text-emerald-600" />
-              <span>Pool Cetak</span>
-              {poolNotaIds.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-emerald-600 text-white text-[10px] font-bold">
-                  {poolNotaIds.length}
-                </span>
-              )}
-            </button>
-
-            {/* Ekspor Excel */}
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-              title="Unduh rekap barang & belanja ke Excel"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Ekspor Excel</span>
-            </button>
-          </div>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+            <div className="flex gap-2 p-2.5 rounded-lg bg-emerald-50">
+              <dt className="font-semibold text-emerald-800 shrink-0">Terima Barang</dt>
+              <dd className="text-emerald-900">Barang dari supplier ditimbang dan <strong>menambah stok gudang</strong>.</dd>
+            </div>
+            <div className="flex gap-2 p-2.5 rounded-lg bg-slate-50">
+              <dt className="font-semibold text-slate-800 shrink-0">Catat Belanja</dt>
+              <dd className="text-slate-700">Masuk laporan pengeluaran saja. <strong>Stok gudang tidak berubah.</strong></dd>
+            </div>
+          </dl>
         )}
       </div>
 
-      {/* ========================================================================= */}
-      {/* SECTION: ANTREAN PO & PENIMBANGAN BAHAN MASUK (GOLDEN FLOW SUPPLY CHAIN) */}
-      {/* ========================================================================= */}
-      {!isCreatingDeliveryOrder && purchaseOrders.length > 0 && (
-        <section className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-          {/* Header Ribbon */}
-          <div className="px-5 py-3.5 bg-slate-50/90 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200/80">
-                <PackageCheck className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-                    Antrean Penerimaan PO
-                  </h2>
-                  {pendingPOs.length > 0 ? (
-                    <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200/80">
-                      {pendingPOs.length} Menunggu
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/80">
-                      Semua Selesai
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Daftar PO bahan baku yang siap diterima dan diproses masuk ke inventori dapur.
-                </p>
-              </div>
+      {/* PO MENUNGGU DITERIMA: the main morning task, shown even when empty */}
+      {!isCreatingDeliveryOrder && (
+        <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 sm:px-5 py-3.5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-800">
+                PO Menunggu Diterima <span className="font-mono text-slate-500">({pendingPOs.length})</span>
+              </h2>
+              <p className="text-[11px] text-slate-600 mt-0.5">
+                Timbang bahan saat datang. Stok gudang dan laporan pengeluaran terisi otomatis.
+              </p>
             </div>
-
-            <div className="flex items-center gap-2">
+            {purchaseOrders.length > pendingPOs.length && (
               <button
                 type="button"
                 onClick={() => setShowAllPoQueue(prev => !prev)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                  showAllPoQueue
-                    ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                }`}
+                aria-pressed={showAllPoQueue}
+                className="self-start sm:self-auto text-xs font-semibold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer rounded-md min-h-[44px] sm:min-h-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
               >
                 {showAllPoQueue
-                  ? `Tampilkan Semua PO (${purchaseOrders.length})`
-                  : `Hanya Menunggu (${pendingPOs.length})`}
+                  ? 'Sembunyikan PO yang sudah diterima'
+                  : `Tampilkan juga PO yang sudah diterima (${purchaseOrders.length - pendingPOs.length})`}
               </button>
-            </div>
+            )}
           </div>
 
-          {/* Cards Grid */}
           <div className="p-4 sm:p-5">
             {(() => {
-              const displayedQueue = showAllPoQueue ? purchaseOrders : pendingPOs;
+              const displayedQueue = [...(showAllPoQueue ? purchaseOrders : pendingPOs)].sort((a, b) => {
+                const aDone = a.status === 'SELESAI' ? 1 : 0;
+                const bDone = b.status === 'SELESAI' ? 1 : 0;
+                if (aDone !== bDone) return aDone - bDone;
+                return (a.deliveryDate || a.date).localeCompare(b.deliveryDate || b.date);
+              });
+
+              if (purchaseOrders.length === 0) {
+                return (
+                  <div className="py-8 text-center">
+                    <p className="text-xs font-semibold text-slate-800">Belum ada PO.</p>
+                    <p className="text-[11px] text-slate-600 mt-1 max-w-md mx-auto">
+                      PO dibuat dari rencana menu. Barang tanpa PO tetap bisa dicatat lewat Terima Barang.
+                    </p>
+                    {onNavigate && (
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('menu_orders')}
+                        className="mt-3 inline-flex items-center px-3.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                      >
+                        Buat PO di halaman Menu
+                      </button>
+                    )}
+                  </div>
+                );
+              }
 
               if (displayedQueue.length === 0) {
                 return (
-                  <div className="py-8 text-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-                    <PackageCheck className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                    <h4 className="text-xs font-semibold text-slate-800">
-                      Tidak Ada PO yang Menunggu Penerimaan
-                    </h4>
-                    <p className="text-[11px] text-slate-500 max-w-md mx-auto mt-1">
-                      Seluruh nota pesanan bahan (PO) telah selesai diterima dan tercatat di inventori gudang.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setShowAllPoQueue(true)}
-                      className="mt-3 text-xs text-emerald-700 font-semibold hover:underline cursor-pointer"
-                    >
-                      Lihat riwayat seluruh PO ({purchaseOrders.length})
-                    </button>
+                  <div className="py-8 text-center">
+                    <p className="text-xs font-semibold text-slate-800">Semua PO sudah diterima.</p>
+                    <p className="text-[11px] text-slate-600 mt-1">Tidak ada bahan yang sedang ditunggu dari supplier.</p>
                   </div>
                 );
               }
 
               return (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {displayedQueue.map(po => {
                     const isFinished = po.status === 'SELESAI';
-                    const targetDeliveryDate = po.deliveryDate || po.date;
-                    const cleanMenuName = po.notes
-                      ? po.notes.replace(/^PO dibuat otomatis dari Perencanaan Menu:\s*/i, '').trim()
-                      : '';
+                    const targetDeliveryDate = (po.deliveryDate || po.date || '').slice(0, 10);
+                    const isToday = targetDeliveryDate === today;
+                    const isLate = !isFinished && targetDeliveryDate !== '' && targetDeliveryDate < today;
+                    // Only PO generated from a menu plan carries the menu name in its notes
+                    const menuMatch = po.notes?.match(/^PO dibuat otomatis dari Perencanaan Menu:\s*(.+)$/i);
+                    const cleanMenuName = menuMatch ? menuMatch[1].trim() : '';
 
                     return (
                       <div
                         key={po.id}
-                        className={`rounded-xl border p-4 flex flex-col justify-between transition-all shadow-2xs hover:shadow-sm ${
+                        className={`rounded-xl border p-4 flex flex-col justify-between ${
                           isFinished
-                            ? 'bg-slate-50/60 border-slate-200 opacity-85'
-                            : 'bg-white border-slate-200 hover:border-slate-300'
+                            ? 'bg-slate-50 border-slate-200'
+                            : isToday
+                            ? 'bg-white border-emerald-300'
+                            : isLate
+                            ? 'bg-white border-amber-300'
+                            : 'bg-white border-slate-200'
                         }`}
                       >
                         <div className="space-y-3">
-                          {/* Card Top: Supplier + Badge */}
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <div className="font-bold text-slate-900 text-sm truncate" title={po.supplierName}>
+                              <h3 className="font-semibold text-slate-900 text-sm truncate" title={po.supplierName}>
                                 {po.supplierName}
-                              </div>
-                              <div className="text-xs font-mono text-slate-500 font-medium mt-0.5">
-                                {po.poNumber}
-                              </div>
+                              </h3>
+                              <p className="text-[11px] font-mono text-slate-600 mt-0.5">{po.poNumber}</p>
                             </div>
                             <span
-                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium shrink-0 border ${
+                              className={`px-2 py-0.5 rounded-md text-[11px] font-semibold shrink-0 ${
                                 isFinished
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80'
-                                  : 'bg-amber-50 text-amber-800 border-amber-200/80'
+                                  ? 'bg-slate-200 text-slate-700'
+                                  : isToday
+                                  ? 'bg-emerald-50 text-emerald-800'
+                                  : isLate
+                                  ? 'bg-amber-50 text-amber-800'
+                                  : 'bg-slate-100 text-slate-700'
                               }`}
                             >
-                              <span className={`w-1.5 h-1.5 rounded-full ${isFinished ? 'bg-emerald-600' : 'bg-amber-500'}`} />
-                              <span>{isFinished ? 'Selesai' : 'Menunggu kedatangan'}</span>
+                              {isFinished ? 'Sudah diterima' : isToday ? 'Datang hari ini' : isLate ? 'Terlambat' : 'Dijadwalkan'}
                             </span>
                           </div>
 
-                          {/* Info Delivery & Menu */}
-                          <div className="text-xs text-slate-600 space-y-1.5">
-                            <div className="flex items-center gap-1.5 text-slate-600">
-                              <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span>
-                                Jadwal Kirim: <strong className="text-slate-800 font-medium">{formatIndonesianDateWithDay(targetDeliveryDate)}</strong>
-                              </span>
-                            </div>
+                          <div className="text-xs text-slate-600 space-y-1">
+                            <p>
+                              Jadwal kirim:{' '}
+                              <strong className="text-slate-900 font-medium">{formatIndonesianDateWithDay(targetDeliveryDate)}</strong>
+                            </p>
                             {cleanMenuName && (
-                              <div className="bg-slate-50 border border-slate-100 rounded-md px-2.5 py-1.5 text-[11px] text-slate-600 truncate leading-normal" title={cleanMenuName}>
-                                <span className="font-semibold text-slate-700">Menu: </span>
-                                <span>{cleanMenuName}</span>
-                              </div>
+                              <p className="text-[11px] truncate" title={cleanMenuName}>
+                                Menu: {cleanMenuName}
+                              </p>
                             )}
                           </div>
 
-                          {/* Items Preview List */}
-                          <div className="bg-slate-50/70 rounded-lg p-2.5 border border-slate-100 space-y-1.5">
-                            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600">
-                              <span>Daftar Bahan</span>
-                              <span className="text-[10px] font-medium text-slate-400">
-                                {po.items.length} item
-                              </span>
-                            </div>
-                            <div className="space-y-1">
-                              {po.items.slice(0, 2).map((it, idx) => (
-                                <div key={idx} className="flex items-center justify-between text-xs gap-2">
-                                  <span className="text-slate-700 truncate font-medium">{it.name}</span>
-                                  <span className="font-mono font-semibold text-slate-900 shrink-0 text-right tabular-nums">
-                                    {it.quantity} {it.unit}
-                                  </span>
-                                </div>
-                              ))}
-                              {po.items.length > 2 && (
-                                <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-200/50">
-                                  +{po.items.length - 2} bahan lainnya dalam nota
-                                </div>
-                              )}
-                            </div>
-                          </div>
+                          <ul className="rounded-lg p-2.5 bg-slate-50 border border-slate-200 space-y-1">
+                            {po.items.slice(0, 3).map((it, idx) => (
+                              <li key={idx} className="flex items-center justify-between text-xs gap-2">
+                                <span className="text-slate-700 truncate">{it.name}</span>
+                                <span className="font-mono font-semibold text-slate-900 shrink-0 tabular-nums">
+                                  {it.quantity} {it.unit}
+                                </span>
+                              </li>
+                            ))}
+                            {po.items.length > 3 && (
+                              <li className="text-[11px] text-slate-600 pt-1 border-t border-slate-200">
+                                +{po.items.length - 3} bahan lainnya
+                              </li>
+                            )}
+                          </ul>
                         </div>
 
-                        {/* Card Bottom: Total + Action Buttons */}
-                        <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                          <div className="shrink-0">
-                            <div className="text-[10px] text-slate-400 font-medium leading-tight">
-                              Estimasi Nilai PO
-                            </div>
-                            <div className="text-xs font-bold font-mono text-slate-900 tabular-nums whitespace-nowrap mt-0.5">
+                        <div className="pt-3 mt-3 border-t border-slate-200 space-y-2.5">
+                          <div className="flex items-center justify-between text-[11px] text-slate-600">
+                            <span>Nilai PO</span>
+                            <span className="font-mono font-semibold text-slate-900 tabular-nums">
                               Rp {po.grandTotal.toLocaleString('id-ID')}
-                            </div>
+                            </span>
                           </div>
-
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteNota(po)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                              title="Hapus atau batalkan nota PO ini"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {!isFinished && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenWeighModal(po)}
+                                className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                              >
+                                <Scale className="w-3.5 h-3.5" />
+                                Timbang & Terima
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => handleOpenExistingNota(po)}
-                              className="px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors cursor-pointer shadow-2xs inline-flex items-center gap-1"
-                              title="Lihat Nota Pesanan Resmi"
+                              className={`${isFinished ? 'flex-1' : ''} inline-flex items-center justify-center gap-1 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600`}
                             >
-                              <FileText className="w-3.5 h-3.5 text-slate-400" />
-                              <span>Nota</span>
+                              <FileText className="w-3.5 h-3.5 text-slate-500" />
+                              Lihat Nota
                             </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleOpenWeighModal(po)}
-                              className={`px-3 py-1.5 text-xs font-semibold rounded-lg shadow-2xs transition-all cursor-pointer inline-flex items-center gap-1.5 ${
-                                isFinished
-                                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
-                                  : 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-emerald-700/20'
-                              }`}
-                            >
-                              <PackageCheck className="w-3.5 h-3.5" />
-                              <span>{isFinished ? 'Selesai' : 'Terima'}</span>
-                            </button>
+                            {!isFinished && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteNota(po)}
+                                className="inline-flex items-center justify-center gap-1 px-2.5 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600"
+                                title="Batalkan dan hapus PO ini"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                Hapus
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -2273,8 +2240,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
       )}
 
       {/* ========================================================================= */}
-
-      {/* ========================================================================= */}
       {/* FORM MODE: DELIVERY ORDER (SURAT JALAN SUPPLIER RESMI) */}
       {/* ========================================================================= */}
       {isCreatingDeliveryOrder ? (
@@ -2284,18 +2249,16 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
               <button
                 type="button"
                 onClick={() => setIsCreatingDeliveryOrder(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-md transition-colors cursor-pointer"
+                aria-label="Kembali ke daftar"
+                className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-md transition-colors cursor-pointer min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
               <div>
-                <h3 className="text-sm font-bold text-slate-800">Formulir Penerimaan Barang Supplier (Surat Jalan)</h3>
-                <p className="text-[11px] text-slate-500">Pilih supplier yang datang, isi nomor surat jalan, lampirkan item barang & foto bukti fisik.</p>
+                <h2 className="text-sm font-semibold text-slate-800">Terima Barang (tanpa PO)</h2>
+                <p className="text-[11px] text-slate-600">Barang yang disimpan di sini langsung menambah stok gudang. Untuk barang dari PO, pakai Timbang & Terima di daftar PO.</p>
               </div>
             </div>
-            <span className="text-[11px] font-mono bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-semibold">
-              Status: VERIFIED_POSTED
-            </span>
           </div>
 
           {errorMessage && (
@@ -2369,7 +2332,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
 
               {/* No Surat Jalan */}
               <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">No. Surat Jalan / Delivery Note</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">No. Surat Jalan dari Supplier</label>
                 <input
                   type="text"
                   placeholder="Contoh: SJ-2026/09/8821"
@@ -2396,7 +2359,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-xs font-semibold text-slate-800">
-                  Daftar Barang Diterima ({lines.length} Baris)
+                  Barang Diterima ({lines.length})
                 </h4>
                 <button
                   type="button"
@@ -2413,9 +2376,9 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                   <thead className="bg-slate-100/90 text-slate-700 font-semibold border-b border-slate-200">
                     <tr>
                       <th className="py-2.5 px-3 w-10 text-center">#</th>
-                      <th className="py-2.5 px-3 min-w-[200px]">Item Bahan Gudang <span className="text-rose-500">*</span></th>
+                      <th className="py-2.5 px-3 min-w-[200px]">Barang <span className="text-rose-500">*</span></th>
                       <th className="py-2.5 px-3 w-32">Kategori</th>
-                      <th className="py-2.5 px-3 w-28">Kuantitas Timbang <span className="text-rose-500">*</span></th>
+                      <th className="py-2.5 px-3 w-28">Jumlah Timbang <span className="text-rose-500">*</span></th>
                       <th className="py-2.5 px-3 w-20">Satuan</th>
                       <th className="py-2.5 px-3 min-w-[150px]">Kondisi & Catatan</th>
                       <th className="py-2.5 px-3 w-10 text-center"></th>
@@ -2424,7 +2387,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                   <tbody className="divide-y divide-slate-100">
                     {lines.map((line, idx) => (
                       <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-2.5 px-3 font-mono text-slate-400 text-center">{idx + 1}</td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500 text-center">{idx + 1}</td>
                         <td className="py-2.5 px-3">
                           <select
                             value={line.itemId}
@@ -2458,10 +2421,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                         <td className="py-2.5 px-3">
                           <input
                             type="text"
-                            placeholder="Kondisi segar, kemasan baik..."
+                            placeholder="Contoh: segar, kemasan utuh"
                             value={line.conditionNote || ''}
                             onChange={e => handleLineNoteChange(idx, e.target.value)}
-                            className="w-full text-xs rounded border border-slate-200 px-2 py-1 text-slate-700 placeholder:text-slate-400"
+                            className="w-full text-xs rounded border border-slate-200 px-2 py-1 text-slate-700 placeholder:text-slate-500"
                           />
                         </td>
                         <td className="py-2.5 px-3 text-center">
@@ -2469,7 +2432,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                             type="button"
                             onClick={() => removeLine(idx)}
                             disabled={lines.length === 1}
-                            className="text-slate-400 hover:text-rose-600 disabled:opacity-30 p-1 rounded transition-colors cursor-pointer"
+                            className="text-slate-500 hover:text-rose-600 disabled:opacity-30 p-1 rounded transition-colors cursor-pointer"
                             title="Hapus baris"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -2489,15 +2452,15 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                 onChange={setFormPhotos}
                 maxPhotos={6}
                 folder="receiving"
-                label="Dokumentasi Foto Kedatangan (Auto-Kompres WebP)"
-                description="Foto surat jalan, timbangan, atau fisik kemasan barang. Otomatis dikompres ke WebP di HP karyawan sebelum diunggah."
+                label="Foto Kedatangan"
+                description="Foto surat jalan, angka timbangan, atau kondisi barang. Ukuran foto otomatis dikecilkan sebelum diunggah."
               />
             </div>
 
             {/* Signature Section */}
             <div>
               <h4 className="text-xs font-semibold text-slate-800 mb-2">
-                Verifikasi & Tanda Tangan Digital
+                Tanda Tangan
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <SignaturePad
@@ -2530,7 +2493,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
               className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
             >
               <CheckCircle className="w-4 h-4" />
-              Simpan & Posting Penerimaan ke Stok
+              Simpan & Tambah ke Stok
             </button>
           </div>
         </form>
@@ -2540,11 +2503,11 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
         /* ========================================================================= */
         <div className="space-y-4">
           {/* Filter Control Box: Period (Minggu, Bulan, Hari) & Categories */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+          <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
             {/* Row 1: Period Mode Selector & Date Controls */}
             <div className="px-4 py-3 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-slate-600 flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="hidden sm:flex text-xs font-medium text-slate-600 items-center gap-1.5 shrink-0">
                   <CalendarRange className="w-3.5 h-3.5 text-emerald-700" />
                   <span>Periode</span>
                 </span>
@@ -2597,7 +2560,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 {periodType === 'DAILY' && (
                   <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-8">
-                    <span className="text-slate-400 text-[11px]">Tanggal:</span>
+                    <span className="text-slate-500 text-[11px]">Tanggal:</span>
                     <input
                       type="date"
                       value={selectedDailyDate}
@@ -2610,14 +2573,14 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                 {(periodType === 'WEEKLY' || periodType === 'CUSTOM') && (
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-8">
-                      <span className="text-slate-400 text-[11px]">Dari</span>
+                      <span className="text-slate-500 text-[11px]">Dari</span>
                       <input
                         type="date"
                         value={startDate}
                         onChange={e => setStartDate(e.target.value)}
                         className="text-xs font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
                       />
-                      <span className="text-slate-300">s/d</span>
+                      <span className="text-slate-500">s/d</span>
                       <input
                         type="date"
                         value={endDate}
@@ -2649,7 +2612,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
 
                 {periodType === 'MONTHLY' && (
                   <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-8">
-                    <span className="text-slate-400 text-[11px]">Bulan:</span>
+                    <span className="text-slate-500 text-[11px]">Bulan:</span>
                     <input
                       type="month"
                       value={selectedMonth}
@@ -2670,7 +2633,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                   { id: 'Bahan Basah', label: 'Bahan Basah', count: categoryCounts['Bahan Basah'] || 0 },
                   { id: 'Bahan Kering', label: 'Bahan Kering', count: categoryCounts['Bahan Kering'] || 0 },
                   { id: 'Bahan Peralatan', label: 'Peralatan', count: categoryCounts['Bahan Peralatan'] || 0 },
-                  { id: 'SURAT_JALAN', label: 'Surat Jalan', count: categoryCounts['SURAT_JALAN'] || 0 },
+                  { id: 'SURAT_JALAN', label: 'Masuk stok', count: categoryCounts['SURAT_JALAN'] || 0 },
                 ].map(tab => {
                   const isActive = selectedCategoryTab === tab.id;
                   return (
@@ -2687,7 +2650,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                       <span>{tab.label}</span>
                       {tab.count > 0 && (
                         <span
-                          className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
                             isActive ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-500'
                           }`}
                         >
@@ -2702,7 +2665,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
               {/* Right Side: View Mode Toggle, Supplier Select, & Search Box */}
               <div className="flex flex-wrap items-center gap-2">
                 {/* View Mode Toggle: Tabel vs Per Supplier */}
-                <div className="inline-flex bg-slate-150 p-0.5 rounded-lg border border-slate-200/70 text-xs shrink-0">
+                <div className="inline-flex bg-slate-100 p-0.5 rounded-lg border border-slate-200/70 text-xs shrink-0">
                   <button
                     type="button"
                     onClick={() => setViewMode('TABLE')}
@@ -2753,25 +2716,25 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                       </option>
                     ))}
                   </select>
-                  <Building2 className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Building2 className="w-3.5 h-3.5 text-slate-500 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <ChevronDown className="w-3 h-3 text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
 
                 {/* Search Box */}
-                <div className="relative w-44 sm:w-52">
-                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <div className="relative w-full sm:w-52">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="Cari barang, PIC..."
+                    placeholder="Cari barang, supplier, PIC"
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    className="w-full h-8 pl-8 pr-7 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 placeholder:text-slate-400 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 transition-colors shadow-2xs"
+                    className="w-full h-8 pl-8 pr-7 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 placeholder:text-slate-500 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 transition-colors shadow-2xs"
                   />
                   {searchQuery && (
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-0.5 cursor-pointer"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 text-xs p-0.5 cursor-pointer"
                       title="Hapus pencarian"
                     >
                       ✕
@@ -2785,9 +2748,9 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
           {/* VIEW: Kelompokkan Per Supplier & Per Tanggal */}
           {viewMode === 'SUPPLIER_GROUPS' ? (
             uniqueSuppliers.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+              <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
                 <div className="max-w-sm mx-auto space-y-2">
-                  <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                  <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center mx-auto">
                     <PackageSearch className="w-5 h-5" />
                   </div>
                   <h4 className="text-xs font-semibold text-slate-800">
@@ -2836,7 +2799,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                     const sortedDates = Array.from(dateMap.keys()).sort((a, b) => b.localeCompare(a));
 
                     return (
-                      <div key={supplier.name} className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden transition-all hover:border-slate-300">
+                      <div key={supplier.name} className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden transition-all hover:border-slate-300">
                         {/* Supplier Card Header */}
                         <div className="px-5 py-3.5 bg-slate-50/90 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
                           <div className="flex items-center gap-3">
@@ -2910,7 +2873,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                                         <span className="font-bold text-slate-800 text-xs">
                                           {formatIndonesianDateWithDay(dateKey)}
                                         </span>
-                                        <span className="text-[11px] font-medium px-2 py-0.2 rounded-full bg-white text-slate-700 border border-slate-200">
+                                        <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-white text-slate-700 border border-slate-200">
                                           {dateRecords.length} Barang
                                         </span>
                                       </div>
@@ -2927,25 +2890,16 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                                         <button
                                           type="button"
                                           onClick={() => handleOpenExistingNota(nota)}
-                                          className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 transition-all cursor-pointer active:scale-95"
+                                          className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 transition-all cursor-pointer "
                                           title={`Lihat & Cetak Nota PO: ${nota.poNumber}`}
                                         >
                                           <Receipt className="w-3.5 h-3.5" />
-                                          <span>{dateMatchingNotas.length > 1 ? `Cetak PO (${nota.poNumber})` : 'Cetak PO'}</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleOpenExistingNota(nota)}
-                                          className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95"
-                                          title={`Edit data & rincian barang Nota PO: ${nota.poNumber}`}
-                                        >
-                                          <Edit3 className="w-3.5 h-3.5 text-slate-500" />
-                                          <span>Edit PO</span>
+                                          <span>{dateMatchingNotas.length > 1 ? `Lihat Nota ${nota.poNumber}` : 'Lihat Nota'}</span>
                                         </button>
                                         <button
                                           type="button"
                                           onClick={() => handleTogglePool(nota.id)}
-                                          className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95 ${
+                                          className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer shadow-2xs  ${
                                             poolNotaIds.includes(nota.id) || poolNotaIds.includes(nota.poNumber)
                                               ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
                                               : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-600'
@@ -2959,63 +2913,41 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                                           <Layers className="w-3.5 h-3.5 text-emerald-600" />
                                           <span>
                                             {poolNotaIds.includes(nota.id) || poolNotaIds.includes(nota.poNumber)
-                                              ? 'Di Pool'
-                                              : '+ Pool'}
+                                              ? 'Di antrean cetak'
+                                              : 'Tambah ke antrean cetak'}
                                           </span>
                                         </button>
                                         <button
                                           type="button"
                                           onClick={() => handleDeleteNota(nota)}
-                                          className="px-3 py-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95"
+                                          className="px-3 py-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs "
                                           title={`Hapus Nota PO: ${nota.poNumber}`}
                                         >
                                           <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                          <span>Hapus PO</span>
+                                          <span>Hapus Nota</span>
                                         </button>
                                       </div>
                                     ))}
 
                                     {dateMatchingNotas.length === 0 ? (
-                                      <div className="flex items-center gap-1.5 flex-wrap">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleCreateCombinedNotaForSupplier(supplier.name, dateRecords, dateKey)}
-                                          className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 transition-all cursor-pointer active:scale-95"
-                                          title="Cetak Nota PO gabungan untuk barang pada tanggal ini"
-                                        >
-                                          <Receipt className="w-3.5 h-3.5" />
-                                          <span>Cetak PO</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleCreateCombinedNotaForSupplier(supplier.name, dateRecords, dateKey)}
-                                          className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95"
-                                          title="Buka dan edit rincian data PO sebelum disimpan/dicetak"
-                                        >
-                                          <Edit3 className="w-3.5 h-3.5 text-slate-500" />
-                                          <span>Edit PO</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            toast.info('Belum ada Nota PO yang diterbitkan untuk transaksi ini. Silakan klik Cetak PO untuk membuat nota terlebih dahulu.');
-                                          }}
-                                          className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-                                          title="Belum ada Nota PO yang dibuat"
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5 text-slate-400" />
-                                          <span>Hapus PO</span>
-                                        </button>
-                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCreateCombinedNotaForSupplier(supplier.name, dateRecords, dateKey)}
+                                        className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer min-h-[36px]"
+                                        title="Buat nota gabungan untuk barang pada tanggal ini. Nota bisa diedit sebelum dicetak."
+                                      >
+                                        <Receipt className="w-3.5 h-3.5" />
+                                        <span>Buat Nota</span>
+                                      </button>
                                     ) : unassignedRecords.length > 0 ? (
                                       <button
                                         type="button"
                                         onClick={() => handleCreateCombinedNotaForSupplier(supplier.name, unassignedRecords, dateKey)}
-                                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
+                                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer "
                                         title="Buat PO untuk barang yang belum masuk nota pada tanggal ini"
                                       >
                                         <FilePlus className="w-3.5 h-3.5" />
-                                        <span>Cetak PO ({unassignedRecords.length} Barang Baru)</span>
+                                        <span>Buat Nota ({unassignedRecords.length} barang belum masuk nota)</span>
                                       </button>
                                     ) : null}
                                   </div>
@@ -3031,31 +2963,22 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                                         <th className="py-2.5 px-3 w-32">Kategori</th>
                                         <th className="py-2.5 px-3 min-w-[200px]">Nama Barang & Keterangan</th>
                                         <th className="py-2.5 px-3 w-28 text-right">Jumlah & Satuan</th>
-                                        <th className="py-2.5 px-3 w-32 text-right">Estimasi Biaya</th>
+                                        <th className="py-2.5 px-3 w-32 text-right">Nilai</th>
                                         <th className="py-2.5 px-3 w-28">PIC Petugas</th>
                                       </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 font-medium">
                                       {dateRecords.map((r, itemIdx) => {
-                                        const isBasah = (r.displayCategory || r.category).includes('Basah');
-                                        const isKering = (r.displayCategory || r.category).includes('Kering');
-                                        const isAtk = (r.displayCategory || r.category).includes('ATK');
-                                        const isBersih = (r.displayCategory || r.category).includes('Kebersihan');
-
-                                        let badgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
-                                        if (isBasah) badgeColor = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-                                        else if (isKering) badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
-                                        else if (isAtk) badgeColor = 'bg-blue-50 text-blue-800 border-blue-200';
-                                        else if (isBersih) badgeColor = 'bg-cyan-50 text-cyan-800 border-cyan-200';
+                                        const badgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
 
                                         return (
                                           <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
-                                            <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
+                                            <td className="py-2.5 px-3 text-center text-slate-500 font-mono text-[11px]">
                                               {itemIdx + 1}
                                             </td>
                                             <td className="py-2.5 px-3 text-slate-700">
                                               <div className="text-[11px] font-medium text-slate-600 flex items-center gap-1">
-                                                <Clock className="w-3 h-3 text-slate-400" />
+                                                <Clock className="w-3 h-3 text-slate-500" />
                                                 <span>{r.time ? `${r.time} WIB` : '-'}</span>
                                               </div>
                                             </td>
@@ -3077,10 +3000,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                                             </td>
                                             <td className="py-2.5 px-3 text-right">
                                               <div className="font-mono font-bold text-slate-900">
-                                                Rp {r.nominal.toLocaleString('id-ID')}
+                                                {r.source === 'DELIVERY_ORDER' ? '-' : `Rp ${r.nominal.toLocaleString('id-ID')}`}
                                               </div>
                                               {r.unitPrice > 0 && (
-                                                <div className="text-[10px] text-slate-400 font-mono">
+                                                <div className="text-[10px] text-slate-500 font-mono">
                                                   @ Rp {r.unitPrice.toLocaleString('id-ID')}
                                                 </div>
                                               )}
@@ -3104,185 +3027,235 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
               </div>
             )
           ) : (
-            /* VIEW: Table of Records Card (Tabel Biasa) */
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden relative">
-              {/* Table of Records */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
-                    <tr>
-                      <th className="py-3 px-3 w-12 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <input
-                            type="checkbox"
-                            checked={allFilteredSelected}
-                            ref={el => {
-                              if (el) el.indeterminate = someFilteredSelected && !allFilteredSelected;
-                            }}
-                            onChange={handleToggleSelectAll}
-                            className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer w-3.5 h-3.5"
-                            title="Pilih semua baris"
-                          />
-                        </div>
-                      </th>
-                      <th className="py-3 px-3 w-28">Tanggal & Jam</th>
-                      <th className="py-3 px-3 w-36">Kategori</th>
-                      <th className="py-3 px-3 min-w-[200px]">Nama Barang & Keterangan</th>
-                      <th className="py-3 px-3 w-28 text-right">Jumlah & Satuan</th>
-                      <th className="py-3 px-3 w-32 text-right">Estimasi Biaya</th>
-                      <th className="py-3 px-3 min-w-[140px]">Toko / Supplier</th>
-                      <th className="py-3 px-3 w-32">PIC Petugas</th>
-                      <th className="py-3 px-2 w-28 text-center" title="Status Nota Pesanan / Purchase Order (PO)">Status PO</th>
-                      <th className="py-3 px-2 text-center w-14">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {filteredRecords.length === 0 ? (
-                      <tr>
-                        <td colSpan={10} className="py-12 text-center">
-                          <div className="max-w-sm mx-auto space-y-2">
-                            <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
-                              <PackageSearch className="w-5 h-5" />
-                            </div>
-                            <h4 className="text-xs font-semibold text-slate-800">
-                              Tidak Ada Data Barang atau Belanja
-                            </h4>
-                            <p className="text-[11px] text-slate-500">
-                              Tidak ditemukan catatan yang sesuai dengan filter periode atau kategori saat ini.
-                            </p>
-                            <button
-                              type="button"
-                              onClick={handleOpenSingleModal}
-                              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>Input Belanja Baru</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredRecords.map((r, idx) => {
-                        const isBasah = (r.displayCategory || r.category).includes('Basah');
-                        const isKering = (r.displayCategory || r.category).includes('Kering');
-                        const isAtk = (r.displayCategory || r.category).includes('ATK');
-                        const isBersih = (r.displayCategory || r.category).includes('Kebersihan');
-
-                        let badgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
-                        if (isBasah) badgeColor = 'bg-emerald-50 text-emerald-800 border-emerald-200';
-                        else if (isKering) badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
-                        else if (isAtk) badgeColor = 'bg-blue-50 text-blue-800 border-blue-200';
-                        else if (isBersih) badgeColor = 'bg-cyan-50 text-cyan-800 border-cyan-200';
-
-                        const matchingNota = getMatchingNotaForRecord(r);
-
-                        return (
-                          <tr key={r.id} className={`hover:bg-slate-50/80 transition-colors ${selectedRecordIds.includes(r.id) ? 'bg-emerald-50/40' : ''}`}>
-                            <td className="py-3 px-3 text-center text-slate-400 font-mono text-[11px]">
-                              <div className="flex items-center justify-center gap-1.5">
+            /* VIEW: Riwayat (tabel di layar lebar, kartu di HP) */
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden relative">
+              {filteredRecords.length === 0 ? (
+                <div className="py-12 px-4 text-center max-w-sm mx-auto">
+                  <h4 className="text-xs font-semibold text-slate-800">
+                    {searchQuery || selectedCategoryTab !== 'ALL' || selectedSupplierFilter !== 'ALL'
+                      ? 'Tidak ada catatan yang cocok dengan filter.'
+                      : 'Belum ada barang masuk atau belanja di periode ini.'}
+                  </h4>
+                  <p className="text-[11px] text-slate-600 mt-1">
+                    Ubah periode atau filter, atau catat yang baru.
+                  </p>
+                  <div className="mt-3 flex flex-wrap justify-center gap-2">
+                    {can('RECEIVE_GOODS') && (
+                      <button
+                        type="button"
+                        onClick={handleOpenDeliveryOrder}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px]"
+                      >
+                        <PackageCheck className="w-3.5 h-3.5" />
+                        Terima Barang
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleOpenSingleModal}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px]"
+                    >
+                      <Receipt className="w-3.5 h-3.5 text-slate-500" />
+                      Catat Belanja
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Layar lebar: tabel */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                        <tr>
+                          <th className="py-3 px-3 w-12 text-center">
+                            <input
+                              type="checkbox"
+                              checked={allFilteredSelected}
+                              ref={el => {
+                                if (el) el.indeterminate = someFilteredSelected && !allFilteredSelected;
+                              }}
+                              onChange={handleToggleSelectAll}
+                              aria-label="Pilih semua baris"
+                              className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer w-3.5 h-3.5"
+                            />
+                          </th>
+                          <th className="py-3 px-3 w-28">Tanggal</th>
+                          <th className="py-3 px-3 w-32">Jenis</th>
+                          <th className="py-3 px-3 min-w-[200px]">Barang</th>
+                          <th className="py-3 px-3 w-28 text-right">Jumlah</th>
+                          <th className="py-3 px-3 w-32 text-right">Nilai</th>
+                          <th className="py-3 px-3 min-w-[140px]">Supplier / Toko</th>
+                          <th className="py-3 px-3 w-32">Petugas</th>
+                          <th className="py-3 px-2 w-28 text-center">Nota</th>
+                          <th className="py-3 px-2 text-center w-16"><span className="sr-only">Aksi</span></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredRecords.map(r => {
+                          const isStock = r.source === 'DELIVERY_ORDER';
+                          const matchingNota = getMatchingNotaForRecord(r);
+                          return (
+                            <tr key={r.id} className={`hover:bg-slate-50 ${selectedRecordIds.includes(r.id) ? 'bg-emerald-50/50' : ''}`}>
+                              <td className="py-3 px-3 text-center">
                                 <input
                                   type="checkbox"
                                   checked={selectedRecordIds.includes(r.id)}
                                   onChange={() => handleToggleSelectRecord(r.id)}
+                                  aria-label={`Pilih ${r.itemName}`}
                                   className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer w-3.5 h-3.5"
                                 />
-                                <span>{idx + 1}</span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-3 text-slate-700">
-                              <div className="font-semibold text-slate-900">{r.date}</div>
-                              <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                <span>{r.time} WIB</span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-3">
-                              <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold border ${badgeColor}`}>
-                                {r.displayCategory || r.category}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3">
-                              <div className="font-bold text-slate-900">{r.itemName}</div>
-                              {r.notes && (
-                                <div className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
-                                  {r.notes}
-                                </div>
-                              )}
-                              {r.volunteer && (
-                                <div className="text-[10px] text-slate-400">
-                                  Petugas belanja: <span className="font-medium text-slate-600">{r.volunteer}</span>
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">
-                              {r.quantity} {r.unit}
-                            </td>
-                            <td className="py-3 px-3 text-right">
-                              <div className="font-mono font-bold text-slate-900">
-                                Rp {r.nominal.toLocaleString('id-ID')}
-                              </div>
-                              {r.unitPrice > 0 && (
-                                <div className="text-[10px] text-slate-400 font-mono">
-                                  @ Rp {r.unitPrice.toLocaleString('id-ID')}
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-3 px-3 text-slate-700">
-                              <div className="font-semibold truncate max-w-[150px]">
-                                {r.supplierOrStore !== '-' ? r.supplierOrStore : 'Belanja Rutin'}
-                              </div>
-                            </td>
-                            <td className="py-3 px-3 text-slate-700">
-                              <div className="font-semibold truncate max-w-[120px]">{r.picOrUser}</div>
-                            </td>
-                            <td className="py-2.5 px-2 text-center">
-                              {matchingNota ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenExistingNota(matchingNota)}
-                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/80 hover:bg-emerald-100 transition-colors cursor-pointer"
-                                  title={`Nota PO: ${matchingNota.poNumber} (${matchingNota.status}) - Klik untuk lihat / cetak`}
-                                >
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                  <span>Sudah Dibuat</span>
-                                </button>
-                              ) : (
+                              </td>
+                              <td className="py-3 px-3">
+                                <div className="font-semibold text-slate-900">{r.date}</div>
+                                <div className="text-[11px] text-slate-600">{r.time} WIB</div>
+                              </td>
+                              <td className="py-3 px-3">
                                 <span
-                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200"
-                                  title="Belum dibuatkan Nota PO"
+                                  className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold ${
+                                    isStock ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-700'
+                                  }`}
                                 >
-                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
-                                  <span>Belum Dibuat</span>
+                                  {isStock ? 'Masuk stok' : 'Belanja'}
                                 </span>
-                              )}
-                            </td>
-                            <td className="py-3 px-2 text-center">
-                              {r.source !== 'EXPENSE_INPUT' && r.rawDoc ? (
-                                <button
-                                  type="button"
-                                  onClick={() => r.rawDoc && setSelectedDocForDetail(r.rawDoc)}
-                                  className="text-slate-400 hover:text-emerald-700 p-1.5 rounded transition-colors cursor-pointer"
-                                  title="Lihat dokumen surat jalan"
+                                <div className="text-[11px] text-slate-600 mt-1">{r.displayCategory || r.category}</div>
+                              </td>
+                              <td className="py-3 px-3">
+                                <div className="font-semibold text-slate-900">{r.itemName}</div>
+                                {r.notes && <div className="text-[11px] text-slate-600 line-clamp-1 mt-0.5">{r.notes}</div>}
+                                {r.volunteer && (
+                                  <div className="text-[11px] text-slate-600">Dibelanjakan oleh {r.volunteer}</div>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-right font-mono font-semibold text-slate-900 whitespace-nowrap">
+                                {r.quantity} {r.unit}
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                {isStock ? (
+                                  <span className="text-slate-600" title="Nilai uangnya tercatat di baris Belanja">-</span>
+                                ) : (
+                                  <>
+                                    <div className="font-mono font-semibold text-slate-900">Rp {r.nominal.toLocaleString('id-ID')}</div>
+                                    {r.unitPrice > 0 && (
+                                      <div className="text-[11px] text-slate-600 font-mono">@ Rp {r.unitPrice.toLocaleString('id-ID')}</div>
+                                    )}
+                                  </>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-slate-700">
+                                <div className="font-medium truncate max-w-[160px]">
+                                  {r.supplierOrStore !== '-' ? r.supplierOrStore : <span className="text-slate-500">Tidak diisi</span>}
+                                </div>
+                              </td>
+                              <td className="py-3 px-3 text-slate-700">
+                                <div className="truncate max-w-[120px]">{r.picOrUser}</div>
+                              </td>
+                              <td className="py-2.5 px-2 text-center">
+                                {matchingNota ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenExistingNota(matchingNota)}
+                                    className="px-2 py-1 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 cursor-pointer"
+                                    title={`Nota ${matchingNota.poNumber}`}
+                                  >
+                                    Lihat nota
+                                  </button>
+                                ) : (
+                                  <span className="text-[11px] text-slate-600">Belum ada</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-2 text-center">
+                                {isStock && r.rawDoc ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => r.rawDoc && setSelectedDocForDetail(r.rawDoc)}
+                                    className="text-[11px] font-semibold text-emerald-700 hover:underline cursor-pointer"
+                                  >
+                                    Detail
+                                  </button>
+                                ) : null}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* HP: kartu */}
+                  <ul className="md:hidden divide-y divide-slate-100">
+                    {filteredRecords.map(r => {
+                      const isStock = r.source === 'DELIVERY_ORDER';
+                      const matchingNota = getMatchingNotaForRecord(r);
+                      const isSelected = selectedRecordIds.includes(r.id);
+                      return (
+                        <li key={r.id} className={`p-4 ${isSelected ? 'bg-emerald-50/50' : ''}`}>
+                          <div className="flex items-start gap-3">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectRecord(r.id)}
+                              aria-label={`Pilih ${r.itemName}`}
+                              className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer w-4 h-4 shrink-0"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <h4 className="text-sm font-semibold text-slate-900 leading-snug">{r.itemName}</h4>
+                                <span className="font-mono text-xs font-semibold text-slate-900 shrink-0">
+                                  {r.quantity} {r.unit}
+                                </span>
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600">
+                                <span
+                                  className={`px-1.5 py-0.5 rounded-md font-semibold ${
+                                    isStock ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-700'
+                                  }`}
                                 >
-                                  <Eye className="w-3.5 h-3.5" />
-                                </button>
-                              ) : (
-                                <span className="text-slate-300">-</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                                  {isStock ? 'Masuk stok' : 'Belanja'}
+                                </span>
+                                <span>{r.date} · {r.time} WIB</span>
+                              </div>
+                              <p className="mt-1 text-[11px] text-slate-600 truncate">
+                                {r.supplierOrStore !== '-' ? r.supplierOrStore : 'Supplier tidak diisi'} · {r.picOrUser}
+                              </p>
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                <span className="font-mono text-xs font-semibold text-slate-900">
+                                  {isStock ? '' : `Rp ${r.nominal.toLocaleString('id-ID')}`}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  {matchingNota && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenExistingNota(matchingNota)}
+                                      className="px-2.5 rounded-lg text-[11px] font-semibold text-emerald-800 bg-emerald-50 cursor-pointer min-h-[44px]"
+                                    >
+                                      Lihat nota
+                                    </button>
+                                  )}
+                                  {isStock && r.rawDoc && (
+                                    <button
+                                      type="button"
+                                      onClick={() => r.rawDoc && setSelectedDocForDetail(r.rawDoc)}
+                                      className="px-2.5 rounded-lg text-[11px] font-semibold text-slate-700 border border-slate-300 cursor-pointer min-h-[44px]"
+                                    >
+                                      Detail
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              )}
             </div>
           )}
 
           {/* Floating Action Bar for Selected Rows */}
           {selectedRecordIds.length > 0 && viewMode === 'TABLE' && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] sm:w-auto bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-xs">
                 <CheckSquare className="w-4 h-4 text-emerald-400" />
                 <span className="font-semibold">{selectedRecordIds.length} barang dipilih</span>
@@ -3295,15 +3268,15 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                 <button
                   type="button"
                   onClick={handleCreateNotaFromSelected}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-all cursor-pointer "
                 >
                   <Receipt className="w-3.5 h-3.5" />
-                  <span>Buat 1 Nota PO Gabungan</span>
+                  <span>Buat Nota Gabungan</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setSelectedRecordIds([])}
-                  className="text-slate-400 hover:text-white text-xs px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                  className="text-slate-500 hover:text-white text-xs px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
                 >
                   Batal
                 </button>
@@ -3318,21 +3291,19 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
       {/* ========================================================================= */}
       {isSingleInputModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
-                <h2 className="text-base font-bold text-slate-900">
-                  Input Satuan Barang & Belanja
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Catat satu per satu belanja bahan basah, bahan kering, ATK, kebersihan, atau keperluan operasional lainnya.
+                <h2 className="text-base font-bold text-slate-900">Catat Belanja</h2>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Masuk ke laporan pengeluaran. Stok gudang tidak berubah.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSingleInputModalOpen(false)}
-                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1 rounded-md text-slate-500 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
                 title="Tutup dialog"
               >
                 <X className="w-5 h-5" />
@@ -3340,7 +3311,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSaveSingleItem} className="p-6 space-y-4 text-xs">
+            <form onSubmit={handleSaveSingleItem} className="p-4 sm:p-6 space-y-4 text-xs">
+              <p className="p-2.5 rounded-lg bg-sky-50 border border-sky-200 text-[11px] text-sky-800">
+                Barang yang disimpan ke gudang dan perlu masuk stok? Tutup form ini dan pakai <strong>Terima Barang</strong>.
+              </p>
               {/* Kategori */}
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
@@ -3436,7 +3410,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                       <option value="Galon">Galon</option>
                       <option value="Karung">Karung</option>
                     </select>
-                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   </div>
                 </div>
               </div>
@@ -3448,7 +3422,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                     Harga Satuan
                   </label>
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500">
                       Rp
                     </span>
                     <input
@@ -3462,10 +3436,26 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                       className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 font-mono tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
+                  {(() => {
+                    const ref = getItemCatalogInfo(singleItemName);
+                    if (!ref || singleUnitPrice === ref.price) return null;
+                    return (
+                      <p className="mt-1 text-[11px] text-slate-600">
+                        Harga acuan: Rp {ref.price.toLocaleString('id-ID')}/{ref.unit}.{' '}
+                        <button
+                          type="button"
+                          onClick={() => setSingleUnitPrice(ref.price)}
+                          className="font-semibold text-emerald-700 hover:underline cursor-pointer"
+                        >
+                          Pakai harga ini
+                        </button>
+                      </p>
+                    );
+                  })()}
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    Estimasi Subtotal Biaya
+                    Total
                   </label>
                   <div className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-100 font-mono font-bold text-slate-800">
                     Rp {((parseFloat(singleQty) || 0) * (singleUnitPrice || 0)).toLocaleString('id-ID')}
@@ -3495,7 +3485,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                     <button
                       type="button"
                       onClick={() => setIsSingleSupplierDropdownOpen(prev => !prev)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-600 cursor-pointer"
                       title="Buka daftar supplier master"
                     >
                       <ChevronDown className={`w-4 h-4 transition-transform ${isSingleSupplierDropdownOpen ? 'rotate-180 text-emerald-600' : ''}`} />
@@ -3505,9 +3495,9 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                   {/* Dropdown Popover List for Single Supplier */}
                   {isSingleSupplierDropdownOpen && (
                     <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 max-h-56 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
-                      <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                      <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 border-b border-slate-100 flex items-center justify-between">
                         <span>Pilih Supplier Master Rekanan</span>
-                        <span className="text-[10px] font-normal text-slate-400">{filteredSingleSuppliers.length} toko</span>
+                        <span className="text-[10px] font-normal text-slate-500">{filteredSingleSuppliers.length} toko</span>
                       </div>
                       {filteredSingleSuppliers.map(s => (
                         <button
@@ -3562,7 +3552,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                   </label>
                   <input
                     type="text"
-                    placeholder="Akmal"
+                    placeholder={currentUser.name}
                     value={singlePic}
                     onChange={e => setSinglePic(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -3585,7 +3575,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
               {/* Catatan */}
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Catatan / Keterangan Keperluan
+                  Catatan
                 </label>
                 <input
                   type="text"
@@ -3609,7 +3599,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                   type="submit"
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-2xs transition-colors cursor-pointer"
                 >
-                  Simpan Catatan Barang
+                  Simpan Belanja
                 </button>
               </div>
             </form>
@@ -3622,15 +3612,15 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
       {/* ========================================================================= */}
       {isBatchInputModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div>
                 <h2 className="text-base font-bold text-slate-900">
-                  Input Masal Barang & Belanja (Multi-Baris)
+                  Catat Banyak Belanja
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Isi banyak barang sekaligus (barang basah, kering, ATK, kebersihan) dalam tabel atau tempel langsung data dari Excel.
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Isi tabel atau tempel dari Excel. Masuk ke laporan pengeluaran, stok gudang tidak berubah.
                 </p>
               </div>
 
@@ -3660,7 +3650,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                 <button
                   type="button"
                   onClick={() => setIsBatchInputModalOpen(false)}
-                  className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer ml-2"
+                  className="p-1 rounded-md text-slate-500 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer ml-2"
                   title="Tutup dialog"
                 >
                   <X className="w-5 h-5" />
@@ -3741,7 +3731,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                         <button
                           type="button"
                           onClick={() => setIsBatchSupplierDropdownOpen(prev => !prev)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-600 cursor-pointer"
                           title="Buka daftar supplier master"
                         >
                           <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isBatchSupplierDropdownOpen ? 'rotate-180 text-emerald-600' : ''}`} />
@@ -3750,7 +3740,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                         {/* Dropdown Popover for Master Suppliers */}
                         {isBatchSupplierDropdownOpen && (
                           <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 max-h-52 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
-                            <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                            <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 border-b border-slate-100 flex items-center justify-between">
                               <span>Pilih dari Master Rekanan ({availableBatchMasterSuppliers.length})</span>
                               {batchSupplierDraft.trim() && (
                                 <span className="text-emerald-700 font-medium text-[10px]">Filter aktif</span>
@@ -3811,7 +3801,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                     {/* Quick Add Chips from Master Suppliers */}
                     {availableBatchMasterSuppliers.length > 0 && batchSuppliers.length < 5 && (
                       <div className="flex items-center gap-1.5 mt-2 flex-wrap text-[11px] text-slate-500">
-                        <span className="font-medium text-slate-400">Pilih cepat:</span>
+                        <span className="font-medium text-slate-500">Pilih cepat:</span>
                         {availableBatchMasterSuppliers.slice(0, 4).map(s => (
                           <button
                             key={s.id}
@@ -3902,7 +3892,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                         <tbody ref={batchGridRef} className="divide-y divide-slate-100 font-medium">
                           {batchRows.map((row, index) => (
                             <tr key={row.id} className="hover:bg-slate-50/80 focus-within:bg-emerald-50/40">
-                              <td className="py-1.5 px-2 text-center text-slate-400 text-[11px]">
+                              <td className="py-1.5 px-2 text-center text-slate-500 text-[11px]">
                                 {index + 1}
                               </td>
                               <td className="py-1.5 px-2.5">
@@ -3930,7 +3920,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                                       <option key={c} value={c}>{c}</option>
                                     ))}
                                   </select>
-                                  <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                                  <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
                                 </div>
                               </td>
                               <td className="py-1.5 px-2 text-right">
@@ -3959,7 +3949,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                               </td>
                               <td className="py-1.5 px-2 text-right">
                                 <div className="relative">
-                                  <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[11px] font-medium text-slate-400">
+                                  <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[11px] font-medium text-slate-500">
                                     Rp
                                   </span>
                                   <input
@@ -3975,7 +3965,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                                         Number(e.target.value.replace(/\D/g, '')) || 0
                                       )
                                     }
-                                    placeholder="0"
+                                    placeholder={getItemCatalogInfo(row.itemName)?.price.toLocaleString('id-ID') || '0'}
+                                    title={getItemCatalogInfo(row.itemName) ? 'Angka abu-abu adalah harga acuan, isi harga sesuai nota' : undefined}
                                     className="w-full text-xs border border-slate-200 rounded pl-7 pr-1.5 py-1 text-right font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-900"
                                   />
                                 </div>
@@ -4015,7 +4006,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                                       </optgroup>
                                     )}
                                   </select>
-                                  <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                                  <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
                                 </div>
                               </td>
                               <td className="py-1.5 px-2">
@@ -4034,7 +4025,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                                   type="button"
                                   onClick={() => handleRemoveBatchRowWithConfirm(row)}
                                   disabled={batchRows.length <= 1}
-                                  className="text-slate-300 hover:text-rose-500 disabled:opacity-20 cursor-pointer p-1"
+                                  className="text-slate-500 hover:text-rose-500 disabled:opacity-20 cursor-pointer p-1"
                                   title="Hapus baris ini"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -4092,9 +4083,9 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                         Total baris terisi: <strong>{batchRows.filter(r => r.itemName.trim() !== '').length}</strong> / {batchRows.length}
                       </span>
                       <span className="font-mono font-bold text-emerald-800">
-                        Total Estimasi: Rp {batchRows
+                        Total: Rp {batchRows
                           .filter(r => r.itemName.trim() !== '')
-                          .reduce((sum, r) => sum + (parseFloat(r.qty) || 1) * (r.unitPrice || 0), 0)
+                          .reduce((sum, r) => sum + (parseFloat(r.qty) || 0) * (r.unitPrice || 0), 0)
                           .toLocaleString('id-ID')}
                       </span>
                     </div>
@@ -4149,7 +4140,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
             {/* Footer */}
             <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
               <span className="text-xs text-slate-500">
-                Semua barang yang diinput akan otomatis masuk ke Laporan Pengeluaran & update stok.
+                Semua baris masuk ke laporan pengeluaran. Stok gudang tidak berubah.
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -4164,7 +4155,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                   onClick={handleSaveBatchRows}
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-2xs transition-colors cursor-pointer"
                 >
-                  Simpan Semua Pengeluaran
+                  Simpan Semua Belanja
                 </button>
               </div>
             </div>
@@ -4177,7 +4168,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
       {/* ========================================================================= */}
       {justSavedPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
             <div className="p-6 text-center">
               <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3.5 ring-8 ring-emerald-50">
                 <CheckCircle2 className="w-8 h-8" />
@@ -4230,7 +4221,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                 <button
                   type="button"
                   onClick={handleStartNotaFromPrompt}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all  cursor-pointer"
                 >
                   <Printer className="w-4 h-4" />
                   Buat & Cetak Nota
@@ -4250,7 +4241,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
               {/* Modal Header */}
               <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
                 <div>
@@ -4264,7 +4255,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                 <button
                   type="button"
                   onClick={() => setSupplierNotaPrompt(null)}
-                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors cursor-pointer"
+                  className="text-slate-500 hover:text-slate-600 p-1 rounded-lg transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -4294,10 +4285,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                     {allSupplierRecords.map((item, idx) => (
                       <div key={item.id} className="px-3 py-2 flex items-center justify-between text-xs hover:bg-slate-50">
                         <div className="flex items-center gap-2">
-                          <span className="text-slate-400 font-mono text-[10px] w-4">{idx + 1}.</span>
+                          <span className="text-slate-500 font-mono text-[10px] w-4">{idx + 1}.</span>
                           <div>
                             <span className="font-semibold text-slate-900">{item.itemName}</span>
-                            <span className="text-[10px] text-slate-400 ml-1.5 font-normal">
+                            <span className="text-[10px] text-slate-500 ml-1.5 font-normal">
                               ({item.quantity} {item.unit})
                             </span>
                           </div>
@@ -4325,7 +4316,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
                     <div>
                       <div className="font-bold text-xs flex items-center gap-1.5">
                         <span>Gabungkan Semua ({allSupplierRecords.length} Barang) ke 1 Nota PO</span>
-                        <span className="text-[10px] bg-white text-emerald-800 font-semibold px-2 py-0.2 rounded-full">
+                        <span className="text-[10px] bg-white text-emerald-800 font-semibold px-2 py-0.5 rounded-full">
                           Rekomendasi
                         </span>
                       </div>
@@ -4423,7 +4414,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onRefreshData,
           po={selectedPoForWeighing}
           onSuccess={() => {
             refreshAll();
-            onRefreshData?.();
           }}
         />
       )}

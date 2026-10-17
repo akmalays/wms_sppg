@@ -1,1400 +1,1267 @@
-import React, { useState, useEffect } from 'react';
-import QRCode from 'qrcode';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import logoSppgImg from '../assets/logo sppg.png';
-import anakSehatImg from '../assets/anak_sehat_mbg.jpg';
-import cuciTanganImg from '../assets/cuci_tangan_mbg.jpg';
-import menu3bIlustrasiImg from '../assets/menu_3b_ilustrasi.jpg';
-import tempeMaskotImg from '../assets/tempe_maskot_mbg.jpg';
-import sayurWortelImg from '../assets/sayur_wortel_mbg.jpg';
-import nasiPutihBowlImg from '../assets/nasi_putih_bowl.jpg';
-import ayamBumbuKuningImg from '../assets/ayam_bumbu_kuning.jpg';
-import tempeBacemImg from '../assets/tempe_bacem.jpg';
-import sayurSopImg from '../assets/sayur_sop.jpg';
-import buahPisangImg from '../assets/buah_pisang.jpg';
+import wortelMaskotImg from '../assets/sayur_wortel_mbg.jpg';
+import sawahImg from '../assets/sawah_padi.jpg';
+import kebunSayurImg from '../assets/kebun_sayur.jpg';
+import peternakanAyamImg from '../assets/peternakan_ayam.jpg';
 import trayImg1 from '../assets/tray_sample_1.jpg';
 
 import {
   getWebsiteConfig,
+  fetchWebsiteConfigFromCloud,
   WebsiteConfig,
   WEBSITE_CONFIG_UPDATED_EVENT,
-  IngredientNutritionInfo
+  DEFAULT_WEBSITE_CONFIG,
+  HABIT_WEEKDAY_LABELS,
+  IngredientNutritionInfo,
+  PortionTierConfig,
+  NutritionHeroConfig,
+  DailyHabitItem
 } from '../db/websiteConfigStorage';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 import {
-  Utensils,
-  Share2,
-  QrCode,
-  Calendar,
-  Users,
-  CheckCircle2,
-  Scale,
-  Sparkles,
-  Heart,
-  Activity,
-  Flame,
-  Wheat,
-  Droplets,
-  Leaf,
+  X,
   Check,
   Copy,
-  X,
-  Info,
-  BookOpen,
-  Award,
-  ShieldCheck,
-  Clock,
-  FileText,
-  ChevronRight,
+  Share2,
+  RefreshCw,
+  AlertTriangle,
+  RotateCcw,
   ArrowRight,
-  Printer,
-  HeartHandshake,
+  ChevronLeft,
+  ChevronRight,
+  Wheat,
+  Dumbbell,
+  Leaf,
+  Sprout,
+  Footprints,
+  Bike,
+  BookOpen,
   Lightbulb,
-  ArrowLeft,
-  Landmark
+  Trophy,
+  Clock,
+  CalendarDays,
+  ShieldCheck,
+  PartyPopper,
+  Sparkles
 } from 'lucide-react';
 
-interface DailyMenuPublicPageProps {
-  onBackToHome?: () => void;
+type PortionKey = 'small' | 'large';
+type SyncState = 'loading' | 'synced' | 'offline' | 'error';
+
+const MENU_PATH = '/menu-mbg-hari-ini';
+
+/* ------------------------------------------------------------------ */
+/* Kelompok makanan Isi Piringku. Warna = kode kelompok di seluruh     */
+/* halaman (piring, strip bahan, asal energi). Warna lain tidak dipakai */
+/* untuk data agar kode ini tetap terbaca.                              */
+/* ------------------------------------------------------------------ */
+type FoodGroup = 'pokok' | 'lauk' | 'sayur' | 'buah';
+
+const FOOD_GROUPS: Record<FoodGroup, { label: string; role: string; fill: string; soft: string; ink: string; Icon: typeof Wheat }> = {
+  pokok: { label: 'Makanan pokok', role: 'Memberikan energi untuk belajar, bermain, dan beraktivitas.', fill: '#f59e0b', soft: '#fdf1d3', ink: '#8a4a05', Icon: Wheat },
+  lauk: { label: 'Lauk pauk', role: 'Protein untuk membangun dan memperbaiki tubuh.', fill: '#f97316', soft: '#ffe9d6', ink: '#9a3412', Icon: Dumbbell },
+  sayur: { label: 'Sayuran', role: 'Vitamin, mineral, dan serat agar tubuh tidak mudah sakit.', fill: '#22c55e', soft: '#dcf5e3', ink: '#166534', Icon: Leaf },
+  buah: { label: 'Buah', role: 'Vitamin dan serat yang menyegarkan tubuh.', fill: '#ec4899', soft: '#fce4f0', ink: '#9d174d', Icon: Sprout }
+};
+
+// Proporsi Isi Piringku Kemenkes: setengah piring sayur + buah, setengah lagi makanan pokok + lauk pauk,
+// masing-masing 2/3 dan 1/3 dari setengahnya. Sudut searah jarum jam dari arah jam 12.
+const PLATE_SECTORS: { group: FoodGroup; from: number; to: number }[] = [
+  { group: 'sayur', from: 0, to: 120 },
+  { group: 'buah', from: 120, to: 180 },
+  { group: 'lauk', from: 180, to: 240 },
+  { group: 'pokok', from: 240, to: 360 }
+];
+
+function groupOfCategory(category: string): FoodGroup | null {
+  const c = category.toLowerCase();
+  if (c.includes('karbo') || c.includes('pokok')) return 'pokok';
+  if (c.includes('protein') || c.includes('lauk')) return 'lauk';
+  if (c.includes('sayur')) return 'sayur';
+  if (c.includes('buah')) return 'buah';
+  return null;
 }
 
-export const DailyMenuPublicPage: React.FC<DailyMenuPublicPageProps> = ({ onBackToHome }) => {
+// Foto ilustrasi lahan untuk tab "Asal bahan"; diberi keterangan bahwa ini bukan lokasi pemasok.
+function originIllustration(category: string): string | null {
+  const c = category.toLowerCase();
+  if (c.includes('hewani')) return peternakanAyamImg;
+  const group = groupOfCategory(category);
+  if (group === 'pokok') return sawahImg;
+  if (group === 'sayur') return kebunSayurImg;
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Perkiraan energi setara aktivitas                                   */
+/* menit = kkal / (MET x 3,5 x berat badan / 200)                       */
+/* MET dari Compendium of Physical Activities 2011 (Ainsworth dkk.):    */
+/* jogging umum 7,0; bersepeda santai < 16 km/jam 4,0; duduk membaca 1,3 */
+/* ------------------------------------------------------------------ */
+const ACTIVITIES = [
+  { label: 'Berlari', met: 7.0, Icon: Footprints },
+  { label: 'Bersepeda santai', met: 4.0, Icon: Bike },
+  { label: 'Duduk membaca', met: 1.3, Icon: BookOpen }
+];
+
+function parseNumber(raw: string | undefined): number {
+  if (!raw) return NaN;
+  const m = raw.replace(/\s/g, '').match(/[\d.,]+/);
+  if (!m) return NaN;
+  return parseFloat(m[0].replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+}
+
+function formatDuration(minutes: number): string {
+  const rounded = Math.max(5, Math.round(minutes / 5) * 5);
+  const h = Math.floor(rounded / 60);
+  const m = rounded % 60;
+  if (h === 0) return `± ${m} menit`;
+  return m === 0 ? `± ${h} jam` : `± ${h} jam ${m} menit`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Utilitas teks & tanggal                                             */
+/* ------------------------------------------------------------------ */
+const MONTHS_ID = ['januari', 'februari', 'maret', 'april', 'mei', 'juni', 'juli', 'agustus', 'september', 'oktober', 'november', 'desember'];
+
+function parseIndonesianDate(text: string): Date | null {
+  const match = text.toLowerCase().match(/(\d{1,2})\s+([a-z]+)\s+(\d{4})/);
+  if (!match) return null;
+  const month = MONTHS_ID.indexOf(match[2]);
+  if (month < 0) return null;
+  return new Date(Number(match[3]), month, Number(match[1]));
+}
+
+function isSameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function splitTierName(tierName: string): { name: string; group: string } {
+  const match = tierName.match(/^(.*?)\s*\((.*)\)\s*$/);
+  return match ? { name: match[1], group: match[2] } : { name: tierName, group: '' };
+}
+
+// Hari ini cukup jamnya; hari lain tampilkan tanggal agar pembaca tahu datanya lama.
+function formatUpdatedAt(iso: string): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const time = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  if (isSameDay(d, new Date())) return `Diperbarui pukul ${time}`;
+  return `Diperbarui ${d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}, ${time}`;
+}
+
+const cleanList = (items: string[] | undefined) => (items || []).map(s => s.trim()).filter(Boolean);
+const splitSentences = (text: string) => text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+const splitHighlights = (text: string) => text.split(/[•,;]/).map(s => s.trim()).filter(Boolean);
+const shortName = (name: string) => name.trim().split(/\s+/)[0].toLowerCase();
+
+function readLocal(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function writeLocal(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* mode privat: centang hanya bertahan selama halaman terbuka */
+  }
+}
+function readDoneSteps(key: string): number[] {
+  const raw = key ? readLocal(key) : null;
+  try {
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Komponen dasar                                                      */
+/* ------------------------------------------------------------------ */
+const SafeImg: React.FC<React.ImgHTMLAttributes<HTMLImageElement> & { fallbackSrc?: string }> = ({ src, alt, className, fallbackSrc, ...rest }) => {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  const finalSrc = !src || failed ? fallbackSrc : src;
+  if (!finalSrc) {
+    return <div role={alt ? 'img' : undefined} aria-label={alt || undefined} className={`${className ?? ''} bg-[#efe9dd]`} />;
+  }
+  return <img src={finalSrc} alt={alt} className={className} onError={() => setFailed(true)} {...rest} />;
+};
+
+const GroupChip: React.FC<{ category: string; className?: string }> = ({ category, className = '' }) => {
+  const group = groupOfCategory(category);
+  const style = group ? { backgroundColor: FOOD_GROUPS[group].soft, color: FOOD_GROUPS[group].ink } : undefined;
+  return (
+    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold bg-slate-100 text-slate-700 ${className}`} style={style}>
+      {category}
+    </span>
+  );
+};
+
+const SectionHead: React.FC<{ id: string; title: string; eyebrow?: string; subtitle?: string }> = ({ id, title, eyebrow, subtitle }) => (
+  <div className="mb-4">
+    {eyebrow && <p className="text-[13px] font-bold text-slate-600">{eyebrow}</p>}
+    <h2 id={id} className="font-kids text-[26px] sm:text-3xl font-bold leading-tight">{title}</h2>
+    {subtitle && <p className="text-sm text-slate-600 mt-0.5">{subtitle}</p>}
+  </div>
+);
+
+const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#15803d] focus-visible:ring-offset-2';
+const cardCls = 'min-w-0 rounded-3xl bg-white border border-[#e9e0cc] p-4 sm:p-6 scroll-mt-28';
+
+function useEscape(onClose: () => void, active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose, active]);
+}
+
+/* ------------------------------------------------------------------ */
+/* Detail bahan (lembar dari bawah di HP, dialog di desktop)            */
+/* ------------------------------------------------------------------ */
+type DetailTab = 'manfaat' | 'kandungan' | 'asal';
+
+const IngredientSheet: React.FC<{
+  ingredients: IngredientNutritionInfo[];
+  index: number;
+  portion: PortionKey;
+  onIndexChange: (i: number) => void;
+  onClose: () => void;
+}> = ({ ingredients, index, portion, onIndexChange, onClose }) => {
+  const item = ingredients[index];
+  const [tab, setTab] = useState<DetailTab>('manfaat');
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEscape(onClose, true);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    return () => previouslyFocused?.focus();
+  }, []);
+  useEffect(() => setTab('manfaat'), [index]);
+
+  if (!item) return null;
+
+  const whyGood = cleanList(item.whyGood).length ? cleanList(item.whyGood) : splitSentences(item.healthBenefits);
+  const highlights = splitHighlights(item.nutritionHighlight);
+  const origin = originIllustration(item.category);
+  const group = groupOfCategory(item.category);
+  const tint = group ? FOOD_GROUPS[group] : FOOD_GROUPS.lauk;
+  const tabs: { key: DetailTab; label: string }[] = [
+    { key: 'manfaat', label: 'Manfaat' },
+    { key: 'kandungan', label: 'Kandungan gizi' },
+    { key: 'asal', label: 'Asal bahan' }
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-[#0a1e12]/50 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ingredient-title"
+        onClick={e => e.stopPropagation()}
+        className="bg-white w-full sm:max-w-lg max-h-[90dvh] sm:max-h-[92vh] rounded-t-3xl sm:rounded-3xl overflow-y-auto flex flex-col"
+      >
+        <div className="relative shrink-0">
+          <SafeImg src={item.imageUrl} alt={`Foto ${item.name}`} className="w-full aspect-[16/9] object-cover rounded-t-3xl" />
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Tutup detail bahan"
+            className={`absolute top-3 right-3 w-11 h-11 rounded-full bg-white/95 text-[#1f2a22] flex items-center justify-center shadow cursor-pointer ${focusRing}`}
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-5 pt-4 pb-5 flex-1">
+          <GroupChip category={item.category} />
+          <h2 id="ingredient-title" className="font-kids text-[28px] font-bold leading-tight mt-1.5">{item.name}</h2>
+          <p className="text-sm font-semibold text-slate-600 mt-0.5 tabular-nums">
+            {portion === 'large' ? item.portionLarge : item.portionSmall} · {portion === 'large' ? 'porsi besar' : 'porsi kecil'}
+          </p>
+          {item.notes && <p className="text-[15px] text-slate-700 mt-2 leading-relaxed">{item.notes}</p>}
+
+          <div className="mt-4 grid grid-cols-3 gap-1 p-1 rounded-xl bg-[#f4efe3]" role="group" aria-label="Pilih informasi">
+            {tabs.map(t => (
+              <button
+                key={t.key}
+                type="button"
+                aria-pressed={tab === t.key}
+                onClick={() => setTab(t.key)}
+                className={`min-h-[44px] rounded-lg text-[13px] sm:text-sm font-bold cursor-pointer transition-colors duration-150 ${focusRing} ${
+                  tab === t.key ? 'bg-[#15803d] text-white' : 'text-slate-700 hover:bg-white/70'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4" aria-live="polite">
+            {tab === 'manfaat' && (
+              <>
+                <h3 className="text-base font-bold">Mengapa {shortName(item.name)} baik untukmu?</h3>
+                {whyGood.length === 0 ? (
+                  <p className="text-sm text-slate-600 mt-2">Manfaat bahan ini belum diisi petugas.</p>
+                ) : (
+                  <ul className="mt-3 space-y-3">
+                    {whyGood.map((point, i) => (
+                      <li key={i} className="flex items-start gap-3">
+                        <span className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-sm font-extrabold" style={{ backgroundColor: tint.soft, color: tint.ink }}>
+                          {i + 1}
+                        </span>
+                        <span className="text-[15px] text-slate-800 leading-relaxed pt-1">{point}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+            {tab === 'kandungan' && (
+              highlights.length === 0 ? (
+                <p className="text-sm text-slate-600">Kandungan gizi bahan ini belum diisi petugas.</p>
+              ) : (
+                <ul className="flex flex-wrap gap-2">
+                  {highlights.map(h => (
+                    <li key={h} className="inline-flex items-center gap-1.5 rounded-lg bg-[#e3f3e7] px-3 py-2 text-sm font-bold text-[#166534]">
+                      <Check className="w-4 h-4 shrink-0" />
+                      {h}
+                    </li>
+                  ))}
+                </ul>
+              )
+            )}
+            {tab === 'asal' && (
+              <div className="space-y-3">
+                <div className="rounded-xl bg-[#f4efe3] p-3.5">
+                  <div className="text-xs font-bold text-slate-600">Pemasok</div>
+                  <div className="text-base font-bold mt-0.5">{item.supplier || 'Belum diisi petugas'}</div>
+                </div>
+                {origin && (
+                  <figure>
+                    <img src={origin} alt="" loading="lazy" className="w-full h-36 rounded-xl object-cover" />
+                    <figcaption className="text-xs text-slate-600 mt-1">Foto ilustrasi, bukan lokasi pemasok.</figcaption>
+                  </figure>
+                )}
+              </div>
+            )}
+          </div>
+
+          {item.funFact?.trim() && (
+            <div className="mt-5 flex items-center gap-3 rounded-2xl bg-[#fff6e0] p-3.5">
+              <div className="flex-1">
+                <div className="flex items-center gap-1.5 text-sm font-extrabold text-[#8a4b06]">
+                  <Lightbulb className="w-4 h-4" />
+                  Tahukah kamu?
+                </div>
+                <p className="text-sm text-slate-800 mt-1 leading-snug">{item.funFact}</p>
+              </div>
+              <img src={wortelMaskotImg} alt="" className="w-16 h-16 object-contain shrink-0 rounded-xl" />
+            </div>
+          )}
+        </div>
+
+        {ingredients.length > 1 && (
+          <div className="sticky bottom-0 bg-white border-t border-[#e9e0cc] px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => onIndexChange((index - 1 + ingredients.length) % ingredients.length)}
+              className={`inline-flex items-center gap-1 min-h-[44px] px-3 rounded-lg text-sm font-bold text-slate-800 hover:bg-[#f4efe3] cursor-pointer ${focusRing}`}
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Sebelumnya
+            </button>
+            <span className="text-sm text-slate-600 tabular-nums">{index + 1} / {ingredients.length}</span>
+            <button
+              type="button"
+              onClick={() => onIndexChange((index + 1) % ingredients.length)}
+              className={`inline-flex items-center gap-1 min-h-[44px] px-3 rounded-lg text-sm font-bold text-slate-800 hover:bg-[#f4efe3] cursor-pointer ${focusRing}`}
+            >
+              Berikutnya
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Pilihan porsi: mengubah semua angka di halaman                       */
+/* ------------------------------------------------------------------ */
+const PortionPicker: React.FC<{ tiers: { key: PortionKey; config: PortionTierConfig }[]; portion: PortionKey; onChange: (p: PortionKey) => void }> = ({
+  tiers,
+  portion,
+  onChange
+}) => (
+  <fieldset className="min-w-0 rounded-3xl bg-white border border-[#e9e0cc] p-3">
+    <legend className="sr-only">Takaran untuk</legend>
+    <p className="text-[13px] font-bold text-slate-600 px-1 mb-2" aria-hidden="true">Takaran untuk</p>
+    <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-[#f4efe3]">
+      {tiers.map(t => {
+        const { name, group } = splitTierName(t.config.tierName);
+        const active = portion === t.key;
+        return (
+          <button
+            key={t.key}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(t.key)}
+            className={`min-h-[56px] rounded-xl px-3 py-2 text-left cursor-pointer transition-colors duration-150 ${focusRing} ${active ? 'bg-white shadow-sm' : 'hover:bg-white/60'}`}
+          >
+            <span className={`block text-[15px] font-bold ${active ? 'text-[#15803d]' : 'text-slate-800'}`}>{name}</span>
+            {group && <span className="block text-xs text-slate-600 leading-tight mt-0.5">{group}</span>}
+          </button>
+        );
+      })}
+    </div>
+  </fieldset>
+);
+
+/* ------------------------------------------------------------------ */
+/* Isi Piringku sekaligus daftar menu                                  */
+/* ------------------------------------------------------------------ */
+function polar(cx: number, cy: number, r: number, deg: number) {
+  const rad = ((deg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+function sectorPath(cx: number, cy: number, r: number, from: number, to: number) {
+  const a = polar(cx, cy, r, from);
+  const b = polar(cx, cy, r, to);
+  return `M ${cx} ${cy} L ${a.x} ${a.y} A ${r} ${r} 0 ${to - from > 180 ? 1 : 0} 1 ${b.x} ${b.y} Z`;
+}
+
+const MenuPlateSection: React.FC<{ ingredients: IngredientNutritionInfo[]; portion: PortionKey; tip?: string; onOpenIngredient: (index: number) => void }> = ({
+  ingredients,
+  portion,
+  tip,
+  onOpenIngredient
+}) => {
+  const [selected, setSelected] = useState<FoodGroup | null>(null);
+  const photoOf = (g: FoodGroup) => ingredients.find(i => groupOfCategory(i.category) === g)?.imageUrl;
+  const toggle = (g: FoodGroup) => setSelected(s => (s === g ? null : g));
+
+  return (
+    <section id="menu" aria-labelledby="menu-title" className={cardCls}>
+      <SectionHead id="menu-title" title="Isi piringku hari ini" subtitle="Ketuk bagian piring atau makanan untuk melihat manfaatnya." />
+
+      <div className="grid grid-cols-[minmax(0,150px)_minmax(0,1fr)] sm:grid-cols-[180px_minmax(0,1fr)] gap-4 items-center">
+        <svg viewBox="0 0 240 240" className="w-full h-auto" role="group" aria-label="Piring dibagi empat: sayur sepertiga, buah seperenam, lauk pauk seperenam, makanan pokok sepertiga">
+          <defs>
+            {PLATE_SECTORS.map(s => (
+              <clipPath key={s.group} id={`plate-${s.group}`}>
+                <path d={sectorPath(120, 120, 104, s.from, s.to)} />
+              </clipPath>
+            ))}
+          </defs>
+          <circle cx="120" cy="120" r="117" fill="#ffffff" stroke="#e9e0cc" strokeWidth="3" />
+          {PLATE_SECTORS.map(s => {
+            const g = FOOD_GROUPS[s.group];
+            const isActive = s.group === selected;
+            const mid = (s.from + s.to) / 2;
+            const shift = polar(0, 0, isActive ? 6 : 0, mid);
+            const center = polar(120, 120, 56, mid);
+            const photo = photoOf(s.group);
+            return (
+              <g
+                key={s.group}
+                role="button"
+                tabIndex={0}
+                aria-label={g.label}
+                aria-pressed={isActive}
+                onClick={() => toggle(s.group)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggle(s.group);
+                  }
+                }}
+                className="cursor-pointer outline-none motion-safe:transition-[transform,opacity] motion-safe:duration-200 focus-visible:[&>path:last-child]:stroke-[#15803d]"
+                style={{ transform: `translate(${shift.x}px, ${shift.y}px)`, opacity: selected && !isActive ? 0.45 : 1 }}
+              >
+                <path d={sectorPath(120, 120, 104, s.from, s.to)} fill={g.soft} />
+                {photo && (
+                  <image href={photo} x={center.x - 70} y={center.y - 70} width="140" height="140" preserveAspectRatio="xMidYMid slice" clipPath={`url(#plate-${s.group})`} />
+                )}
+                <path d={sectorPath(120, 120, 104, s.from, s.to)} fill="none" stroke={isActive ? g.fill : '#ffffff'} strokeWidth={isActive ? 5 : 3} />
+              </g>
+            );
+          })}
+        </svg>
+        <div className="min-w-0 space-y-1.5 text-[13px]">
+          {(['sayur', 'buah', 'lauk', 'pokok'] as FoodGroup[]).map(g => (
+            <div key={g} className="flex items-center gap-2 font-semibold">
+              <span className="w-3 h-3 rounded-[4px] shrink-0" style={{ backgroundColor: FOOD_GROUPS[g].fill }} />
+              {FOOD_GROUPS[g].label}
+            </div>
+          ))}
+          <p className="text-xs text-slate-600 leading-snug pt-1">Setengah piring sayur dan buah, setengahnya lagi makanan pokok dan lauk pauk.</p>
+        </div>
+      </div>
+
+      <div aria-live="polite" className="mt-3 min-h-0">
+        {selected && (
+          <p className="rounded-xl px-3 py-2 text-sm" style={{ backgroundColor: FOOD_GROUPS[selected].soft, color: FOOD_GROUPS[selected].ink }}>
+            <strong>{FOOD_GROUPS[selected].label}:</strong> {FOOD_GROUPS[selected].role}
+          </p>
+        )}
+      </div>
+
+      {ingredients.length === 0 ? (
+        <p className="mt-3 rounded-2xl border border-dashed border-[#d9cfb9] px-4 py-8 text-center text-sm text-slate-600">Rincian menu belum diisi petugas.</p>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {ingredients.map((item, i) => {
+            const group = groupOfCategory(item.category);
+            const dim = selected !== null && group !== selected;
+            return (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => onOpenIngredient(i)}
+                  className={`w-full grid grid-cols-[6px_56px_minmax(0,1fr)_auto] items-center gap-3 overflow-hidden rounded-2xl border border-[#e9e0cc] bg-white pr-2.5 text-left hover:bg-[#f4efe3] cursor-pointer motion-safe:transition-[background-color,opacity] duration-150 ${focusRing} ${dim ? 'opacity-40' : ''}`}
+                >
+                  <span className="self-stretch" style={{ backgroundColor: group ? FOOD_GROUPS[group].fill : '#cbd5e1' }} />
+                  <SafeImg src={item.imageUrl} alt="" loading="lazy" width={56} height={56} className="my-2 w-14 h-14 rounded-xl object-cover" />
+                  <span className="min-w-0 py-2">
+                    <span className="block text-[15px] font-bold leading-snug">{item.name}</span>
+                    <span className="mt-1 flex flex-wrap items-center gap-2">
+                      <GroupChip category={item.category} />
+                      <span className="text-[13px] font-semibold text-slate-600 tabular-nums">{portion === 'large' ? item.portionLarge : item.portionSmall}</span>
+                    </span>
+                  </span>
+                  <ChevronRight className="w-5 h-5 text-slate-500" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {tip?.trim() && (
+        <div className="mt-3 flex items-start gap-3 rounded-2xl bg-[#fff6e0] p-4">
+          <Lightbulb className="w-5 h-5 text-[#8a4b06] shrink-0 mt-0.5" />
+          <div>
+            <div className="text-sm font-extrabold text-[#8a4b06]">Tips hari ini</div>
+            <p className="text-sm text-slate-800 mt-0.5 leading-snug">{tip}</p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Nilai gizi: energi, asal energi, mineral, setara aktivitas          */
+/* ------------------------------------------------------------------ */
+const NutritionSection: React.FC<{ tier: PortionTierConfig; calcium: string; iron: string; bodyWeight?: string }> = ({ tier, calcium, iron, bodyWeight }) => {
+  const kcal = parseNumber(tier.targetCalories);
+  const kg = parseNumber(bodyWeight);
+  const canEstimate = kcal > 0 && kg > 0;
+  const { name: tierName } = splitTierName(tier.tierName);
+
+  // Atwater: karbohidrat dan protein 4 kkal/g, lemak 9 kkal/g.
+  const parts = [
+    { label: 'Karbohidrat', value: tier.carbGrams, kcal: parseNumber(tier.carbGrams) * 4, color: FOOD_GROUPS.pokok.fill },
+    { label: 'Protein', value: tier.proteinGrams, kcal: parseNumber(tier.proteinGrams) * 4, color: FOOD_GROUPS.lauk.fill },
+    { label: 'Lemak', value: tier.fatGrams, kcal: parseNumber(tier.fatGrams) * 9, color: FOOD_GROUPS.buah.fill }
+  ];
+  const macroTotal = parts.reduce((sum, p) => sum + (p.kcal > 0 ? p.kcal : 0), 0);
+  const energyNumber = tier.targetCalories.replace(/\s*kkal\s*/i, '');
+
+  return (
+    <section id="gizi" aria-labelledby="gizi-title" className={cardCls}>
+      <SectionHead id="gizi-title" eyebrow={`${tierName} · ${tier.totalGramature}`} title="Nilai gizi satu ompreng" />
+
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <span className="font-kids text-[52px] font-extrabold leading-none tabular-nums">{energyNumber}</span>
+        <span className="text-lg font-bold">kkal</span>
+        <p className="w-full text-sm text-slate-600 mt-1">Energi total untuk belajar dan bermain sampai sore.</p>
+      </div>
+
+      {macroTotal > 0 && (
+        <div className="mt-5">
+          <p className="text-[13px] font-bold text-slate-600">Asal energinya</p>
+          <div className="mt-2 flex h-4 gap-0.5 rounded-full overflow-hidden" aria-hidden="true">
+            {parts.map(p => (
+              <div key={p.label} className="motion-safe:transition-[flex-grow] motion-safe:duration-300" style={{ flexGrow: Math.max(p.kcal, 0), backgroundColor: p.color }} />
+            ))}
+          </div>
+          <dl className="mt-2 grid grid-cols-3 gap-2">
+            {parts.map(p => (
+              <div key={p.label} className="rounded-2xl bg-[#f4efe3] p-2.5 sm:p-3">
+                <dt className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+                  <span className="w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ backgroundColor: p.color }} />
+                  {p.label}
+                </dt>
+                <dd className="text-lg sm:text-xl font-extrabold tabular-nums leading-tight mt-0.5">{p.value}</dd>
+                {p.kcal > 0 && <dd className="text-xs text-slate-600 tabular-nums">{Math.round((p.kcal / macroTotal) * 100)}% energi</dd>}
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
+      <dl className="mt-4 grid grid-cols-3 border-t border-[#e9e0cc] pt-3 text-center">
+        {[
+          { label: 'Serat', value: tier.fiberGrams },
+          { label: 'Kalsium*', value: calcium },
+          { label: 'Zat besi*', value: iron }
+        ].map((m, i) => (
+          <div key={m.label} className={i > 0 ? 'border-l border-[#e9e0cc]' : ''}>
+            <dd className="text-base font-extrabold tabular-nums">{m.value}</dd>
+            <dt className="text-xs text-slate-600">{m.label}</dt>
+          </div>
+        ))}
+      </dl>
+
+      {canEstimate && (
+        <div className="mt-5">
+          <h3 className="text-[15px] font-bold">Energi ini kira-kira cukup untuk</h3>
+          <ul className="mt-2 space-y-2">
+            {ACTIVITIES.map(({ label, met, Icon }) => (
+              <li key={label} className="flex items-center gap-3">
+                <span className="w-10 h-10 rounded-xl bg-[#e3f3e7] text-[#15803d] flex items-center justify-center shrink-0">
+                  <Icon className="w-5 h-5" />
+                </span>
+                <span className="flex-1 text-[15px] font-semibold">{label}</span>
+                <span className="text-sm font-bold tabular-nums">{formatDuration(kcal / ((met * 3.5 * kg) / 200))}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <p className="text-xs text-slate-600 mt-4 leading-relaxed">
+        *Rata-rata semua porsi.
+        {canEstimate && ` Perkiraan aktivitas untuk anak ${String(kg).replace('.', ',')} kg (acuan AKG 2019) dengan nilai MET dari Compendium of Physical Activities 2011.`}
+        {' '}Sumber data: resep dan takaran porsi SPPG Tumpang Jeru.
+      </p>
+    </section>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Zona belajar: Pahlawan Gizi                                          */
+/* ------------------------------------------------------------------ */
+const NutritionHeroPanel: React.FC<{ hero: NutritionHeroConfig; ingredients: IngredientNutritionInfo[] }> = ({ hero, ingredients }) => {
+  const points = cleanList(hero.points);
+  const group = groupOfCategory(hero.category);
+  const meta = group ? FOOD_GROUPS[group] : FOOD_GROUPS.lauk;
+  const inTray = ingredients.find(i => i.name.toLowerCase().includes(hero.name.trim().toLowerCase()));
+  const nutrients = cleanList(hero.keyNutrients).length ? cleanList(hero.keyNutrients) : inTray ? splitHighlights(inTray.nutritionHighlight) : [];
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-[112px_minmax(0,1fr)] gap-4 items-center rounded-2xl p-3" style={{ backgroundColor: meta.soft }}>
+        <SafeImg src={hero.imageUrl} fallbackSrc={inTray?.imageUrl} alt={`Ilustrasi ${hero.name}`} className="w-28 h-28 rounded-xl object-cover bg-white" />
+        <div className="min-w-0">
+          <span className="inline-flex rounded-md bg-white px-2 py-0.5 text-xs font-bold" style={{ color: meta.ink }}>{hero.category}</span>
+          <h3 className="font-kids text-3xl font-bold leading-tight mt-1" style={{ color: meta.ink }}>{hero.name}</h3>
+          <p className="text-sm text-slate-700">Pahlawan gizi hari ini</p>
+        </div>
+      </div>
+
+      {points.length > 0 && (
+        <ul className="space-y-2">
+          {points.map(p => (
+            <li key={p} className="flex items-start gap-2 text-[15px] leading-snug">
+              <Check className="w-5 h-5 text-[#15803d] shrink-0 mt-px" />
+              {p}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {nutrients.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5" aria-label="Kandungan utama">
+          {nutrients.map(n => (
+            <li key={n} className="rounded-lg bg-[#e3f3e7] px-2.5 py-1 text-[13px] font-bold text-[#166534]">{n}</li>
+          ))}
+        </ul>
+      )}
+
+      {hero.funFact?.trim() && (
+        <div className="rounded-2xl bg-[#fff6e0] p-3.5">
+          <div className="flex items-center gap-1.5 text-sm font-extrabold text-[#8a4b06]">
+            <Lightbulb className="w-4 h-4" />
+            Tahukah kamu?
+          </div>
+          <p className="text-sm text-slate-800 mt-1 leading-snug">{hero.funFact}</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Zona belajar: Kebiasaan baik hari ini                               */
+/* ------------------------------------------------------------------ */
+function pickHabit(habits: DailyHabitItem[]): DailyHabitItem | undefined {
+  const filled = habits.filter(h => h.title.trim());
+  const today = new Date().getDay();
+  return filled.find(h => h.weekday === today) ?? [...filled].sort((a, b) => a.weekday - b.weekday)[0];
+}
+
+const HabitPanel: React.FC<{ habit: DailyHabitItem }> = ({ habit }) => {
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`;
+  const storageKey = `mbg-habit-${todayKey}-${habit.weekday}`;
+  const isToday = habit.weekday === today.getDay();
+
+  // Centang disimpan per tanggal + hari agar besok mulai dari kosong lagi.
+  const [doneByKey, setDoneByKey] = useState<Record<string, number[]>>({});
+  const done = doneByKey[storageKey] ?? readDoneSteps(storageKey);
+
+  const steps = cleanList(habit.steps);
+  const allDone = steps.length > 0 && steps.every((_, i) => done.includes(i));
+  const toggleStep = (i: number) => {
+    const next = done.includes(i) ? done.filter(d => d !== i) : [...done, i];
+    setDoneByKey(m => ({ ...m, [storageKey]: next }));
+    writeLocal(storageKey, JSON.stringify(next));
+  };
+
+  return (
+    <div className="space-y-3">
+      {habit.imageUrl && (
+        <div className="rounded-2xl bg-[#e0f2fe] overflow-hidden">
+          <SafeImg src={habit.imageUrl} alt={`Ilustrasi: ${habit.title}`} loading="lazy" className="w-full aspect-[16/9] object-contain" />
+        </div>
+      )}
+      <div>
+        <p className="text-[13px] font-bold text-slate-600">Kebiasaan hari {HABIT_WEEKDAY_LABELS[habit.weekday] ?? ''}{isToday ? ' ini' : ''}</p>
+        <h3 className="font-kids text-2xl font-bold leading-tight">{habit.title}</h3>
+        {habit.description && <p className="text-sm text-slate-700 mt-1 leading-relaxed">{habit.description}</p>}
+      </div>
+
+      {steps.length > 0 && (
+        <ol className="space-y-2">
+          {steps.map((stepText, i) => {
+            const checked = done.includes(i);
+            return (
+              <li key={i}>
+                <button
+                  type="button"
+                  aria-pressed={checked}
+                  onClick={() => toggleStep(i)}
+                  className={`w-full min-h-[52px] flex items-center gap-3 rounded-2xl border px-3 py-2 text-left text-[15px] font-semibold transition-colors duration-150 cursor-pointer ${focusRing} ${
+                    checked ? 'bg-[#15803d] border-[#15803d] text-white' : 'bg-white border-[#e9e0cc] text-slate-900 hover:bg-[#f4efe3]'
+                  }`}
+                >
+                  <span className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-sm font-extrabold ${checked ? 'bg-white text-[#15803d]' : 'bg-[#e3f3e7] text-[#15803d]'}`}>
+                    {checked ? <Check className="w-4 h-4 stroke-[3]" /> : i + 1}
+                  </span>
+                  <span>{stepText}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
+      <div aria-live="polite">
+        {(allDone || habit.cheer?.trim()) && (
+          <div key={allDone ? 'done' : 'cheer'} className="flex items-center gap-3 rounded-2xl bg-[#e3f3e7] p-3.5 motion-safe:animate-[pop-in_300ms_ease-out]">
+            {allDone ? <PartyPopper className="w-6 h-6 text-[#15803d] shrink-0" /> : <Sparkles className="w-6 h-6 text-[#15803d] shrink-0" />}
+            <p className="text-[15px] font-extrabold text-[#166534] leading-snug">{allDone ? 'Hebat! Kebiasaan baik hari ini sudah kamu lakukan.' : habit.cheer}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Zona belajar: Kuis                                                  */
+/* ------------------------------------------------------------------ */
+interface QuizOption {
+  id: string;
+  label: string;
+  imageUrl?: string;
+}
+interface QuizQuestion {
+  id: string;
+  prompt: string;
+  options: QuizOption[];
+  answerId: string;
+  explain: string;
+}
+
+const QUIZ_CATEGORIES = ['protein nabati', 'protein hewani', 'sayuran', 'buah', 'karbohidrat'];
+
+// Soal disusun dari bahan menu hari ini: hanya kategori yang dimiliki satu bahan agar jawabannya tunggal.
+function buildQuiz(ingredients: IngredientNutritionInfo[]): QuizQuestion[] {
+  const questions: QuizQuestion[] = [];
+  if (ingredients.length >= 3) {
+    const options = ingredients.slice(0, 6).map(i => ({ id: i.id, label: i.name, imageUrl: i.imageUrl }));
+    for (const category of QUIZ_CATEGORIES) {
+      const matches = ingredients.filter(i => i.category.trim().toLowerCase() === category);
+      if (matches.length !== 1 || !options.some(o => o.id === matches[0].id)) continue;
+      questions.push({
+        id: `cat-${category}`,
+        prompt: `Dari menu hari ini, mana yang termasuk sumber ${category}?`,
+        options,
+        answerId: matches[0].id,
+        explain: matches[0].healthBenefits
+      });
+      if (questions.length === 2) break;
+    }
+  }
+  questions.push({
+    id: 'piringku',
+    prompt: 'Menurut Isi Piringku, setengah piring sebaiknya diisi apa?',
+    options: [
+      { id: 'nasi', label: 'Nasi saja' },
+      { id: 'sayur-buah', label: 'Sayur dan buah' },
+      { id: 'lauk', label: 'Lauk pauk saja' }
+    ],
+    answerId: 'sayur-buah',
+    explain: 'Setengah piring diisi sayur dan buah, setengah lagi makanan pokok dan lauk pauk.'
+  });
+  return questions;
+}
+
+const QuizPanel: React.FC<{ ingredients: IngredientNutritionInfo[] }> = ({ ingredients }) => {
+  const questions = useMemo(() => buildQuiz(ingredients), [ingredients]);
+  const [index, setIndex] = useState(0);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [firstTryCorrect, setFirstTryCorrect] = useState(0);
+  const [finished, setFinished] = useState(false);
+
+  const restart = useCallback(() => {
+    setIndex(0);
+    setPicked([]);
+    setFirstTryCorrect(0);
+    setFinished(false);
+  }, []);
+  useEffect(restart, [questions, restart]);
+
+  const q = questions[index];
+  const solved = q ? picked.includes(q.answerId) : false;
+  const progress = finished ? 100 : ((index + (solved ? 1 : 0)) / questions.length) * 100;
+
+  const choose = (optionId: string) => {
+    if (solved || picked.includes(optionId)) return;
+    if (picked.length === 0 && optionId === q.answerId) setFirstTryCorrect(n => n + 1);
+    setPicked(p => [...p, optionId]);
+  };
+
+  const next = () => {
+    if (index + 1 >= questions.length) setFinished(true);
+    else {
+      setIndex(i => i + 1);
+      setPicked([]);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-2.5 rounded-full bg-[#e8efe9] overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={questions.length} aria-valuenow={finished ? questions.length : index + 1} aria-label="Kemajuan kuis">
+          <div className="h-full rounded-full bg-[#16a34a] motion-safe:transition-all motion-safe:duration-300" style={{ width: `${Math.max(progress, 6)}%` }} />
+        </div>
+        <span className="text-sm font-bold text-[#166534] tabular-nums">Soal {finished ? questions.length : index + 1} dari {questions.length}</span>
+      </div>
+
+      {finished ? (
+        <div className="mt-5 text-center py-4 motion-safe:animate-[pop-in_300ms_ease-out]" aria-live="polite">
+          <Trophy className="w-12 h-12 mx-auto text-[#ca8a04]" />
+          <div className="font-kids text-5xl font-extrabold text-[#166534] tabular-nums mt-2">{firstTryCorrect}/{questions.length}</div>
+          <p className="mt-1 text-[15px] font-semibold">
+            {firstTryCorrect === questions.length ? 'Semua benar sejak percobaan pertama. Keren!' : 'Jawaban benar di percobaan pertama. Coba lagi untuk nilai sempurna!'}
+          </p>
+          <button type="button" onClick={restart} className={`mt-4 inline-flex items-center gap-2 min-h-[48px] px-5 rounded-2xl bg-[#15803d] hover:bg-[#166534] text-white font-bold cursor-pointer ${focusRing}`}>
+            <RotateCcw className="w-4 h-4" />
+            Ulangi kuis
+          </button>
+        </div>
+      ) : (
+        q && (
+          <>
+            <p className="mt-4 text-[17px] font-bold leading-snug">{q.prompt}</p>
+            <div className={`mt-3 grid gap-2 ${q.options.some(o => o.imageUrl) ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-1'}`}>
+              {q.options.map(opt => {
+                const wasPicked = picked.includes(opt.id);
+                const isAnswer = opt.id === q.answerId;
+                const state = wasPicked && isAnswer ? 'right' : wasPicked ? 'wrong' : solved ? 'muted' : 'idle';
+                const cls = {
+                  right: 'border-[#16a34a] bg-[#f0fdf4] ring-2 ring-[#16a34a] motion-safe:animate-[pop-in_260ms_ease-out]',
+                  wrong: 'border-[#fda4af] bg-[#fff1f2] opacity-80',
+                  muted: 'border-[#e9e0cc] bg-white opacity-60',
+                  idle: 'border-[#e9e0cc] bg-white hover:border-[#86efac]'
+                }[state];
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => choose(opt.id)}
+                    aria-disabled={solved || wasPicked}
+                    className={`relative rounded-2xl border-2 p-2 text-left transition-colors duration-150 cursor-pointer ${focusRing} ${cls}`}
+                  >
+                    {opt.imageUrl && <SafeImg src={opt.imageUrl} alt="" loading="lazy" className="w-full aspect-[4/3] rounded-xl object-cover mb-1.5" />}
+                    <span className="block px-1 min-h-[28px] text-sm font-bold leading-snug">{opt.label}</span>
+                    {state === 'right' && (
+                      <span className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-[#16a34a] text-white flex items-center justify-center">
+                        <Check className="w-4 h-4 stroke-[3]" />
+                      </span>
+                    )}
+                    {state === 'wrong' && (
+                      <span className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-[#e11d48] text-white flex items-center justify-center">
+                        <X className="w-4 h-4 stroke-[3]" />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div aria-live="polite">
+              {solved && (
+                <div className="mt-3 rounded-2xl bg-[#e3f3e7] p-3.5 motion-safe:animate-[pop-in_260ms_ease-out]">
+                  <div className="flex items-center gap-2 text-lg font-extrabold text-[#166534]">
+                    <PartyPopper className="w-5 h-5" />
+                    Benar!
+                  </div>
+                  <p className="text-sm text-slate-800 mt-1 leading-relaxed">{q.explain}</p>
+                </div>
+              )}
+              {!solved && picked.length > 0 && (
+                <p className="mt-3 rounded-2xl bg-[#fff1f2] p-3.5 text-sm font-semibold text-[#9f1239]">Belum tepat, coba pilih jawaban lain ya!</p>
+              )}
+            </div>
+            {solved && (
+              <button type="button" onClick={next} className={`mt-3 w-full inline-flex items-center justify-center gap-2 min-h-[52px] rounded-2xl bg-[#15803d] hover:bg-[#166534] text-white font-bold cursor-pointer ${focusRing}`}>
+                {index + 1 >= questions.length ? 'Lihat nilaiku' : 'Lanjut ke pertanyaan berikutnya'}
+                <ArrowRight className="w-5 h-5" />
+              </button>
+            )}
+          </>
+        )
+      )}
+    </div>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Zona belajar: satu kartu bertab                                     */
+/* ------------------------------------------------------------------ */
+type LearnTab = 'pahlawan' | 'kebiasaan' | 'kuis';
+
+const LearningSection: React.FC<{ hero: NutritionHeroConfig; habits: DailyHabitItem[]; ingredients: IngredientNutritionInfo[] }> = ({ hero, habits, ingredients }) => {
+  const habit = useMemo(() => pickHabit(habits), [habits]);
+  const tabs = useMemo(() => {
+    const list: { key: LearnTab; label: string }[] = [];
+    if (hero.name.trim()) list.push({ key: 'pahlawan', label: 'Pahlawan' });
+    if (habit) list.push({ key: 'kebiasaan', label: 'Kebiasaan' });
+    list.push({ key: 'kuis', label: 'Kuis' });
+    return list;
+  }, [hero.name, habit]);
+  const [active, setActive] = useState<LearnTab>(tabs[0].key);
+  const current = tabs.some(t => t.key === active) ? active : tabs[0].key;
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const onTabKey = (e: React.KeyboardEvent, i: number) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const nextTab = tabs[(i + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+    setActive(nextTab.key);
+    tabRefs.current[nextTab.key]?.focus();
+  };
+
+  return (
+    <section id="belajar" aria-labelledby="belajar-title" className={cardCls}>
+      <SectionHead id="belajar-title" title="Zona belajar" subtitle="Kenali makananmu, coba kebiasaan baik, lalu jawab kuisnya." />
+
+      <div role="tablist" aria-label="Zona belajar" className="grid gap-1 p-1 rounded-2xl bg-[#f4efe3]" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+        {tabs.map((t, i) => (
+          <button
+            key={t.key}
+            ref={el => { tabRefs.current[t.key] = el; }}
+            type="button"
+            role="tab"
+            id={`tab-${t.key}`}
+            aria-controls={`panel-${t.key}`}
+            aria-selected={current === t.key}
+            tabIndex={current === t.key ? 0 : -1}
+            onClick={() => setActive(t.key)}
+            onKeyDown={e => onTabKey(e, i)}
+            className={`min-h-[44px] rounded-xl text-sm font-bold cursor-pointer transition-colors duration-150 ${focusRing} ${current === t.key ? 'bg-[#15803d] text-white' : 'text-slate-700 hover:bg-white/70'}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div role="tabpanel" id={`panel-${current}`} aria-labelledby={`tab-${current}`} className="mt-4">
+        {current === 'pahlawan' && <NutritionHeroPanel hero={hero} ingredients={ingredients} />}
+        {current === 'kebiasaan' && habit && <HabitPanel habit={habit} />}
+        {current === 'kuis' && <QuizPanel ingredients={ingredients} />}
+      </div>
+    </section>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Halaman                                                             */
+/* ------------------------------------------------------------------ */
+const NAV_ITEMS = [
+  { id: 'menu', label: 'Menu' },
+  { id: 'gizi', label: 'Nilai gizi' },
+  { id: 'belajar', label: 'Zona belajar' },
+  { id: 'bagikan', label: 'Bagikan' }
+];
+
+// Chip navigasi menyala sesuai bagian yang sedang terbaca di tengah layar.
+function useActiveSection(ids: string[]): string {
+  const [active, setActive] = useState(ids[0]);
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      entries => entries.forEach(e => e.isIntersecting && setActive(e.target.id)),
+      { rootMargin: '-40% 0px -55% 0px' }
+    );
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, [ids]);
+  return active;
+}
+
+const NAV_IDS = NAV_ITEMS.map(n => n.id);
+
+export const DailyMenuPublicPage: React.FC = () => {
   const [config, setConfig] = useState<WebsiteConfig>(getWebsiteConfig);
-  const [selectedMenuType, setSelectedMenuType] = useState<'REGULER' | '3B'>('REGULER');
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const [isQrModalOpen, setIsQrModalOpen] = useState<boolean>(false);
-  const [is3bModalOpen, setIs3bModalOpen] = useState<boolean>(false);
-  const [isNutritionModalOpen, setIsNutritionModalOpen] = useState<boolean>(false);
-  const [isIngredientsModalOpen, setIsIngredientsModalOpen] = useState<boolean>(false);
-  const [selectedIngredient, setSelectedIngredient] = useState<IngredientNutritionInfo | null>(null);
-  const [copiedLink, setCopiedLink] = useState<boolean>(false);
-  const [quizSelection, setQuizSelection] = useState<string | null>('tempe'); // Default match image (selected 'Tempe bacem')
+  const [syncState, setSyncState] = useState<SyncState>(isSupabaseConfigured() ? 'loading' : 'offline');
+  const [portion, setPortion] = useState<PortionKey>('large');
+  const [detailIndex, setDetailIndex] = useState<number | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const activeSection = useActiveSection(NAV_IDS);
 
   const menuToday = config.menuToday;
+  const ingredients = menuToday.ingredients;
+  const tier: PortionTierConfig = portion === 'large' ? menuToday.portionLarge : menuToday.portionSmall;
+  const pageUrl = `${window.location.origin}${MENU_PATH}`;
+  const pageHost = `${window.location.host}${MENU_PATH}`;
 
-  // Sinkronisasi realtime jika admin mengubah menu di CMS
+  const isSampleData = menuToday === DEFAULT_WEBSITE_CONFIG.menuToday;
+  const menuDate = parseIndonesianDate(menuToday.dateText);
+  const isOutdated = menuDate !== null && !isSameDay(menuDate, new Date());
+  const updatedLabel = isSampleData ? null : formatUpdatedAt(config.lastUpdated);
+
+  const loadFromCloud = useCallback(async () => {
+    if (!isSupabaseConfigured()) {
+      setSyncState('offline');
+      return;
+    }
+    setSyncState('loading');
+    const result = await fetchWebsiteConfigFromCloud();
+    setConfig(result.config);
+    setSyncState(result.error ? 'error' : 'synced');
+  }, []);
+
   useEffect(() => {
-    const handleUpdate = () => {
-      setConfig(getWebsiteConfig());
-    };
+    const handleUpdate = () => setConfig(getWebsiteConfig());
     window.addEventListener(WEBSITE_CONFIG_UPDATED_EVENT, handleUpdate);
+    loadFromCloud();
     return () => window.removeEventListener(WEBSITE_CONFIG_UPDATED_EVENT, handleUpdate);
-  }, []);
+  }, [loadFromCloud]);
 
-  // Generate QR Code untuk tautan halaman saat ini
-  useEffect(() => {
-    const generateQr = async () => {
-      try {
-        const origin = typeof window !== 'undefined' ? window.location.origin : 'https://sppg-jeru.com';
-        const targetUrl = `${origin}/menu-mbg-hari-ini`;
-        const url = await QRCode.toDataURL(targetUrl, {
-          width: 320,
-          margin: 2,
-          color: {
-            dark: '#0f3e2e',
-            light: '#ffffff'
-          }
-        });
-        setQrDataUrl(url);
-      } catch (err) {
-        console.error('Gagal generate QR code:', err);
-      }
-    };
-    generateQr();
-  }, []);
+  const closeDetail = useCallback(() => setDetailIndex(null), []);
 
   const handleCopyLink = async () => {
     try {
-      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://sppg-jeru.com';
-      await navigator.clipboard.writeText(`${origin}/menu-mbg-hari-ini`);
+      await navigator.clipboard.writeText(pageUrl);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2500);
     } catch {
-      alert('Tautan halaman: ' + window.location.href);
+      window.prompt('Salin tautan ini:', pageUrl);
     }
   };
 
   const handleShare = async () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://sppg-jeru.com';
-    const shareUrl = `${origin}/menu-mbg-hari-ini`;
     if (navigator.share) {
       try {
-        await navigator.share({
-          title: `Menu MBG Hari Ini - SPPG Jeru`,
-          text: `Cek kandungan gizi, porsi, dan bahan menu Program Makan Bergizi Gratis SPPG Tumpang Jeru hari ini!`,
-          url: shareUrl,
-        });
-      } catch {
-        handleCopyLink();
+        await navigator.share({ title: 'Menu MBG Hari Ini, SPPG Tumpang Jeru', text: `Menu MBG ${menuToday.dateText}: ${menuToday.menuTitle}`, url: pageUrl });
+        return;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
       }
-    } else {
-      handleCopyLink();
     }
+    handleCopyLink();
   };
 
-  const handlePrintSticker = () => {
-    window.print();
+  const scrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   };
 
-  // Nilai gizi adaptif sesuai jenis menu yang dipilih (Reguler vs 3B)
-  const currentNutrition = selectedMenuType === 'REGULER'
-    ? {
-        energy: '685',
-        protein: '29',
-        carbs: '96',
-        fat: '17',
-        fiber: '7,8',
-        label: 'Peserta Didik di Sekolah',
-        riceGrams: '150',
-        chickenGrams: '75',
-        soupGrams: '90',
-        tempeGrams: '50',
-        bananaGrams: '85',
-      }
-    : {
-        energy: '725',
-        protein: '34',
-        carbs: '92',
-        fat: '19',
-        fiber: '8,5',
-        label: 'Ibu Hamil, Menyusui & Balita',
-        riceGrams: '130',
-        chickenGrams: '85',
-        soupGrams: '100',
-        tempeGrams: '60',
-        bananaGrams: '90',
-      };
+  const tiers: { key: PortionKey; config: PortionTierConfig }[] = [
+    { key: 'small', config: menuToday.portionSmall },
+    { key: 'large', config: menuToday.portionLarge }
+  ];
+  const bodyWeight = portion === 'large' ? menuToday.bodyWeightLargeKg : menuToday.bodyWeightSmallKg;
+  const menuTitle = menuToday.menuTitle.trim() || 'Menu sehat untuk hari ini';
 
   return (
-    <div className="min-h-screen bg-[#faf8f5] text-[#1e2922] font-sans antialiased selection:bg-[#d8eedf] selection:text-[#0f3e2e]">
-      {/* ========================================================
-          1. HEADER NAVBAR
-          ======================================================== */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#e7e1d6] shadow-2xs">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-18 flex items-center justify-between gap-3">
-          {/* Logo & Identitas */}
-          <div className="flex items-center gap-3">
-            {onBackToHome && (
-              <button
-                type="button"
-                onClick={onBackToHome}
-                className="p-2 rounded-xl bg-[#f7f4ed] hover:bg-[#ede7db] text-slate-700 transition-colors cursor-pointer"
-                title="Kembali ke Beranda"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-            )}
-
-            <div className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-200 p-1 flex items-center justify-center shrink-0">
-              <img
-                src={logoSppgImg}
-                alt="Logo SPPG"
-                className="w-full h-full object-contain"
-              />
-            </div>
-
-            <div>
-              <div className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
-                <span>SPPG MLG TUMPANG JERU</span>
-              </div>
-              <div className="text-[11px] text-slate-500 font-medium">
-                Program Makan Bergizi Gratis
-              </div>
+    <div className="min-h-screen bg-[#fbf8f1] text-[#1f2a22] font-sans antialiased text-[15px]">
+      {/* Header: tanpa tautan keluar halaman; chip hanya melompat ke bagian di halaman ini */}
+      <header className="sticky top-0 z-40 bg-[#fbf8f1]/95 backdrop-blur-sm border-b border-[#e9e0cc]">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center gap-2.5 pt-2.5 pb-1.5">
+            <img src={logoSppgImg} alt="" className="w-9 h-9 object-contain shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[15px] font-extrabold leading-tight truncate">SPPG Tumpang Jeru</div>
+              <div className="text-xs text-slate-600 leading-tight truncate">Menu Makan Bergizi Gratis</div>
             </div>
           </div>
-
-          {/* Tombol Bagikan & QR Code */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleShare}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
-              title="Bagikan Tautan Menu"
-            >
-              {copiedLink ? <Check className="w-4 h-4 text-emerald-600" /> : <Share2 className="w-4 h-4 text-slate-600" />}
-              <span>{copiedLink ? 'Tersalin' : 'Bagikan'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsQrModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#064e3b] hover:bg-[#043e2e] text-white text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
-              title="Buka QR Code"
-            >
-              <QrCode className="w-4 h-4 text-emerald-200" />
-              <span>QR Code</span>
-            </button>
-          </div>
+          <nav aria-label="Bagian halaman" className="-mx-4 px-4 sm:mx-0 sm:px-0 flex gap-1.5 overflow-x-auto pb-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {NAV_ITEMS.map(n => {
+              const on = activeSection === n.id;
+              return (
+                <a
+                  key={n.id}
+                  href={`#${n.id}`}
+                  aria-current={on ? 'location' : undefined}
+                  onClick={e => {
+                    e.preventDefault();
+                    scrollTo(n.id);
+                  }}
+                  className={`shrink-0 inline-flex items-center min-h-[38px] px-3.5 rounded-full text-[13.5px] font-bold transition-colors duration-150 ${focusRing} ${
+                    on ? 'bg-[#15803d] text-white' : 'bg-[#f1ebdd] text-[#1f2a22] hover:bg-[#e9e0cc]'
+                  }`}
+                >
+                  {n.label}
+                </a>
+              );
+            })}
+          </nav>
         </div>
       </header>
 
-      {/* ========================================================
-          KONTEN UTAMA
-          ======================================================== */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
-
-        {/* ========================================================
-            2. HERO SECTION CARD
-            ======================================================== */}
-        <section className="bg-gradient-to-br from-[#ebf5ed]/70 via-white to-[#fbf7ed] rounded-3xl border border-[#ded8cb] p-6 sm:p-8 shadow-xs overflow-hidden relative">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
-            {/* Sisi Kiri: Teks & Menu List */}
-            <div className="lg:col-span-7 space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-white border border-emerald-600 text-[#065f46] text-xs font-semibold shadow-2xs">
-                  <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                  {menuToday.dateText}
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-[#065f46] text-white text-xs font-semibold shadow-2xs">
-                  <Users className="w-3.5 h-3.5 text-emerald-100" />
-                  {selectedMenuType === 'REGULER' ? 'Menu Reguler' : 'Menu 3B'}
-                </span>
-              </div>
-
-              <div>
-                <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
-                  Menu MBG Hari Ini
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed">
-                  Makanan bergizi untuk mendukung tumbuh kembang dan semangat belajar.
-                </p>
-              </div>
-
-              {/* Kotak Hijau Ringkasan Menu */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-[#e8f4ec] border border-[#cbe4d2] flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-[#d4ecd9] flex items-center justify-center shrink-0 text-[#065f46]">
-                  <Utensils className="w-7 h-7" />
-                </div>
-                <div className="space-y-0.5 text-slate-900 text-sm sm:text-base font-bold leading-tight">
-                  <div>Nasi putih</div>
-                  <div>Ayam bumbu kuning</div>
-                  <div>Sayur sop, Tempe bacem</div>
-                  <div>Pisang</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Sisi Kanan: Foto Wadah Ompreng MBG */}
-            <div className="lg:col-span-5 relative flex items-center justify-center">
-              <div className="relative rounded-3xl overflow-hidden bg-slate-100 border border-slate-200/90 shadow-md group w-full max-w-[420px] aspect-4/3">
-                <img
-                  src={menuToday.imageUrl || trayImg1}
-                  alt="Menu MBG Hari Ini"
-                  className="w-full h-full object-cover object-center group-hover:scale-102 transition-transform duration-500"
-                />
-
-                {/* Yellow Note Sticker */}
-                <div className="absolute top-3 right-3 bg-[#fef9c3] border border-[#fde047] text-[#713f12] px-3.5 py-2 rounded-2xl shadow-sm rotate-2 text-xs font-bold max-w-[170px] leading-snug">
-                  <div className="text-[10px] text-amber-700/80 mb-0.5 flex items-center gap-1 font-semibold">
-                    <span>🌱</span>
-                    <span>Menu sehat</span>
-                  </div>
-                  Menu sehat untuk tubuh kuat dan semangat belajar! ✨
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ========================================================
-            3. PILIH JENIS MENU & BANNER MENU 3B
-            ======================================================== */}
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-          {/* Kolom Kiri: Pilihan Jenis Menu (8 cols) */}
-          <div className="lg:col-span-8 bg-white rounded-3xl border border-[#ded8cb] p-5 sm:p-6 shadow-xs flex flex-col justify-between space-y-4">
-            <div>
-              <div className="flex items-center gap-2 text-slate-900 font-bold text-base">
-                <Users className="w-5 h-5 text-emerald-700" />
-                <span>Pilih Jenis Menu</span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Informasi ditampilkan sesuai kelompok penerima manfaat.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {/* Option 1: Menu Reguler */}
-              <div
-                onClick={() => setSelectedMenuType('REGULER')}
-                className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between gap-3 ${
-                  selectedMenuType === 'REGULER'
-                    ? 'border-emerald-600 bg-emerald-50/60 shadow-2xs'
-                    : 'border-slate-200 bg-white hover:border-slate-300'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    selectedMenuType === 'REGULER' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-600'
-                  }`}>
-                    <Landmark className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-slate-900 text-sm">Menu Reguler</div>
-                    <div className="text-xs text-slate-500">Peserta didik di sekolah</div>
-                  </div>
-                </div>
-
-                <div className="shrink-0">
-                  {selectedMenuType === 'REGULER' ? (
-                    <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center">
-                      <Check className="w-4 h-4 stroke-[3]" />
-                    </div>
-                  ) : (
-                    <div className="w-6 h-6 rounded-full border-2 border-slate-300 bg-white" />
-                  )}
-                </div>
-              </div>
-
-              {/* Option 2: Menu 3B */}
-              <div
-                onClick={() => setSelectedMenuType('3B')}
-                className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between gap-3 ${
-                  selectedMenuType === '3B'
-                    ? 'border-emerald-600 bg-emerald-50/60 shadow-2xs'
-                    : 'border-slate-200 bg-white hover:border-slate-300'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    selectedMenuType === '3B' ? 'bg-rose-500 text-white' : 'bg-rose-50 text-rose-500'
-                  }`}>
-                    <HeartHandshake className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-slate-900 text-sm">Menu 3B</div>
-                    <div className="text-xs text-slate-500">Ibu hamil, ibu menyusui, balita non-PAUD</div>
-                  </div>
-                </div>
-
-                <div className="shrink-0">
-                  {selectedMenuType === '3B' ? (
-                    <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center">
-                      <Check className="w-4 h-4 stroke-[3]" />
-                    </div>
-                  ) : (
-                    <div className="w-6 h-6 rounded-full border-2 border-slate-300 bg-white" />
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Kolom Kanan: Mau Tahu Perbedaan Menu 3B? (4 cols) */}
-          <div className="lg:col-span-4 bg-[#edf7f0] rounded-3xl border border-[#cbe4d2] p-5 sm:p-6 shadow-xs flex flex-col justify-between items-center text-center">
-            <div className="space-y-2.5 w-full">
-              <div className="font-bold text-slate-900 text-base sm:text-lg">
-                Mau tahu perbedaan menu 3B?
-              </div>
-              <div className="w-full max-w-[280px] h-36 sm:h-40 mx-auto overflow-hidden flex items-center justify-center p-1">
-                <img
-                  src={menu3bIlustrasiImg}
-                  alt="Ilustrasi Menu 3B"
-                  className="w-full h-full object-contain hover:scale-105 transition-transform duration-300"
-                />
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setIs3bModalOpen(true)}
-              className="w-full mt-2 py-2.5 px-4 rounded-full bg-white hover:bg-slate-50 border border-emerald-300 text-slate-800 text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-2xs hover:shadow-xs"
-            >
-              <span>Lihat penjelasan menu 3B</span>
-              <ArrowRight className="w-4 h-4 text-emerald-700" />
-            </button>
-          </div>
-        </section>
-
-        {/* ========================================================
-            4. INFORMASI GIZI PER PORSI & MANFAAT UNTUK ANAK
-            ======================================================== */}
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-          {/* Kolom Kiri: 5 Metrik Gizi (8 cols) */}
-          <div className="lg:col-span-7 bg-white rounded-3xl border border-[#ded8cb] p-5 sm:p-6 shadow-xs flex flex-col justify-between space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <div className="flex items-center gap-2 text-slate-900 font-bold text-base sm:text-lg">
-                  <Activity className="w-5 h-5 text-emerald-700" />
-                  <span>Informasi Gizi per Porsi</span>
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Nilai gizi ditampilkan berdasarkan resep dan takaran yang tercatat.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsNutritionModalOpen(true)}
-                className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-700 hover:text-emerald-800 bg-white hover:bg-slate-50 border border-slate-200 px-4 py-1.5 rounded-full transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
-              >
-                <span>Lihat detail gizi</span>
-                <ChevronRight className="w-4 h-4" />
+      <main className="max-w-5xl mx-auto px-3 sm:px-6 pb-8">
+        {/* Status data */}
+        <div aria-live="polite" className="pt-3 space-y-2 empty:hidden">
+          {syncState === 'loading' && (
+            <p className="flex items-center gap-2 text-[13px] text-slate-600 px-1">
+              <RefreshCw className="w-3.5 h-3.5 motion-safe:animate-spin" />
+              Memeriksa menu terbaru dari dapur SPPG...
+            </p>
+          )}
+          {syncState === 'error' && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-[13px] text-amber-900">
+              <span>Menu terbaru belum bisa dimuat. Yang tampil adalah data terakhir yang tersimpan di perangkat ini.</span>
+              <button type="button" onClick={loadFromCloud} className={`inline-flex items-center gap-1 min-h-[44px] px-2 font-semibold underline underline-offset-2 cursor-pointer rounded ${focusRing}`}>
+                <RefreshCw className="w-3.5 h-3.5" />
+                Coba lagi
               </button>
             </div>
-
-            {/* 5 Cards Gizi Sejajar */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-              {/* Energi */}
-              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 text-center flex flex-col justify-between items-center shadow-2xs hover:border-amber-300 transition-colors">
-                <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mb-1">
-                  <Flame className="w-5 h-5" />
-                </div>
-                <div className="text-xs text-slate-500 font-medium">Energi</div>
-                <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight my-0.5">
-                  {currentNutrition.energy}
-                </div>
-                <div className="text-xs text-slate-500">kkal</div>
-              </div>
-
-              {/* Protein */}
-              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 text-center flex flex-col justify-between items-center shadow-2xs hover:border-rose-300 transition-colors">
-                <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mb-1">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-                <div className="text-xs text-slate-500 font-medium">Protein</div>
-                <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight my-0.5">
-                  {currentNutrition.protein}
-                </div>
-                <div className="text-xs text-slate-500">gram</div>
-              </div>
-
-              {/* Karbohidrat */}
-              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 text-center flex flex-col justify-between items-center shadow-2xs hover:border-amber-300 transition-colors">
-                <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mb-1">
-                  <Wheat className="w-5 h-5" />
-                </div>
-                <div className="text-xs text-slate-500 font-medium">Karbohidrat</div>
-                <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight my-0.5">
-                  {currentNutrition.carbs}
-                </div>
-                <div className="text-xs text-slate-500">gram</div>
-              </div>
-
-              {/* Lemak */}
-              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 text-center flex flex-col justify-between items-center shadow-2xs hover:border-sky-300 transition-colors">
-                <div className="w-10 h-10 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center mb-1">
-                  <Droplets className="w-5 h-5" />
-                </div>
-                <div className="text-xs text-slate-500 font-medium">Lemak</div>
-                <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight my-0.5">
-                  {currentNutrition.fat}
-                </div>
-                <div className="text-xs text-slate-500">gram</div>
-              </div>
-
-              {/* Serat Pangan */}
-              <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 text-center flex flex-col justify-between items-center shadow-2xs hover:border-emerald-300 transition-colors col-span-2 sm:col-span-1">
-                <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-1">
-                  <Leaf className="w-5 h-5" />
-                </div>
-                <div className="text-xs text-slate-500 font-medium">Serat Pangan</div>
-                <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight my-0.5">
-                  {currentNutrition.fiber}
-                </div>
-                <div className="text-xs text-slate-500">gram</div>
-              </div>
+          )}
+          {syncState !== 'loading' && isSampleData && (
+            <div className="rounded-xl border border-[#e9e0cc] bg-white px-3.5 py-2.5 text-[13px] text-slate-700">Ini contoh menu bawaan aplikasi. Petugas SPPG belum mengisi menu lewat CMS.</div>
+          )}
+          {isOutdated && !isSampleData && (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-900">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
+              <span>Menu ini untuk <strong>{menuToday.dateText}</strong>, bukan hari ini. Menu hari ini belum diperbarui petugas.</span>
             </div>
+          )}
+        </div>
+
+        {/* 1. Hero: nama menu + pilihan porsi + isi piring */}
+        <div className="pt-3 grid lg:grid-cols-2 gap-3.5 lg:gap-6 items-start">
+          <div className="grid gap-3.5 min-w-0">
+            <section aria-labelledby="hero-title" className="rounded-3xl bg-[#1e6b38] text-white overflow-hidden">
+              <div className="p-4 sm:p-6 pb-4">
+                <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[13px] font-semibold text-[#d4f0dc]">
+                  <li className="inline-flex items-center gap-1.5">
+                    <CalendarDays className="w-4 h-4" />
+                    {menuToday.dateText}
+                  </li>
+                  {updatedLabel && (
+                    <li className="inline-flex items-center gap-1.5">
+                      <Clock className="w-4 h-4" />
+                      {updatedLabel}
+                    </li>
+                  )}
+                  {menuToday.qcStatus?.trim() && (
+                    <li className="inline-flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4" />
+                      {menuToday.qcStatus}
+                    </li>
+                  )}
+                </ul>
+                <h1 id="hero-title" className="font-kids text-[30px] sm:text-[40px] leading-[1.08] font-extrabold mt-2.5 [text-wrap:balance]">
+                  {menuTitle}
+                </h1>
+                <ul className="mt-3 flex flex-wrap gap-2 text-[13px] font-bold">
+                  <li className="rounded-full bg-white/15 px-3 py-1 tabular-nums">{tier.targetCalories}</li>
+                  <li className="rounded-full bg-white/15 px-3 py-1 tabular-nums">{tier.totalGramature}</li>
+                  {ingredients.length > 0 && <li className="rounded-full bg-white/15 px-3 py-1">{ingredients.length} komponen</li>}
+                </ul>
+              </div>
+              <figure className="relative">
+                <SafeImg src={menuToday.imageUrl || trayImg1} alt={`Foto ompreng menu: ${menuTitle}`} className="w-full aspect-[16/10] object-cover" />
+                <figcaption className="absolute left-3 bottom-3 rounded-full bg-black/55 px-2.5 py-0.5 text-xs text-white">Foto ompreng hari ini</figcaption>
+              </figure>
+            </section>
+
+            <PortionPicker tiers={tiers} portion={portion} onChange={setPortion} />
           </div>
 
-          {/* Kolom Kanan: Manfaat untuk Anak (5 cols) */}
-          <div className="lg:col-span-5 bg-white rounded-3xl border border-[#ded8cb] p-5 sm:p-6 shadow-xs flex flex-col justify-between">
-            <div className="font-bold text-slate-900 text-base sm:text-lg mb-3">
-              Manfaat untuk Anak
-            </div>
+          <MenuPlateSection ingredients={ingredients} portion={portion} tip={menuToday.plateTip} onOpenIngredient={setDetailIndex} />
+        </div>
 
-            <div className="flex items-center gap-4 sm:gap-5">
-              <div className="w-32 h-40 sm:w-36 sm:h-44 rounded-2xl overflow-hidden shrink-0 flex items-center justify-center">
-                <img
-                  src={anakSehatImg}
-                  alt="Anak Sehat Berenergi"
-                  className="w-full h-full object-contain hover:scale-105 transition-transform duration-300"
-                />
-              </div>
+        {/* 2-3. Nilai gizi & Zona belajar */}
+        <div className="mt-3.5 lg:mt-6 grid lg:grid-cols-2 gap-3.5 lg:gap-6 items-start">
+          <NutritionSection tier={tier} calcium={menuToday.energySummary.calciumAvg} iron={menuToday.energySummary.ironAvg} bodyWeight={bodyWeight} />
+          <LearningSection hero={menuToday.nutritionHero} habits={menuToday.dailyHabits} ingredients={ingredients} />
+        </div>
 
-              <div className="space-y-3 sm:space-y-3.5 text-xs sm:text-sm text-slate-800">
-                <div className="flex items-center gap-2.5">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                  <span className="font-semibold">Memberi energi</span>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                  <span className="font-semibold">Membantu pertumbuhan</span>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                  <span className="font-semibold">Menjaga daya tahan tubuh</span>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                  <span className="font-semibold">Mendukung konsentrasi belajar</span>
-                </div>
-              </div>
+        {/* 4. Bagikan. QR untuk dicetak tersedia di CMS. */}
+        <section id="bagikan" aria-labelledby="bagikan-title" className={`${cardCls} mt-3.5 lg:mt-6`}>
+          <div className="lg:flex lg:items-end lg:justify-between lg:gap-6">
+            <SectionHead id="bagikan-title" title="Bagikan ke orang tua" subtitle="Tautannya selalu sama. Isinya diperbarui petugas setiap pagi." />
+            <div className="grid grid-cols-2 gap-2 lg:w-96 lg:mb-4">
+              <button type="button" onClick={handleShare} className={`inline-flex items-center justify-center gap-2 min-h-[48px] rounded-2xl bg-[#15803d] hover:bg-[#166534] text-white text-sm font-bold cursor-pointer ${focusRing}`}>
+                <Share2 className="w-4 h-4" />
+                Bagikan
+              </button>
+              <button type="button" onClick={handleCopyLink} className={`inline-flex items-center justify-center gap-2 min-h-[48px] rounded-2xl border-2 border-[#e9e0cc] bg-white text-sm font-bold hover:bg-[#f4efe3] cursor-pointer ${focusRing}`}>
+                {copiedLink ? <Check className="w-4 h-4 text-[#15803d]" /> : <Copy className="w-4 h-4" />}
+                {copiedLink ? 'Tersalin' : 'Salin tautan'}
+              </button>
             </div>
           </div>
+          <p className="font-mono text-[13px] text-slate-600 break-all">{pageHost}</p>
         </section>
-
-        {/* ========================================================
-            5. RINCIAN MENU DAN BAHAN MAKANAN (5 CARDS SEJAJAR)
-            ======================================================== */}
-        <section className="bg-white rounded-3xl border border-[#ded8cb] p-5 sm:p-6 shadow-xs space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-2 text-slate-900 font-bold text-base">
-                <Leaf className="w-5 h-5 text-emerald-700" />
-                <span>Rincian Menu dan Bahan Makanan</span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Daftar bahan makanan, kategori, dan takaran porsi pada menu hari ini.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setIsIngredientsModalOpen(true)}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-emerald-800 bg-white hover:bg-slate-50 border border-slate-200 px-3.5 py-1.5 rounded-full transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
-            >
-              <span>Lihat detail bahan</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {/* Card 1: Nasi putih */}
-            <div
-              onClick={() => {
-                const item = menuToday.ingredients.find(i => i.id === 'ing-1');
-                if (item) setSelectedIngredient(item);
-              }}
-              className="p-4 rounded-2xl border border-slate-200 bg-white hover:border-emerald-500 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between items-center text-center group"
-            >
-              <div className="w-22 h-22 sm:w-24 sm:h-24 mx-auto rounded-full overflow-hidden bg-white border border-slate-100 shadow-2xs mb-3 flex items-center justify-center p-0.5">
-                <img
-                  src={nasiPutihBowlImg}
-                  alt="Nasi Putih"
-                  className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-300"
-                />
-              </div>
-              <div className="space-y-1.5 w-full">
-                <div className="font-bold text-slate-900 text-sm sm:text-base">Nasi putih</div>
-                <div>
-                  <span className="inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200/60">
-                    Karbohidrat
-                  </span>
-                </div>
-                <div className="text-xs sm:text-sm font-semibold text-slate-700 pt-0.5">
-                  ± {currentNutrition.riceGrams} gram
-                </div>
-              </div>
-            </div>
-
-            {/* Card 2: Ayam bumbu kuning */}
-            <div
-              onClick={() => {
-                const item = menuToday.ingredients.find(i => i.id === 'ing-2');
-                if (item) setSelectedIngredient(item);
-              }}
-              className="p-4 rounded-2xl border border-slate-200 bg-white hover:border-emerald-500 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between items-center text-center group"
-            >
-              <div className="w-22 h-22 sm:w-24 sm:h-24 mx-auto rounded-full overflow-hidden bg-white border border-slate-100 shadow-2xs mb-3 flex items-center justify-center p-0.5">
-                <img
-                  src={ayamBumbuKuningImg}
-                  alt="Ayam Bumbu Kuning"
-                  className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-300"
-                />
-              </div>
-              <div className="space-y-1.5 w-full">
-                <div className="font-bold text-slate-900 text-sm sm:text-base">Ayam bumbu kuning</div>
-                <div>
-                  <span className="inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200/60">
-                    Protein hewani
-                  </span>
-                </div>
-                <div className="text-xs sm:text-sm font-semibold text-slate-700 pt-0.5">
-                  ± {currentNutrition.chickenGrams} gram
-                </div>
-              </div>
-            </div>
-
-            {/* Card 3: Sayur sop */}
-            <div
-              onClick={() => {
-                const item = menuToday.ingredients.find(i => i.id === 'ing-4');
-                if (item) setSelectedIngredient(item);
-              }}
-              className="p-4 rounded-2xl border border-slate-200 bg-white hover:border-emerald-500 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between items-center text-center group"
-            >
-              <div className="w-22 h-22 sm:w-24 sm:h-24 mx-auto rounded-full overflow-hidden bg-white border border-slate-100 shadow-2xs mb-3 flex items-center justify-center p-0.5">
-                <img
-                  src={sayurSopImg}
-                  alt="Sayur Sop"
-                  className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-300"
-                />
-              </div>
-              <div className="space-y-1.5 w-full">
-                <div className="font-bold text-slate-900 text-sm sm:text-base">Sayur sop</div>
-                <div>
-                  <span className="inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-                    Sayuran
-                  </span>
-                </div>
-                <div className="text-xs sm:text-sm font-semibold text-slate-700 pt-0.5">
-                  ± {currentNutrition.soupGrams} gram
-                </div>
-              </div>
-            </div>
-
-            {/* Card 4: Tempe bacem */}
-            <div
-              onClick={() => {
-                const item = menuToday.ingredients.find(i => i.id === 'ing-3');
-                if (item) setSelectedIngredient(item);
-              }}
-              className="p-4 rounded-2xl border border-slate-200 bg-white hover:border-emerald-500 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between items-center text-center group"
-            >
-              <div className="w-22 h-22 sm:w-24 sm:h-24 mx-auto rounded-full overflow-hidden bg-white border border-slate-100 shadow-2xs mb-3 flex items-center justify-center p-0.5">
-                <img
-                  src={tempeBacemImg}
-                  alt="Tempe Bacem"
-                  className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-300"
-                />
-              </div>
-              <div className="space-y-1.5 w-full">
-                <div className="font-bold text-slate-900 text-sm sm:text-base">Tempe bacem</div>
-                <div>
-                  <span className="inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/60">
-                    Protein nabati
-                  </span>
-                </div>
-                <div className="text-xs sm:text-sm font-semibold text-slate-700 pt-0.5">
-                  ± {currentNutrition.tempeGrams} gram
-                </div>
-              </div>
-            </div>
-
-            {/* Card 5: Pisang */}
-            <div
-              onClick={() => {
-                const item = menuToday.ingredients.find(i => i.id === 'ing-5');
-                if (item) setSelectedIngredient(item);
-              }}
-              className="p-4 rounded-2xl border border-slate-200 bg-white hover:border-emerald-500 hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between items-center text-center group col-span-2 sm:col-span-1"
-            >
-              <div className="w-22 h-22 sm:w-24 sm:h-24 mx-auto rounded-full overflow-hidden bg-white border border-slate-100 shadow-2xs mb-3 flex items-center justify-center p-0.5">
-                <img
-                  src={buahPisangImg}
-                  alt="Pisang"
-                  className="w-full h-full object-cover rounded-full group-hover:scale-105 transition-transform duration-300"
-                />
-              </div>
-              <div className="space-y-1.5 w-full">
-                <div className="font-bold text-slate-900 text-sm sm:text-base">Pisang</div>
-                <div>
-                  <span className="inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200/60">
-                    Buah
-                  </span>
-                </div>
-                <div className="text-xs sm:text-sm font-semibold text-slate-700 pt-0.5 leading-tight">
-                  <div>1 buah</div>
-                  <div className="text-xs text-slate-500 font-normal">(± {currentNutrition.bananaGrams} gram)</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ========================================================
-            6. BARIS EDUKASI: KENALI ISI PIRINGMU, PAHLAWAN GIZI, MISI SEHAT
-            ======================================================== */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* Card 1: Kenali Isi Piringmu */}
-          <div className="bg-white rounded-3xl border border-[#ded8cb] p-5 sm:p-6 shadow-xs flex flex-col justify-between space-y-4">
-            <div className="flex items-center gap-2.5 text-slate-900 font-bold text-base sm:text-lg">
-              <Leaf className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-700" />
-              <span>Kenali Isi Piringmu</span>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center gap-4 sm:gap-5">
-                {/* SVG Illustrated Plate representing "Isi Piringku" */}
-                <div className="w-32 h-32 sm:w-36 sm:h-36 shrink-0 relative flex items-center justify-center">
-                  <svg viewBox="0 0 120 120" className="w-full h-full drop-shadow-md">
-                    {/* Outer plate rim */}
-                    <circle cx="60" cy="60" r="56" fill="#f8fafc" stroke="#e2e8f0" strokeWidth="4" />
-                    <circle cx="60" cy="60" r="50" fill="#ffffff" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="2 2" />
-                    
-                    {/* Top Left: Karbohidrat (35%) */}
-                    <path
-                      d="M 60 60 L 60 12 A 48 48 0 0 0 14 74 Z"
-                      fill="#fef3c7"
-                      stroke="#ffffff"
-                      strokeWidth="2.5"
-                    />
-                    <circle cx="36" cy="36" r="2.5" fill="#d97706" opacity="0.4" />
-                    <circle cx="44" cy="45" r="3" fill="#d97706" opacity="0.4" />
-                    <circle cx="30" cy="50" r="2.5" fill="#d97706" opacity="0.4" />
-                    <text x="36" y="44" fontSize="8.5" fontWeight="bold" fill="#92400e" textAnchor="middle">Nasi</text>
-
-                    {/* Top Right: Sayuran (35%) */}
-                    <path
-                      d="M 60 60 L 60 12 A 48 48 0 0 1 106 74 Z"
-                      fill="#dcfce7"
-                      stroke="#ffffff"
-                      strokeWidth="2.5"
-                    />
-                    <circle cx="82" cy="36" r="3.5" fill="#16a34a" opacity="0.5" />
-                    <circle cx="74" cy="47" r="3" fill="#ea580c" opacity="0.7" />
-                    <circle cx="88" cy="50" r="2.5" fill="#16a34a" opacity="0.5" />
-                    <text x="82" y="44" fontSize="8.5" fontWeight="bold" fill="#166534" textAnchor="middle">Sayur</text>
-
-                    {/* Bottom Left: Lauk Pauk (15%) */}
-                    <path
-                      d="M 60 60 L 14 74 A 48 48 0 0 0 60 108 Z"
-                      fill="#ffedd5"
-                      stroke="#ffffff"
-                      strokeWidth="2.5"
-                    />
-                    <rect x="28" y="78" width="14" height="11" rx="2.5" fill="#c2410c" opacity="0.6" />
-                    <text x="36" y="87" fontSize="7.5" fontWeight="bold" fill="#9a3412" textAnchor="middle">Lauk</text>
-
-                    {/* Bottom Right: Buah (15%) */}
-                    <path
-                      d="M 60 60 L 106 74 A 48 48 0 0 1 60 108 Z"
-                      fill="#fef9c3"
-                      stroke="#ffffff"
-                      strokeWidth="2.5"
-                    />
-                    <path d="M 72 82 Q 81 93 90 84" stroke="#ca8a04" strokeWidth="3.5" fill="none" strokeLinecap="round" />
-                    <text x="82" y="87" fontSize="7.5" fontWeight="bold" fill="#854d0e" textAnchor="middle">Buah</text>
-
-                    {/* Center divider circle */}
-                    <circle cx="60" cy="60" r="11" fill="#ffffff" stroke="#94a3b8" strokeWidth="1.5" />
-                    <text x="60" y="63.5" fontSize="7" fontWeight="bold" fill="#0f172a" textAnchor="middle">Gizi</text>
-                  </svg>
-                </div>
-
-                <div className="text-xs sm:text-sm text-slate-700 leading-tight space-y-2">
-                  <p className="text-slate-500 font-medium mb-1.5 text-xs">Setiap menu memiliki peran penting untuk tubuhmu.</p>
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-amber-400 shrink-0" />
-                    <span><strong>Karbohidrat</strong> – sumber energi</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-orange-500 shrink-0" />
-                    <span><strong>Protein hewani</strong> – membangun tubuh</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-amber-700 shrink-0" />
-                    <span><strong>Protein nabati</strong> – menambah gizi</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-emerald-500 shrink-0" />
-                    <span><strong>Sayuran</strong> – kaya vitamin dan serat</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-yellow-400 shrink-0" />
-                    <span><strong>Buah</strong> – menjaga daya tahan tubuh</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 2: Pahlawan Gizi Hari Ini */}
-          <div className="bg-white rounded-3xl border border-[#ded8cb] p-5 sm:p-6 shadow-xs flex flex-col justify-between space-y-4">
-            <div className="flex items-center gap-2.5 text-slate-900 font-bold text-base sm:text-lg">
-              <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6 text-sky-600" />
-              <span>Pahlawan Gizi Hari Ini</span>
-            </div>
-
-            <div>
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shrink-0 flex items-center justify-center p-1">
-                  <img
-                    src={tempeMaskotImg}
-                    alt="Tempe Maskot"
-                    className="w-full h-full object-contain hover:scale-105 transition-transform duration-300"
-                  />
-                </div>
-
-                <div>
-                  <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Tempe</div>
-                  <div className="mt-1.5">
-                    <span className="text-xs sm:text-sm font-semibold px-3 py-1 rounded-full bg-[#dcfce7] text-[#166534] border border-emerald-200 inline-block">
-                      Protein Nabati
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2.5 sm:space-y-3 text-xs sm:text-sm text-slate-700">
-                <div className="flex items-start gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span className="leading-snug">Membantu pertumbuhan dan memperbaiki jaringan tubuh.</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span className="leading-snug">Mengandung protein, kalsium dan probiotik.</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                  <span className="leading-snug">Baik untuk kesehatan tulang dan pencernaan.</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 3: Misi Sehat Hari Ini */}
-          <div className="bg-white rounded-3xl border border-[#ded8cb] p-5 sm:p-6 shadow-xs flex flex-col justify-between space-y-4">
-            <div className="flex items-center gap-2.5 text-slate-900 font-bold text-base sm:text-lg">
-              <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-700" />
-              <span>Misi Sehat Hari Ini</span>
-            </div>
-
-            <div className="space-y-2.5">
-              <p className="text-xs sm:text-sm text-slate-700 font-medium">
-                Biasakan cuci tangan dengan sabun sebelum makan.
-              </p>
-
-              <div className="relative rounded-2xl overflow-hidden bg-sky-50 border border-sky-100 shadow-2xs h-40 sm:h-44 w-full flex items-center justify-center">
-                <img
-                  src={cuciTanganImg}
-                  alt="Cuci Tangan Pakai Sabun"
-                  className="w-full h-full object-cover"
-                />
-
-                {/* Floating yellow sticky note badge */}
-                <div className="absolute bottom-2.5 right-2.5 bg-[#fef9c3] border border-[#fde047] text-[#713f12] text-xs font-bold px-3 py-1.5 rounded-xl shadow-xs max-w-[160px] leading-tight text-center">
-                  Tangan bersih, makanan lebih aman dan sehat! ✨
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ========================================================
-            7. KUIS GIZI SINGKAT & TAHUKAH KAMU?
-            ======================================================== */}
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-          {/* Kolom Kiri: Kuis Gizi Singkat (8 cols) */}
-          <div className="lg:col-span-8 bg-white rounded-3xl border border-[#ded8cb] p-5 sm:p-6 shadow-xs space-y-4">
-            <div className="flex items-center gap-2.5 text-slate-900 font-bold text-base sm:text-lg">
-              <Lightbulb className="w-5 h-5 sm:w-6 sm:h-6 text-amber-500" />
-              <span>Kuis Gizi Singkat</span>
-            </div>
-            <p className="text-xs sm:text-sm text-slate-700">
-              Mana yang termasuk sumber <strong>protein nabati</strong> dari menu hari ini?
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
-              {/* Pilihan Jawaban (7 cols) */}
-              <div className="sm:col-span-7 grid grid-cols-2 gap-3">
-                {[
-                  { id: 'nasi', label: 'Nasi putih', isCorrect: false },
-                  { id: 'ayam', label: 'Ayam bumbu kuning', isCorrect: false },
-                  { id: 'tempe', label: 'Tempe bacem', isCorrect: true },
-                  { id: 'pisang', label: 'Pisang', isCorrect: false },
-                ].map(opt => {
-                  const isSelected = quizSelection === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setQuizSelection(opt.id)}
-                      className={`p-3.5 sm:p-4 rounded-2xl border text-left text-xs sm:text-sm font-semibold flex items-center gap-2.5 transition-all cursor-pointer ${
-                        isSelected && opt.isCorrect
-                          ? 'border-emerald-600 bg-emerald-50/70 text-emerald-950 font-bold shadow-2xs'
-                          : isSelected && !opt.isCorrect
-                          ? 'border-rose-400 bg-rose-50 text-rose-800'
-                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                        isSelected && opt.isCorrect
-                          ? 'border-emerald-600 bg-emerald-600 text-white'
-                          : isSelected && !opt.isCorrect
-                          ? 'border-rose-500 bg-rose-500 text-white'
-                          : 'border-slate-300 bg-white'
-                      }`}>
-                        {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                      </div>
-                      <span className="truncate">{opt.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Feedback Hasil Kuis (5 cols) */}
-              <div className="sm:col-span-5">
-                {quizSelection === 'tempe' && (
-                  <div className="p-4 sm:p-5 rounded-3xl bg-[#edf8f1] border border-emerald-300 text-emerald-900 text-xs sm:text-sm flex items-center justify-between gap-3 shadow-2xs">
-                    <div className="flex items-start gap-3">
-                      <div className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-4 h-4 stroke-[3]" />
-                      </div>
-                      <div className="space-y-1">
-                        <div className="font-bold text-emerald-950 text-sm sm:text-base">Benar!</div>
-                        <p className="text-xs text-emerald-800 leading-relaxed">
-                          Tempe bacem merupakan sumber protein nabati yang baik untuk pertumbuhan dan kesehatan tubuh.
-                        </p>
-                      </div>
-                    </div>
-                    <img
-                      src={tempeBacemImg}
-                      alt="Tempe"
-                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover shrink-0 border border-emerald-200 shadow-xs"
-                    />
-                  </div>
-                )}
-
-                {quizSelection && quizSelection !== 'tempe' && (
-                  <div className="p-4 sm:p-5 rounded-3xl bg-amber-50 border border-amber-200 text-amber-900 text-xs sm:text-sm flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0 font-bold text-sm">
-                      !
-                    </div>
-                    <div className="space-y-1">
-                      <div className="font-bold text-sm sm:text-base">Kurang tepat, yuk coba lagi!</div>
-                      <p className="text-xs text-amber-800 leading-relaxed">
-                        Protein nabati berasal dari olahan kacang-kacangan nabati seperti kedelai.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Kolom Kanan: Tahukah Kamu? (4 cols) */}
-          <div className="lg:col-span-4 bg-white rounded-3xl border border-[#ded8cb] p-5 sm:p-6 shadow-xs flex flex-col justify-between">
-            <div className="flex items-center gap-2.5 text-slate-900 font-bold text-base sm:text-lg">
-              <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-700" />
-              <span>Tahukah Kamu?</span>
-            </div>
-
-            <div className="flex items-center gap-3 sm:gap-4 my-auto py-2">
-              <div className="w-24 h-24 sm:w-28 sm:h-28 overflow-hidden shrink-0 flex items-center justify-center">
-                <img
-                  src={sayurWortelImg}
-                  alt="Wortel dan Sayuran"
-                  className="w-full h-full object-contain hover:scale-105 transition-transform duration-300"
-                />
-              </div>
-
-              {/* Speech bubble pointing towards carrot */}
-              <div className="relative p-3.5 sm:p-4 rounded-2xl bg-[#f8faf8] border border-slate-200/90 text-xs sm:text-sm text-slate-700 leading-relaxed shadow-2xs flex-1">
-                <div className="hidden sm:block absolute -left-2 top-1/2 -translate-y-1/2 w-0 h-0 border-t-6 border-t-transparent border-b-6 border-b-transparent border-r-8 border-r-slate-200" />
-                <div className="hidden sm:block absolute -left-1.5 top-1/2 -translate-y-1/2 w-0 h-0 border-t-5 border-t-transparent border-b-5 border-b-transparent border-r-7 border-r-[#f8faf8]" />
-                <p className="font-medium text-slate-800 mb-1 leading-snug">
-                  Warna sayuran yang berbeda menandakan kandungan gizi yang berbeda juga.
-                </p>
-                <p className="text-emerald-800 font-bold text-xs sm:text-sm leading-snug">
-                  Yuk, coba makan berbagai warna sayuran!
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ========================================================
-            8. FOOTER BANNER HIJAU TUA (SCAN QR & LINK AKSES)
-            ======================================================== */}
-        <section className="bg-[#064e3b] rounded-3xl p-6 sm:p-8 text-white shadow-md">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
-            {/* Sisi Kiri: Scan QR Code Box & Deskripsi */}
-            <div className="lg:col-span-4 flex items-center gap-4">
-              <div className="w-20 h-20 rounded-2xl bg-white p-1.5 shrink-0 flex items-center justify-center shadow-xs">
-                {qrDataUrl ? (
-                  <img src={qrDataUrl} alt="QR Code" className="w-full h-full object-contain rounded-xl" />
-                ) : (
-                  <QrCode className="w-10 h-10 text-[#064e3b]" />
-                )}
-              </div>
-              <div className="space-y-1">
-                <div className="font-bold text-white text-sm">Akses Menu Ini Kapan Saja</div>
-                <div className="text-[11px] text-emerald-200 leading-snug">
-                  Scan QR Code atau kunjungi tautan ini untuk melihat menu terbaru.
-                </div>
-              </div>
-            </div>
-
-            {/* Sisi Tengah: Tautan URL dengan Copy Button */}
-            <div className="lg:col-span-4">
-              <div className="flex items-center justify-between gap-2 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 text-xs transition-colors shadow-2xs">
-                <span className="font-mono text-emerald-100 truncate text-[11px] sm:text-xs">
-                  https://sppg-jeru.com/menu-mbg-hari-ini
-                </span>
-                <button
-                  type="button"
-                  onClick={handleCopyLink}
-                  className="p-1.5 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors cursor-pointer shrink-0"
-                  title="Salin Tautan"
-                >
-                  {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Sisi Kanan: Metadata Waktu & Sumber Data */}
-            <div className="lg:col-span-4 flex flex-col sm:flex-row lg:flex-col xl:flex-row items-start sm:items-center lg:items-start xl:items-center justify-end gap-4 text-xs text-emerald-200">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-emerald-300 shrink-0" />
-                <div>
-                  <div className="text-[10px] text-emerald-300 font-medium">Terakhir diperbarui</div>
-                  <div className="font-semibold text-white">{menuToday.dateText} • 06.30 WIB</div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-emerald-300 shrink-0" />
-                <div>
-                  <div className="text-[10px] text-emerald-300 font-medium">Sumber data gizi</div>
-                  <div className="font-semibold text-white">Resep dan takaran porsi SPPG Tumpang Jeru</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
       </main>
 
-      {/* ========================================================
-          MODAL: PENJELASAN MENU 3B
-          ======================================================== */}
-      {is3bModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 border border-[#ded8cb] shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
-                  <HeartHandshake className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Standar Gizi Khusus Menu 3B
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Ibu Hamil, Ibu Menyusui, dan Balita Non-PAUD
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIs3bModalOpen(false)}
-                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs text-slate-600">
-              <div className="p-3 rounded-2xl bg-rose-50/60 border border-rose-200/60 space-y-1">
-                <div className="font-bold text-rose-900">1. Ibu Hamil & Menyusui</div>
-                <p className="text-[11px] text-rose-800 leading-relaxed">
-                  Memerlukan tambahan energi +300 kkal, zat besi ganda guna pencegahan anemia ibu dan janin, asam folat untuk pembentukan tabung saraf, serta kalsium tinggi.
-                </p>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-amber-50/60 border border-amber-200/60 space-y-1">
-                <div className="font-bold text-amber-900">2. Balita Non-PAUD (Usia 1–4 Tahun)</div>
-                <p className="text-[11px] text-amber-800 leading-relaxed">
-                  Tekstur makanan lebih lunak, dipotong dadu higienis, porsi disesuaikan dengan volume lambung kecil, serta minim natrium dan bumbu tajam.
-                </p>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-emerald-50/60 border border-emerald-200/60 space-y-1">
-                <div className="font-bold text-emerald-900">3. Pencegahan Stunting Nasional</div>
-                <p className="text-[11px] text-emerald-800 leading-relaxed">
-                  Intervensi 1000 Hari Pertama Kehidupan (HPK) merupakan kunci utama menuntaskan masalah gizi kronis di tingkat desa dan kecamatan.
-                </p>
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedMenuType('3B');
-                  setIs3bModalOpen(false);
-                }}
-                className="px-4 py-2 rounded-xl bg-[#0f3e2e] text-white text-xs font-bold hover:bg-[#165640] transition-colors cursor-pointer"
-              >
-                Terapkan Tampilan Menu 3B
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================
-          MODAL: DETAIL NILAI GIZI LENGKAP
-          ======================================================== */}
-      {isNutritionModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-[#ded8cb] shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Rincian Angka Kecukupan Gizi (AKG)
-                </h3>
-                <p className="text-[11px] text-slate-500">
-                  {selectedMenuType === 'REGULER' ? 'Standar Menu Reguler Anak Sekolah' : 'Standar Menu 3B (Ibu & Balita)'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsNutritionModalOpen(false)}
-                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-2 text-xs">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
-                    <th className="py-2">Nutrien</th>
-                    <th className="py-2 text-right">Nilai per Porsi</th>
-                    <th className="py-2 text-right">% AKG Harian</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700">
-                  <tr>
-                    <td className="py-2 font-medium">Energi Total</td>
-                    <td className="py-2 text-right font-mono font-bold text-slate-900">{currentNutrition.energy} kkal</td>
-                    <td className="py-2 text-right font-mono text-emerald-700">34%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 font-medium">Protein Total</td>
-                    <td className="py-2 text-right font-mono font-bold text-slate-900">{currentNutrition.protein} g</td>
-                    <td className="py-2 text-right font-mono text-emerald-700">38%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 font-medium">Karbohidrat</td>
-                    <td className="py-2 text-right font-mono font-bold text-slate-900">{currentNutrition.carbs} g</td>
-                    <td className="py-2 text-right font-mono text-emerald-700">32%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 font-medium">Lemak Sehat</td>
-                    <td className="py-2 text-right font-mono font-bold text-slate-900">{currentNutrition.fat} g</td>
-                    <td className="py-2 text-right font-mono text-emerald-700">25%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 font-medium">Serat Pangan</td>
-                    <td className="py-2 text-right font-mono font-bold text-slate-900">{currentNutrition.fiber} g</td>
-                    <td className="py-2 text-right font-mono text-emerald-700">30%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 font-medium">Kalsium</td>
-                    <td className="py-2 text-right font-mono font-bold text-slate-900">210 mg</td>
-                    <td className="py-2 text-right font-mono text-emerald-700">21%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2 font-medium">Zat Besi</td>
-                    <td className="py-2 text-right font-mono font-bold text-slate-900">3,6 mg</td>
-                    <td className="py-2 text-right font-mono text-emerald-700">24%</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div className="pt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setIsNutritionModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================
-          MODAL: DETAIL BAHAN & PETANI LOKAL
-          ======================================================== */}
-      {(selectedIngredient || isIngredientsModalOpen) && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 border border-[#ded8cb] shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  {selectedIngredient ? selectedIngredient.name : 'Daftar Semua Komponen Bahan'}
-                </h3>
-                <p className="text-[11px] text-slate-500">
-                  {selectedIngredient ? selectedIngredient.category : 'Takaran gramatur dan sertifikasi lokal'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedIngredient(null);
-                  setIsIngredientsModalOpen(false);
-                }}
-                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {selectedIngredient ? (
-              <div className="space-y-3 text-xs">
-                <div className="w-full h-36 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
-                  <img
-                    src={selectedIngredient.imageUrl}
-                    alt={selectedIngredient.name}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-
-                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 space-y-1">
-                  <div className="font-bold text-emerald-950">Khasiat & Nilai Nutrisi:</div>
-                  <p className="text-emerald-800 leading-relaxed text-[11px]">
-                    {selectedIngredient.healthBenefits}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                    <span className="text-slate-400 block">Mitra Pemasok:</span>
-                    <strong className="text-slate-800">{selectedIngredient.supplier}</strong>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                    <span className="text-slate-400 block">Takaran Porsi:</span>
-                    <strong className="text-slate-800 font-mono">
-                      {selectedMenuType === 'REGULER' ? selectedIngredient.portionLarge : selectedIngredient.portionSmall}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
-                {menuToday.ingredients.map(item => (
-                  <div key={item.id} className="p-3 rounded-2xl border border-slate-200 flex items-center justify-between gap-3 bg-[#faf8f5]">
-                    <div className="flex items-center gap-3">
-                      <img src={item.imageUrl} alt={item.name} className="w-10 h-10 rounded-xl object-cover" />
-                      <div>
-                        <div className="font-bold text-slate-900 text-xs">{item.name}</div>
-                        <div className="text-[10px] text-slate-500">{item.supplier}</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs font-mono font-bold text-emerald-800">
-                        {selectedMenuType === 'REGULER' ? item.portionLarge : item.portionSmall}
-                      </div>
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-medium">
-                        {item.category}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="pt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedIngredient(null);
-                  setIsIngredientsModalOpen(false);
-                }}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================
-          MODAL: CETAK / UNDUH STIKER QR CODE
-          ======================================================== */}
-      {isQrModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 border border-[#ded8cb] shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  QR Code Menu MBG
-                </h3>
-                <p className="text-[11px] text-slate-500">
-                  Scan untuk transparansi nilai gizi langsung
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsQrModalOpen(false)}
-                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div id="printable-qr-sticker" className="p-4 rounded-2xl border-2 border-dashed border-emerald-600/40 bg-[#faf8f5] text-center space-y-3">
-              <div className="flex items-center justify-center gap-2">
-                <img src={logoSppgImg} alt="Logo SPPG" className="w-6 h-6 object-contain" />
-                <div className="text-left">
-                  <div className="text-[9px] font-bold text-slate-900">SPPG MLG TUMPANG JERU</div>
-                  <div className="text-[8px] text-slate-500">Program Makan Bergizi Gratis</div>
-                </div>
-              </div>
-
-              {qrDataUrl && (
-                <img
-                  src={qrDataUrl}
-                  alt="QR Code"
-                  className="w-44 h-44 mx-auto bg-white p-2 rounded-xl border border-slate-200 shadow-2xs"
-                />
-              )}
-
-              <div className="text-xs font-bold text-slate-900">
-                Menu MBG Hari Ini
-              </div>
-              <div className="text-[10px] text-slate-500">
-                {menuToday.dateText}
-              </div>
-              <div className="text-[9px] font-mono text-emerald-800">
-                domain/menu-mbg-hari-ini
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={handlePrintSticker}
-                className="px-4 py-2 rounded-xl bg-white border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>Cetak</span>
-              </button>
-
-              {qrDataUrl && (
-                <a
-                  href={qrDataUrl}
-                  download={`qr-menu-mbg-${menuToday.dateText.replace(/\s+/g, '-').toLowerCase()}.png`}
-                  className="px-4 py-2 rounded-xl bg-[#0f3e2e] text-white text-xs font-bold hover:bg-[#165640] transition-colors cursor-pointer"
-                >
-                  Unduh PNG
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================
-          FOOTER MINIMALIS COPYRIGHT
-          ======================================================== */}
-      <footer className="bg-white border-t border-[#e7e1d6] py-5 text-center text-xs text-slate-500">
-        <div className="max-w-6xl mx-auto px-4 space-y-1">
-          <div>
-            <strong>SPPG MLG TUMPANG JERU</strong> • Satuan Pelayanan Pemenuhan Gizi Nasional
-          </div>
-          <div className="text-[11px] text-slate-400">
-            Desa Jeru, Kec. Tumpang, Kab. Malang • Badan Gizi Nasional RI
-          </div>
-        </div>
+      <footer className="text-center px-4 pb-8 text-[13px] text-slate-600">
+        <div className="font-extrabold text-[#1f2a22]">SPPG MLG Tumpang Jeru</div>
+        <div>Satuan Pelayanan Pemenuhan Gizi · Desa Jeru, Kec. Tumpang, Kab. Malang</div>
       </footer>
+
+      {detailIndex !== null && (
+        <IngredientSheet ingredients={ingredients} index={detailIndex} portion={portion} onIndexChange={setDetailIndex} onClose={closeDetail} />
+      )}
     </div>
   );
 };

@@ -8,6 +8,8 @@ import ayamBumbuKuningImg from '../assets/ayam_bumbu_kuning.jpg';
 import tempeBacemImg from '../assets/tempe_bacem.jpg';
 import sayurSopImg from '../assets/sayur_sop.jpg';
 import buahPisangImg from '../assets/buah_pisang.jpg';
+import tempeMaskotImg from '../assets/tempe_maskot_mbg.jpg';
+import cuciTanganImg from '../assets/cuci_tangan_mbg.jpg';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { compressImageToWebP } from '../utils/imageCompressor';
 
@@ -101,6 +103,10 @@ export interface IngredientNutritionInfo {
   healthBenefits: string;
   supplier: string;
   notes?: string;
+  /** Poin "Mengapa ... baik untukmu?"; kosong = memakai kalimat dari healthBenefits */
+  whyGood?: string[];
+  /** Kotak "Tahukah kamu?"; kosong = disembunyikan */
+  funFact?: string;
 }
 
 export interface PortionTierConfig {
@@ -113,6 +119,37 @@ export interface PortionTierConfig {
   fatGrams: string;
   fiberGrams: string;
 }
+
+export interface NutritionHeroConfig {
+  name: string;
+  category: string;
+  imageUrl: string;
+  points: string[];
+  /** Kotak "Fakta menarik"; kosong = disembunyikan */
+  funFact?: string;
+  /** Daftar "Kandungan utama"; kosong = memakai kandungan menonjol bahan yang namanya cocok */
+  keyNutrients?: string[];
+}
+
+/** weekday mengikuti Date.getDay(): 1 = Senin ... 6 = Sabtu */
+export interface DailyHabitItem {
+  weekday: number;
+  title: string;
+  description: string;
+  steps: string[];
+  imageUrl: string;
+  /** Kalimat penyemangat di bawah langkah; kosong = disembunyikan */
+  cheer?: string;
+}
+
+export const HABIT_WEEKDAY_LABELS: Record<number, string> = {
+  1: 'Senin',
+  2: 'Selasa',
+  3: 'Rabu',
+  4: 'Kamis',
+  5: 'Jumat',
+  6: 'Sabtu'
+};
 
 export interface WebsiteMenuTodayConfig {
   dateText: string;
@@ -136,6 +173,16 @@ export interface WebsiteMenuTodayConfig {
   qcStatus: string;
   qrTargetUrl: string;
   ingredients: IngredientNutritionInfo[];
+  nutritionHero: NutritionHeroConfig;
+  dailyHabits: DailyHabitItem[];
+  /** Kotak "Tips hari ini" di Isi Piringku; kosong = disembunyikan */
+  plateTip?: string;
+  /**
+   * Berat badan acuan (kg) untuk perkiraan "energi setara aktivitas".
+   * Bawaan dari tabel AKG 2019 (Permenkes No. 28/2019): 7–9 tahun 27 kg, 10–12 tahun rata-rata 37 kg.
+   */
+  bodyWeightSmallKg?: string;
+  bodyWeightLargeKg?: string;
 }
 
 export interface WebsiteConfig {
@@ -458,16 +505,104 @@ export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = {
         supplier: 'Mitra Petani Buah Malang',
         notes: 'Buah segar matang alami tanpa karbit kimiawi.'
       }
+    ],
+    plateTip: '',
+    bodyWeightSmallKg: '27',
+    bodyWeightLargeKg: '37',
+    nutritionHero: {
+      name: 'Tempe',
+      category: 'Protein Nabati',
+      imageUrl: tempeMaskotImg,
+      points: [
+        'Membantu pertumbuhan dan memperbaiki jaringan tubuh.',
+        'Mengandung protein, kalsium dan probiotik.',
+        'Baik untuk kesehatan tulang dan pencernaan.'
+      ]
+    },
+    // Isi awal yang bisa diubah petugas di CMS; foto kosong memakai ilustrasi anak sehat.
+    dailyHabits: [
+      {
+        weekday: 1,
+        title: 'Cuci tangan pakai sabun',
+        description: 'Biasakan cuci tangan dengan sabun sebelum makan. Tangan bersih, makanan lebih aman dan sehat!',
+        steps: ['Basahi tangan dengan air mengalir', 'Gosok sabun ke telapak, sela jari, dan kuku', 'Bilas sampai bersih lalu keringkan'],
+        imageUrl: cuciTanganImg
+      },
+      {
+        weekday: 2,
+        title: 'Berdoa sebelum makan',
+        description: 'Duduk rapi dan berdoa bersama sebelum mulai makan.',
+        steps: ['Duduk rapi di tempatmu', 'Berdoa bersama teman', 'Mulai makan dengan tenang'],
+        imageUrl: ''
+      },
+      {
+        weekday: 3,
+        title: 'Habiskan makananmu',
+        description: 'Makanan di ompreng sudah disiapkan sesuai kebutuhan tubuhmu. Yuk, habiskan sampai bersih!',
+        steps: ['Ambil porsi makan dengan tenang', 'Kunyah pelan-pelan', 'Habiskan sampai ompreng bersih'],
+        imageUrl: ''
+      },
+      {
+        weekday: 4,
+        title: 'Minum air putih',
+        description: 'Air putih membantu tubuh tetap segar dan fokus belajar.',
+        steps: ['Bawa botol minum dari rumah', 'Minum air putih setelah makan', 'Isi ulang botol saat istirahat'],
+        imageUrl: ''
+      },
+      {
+        weekday: 5,
+        title: 'Buang sampah pada tempatnya',
+        description: 'Setelah makan, rapikan meja dan buang sampah ke tempat sampah.',
+        steps: ['Kumpulkan sisa bungkus dan tisu', 'Buang ke tempat sampah', 'Kembalikan ompreng dengan rapi'],
+        imageUrl: ''
+      },
+      {
+        weekday: 6,
+        title: 'Makan sayur dan buah',
+        description: 'Sayur dan buah berwarna-warni membantu menjaga daya tahan tubuh.',
+        steps: ['Coba semua sayur di ompreng', 'Makan buahnya juga', 'Ceritakan sayur favoritmu ke teman'],
+        imageUrl: ''
+      }
     ]
   },
   lastUpdated: new Date().toISOString()
 };
+
+// Gambar bawaan di src/assets, dipetakan dari nama file tanpa ekstensi ke URL build saat ini.
+const BUNDLED_ASSETS: Record<string, string> = Object.fromEntries(
+  Object.entries(
+    import.meta.glob<string>('../assets/*.{jpg,jpeg,png,webp}', { eager: true, import: 'default' })
+  ).map(([path, url]) => [path.split('/').pop()!.replace(/\.\w+$/, ''), url])
+);
+
+/**
+ * Config yang tersimpan (localStorage/Supabase) bisa berisi URL aset dari build lain,
+ * misal "/assets/tray_sample_1-BJd2G0Fi.jpg" atau "/src/assets/tray_sample_1.jpg".
+ * Hash nama file berubah setiap build sehingga URL lama rusak; arahkan ulang ke aset build ini.
+ */
+function relinkBundledAssets<T>(value: T): T {
+  if (typeof value === 'string') {
+    const match = value.match(/^(?:https?:\/\/[^/]+)?\/(?:src\/)?assets\/([^/?#]+?)\.(?:jpe?g|png|webp)$/i);
+    if (!match) return value;
+    const fileStem = decodeURIComponent(match[1]);
+    const resolved = BUNDLED_ASSETS[fileStem] ?? BUNDLED_ASSETS[fileStem.replace(/-[\w-]{8}$/, '')];
+    return (resolved ?? value) as T;
+  }
+  if (Array.isArray(value)) return value.map(relinkBundledAssets) as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, relinkBundledAssets(v)])
+    ) as T;
+  }
+  return value;
+}
 
 /**
  * Normalisasi objek konfigurasi agar selalu memiliki struktur lengkap
  */
 function normalizeConfig(parsed: Partial<WebsiteConfig> | null | undefined): WebsiteConfig {
   if (!parsed) return DEFAULT_WEBSITE_CONFIG;
+  parsed = relinkBundledAssets(parsed);
 
   const parsedHero: Partial<WebsiteHeroConfig> = parsed.hero || {};
   let normalizedVideos: HeroVideoItem[] = DEFAULT_WEBSITE_CONFIG.hero.videos;
@@ -546,7 +681,14 @@ function normalizeConfig(parsed: Partial<WebsiteConfig> | null | undefined): Web
     },
     ingredients: (Array.isArray(parsed.menuToday.ingredients) && parsed.menuToday.ingredients.length > 0)
       ? parsed.menuToday.ingredients
-      : DEFAULT_WEBSITE_CONFIG.menuToday.ingredients
+      : DEFAULT_WEBSITE_CONFIG.menuToday.ingredients,
+    nutritionHero: {
+      ...DEFAULT_WEBSITE_CONFIG.menuToday.nutritionHero,
+      ...(parsed.menuToday.nutritionHero || {})
+    },
+    dailyHabits: Array.isArray(parsed.menuToday.dailyHabits)
+      ? parsed.menuToday.dailyHabits
+      : DEFAULT_WEBSITE_CONFIG.menuToday.dailyHabits
   } : DEFAULT_WEBSITE_CONFIG.menuToday;
 
   return {

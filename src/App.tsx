@@ -130,7 +130,7 @@ const MainLayout: React.FC = () => {
 
   // 1. Rute Khusus Akses QR Code Publik: /menu-mbg-hari-ini
   if (currentRoute === 'MENU_TODAY') {
-    return <DailyMenuPublicPage onBackToHome={navigateToHome} />;
+    return <DailyMenuPublicPage />;
   }
 
   // 2. Rute Beranda Umum (Landing Page Utama)
@@ -196,7 +196,9 @@ const MainLayout: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div key={dataVersion}>
+        {/* Remounting on every data change resets open forms, tabs and post-save dialogs.
+            These modules listen to the same sync events and reload their own data, so they are exempt. */}
+        <div key={SELF_SYNCING_TABS.has(activeTab) ? activeTab : dataVersion}>
           {/* Primary Focused Modules */}
           {activeTab === 'dashboard' && (
             <DashboardView
@@ -282,27 +284,16 @@ const MainLayout: React.FC = () => {
 
       {/* Operational Footer - Technical Logistics Style */}
       <footer className="border-t border-slate-200 bg-white py-3.5 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-          <div className="flex items-center gap-2.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span className="font-semibold text-slate-800">
-              SPPG MLG TUMPANG JERU Warehouse Management System
-            </span>
-            <span className="hidden md:inline text-slate-300">•</span>
-            <span className="hidden md:inline text-slate-500">
-              Badan Gizi Nasional Republik Indonesia
-            </span>
-          </div>
-          <div className="flex items-center gap-4 text-xs font-mono">
-            <span>
-              Petugas Aktif: <strong className="text-slate-900 font-sans font-bold">{currentUser.name}</strong> ({currentUser.role})
-            </span>
-          </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-1 text-[11px] text-slate-600">
+          <span className="font-semibold text-slate-800">SPPG Tumpang Jeru · Gudang & Logistik</span>
+          <span>Program Makan Bergizi Gratis, Badan Gizi Nasional</span>
         </div>
       </footer>
     </div>
   );
 };
+
+const SELF_SYNCING_TABS = new Set(['receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs']);
 
 export default function App() {
   return (

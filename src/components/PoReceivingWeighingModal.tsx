@@ -17,6 +17,7 @@ import {
   PackageCheck,
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { localDateIso } from '../utils/localDate';
 
 interface PoReceivingWeighingModalProps {
   isOpen: boolean;
@@ -37,7 +38,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
   const [deliveryNoteNo, setDeliveryNoteNo] = useState('');
   const [arrivalTime, setArrivalTime] = useState('');
   const [receiveDate, setReceiveDate] = useState(
-    new Date().toISOString().slice(0, 10)
+    localDateIso()
   );
   const [generalNotes, setGeneralNotes] = useState('');
   const [autoUpdateStock, setAutoUpdateStock] = useState(true);
@@ -53,11 +54,12 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
       const currentHours = String(now.getHours()).padStart(2, '0');
       const currentMinutes = String(now.getMinutes()).padStart(2, '0');
       setArrivalTime(`${currentHours}.${currentMinutes}`);
-      setReceiveDate(now.toISOString().slice(0, 10));
-      setDeliveryNoteNo(`SJ-${po.poNumber.replace(/[^\w]/g, '-').slice(-10)}`);
-      setGeneralNotes(
-        po.deliveryTerms ? `Penerimaan sesuai jadwal: ${po.deliveryTerms}` : ''
-      );
+      setReceiveDate(localDateIso(now));
+      // Nomor surat jalan, hasil timbang, dan kondisi diisi petugas dari barang yang benar-benar datang
+      setDeliveryNoteNo('');
+      setGeneralNotes('');
+      // A nota made from existing expense rows already has its spending recorded
+      setAutoRecordExpense(!(po.relatedExpenseIds && po.relatedExpenseIds.length > 0));
 
       const initialItems: WeighedPoItemInput[] = (po.items || []).map(it => {
         const defaultQty = Number(it.quantity) || 1;
@@ -69,11 +71,11 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
           category: it.category || 'Bahan Makanan',
           unit: it.unit || 'Kg',
           targetQty: defaultQty,
-          actualQty: defaultQty,
+          actualQty: 0,
           unitPrice: defaultPrice,
-          subtotal: it.subtotal || Math.round(defaultQty * defaultPrice),
+          subtotal: 0,
           notes: it.notes || '',
-          conditionNote: 'Kondisi segar, kualitas baik sesuai standar',
+          conditionNote: '',
         };
       });
 
@@ -108,6 +110,8 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
 
   if (!isOpen || !po) return null;
 
+  const isAlreadyReceived = po.status === 'SELESAI';
+
   const handleQtyChange = (index: number, val: number) => {
     const updated = [...items];
     const item = updated[index];
@@ -139,21 +143,30 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
       subtotal: Math.round(it.targetQty * it.unitPrice),
     }));
     setItems(updated);
-    toast.showToast('Seluruh kuantitas timbangan disesuaikan sama persis dengan PO.', 'info');
+    toast.showToast('Jumlah diterima diisi sama dengan jumlah PO. Periksa lagi bahan yang beratnya berbeda.', 'info');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isAlreadyReceived) {
+      toast.error('PO ini sudah diterima. Penerimaan tidak bisa disimpan dua kali.', 'Sudah Diterima');
+      return;
+    }
 
     if (items.length === 0) {
       toast.error('Tidak ada bahan dalam PO untuk diterima.', 'Validasi Gagal');
       return;
     }
 
-    const hasZeroQty = items.some(it => it.actualQty <= 0);
-    if (hasZeroQty) {
+    const zeroItems = items.filter(it => it.actualQty <= 0);
+    if (zeroItems.length === items.length) {
+      toast.error('Isi jumlah diterima hasil timbang, minimal untuk satu bahan.', 'Belum Ditimbang');
+      return;
+    }
+    if (zeroItems.length > 0) {
       const confirmZero = window.confirm(
-        'Ada bahan dengan kuantitas timbang 0 (tidak datang/ditolak). Lanjutkan penerimaan barang lainnya?'
+        `${zeroItems.length} bahan jumlahnya masih kosong atau 0 dan akan dianggap tidak datang:\n${zeroItems.map(it => `- ${it.name}`).join('\n')}\n\nLanjutkan simpan penerimaan?`
       );
       if (!confirmZero) return;
     }
@@ -199,7 +212,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden my-auto">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden my-auto">
         {/* MODAL HEADER */}
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/90 flex items-start justify-between gap-4">
           <div>
@@ -222,18 +235,22 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
             </div>
             <p className="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
               <span className="inline-flex items-center gap-1 font-medium text-slate-700">
-                <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                <Building2 className="w-3.5 h-3.5 text-slate-500" />
                 {po.supplierName}
               </span>
-              <span>•</span>
-              <span>Target Menu: {po.notes?.replace('PO dibuat otomatis dari Perencanaan Menu:', '') || '-'}</span>
+              {po.notes?.startsWith('PO dibuat otomatis dari Perencanaan Menu:') && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>Menu: {po.notes.replace('PO dibuat otomatis dari Perencanaan Menu:', '').trim()}</span>
+                </>
+              )}
             </p>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 text-slate-500 hover:text-slate-600 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
             title="Tutup"
           >
             <X className="w-5 h-5" />
@@ -241,7 +258,12 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
         </div>
 
         {/* MODAL BODY */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+          {isAlreadyReceived && (
+            <div className="p-3 rounded-lg bg-sky-50 border border-sky-200 text-xs text-sky-800">
+              PO ini sudah diterima dan stoknya sudah masuk. Halaman ini hanya untuk dilihat, penerimaan tidak bisa disimpan lagi.
+            </div>
+          )}
           {/* SECTION 1: METADATA PENGIRIMAN & FISIK */}
           <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
             <h3 className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
@@ -260,7 +282,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                     className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     required
                   />
-                  <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <Calendar className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
                 </div>
               </div>
 
@@ -274,7 +296,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                     onChange={e => setArrivalTime(e.target.value)}
                     className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
-                  <Clock className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <Clock className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
                 </div>
               </div>
 
@@ -318,7 +340,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                   Daftar Bahan & Hasil Pemeriksaan Fisik ({items.length} Item)
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Sesuaikan kuantitas riil yang diterima dan periksa harga satuan nota.
+                  Isi jumlah sesuai hasil timbangan. Bahan yang tidak datang biarkan kosong.
                 </p>
               </div>
 
@@ -328,7 +350,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors cursor-pointer shrink-0 shadow-2xs self-start sm:self-auto"
               >
                 <RotateCcw className="w-3 h-3 text-slate-500" />
-                <span>Salin Target PO</span>
+                <span>Samakan dengan PO</span>
               </button>
             </div>
 
@@ -354,13 +376,13 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                       const diff = Math.round((it.actualQty - it.targetQty) * 100) / 100;
                       return (
                         <tr key={it.poiId || idx} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-2 px-3 font-mono text-slate-400 text-center">{idx + 1}</td>
+                          <td className="py-2 px-3 font-mono text-slate-500 text-center">{idx + 1}</td>
                           <td className="py-2 px-3">
                             <div className="font-semibold text-slate-900">{it.name}</div>
                             <div className="text-[10px] text-slate-500">{it.category}</div>
                           </td>
                           <td className="py-2 px-3 text-right font-mono font-medium text-slate-600">
-                            {it.targetQty} <span className="text-slate-400">{it.unit}</span>
+                            {it.targetQty} <span className="text-slate-500">{it.unit}</span>
                           </td>
                           <td className="py-2 px-3">
                             <div className="flex items-center gap-1 justify-end">
@@ -370,19 +392,22 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                                 step="any"
                                 value={it.actualQty || ''}
                                 onChange={e => handleQtyChange(idx, parseFloat(e.target.value) || 0)}
-                                className="w-20 px-2 py-1 text-right font-mono font-semibold text-slate-900 bg-white border border-slate-300 rounded focus:border-slate-500 focus:outline-none"
-                                required
+                                placeholder="0"
+                                aria-label={`Jumlah diterima ${it.name}`}
+                                className="w-20 px-2 py-1 text-right font-mono font-semibold text-slate-900 bg-white border border-slate-300 rounded focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
                               />
                               <span className="text-slate-500 font-medium text-xs w-6">{it.unit}</span>
                             </div>
                           </td>
                           <td className="py-2 px-3 text-center">
-                            {diff === 0 ? (
+                            {it.actualQty <= 0 ? (
+                              <span className="text-[11px] text-slate-500">Belum ditimbang</span>
+                            ) : diff === 0 ? (
                               <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
                                 Sesuai
                               </span>
                             ) : diff > 0 ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-sky-50 text-sky-700 border border-sky-200">
                                 +{diff} {it.unit}
                               </span>
                             ) : (
@@ -393,7 +418,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                           </td>
                           <td className="py-2 px-3">
                             <div className="relative inline-flex items-center justify-end">
-                              <span className="absolute left-2 text-[10px] text-slate-400 font-medium select-none pointer-events-none">Rp</span>
+                              <span className="absolute left-2 text-[10px] text-slate-500 font-medium select-none pointer-events-none">Rp</span>
                               <input
                                 type="number"
                                 min="0"
@@ -410,7 +435,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                           <td className="py-2 px-3">
                             <input
                               type="text"
-                              placeholder="Catatan kondisi bahan..."
+                              placeholder="Contoh: segar, 2 ikat layu dikembalikan"
                               value={it.conditionNote || ''}
                               onChange={e => handleConditionChange(idx, e.target.value)}
                               className="w-full px-2.5 py-1 text-xs text-slate-700 bg-white border border-slate-200 rounded focus:border-slate-400 focus:outline-none"
@@ -450,6 +475,11 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                 />
                 <span>Catat ke Laporan Pengeluaran</span>
               </label>
+              {po.relatedExpenseIds && po.relatedExpenseIds.length > 0 && (
+                <span className="text-[11px] text-slate-600 basis-full">
+                  Belanja untuk nota ini sudah tercatat, jadi tidak dicatat lagi.
+                </span>
+              )}
             </div>
           </div>
 
@@ -464,7 +494,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                 <span className="text-xs font-mono text-slate-500">
                   Target PO: Rp {calculations.totalTargetCost.toLocaleString('id-ID')}
                 </span>
-                {calculations.diffCost !== 0 && (
+                {calculations.totalActualQty > 0 && calculations.diffCost !== 0 && (
                   <span
                     className={`text-xs font-mono font-semibold px-2 py-0.5 rounded-md border ${
                       calculations.diffCost > 0
@@ -504,8 +534,8 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={isSubmitting}
-            className="inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 rounded-lg shadow-xs transition-colors cursor-pointer"
+            disabled={isSubmitting || isAlreadyReceived}
+            className="inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed rounded-lg shadow-xs transition-colors cursor-pointer"
           >
             {isSubmitting ? (
               <>

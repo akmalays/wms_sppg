@@ -1,124 +1,109 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
-import {
-  MainItemCategory,
-  normalizeItemCategory,
-  NonFoodExpense,
-  InventoryTransaction
-} from '../types/warehouse';
-import { Calendar, Printer, Search, TrendingDown, Clock, CheckCircle2, FileSpreadsheet, Trash2, CalendarRange, DollarSign, ChevronDown, ChevronRight, FileText, Plus } from 'lucide-react';
-import { exportToExcel } from '../lib/excelExport';
+import { MainItemCategory, normalizeItemCategory } from '../types/warehouse';
+import { Printer, Search, CheckCircle2, FileSpreadsheet, Trash2, Plus, X } from 'lucide-react';
+import { exportMultiSheetExcel } from '../lib/excelExport';
 import { SppgLogo } from './SppgLogo';
-import { ActionDropdown } from './common/ActionDropdown';
+import { localDateIso } from '../utils/localDate';
 
 type PeriodType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
 
-// Realistic price map for SPPG goods
-const DEFAULT_PRICE_MAP: Record<string, number> = {
-  // Bahan Kering
-  beras: 14500,
-  minyak: 18000,
-  gula: 17500,
-  tepung: 11000,
-  garam: 4000,
-  kecap: 22000,
-  saus: 18000,
-  bawang: 35000,
-  bumbu: 25000,
+// BELANJA: uang keluar dengan harga tercatat.
+// PENGAMBILAN: catatan pengeluaran tanpa harga (biasanya barang diambil relawan dari gudang).
+// DAPUR: stok gudang yang dikeluarkan ke dapur, dicatat di Buku Mutasi.
+type ExpenseKind = 'BELANJA' | 'PENGAMBILAN' | 'DAPUR';
 
-  // Bahan Basah
-  ayam: 38000,
-  daging: 120000,
-  telur: 28000,
-  bayam: 8000,
-  kangkung: 7000,
-  wortel: 12000,
-  labu: 9000,
-  pisang: 16000,
-  semangka: 8500,
-  pepaya: 7500,
-  tahu: 10000,
-  tempe: 10000,
-  susu: 15000,
-  ikan: 35000,
-
-  // Bahan Peralatan
-  kresek: 15000,
-  trashbag: 32000,
-  plastik: 14000,
-  sunlight: 85000,
-  natura: 95000,
-  oixs: 38000,
-  tissue: 12000,
-  spons: 4500,
-  sabut: 6000,
-  lap: 8000,
-  kanebo: 15000,
-  masker: 25000,
-  'sarung tangan': 12000,
-  'nurse cap': 30000,
-  sabun: 18000,
-  gayung: 12000,
-  cikrak: 18000,
-  obat: 8000,
+const KIND_LABEL: Record<ExpenseKind, string> = {
+  BELANJA: 'Belanja',
+  PENGAMBILAN: 'Pengambilan',
+  DAPUR: 'Pemakaian dapur',
 };
 
-function getItemEstimatedUnitPrice(itemName: string, category: string, existingPrice?: number): number {
-  if (existingPrice && existingPrice > 0) return existingPrice;
-  const nameLower = (itemName || '').toLowerCase();
+const KIND_BADGE: Record<ExpenseKind, string> = {
+  BELANJA: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  PENGAMBILAN: 'bg-slate-100 text-slate-700 border-slate-200',
+  DAPUR: 'bg-sky-50 text-sky-800 border-sky-200',
+};
 
-  for (const [key, price] of Object.entries(DEFAULT_PRICE_MAP)) {
-    if (nameLower.includes(key)) {
-      return price;
-    }
-  }
+const CATEGORIES: MainItemCategory[] = ['Bahan Basah', 'Bahan Kering', 'Bahan Peralatan'];
 
-  const norm = normalizeItemCategory(category);
-  if (norm === 'Bahan Basah') return 30000;
-  if (norm === 'Bahan Kering') return 15000;
-  if (norm === 'Bahan Peralatan') return 20000;
-  return 15000;
-}
+const MONTH_NAMES = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+];
 
 function parseNumericQty(qty: string | number): number {
   if (typeof qty === 'number') return qty;
   const match = String(qty).replace(',', '.').match(/[\d.]+/);
-  return match ? parseFloat(match[0]) : 1;
+  return match ? parseFloat(match[0]) : 0;
 }
 
+// Tanggal lama tersimpan dalam beberapa format ("2026-09-20", "20 sept 2026").
 function parseExpenseDate(dateStr: string): Date | null {
   if (!dateStr) return null;
   const clean = dateStr.toLowerCase().trim();
 
-  // If ISO YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}/.test(clean)) {
-    const parts = clean.slice(0, 10).split('-');
-    const year = Number(parts[0]);
-    const month = Number(parts[1]) - 1;
-    const day = Number(parts[2]);
-    const d = new Date(year, month, day);
-    return isNaN(d.getTime()) ? null : d;
+    const [y, m, d] = clean.slice(0, 10).split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    return isNaN(date.getTime()) ? null : date;
   }
 
   const monthMap: Record<string, number> = {
-    jan: 0, feb: 1, mar: 2, apr: 3,
-    mei: 4, jun: 5, jul: 6, agu: 7, ags: 7,
-    sep: 8, okt: 9, nov: 10, des: 11,
+    jan: 0, feb: 1, mar: 2, apr: 3, mei: 4, may: 4, jun: 5, jul: 6,
+    agu: 7, ags: 7, aug: 7, sep: 8, okt: 9, oct: 9, nov: 10, des: 11, dec: 11,
   };
-
-  const match = clean.match(/(\d{1,2})\s+([a-z]{3,4})\s+(\d{4})/i);
+  const match = clean.match(/(\d{1,2})\s+([a-z]{3,})\s+(\d{4})/i);
   if (match) {
-    const day = Number(match[1]);
-    const monthKey = match[2].slice(0, 3).toLowerCase();
-    const month = monthMap[monthKey] !== undefined ? monthMap[monthKey] : 8;
-    const year = Number(match[3]);
-    const d = new Date(year, month, day);
-    return isNaN(d.getTime()) ? null : d;
+    const month = monthMap[match[2].slice(0, 3)];
+    if (month === undefined) return null;
+    const date = new Date(Number(match[3]), month, Number(match[1]));
+    return isNaN(date.getTime()) ? null : date;
   }
+  return null;
+}
 
-  const parsed = new Date(dateStr);
-  return isNaN(parsed.getTime()) ? null : parsed;
+const formatRp = (n: number) => `Rp ${n.toLocaleString('id-ID')}`;
+
+const formatDateLong = (d: Date) =>
+  d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+
+const formatDateShort = (d: Date) =>
+  d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+
+const shiftDays = (iso: string, days: number) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return localDateIso(new Date(y, m - 1, d + days));
+};
+
+interface UnifiedExpense {
+  id: string;
+  kind: ExpenseKind;
+  rawDate: string;
+  parsedDate: Date | null;
+  time: string;
+  itemName: string;
+  category: MainItemCategory;
+  quantityLabel: string;
+  numericQty: number;
+  unit: string;
+  unitPrice: number | null;
+  nominal: number | null;
+  takenBy: string;
+  recordedBy: string;
+  notes?: string;
+  referenceNo?: string;
+}
+
+interface ItemAgg {
+  key: string;
+  itemName: string;
+  unit: string;
+  totalQty: number;
+  totalNominal: number;
+  pricedCount: number;
+  count: number;
 }
 
 export interface DailyExpensesModuleProps {
@@ -126,1240 +111,892 @@ export interface DailyExpensesModuleProps {
 }
 
 export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavigate }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, can } = useAuth();
+  const today = localDateIso();
 
-  // ----------------------------------------------------
-  // Period & Filter States
-  // ----------------------------------------------------
   const [periodType, setPeriodType] = useState<PeriodType>('WEEKLY');
-  const [selectedDailyDate, setSelectedDailyDate] = useState<string>(
-    new Date().toISOString().slice(0, 10)
-  );
+  const [selectedDailyDate, setSelectedDailyDate] = useState<string>(today);
+  const [startDate, setStartDate] = useState<string>(shiftDays(today, -6));
+  const [endDate, setEndDate] = useState<string>(today);
+  const [selectedMonth, setSelectedMonth] = useState<string>(today.slice(0, 7));
 
-  // Range for Weekly / Custom (Default to last 7 days)
-  const defaultWeekStart = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 6);
-    return d.toISOString().slice(0, 10);
-  }, []);
-  const [startDate, setStartDate] = useState<string>(defaultWeekStart);
-  const [endDate, setEndDate] = useState<string>(
-    new Date().toISOString().slice(0, 10)
-  );
-
-  // Selected Month (YYYY-MM)
-  const [selectedMonth, setSelectedMonth] = useState<string>(
-    new Date().toISOString().slice(0, 7)
-  );
-
-  // Category filter: 3 categories
-  const [selectedCategoryTab, setSelectedCategoryTab] = useState<'ALL' | MainItemCategory>('ALL');
-
-  // Search & Views
+  const [categoryFilter, setCategoryFilter] = useState<'ALL' | MainItemCategory>('ALL');
+  const [kindFilter, setKindFilter] = useState<'ALL' | ExpenseKind>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeSubTab, setActiveSubTab] = useState<'SUMMARY' | 'TRANSACTIONS' | 'PRINT_VIEW'>('SUMMARY');
-  const [successNotice, setSuccessNotice] = useState<string>('');
+  const [activeView, setActiveView] = useState<'SUMMARY' | 'TRANSACTIONS'>('SUMMARY');
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+  const [successNotice, setSuccessNotice] = useState('');
+  const [dataVersion, setDataVersion] = useState(0);
 
-  // Data sources
-  const items = useMemo(() => warehouseDb.getItems(), [successNotice]);
-  const transactions = useMemo(() => warehouseDb.getTransactions(), [successNotice]);
-  const manualExpenses = useMemo(() => warehouseDb.getNonFoodExpenses(), [successNotice]);
+  // App tidak me-remount halaman ini saat data berubah, jadi halaman memuat ulang datanya sendiri.
+  useEffect(() => {
+    const onChange = () => setDataVersion(v => v + 1);
+    window.addEventListener('sppg_storage_items_changed', onChange);
+    return () => window.removeEventListener('sppg_storage_items_changed', onChange);
+  }, []);
 
-  // Normalized unified expenses
-  interface UnifiedExpense {
-    id: string;
-    source: 'MANUAL' | 'KITCHEN';
-    rawDate: string;
-    parsedDate: Date | null;
-    time: string;
-    itemName: string;
-    category: MainItemCategory;
-    quantity: string | number;
-    numericQty: number;
-    unit: string;
-    unitPrice: number;
-    nominal: number;
-    recipientOrVolunteer: string;
-    picOrUser: string;
-    notes?: string;
-    referenceNo?: string;
-  }
+  useEffect(() => {
+    if (!isPrintPreviewOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsPrintPreviewOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isPrintPreviewOpen]);
+
+  const transactions = useMemo(() => warehouseDb.getTransactions(), [dataVersion]);
+  const manualExpenses = useMemo(() => warehouseDb.getNonFoodExpenses(), [dataVersion]);
 
   const allExpenses = useMemo<UnifiedExpense[]>(() => {
     const list: UnifiedExpense[] = [];
 
-    // 1. Manual logs (nonFoodExpenses)
     manualExpenses.forEach(exp => {
-      const pDate = parseExpenseDate(exp.date);
-      const cat = normalizeItemCategory(exp.category);
-      const nQty = parseNumericQty(exp.quantity);
-      const price = getItemEstimatedUnitPrice(exp.itemName, cat, exp.unitPrice);
-      const nominal = exp.totalCost && exp.totalCost > 0 ? exp.totalCost : nQty * price;
+      const qty = parseNumericQty(exp.quantity);
+      const total =
+        exp.totalCost && exp.totalCost > 0
+          ? exp.totalCost
+          : exp.unitPrice && exp.unitPrice > 0 && qty > 0
+          ? exp.unitPrice * qty
+          : 0;
+      const hasPrice = total > 0;
+      const unit = exp.unit || '';
+      const rawQty = typeof exp.quantity === 'number' ? String(exp.quantity) : String(exp.quantity || '');
+      // Data lama menyimpan "1 pack" di kolom jumlah; jangan tampilkan satuannya dua kali.
+      const quantityLabel = /[a-z]/i.test(rawQty) ? rawQty : `${rawQty} ${unit}`.trim();
 
       list.push({
         id: exp.id,
-        source: 'MANUAL',
+        kind: hasPrice ? 'BELANJA' : 'PENGAMBILAN',
         rawDate: exp.date,
-        parsedDate: pDate,
-        time: exp.time || '12.00',
+        parsedDate: parseExpenseDate(exp.date),
+        time: exp.time || '',
         itemName: exp.itemName,
-        category: cat,
-        quantity: exp.quantity,
-        numericQty: nQty,
-        unit: exp.unit || 'Pack',
-        unitPrice: price,
-        nominal: nominal,
-        recipientOrVolunteer: exp.volunteer || exp.recipient || '-',
-        picOrUser: exp.pic || exp.recordedBy || currentUser.name,
+        category: normalizeItemCategory(exp.category, exp.itemName),
+        quantityLabel,
+        numericQty: qty,
+        unit,
+        unitPrice: hasPrice ? (exp.unitPrice && exp.unitPrice > 0 ? exp.unitPrice : qty > 0 ? Math.round(total / qty) : null) : null,
+        nominal: hasPrice ? total : null,
+        takenBy: exp.volunteer || exp.recipientName || exp.recipient || '',
+        recordedBy: exp.pic || exp.recordedBy || '',
         notes: exp.notes,
       });
     });
 
-    // 2. Kitchen stock issues
     transactions
       .filter(tx => tx.transactionType === 'ISSUE_CONSUMPTION')
       .forEach(tx => {
-        const rawD = tx.timestamp.slice(0, 10);
-        const pDate = parseExpenseDate(rawD);
-        const cat = normalizeItemCategory(tx.category);
-        const nQty = Math.abs(tx.quantity);
-        const price = getItemEstimatedUnitPrice(tx.itemName, cat);
-        const nominal = nQty * price;
-
+        const rawDate = tx.timestamp.slice(0, 10);
+        const qty = Math.abs(tx.quantity);
         list.push({
           id: tx.id,
-          source: 'KITCHEN',
-          rawDate: rawD,
-          parsedDate: pDate,
+          kind: 'DAPUR',
+          rawDate,
+          parsedDate: parseExpenseDate(rawDate),
           time: tx.timestamp.slice(11, 16).replace(':', '.'),
           itemName: tx.itemName,
-          category: cat,
-          quantity: nQty,
-          numericQty: nQty,
+          category: normalizeItemCategory(tx.category, tx.itemName),
+          quantityLabel: `${qty.toLocaleString('id-ID')} ${tx.unit}`,
+          numericQty: qty,
           unit: tx.unit,
-          unitPrice: price,
-          nominal: nominal,
-          recipientOrVolunteer: tx.location || 'Dapur Pengolahan SPPG MLG TUMPANG JERU',
-          picOrUser: tx.userName,
+          unitPrice: null,
+          nominal: null,
+          takenBy: tx.location || '',
+          recordedBy: tx.userName,
           notes: tx.notes,
           referenceNo: tx.referenceDocument || tx.id,
         });
       });
 
-    return list.sort((a, b) => {
-      const timeA = a.parsedDate ? a.parsedDate.getTime() : 0;
-      const timeB = b.parsedDate ? b.parsedDate.getTime() : 0;
-      return timeB - timeA;
-    });
-  }, [manualExpenses, transactions, currentUser.name]);
+    return list.sort((a, b) => (b.parsedDate?.getTime() ?? 0) - (a.parsedDate?.getTime() ?? 0));
+  }, [manualExpenses, transactions]);
 
-  const formatFriendlyDate = (dateStr: string) => {
-    const d = parseExpenseDate(dateStr);
-    if (!d) return dateStr;
-    return d.toLocaleDateString('id-ID', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  };
-
-  // Effective Date Range based on periodType
-  const effectiveDateRange = useMemo(() => {
+  const range = useMemo(() => {
+    const toDate = (iso: string) => parseExpenseDate(iso);
     if (periodType === 'DAILY') {
-      const target = parseExpenseDate(selectedDailyDate);
-      return { start: target, end: target, label: `Harian (${formatFriendlyDate(selectedDailyDate)})` };
+      const d = toDate(selectedDailyDate);
+      return { start: d, end: d, label: d ? formatDateLong(d) : '-' };
     }
-
-    if (periodType === 'WEEKLY') {
-      const s = parseExpenseDate(startDate);
-      const e = parseExpenseDate(endDate);
-      return { start: s, end: e, label: `Mingguan (${formatFriendlyDate(startDate)} s/d ${formatFriendlyDate(endDate)})` };
-    }
-
     if (periodType === 'MONTHLY') {
-      const [year, month] = selectedMonth.split('-').map(Number);
-      const startOfMonth = new Date(year, month - 1, 1);
-      const endOfMonth = new Date(year, month, 0);
-      const monthNames = [
-        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-      ];
+      const [y, m] = selectedMonth.split('-').map(Number);
       return {
-        start: startOfMonth,
-        end: endOfMonth,
-        label: `Bulan ${monthNames[month - 1] || ''} ${year}`,
+        start: new Date(y, m - 1, 1),
+        end: new Date(y, m, 0),
+        label: `${MONTH_NAMES[m - 1] || ''} ${y}`,
       };
     }
-
-    // CUSTOM
-    const s = parseExpenseDate(startDate);
-    const e = parseExpenseDate(endDate);
-    return { start: s, end: e, label: `Periode ${formatFriendlyDate(startDate)} s/d ${formatFriendlyDate(endDate)}` };
+    const s = toDate(startDate);
+    const e = toDate(endDate);
+    return {
+      start: s,
+      end: e,
+      label: s && e ? `${formatDateShort(s)} s/d ${formatDateShort(e)}` : '-',
+    };
   }, [periodType, selectedDailyDate, startDate, endDate, selectedMonth]);
 
-  const printDate = useMemo(() => {
-    return new Date().toLocaleDateString('id-ID', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  }, []);
+  const rangeInvalid = !range.start || !range.end || range.start.getTime() > range.end.getTime();
 
-  // Filtered expenses based on Period, Category, and Search
-  const filteredExpenses = useMemo(() => {
+  // Catatan pada periode aktif, sebelum filter kategori/jenis/pencarian.
+  const periodExpenses = useMemo(() => {
+    if (rangeInvalid || !range.start || !range.end) return [];
+    const startT = range.start.getTime();
+    const endT = range.end.getTime();
     return allExpenses.filter(item => {
-      // 1. Category Filter
-      if (selectedCategoryTab !== 'ALL' && item.category !== selectedCategoryTab) {
-        return false;
+      if (!item.parsedDate) return false;
+      const t = item.parsedDate.getTime();
+      return t >= startT && t <= endT;
+    });
+  }, [allExpenses, range, rangeInvalid]);
+
+  const unreadableDateCount = useMemo(() => allExpenses.filter(e => !e.parsedDate).length, [allExpenses]);
+
+  const filteredExpenses = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return periodExpenses.filter(item => {
+      if (categoryFilter !== 'ALL' && item.category !== categoryFilter) return false;
+      if (kindFilter !== 'ALL' && item.kind !== kindFilter) return false;
+      if (q) {
+        const hay = `${item.itemName} ${item.takenBy} ${item.recordedBy} ${item.notes || ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
       }
-
-      // 2. Date Range Filter
-      if (item.parsedDate && effectiveDateRange.start && effectiveDateRange.end) {
-        const itemTime = new Date(item.parsedDate.getFullYear(), item.parsedDate.getMonth(), item.parsedDate.getDate()).getTime();
-        const startTime = new Date(effectiveDateRange.start.getFullYear(), effectiveDateRange.start.getMonth(), effectiveDateRange.start.getDate()).getTime();
-        const endTime = new Date(effectiveDateRange.end.getFullYear(), effectiveDateRange.end.getMonth(), effectiveDateRange.end.getDate()).getTime();
-
-        if (itemTime < startTime || itemTime > endTime) {
-          return false;
-        }
-      }
-
-      // 3. Search query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const match =
-          item.itemName.toLowerCase().includes(q) ||
-          item.category.toLowerCase().includes(q) ||
-          item.recipientOrVolunteer.toLowerCase().includes(q) ||
-          item.picOrUser.toLowerCase().includes(q) ||
-          (item.notes && item.notes.toLowerCase().includes(q));
-        if (!match) return false;
-      }
-
       return true;
     });
-  }, [allExpenses, selectedCategoryTab, effectiveDateRange, searchQuery]);
+  }, [periodExpenses, categoryFilter, kindFilter, searchQuery]);
 
-  // ==========================================
-  // PERIOD BREAKDOWN BY 3 CATEGORIES & ITEMS
-  // ==========================================
-  interface CategoryItemAgg {
-    itemName: string;
-    unit: string;
-    totalQty: number;
-    unitPrice: number;
-    totalNominal: number;
-    countOccurrences: number;
-    percentageOfCategory: number;
-  }
-
-  interface CategorySummary {
-    category: MainItemCategory;
-    totalNominal: number;
-    totalItemsCount: number;
-    items: CategoryItemAgg[];
-  }
-
-  const categoryBreakdowns = useMemo<Record<MainItemCategory, CategorySummary>>(() => {
-    const summary: Record<MainItemCategory, CategorySummary> = {
-      'Bahan Basah': { category: 'Bahan Basah', totalNominal: 0, totalItemsCount: 0, items: [] },
-      'Bahan Kering': { category: 'Bahan Kering', totalNominal: 0, totalItemsCount: 0, items: [] },
-      'Bahan Peralatan': { category: 'Bahan Peralatan', totalNominal: 0, totalItemsCount: 0, items: [] },
-    };
-
-    const itemMaps: Record<MainItemCategory, Record<string, CategoryItemAgg>> = {
-      'Bahan Basah': {},
-      'Bahan Kering': {},
-      'Bahan Peralatan': {},
-    };
-
-    filteredExpenses.forEach(exp => {
-      const cat = exp.category;
-      if (!summary[cat]) return;
-
-      summary[cat].totalNominal += exp.nominal;
-      summary[cat].totalItemsCount += 1;
-
-      const normName = exp.itemName.trim();
-      if (!itemMaps[cat][normName]) {
-        itemMaps[cat][normName] = {
-          itemName: normName,
-          unit: exp.unit,
-          totalQty: 0,
-          unitPrice: exp.unitPrice,
-          totalNominal: 0,
-          countOccurrences: 0,
-          percentageOfCategory: 0,
-        };
+  const totals = useMemo(() => {
+    const byCategory: Record<MainItemCategory, number> = { 'Bahan Basah': 0, 'Bahan Kering': 0, 'Bahan Peralatan': 0 };
+    let belanja = 0;
+    let belanjaCount = 0;
+    let pengambilanCount = 0;
+    let dapurCount = 0;
+    filteredExpenses.forEach(e => {
+      if (e.kind === 'BELANJA' && e.nominal) {
+        belanja += e.nominal;
+        belanjaCount += 1;
+        if (byCategory[e.category] !== undefined) byCategory[e.category] += e.nominal;
+      } else if (e.kind === 'PENGAMBILAN') {
+        pengambilanCount += 1;
+      } else {
+        dapurCount += 1;
       }
-
-      itemMaps[cat][normName].totalQty += exp.numericQty;
-      itemMaps[cat][normName].totalNominal += exp.nominal;
-      itemMaps[cat][normName].countOccurrences += 1;
     });
-
-    // Convert map to sorted array & calculate percentage
-    (['Bahan Basah', 'Bahan Kering', 'Bahan Peralatan'] as MainItemCategory[]).forEach(cat => {
-      const arr = Object.values(itemMaps[cat]).sort((a, b) => b.totalNominal - a.totalNominal);
-      const catTotal = summary[cat].totalNominal;
-
-      arr.forEach(item => {
-        item.percentageOfCategory = catTotal > 0 ? Math.round((item.totalNominal / catTotal) * 100) : 0;
-      });
-
-      summary[cat].items = arr;
-    });
-
-    return summary;
+    return { belanja, belanjaCount, pengambilanCount, dapurCount, byCategory };
   }, [filteredExpenses]);
 
-  // Overall totals in the active filter
-  const grandTotalNominal = useMemo(() => {
-    return (
-      categoryBreakdowns['Bahan Basah'].totalNominal +
-      categoryBreakdowns['Bahan Kering'].totalNominal +
-      categoryBreakdowns['Bahan Peralatan'].totalNominal
-    );
-  }, [categoryBreakdowns]);
+  const categoryItems = useMemo(() => {
+    const result: Record<MainItemCategory, ItemAgg[]> = { 'Bahan Basah': [], 'Bahan Kering': [], 'Bahan Peralatan': [] };
+    const maps: Record<string, Map<string, ItemAgg>> = {};
+    CATEGORIES.forEach(c => (maps[c] = new Map()));
 
-  // Quick weekly helpers
-  const handleSetThisWeek = () => {
-    const end = new Date();
-    const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
-    setStartDate(start.toISOString().slice(0, 10));
-    setEndDate(end.toISOString().slice(0, 10));
-    setPeriodType('WEEKLY');
-  };
+    filteredExpenses.forEach(e => {
+      const map = maps[e.category];
+      if (!map) return;
+      // Satuan ikut jadi kunci supaya 2 Kg dan 3 Pack tidak dijumlahkan.
+      const key = `${e.itemName.trim().toLowerCase()}|${e.unit.toLowerCase()}`;
+      const agg = map.get(key) || {
+        key,
+        itemName: e.itemName.trim(),
+        unit: e.unit,
+        totalQty: 0,
+        totalNominal: 0,
+        pricedCount: 0,
+        count: 0,
+      };
+      agg.totalQty += e.numericQty;
+      agg.count += 1;
+      if (e.nominal) {
+        agg.totalNominal += e.nominal;
+        agg.pricedCount += 1;
+      }
+      map.set(key, agg);
+    });
 
-  const handleSetLastWeek = () => {
-    const end = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const start = new Date(end.getTime() - 6 * 24 * 60 * 60 * 1000);
-    setStartDate(start.toISOString().slice(0, 10));
-    setEndDate(end.toISOString().slice(0, 10));
-    setPeriodType('WEEKLY');
-  };
+    CATEGORIES.forEach(c => {
+      result[c] = Array.from(maps[c].values()).sort(
+        (a, b) => b.totalNominal - a.totalNominal || a.itemName.localeCompare(b.itemName)
+      );
+    });
+    return result;
+  }, [filteredExpenses]);
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = { ALL: 0, 'Bahan Basah': 0, 'Bahan Kering': 0, 'Bahan Peralatan': 0 };
+    periodExpenses.forEach(e => {
+      if (kindFilter !== 'ALL' && e.kind !== kindFilter) return;
+      counts.ALL += 1;
+      counts[e.category] = (counts[e.category] || 0) + 1;
+    });
+    return counts;
+  }, [periodExpenses, kindFilter]);
+
+  const kindCounts = useMemo(() => {
+    const counts: Record<string, number> = { ALL: 0, BELANJA: 0, PENGAMBILAN: 0, DAPUR: 0 };
+    periodExpenses.forEach(e => {
+      if (categoryFilter !== 'ALL' && e.category !== categoryFilter) return;
+      counts.ALL += 1;
+      counts[e.kind] += 1;
+    });
+    return counts;
+  }, [periodExpenses, categoryFilter]);
+
+  const visibleCategories = categoryFilter === 'ALL' ? CATEGORIES : [categoryFilter];
 
   const handleDeleteManual = (id: string, name: string) => {
-    if (window.confirm(`Hapus catatan pengeluaran "${name}"?`)) {
-      warehouseDb.deleteNonFoodExpense(id, currentUser);
-      setSuccessNotice(`Catatan "${name}" berhasil dihapus.`);
-      setTimeout(() => setSuccessNotice(''), 4000);
-    }
+    if (!window.confirm(`Hapus catatan "${name}"? Catatan yang dihapus tidak bisa dikembalikan.`)) return;
+    warehouseDb.deleteNonFoodExpense(id, currentUser);
+    setSuccessNotice(`Catatan "${name}" dihapus.`);
+    setTimeout(() => setSuccessNotice(''), 4000);
   };
 
-  // Export to Excel with full category breakdown & nominals
   const handleExportExcel = () => {
     if (filteredExpenses.length === 0) {
-      alert('Tidak ada data untuk diekspor pada filter periode ini.');
+      alert('Tidak ada catatan pada periode dan filter ini.');
       return;
     }
-
-    // Sheet 1: Detailed transactions with nominals
-    const transactionRows = filteredExpenses.map((item, idx) => ({
+    const detailRows = filteredExpenses.map((item, idx) => ({
       'No': idx + 1,
-      'Tanggal': item.rawDate,
-      'Jam': item.time,
+      'Tanggal': item.parsedDate ? localDateIso(item.parsedDate) : item.rawDate,
+      'Jam': item.time || '-',
+      'Jenis': KIND_LABEL[item.kind],
       'Kategori': item.category,
       'Nama Barang': item.itemName,
-      'Jumlah': item.quantity,
+      'Jumlah': item.numericQty,
       'Satuan': item.unit,
-      'Harga Satuan (Rp)': item.unitPrice,
-      'Total Nominal (Rp)': item.nominal,
-      'Relawan / Pengambil': item.recipientOrVolunteer,
-      'PIC Petugas': item.picOrUser,
+      'Harga Satuan (Rp)': item.unitPrice ?? '',
+      'Total (Rp)': item.nominal ?? '',
+      'Diambil oleh / Tujuan': item.takenBy || '-',
+      'Dicatat oleh': item.recordedBy || '-',
       'Keterangan': item.notes || '-',
     }));
-
-    // Sheet 2: Category itemized summary
-    const summaryRows: any[] = [];
-    (['Bahan Basah', 'Bahan Kering', 'Bahan Peralatan'] as MainItemCategory[]).forEach(cat => {
-      categoryBreakdowns[cat].items.forEach(item => {
+    const summaryRows: Record<string, any>[] = [];
+    visibleCategories.forEach(cat => {
+      categoryItems[cat].forEach(item => {
         summaryRows.push({
           'Kategori': cat,
           'Nama Barang': item.itemName,
-          'Total Volume Keluar': `${item.totalQty} ${item.unit}`,
-          'Harga Satuan (Rp)': item.unitPrice,
-          'Total Nominal (Rp)': item.totalNominal,
-          '% Terhadap Kategori': `${item.percentageOfCategory}%`,
+          'Jumlah': item.totalQty,
+          'Satuan': item.unit,
+          'Berapa kali': item.count,
+          'Total Belanja (Rp)': item.totalNominal || '',
         });
       });
     });
-
-    exportToExcel(
-      summaryRows.length > 0 ? summaryRows : transactionRows,
-      `Rekap_Pengeluaran_SPPG_MLG_TUMPANG_JERU_${periodType}_${selectedCategoryTab}.xlsx`,
-      'Rekap Pengeluaran & Biaya'
+    exportMultiSheetExcel(
+      [
+        { sheetName: 'Rekap per Barang', data: summaryRows },
+        { sheetName: 'Rincian Catatan', data: detailRows },
+      ],
+      `Pengeluaran_SPPG_Tumpang_Jeru_${range.start ? localDateIso(range.start) : ''}_${range.end ? localDateIso(range.end) : ''}.xlsx`
     );
   };
 
-  const handlePrint = () => {
-    setActiveSubTab('PRINT_VIEW');
-    setTimeout(() => {
-      window.print();
-    }, 150);
-  };
+  const periodButton = (type: PeriodType, label: string) => (
+    <button
+      key={type}
+      type="button"
+      role="tab"
+      aria-selected={periodType === type}
+      onClick={() => setPeriodType(type)}
+      className={`px-3 rounded-md whitespace-nowrap cursor-pointer min-h-[44px] sm:min-h-[32px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+        periodType === type ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'
+      }`}
+    >
+      {label}
+    </button>
+  );
 
-  return (
-    <div className="space-y-5">
-      {/* Print-specific style injected into head */}
-      <style>{`
-        @media print {
-          @page {
-            size: A4 portrait;
-            margin: 10mm 12mm;
-          }
-          body {
-            background-color: #ffffff !important;
-            color: #0f172a !important;
-            font-size: 10pt;
-          }
-          nav, header, footer, .no-print {
-            display: none !important;
-          }
-          #print-expenses-area {
-            display: block !important;
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            box-shadow: none !important;
-            border: none !important;
-            background: transparent !important;
-          }
-          .page-break {
-            page-break-after: always;
-          }
-        }
-      `}</style>
+  const chipClass = (selected: boolean) =>
+    `px-2.5 py-1.5 rounded-lg text-xs cursor-pointer inline-flex items-center gap-1.5 min-h-[44px] sm:min-h-[32px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+      selected
+        ? 'bg-slate-900 text-white font-semibold'
+        : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 font-medium'
+    }`;
 
-      {/* Alert Notice */}
-      {successNotice && (
-        <div className="no-print flex items-center gap-2.5 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-lg text-xs font-medium">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{successNotice}</span>
+  const dateInputClass =
+    'px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 min-h-[44px] sm:min-h-[34px] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600';
+
+  const renderPrintDocument = () => (
+    <div className="bg-white font-sans text-slate-900 text-xs">
+      <div className="border-b-2 border-slate-900 pb-4 mb-5 flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <SppgLogo size="lg" variant="color" showText={false} />
+          <div>
+            <h1 className="text-base font-bold text-slate-900 leading-tight">
+              Satuan Pelayanan Pemenuhan Gizi (SPPG) Tumpang Jeru
+            </h1>
+            <p className="text-[10px] text-slate-600 mt-0.5">
+              Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
+            </p>
+          </div>
         </div>
-      )}
-
-      {/* Header bar */}
-      <div className="no-print flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 bg-white p-5 rounded-2xl border shadow-xs">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            Laporan & Rekap Pengeluaran
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5 font-medium">
-            Monitoring data pengeluaran dan nominal biaya per minggu, bulan, serta rincian per kategori barang.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* ActionDropdown Standard: Ekspor & Cetak / Input Belanja */}
-          <ActionDropdown
-            splitAction={{
-              label: 'Ekspor Excel',
-              icon: FileSpreadsheet,
-              onClick: handleExportExcel,
-              title: 'Unduh rekap pengeluaran dan rincian biaya sebagai Excel',
-              variant: 'emerald',
-            }}
-            header="Opsi Rekap Belanja & Laporan"
-            widthClass="w-72"
-            items={[
-              {
-                id: 'export-excel',
-                label: 'Ekspor File Excel (.xlsx)',
-                description: 'Unduh seluruh rincian belanja & pengeluaran',
-                icon: FileSpreadsheet,
-                iconBgClass: 'bg-emerald-100 text-emerald-800',
-                iconColorClass: 'text-emerald-700',
-                onClick: handleExportExcel,
-              },
-              {
-                id: 'print-report',
-                label: 'Cetak Laporan Lengkap',
-                description: 'Cetak PDF resmi atau print fisik dokumen',
-                icon: Printer,
-                iconBgClass: 'bg-slate-100 text-slate-700',
-                iconColorClass: 'text-slate-600',
-                dividerAbove: true,
-                onClick: handlePrint,
-              },
-              ...(onNavigate
-                ? [
-                    {
-                      id: 'input-belanja',
-                      label: 'Input Belanja / Barang Baru',
-                      description: 'Buka menu pencatatan belanja & penerimaan',
-                      icon: Plus,
-                      iconBgClass: 'bg-emerald-100 text-emerald-800',
-                      iconColorClass: 'text-emerald-700',
-                      dividerAbove: true,
-                      onClick: () => onNavigate('receiving'),
-                    },
-                  ]
-                : []),
-            ]}
-          />
-
-          {/* Cetak Langsung */}
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-            title="Cetak cepat laporan pengeluaran"
-          >
-            <Printer className="w-3.5 h-3.5 text-slate-500" />
-            <span>Cetak Laporan</span>
-          </button>
+        <div className="text-right text-[11px] text-slate-600 space-y-0.5 shrink-0">
+          <div>Dicetak: {formatDateLong(new Date())}</div>
+          <div>Oleh: {currentUser.name}</div>
         </div>
       </div>
 
-      {/* Filter Control Box: Period (Minggu, Bulan, Hari) & Categories */}
-      <div className="no-print bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3.5">
-        {/* Row 1: Period Mode Selector & Date Controls */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-              <CalendarRange className="w-4 h-4 text-emerald-600" />
-              Periode Filter:
-            </span>
-
-            {/* Period Pills */}
-            <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
-              <button
-                onClick={() => setPeriodType('DAILY')}
-                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                  periodType === 'DAILY' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Harian
-              </button>
-
-              <button
-                onClick={handleSetThisWeek}
-                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                  periodType === 'WEEKLY' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Mingguan
-              </button>
-
-              <button
-                onClick={() => setPeriodType('MONTHLY')}
-                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                  periodType === 'MONTHLY' ? 'bg-white text-blue-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Bulanan
-              </button>
-
-              <button
-                onClick={() => setPeriodType('CUSTOM')}
-                className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                  periodType === 'CUSTOM' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Rentang Kustom
-              </button>
-            </div>
-          </div>
-
-          {/* Date Range Inputs */}
-          <div className="flex flex-wrap items-center gap-2">
-            {periodType === 'DAILY' && (
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
-                <span className="text-slate-500 font-medium">Tanggal:</span>
-                <input
-                  type="date"
-                  value={selectedDailyDate}
-                  onChange={e => setSelectedDailyDate(e.target.value)}
-                  className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
-                />
-              </div>
-            )}
-
-            {(periodType === 'WEEKLY' || periodType === 'CUSTOM') && (
-              <div className="flex items-center gap-2 text-xs">
-                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
-                  <span className="text-slate-500 font-medium">Dari:</span>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={e => setStartDate(e.target.value)}
-                    className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
-                  />
-                </div>
-                <span className="text-slate-400 font-medium">s/d</span>
-                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
-                  <span className="text-slate-500 font-medium">Sampai:</span>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={e => setEndDate(e.target.value)}
-                    className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
-                  />
-                </div>
-
-                {periodType === 'WEEKLY' && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={handleSetThisWeek}
-                      className="px-2 py-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 cursor-pointer"
-                    >
-                      Minggu Ini
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSetLastWeek}
-                      className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200 cursor-pointer"
-                    >
-                      Minggu Lalu
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {periodType === 'MONTHLY' && (
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
-                <span className="text-slate-500 font-medium">Pilih Bulan:</span>
-                <input
-                  type="month"
-                  value={selectedMonth}
-                  onChange={e => setSelectedMonth(e.target.value)}
-                  className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
-                />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Row 2: 3 Category Tabs & Search Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          {/* Category Tabs: Exactly 3 categories */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              onClick={() => setSelectedCategoryTab('ALL')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                selectedCategoryTab === 'ALL'
-                  ? 'bg-slate-900 text-white shadow-2xs'
-                  : 'text-slate-600 hover:bg-slate-100 border border-slate-200'
-              }`}
-            >
-              Semua Kategori ({allExpenses.length})
-            </button>
-
-            <button
-              onClick={() => setSelectedCategoryTab('Bahan Basah')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                selectedCategoryTab === 'Bahan Basah'
-                  ? 'bg-emerald-600 text-white shadow-2xs'
-                  : 'text-emerald-800 hover:bg-emerald-50 border border-emerald-200'
-              }`}
-            >
-              Bahan Basah ({categoryBreakdowns['Bahan Basah'].totalItemsCount})
-            </button>
-
-            <button
-              onClick={() => setSelectedCategoryTab('Bahan Kering')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                selectedCategoryTab === 'Bahan Kering'
-                  ? 'bg-amber-600 text-white shadow-2xs'
-                  : 'text-amber-800 hover:bg-amber-50 border border-amber-200'
-              }`}
-            >
-              Bahan Kering ({categoryBreakdowns['Bahan Kering'].totalItemsCount})
-            </button>
-
-            <button
-              onClick={() => setSelectedCategoryTab('Bahan Peralatan')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                selectedCategoryTab === 'Bahan Peralatan'
-                  ? 'bg-blue-600 text-white shadow-2xs'
-                  : 'text-blue-800 hover:bg-blue-50 border border-blue-200'
-              }`}
-            >
-              Bahan Peralatan ({categoryBreakdowns['Bahan Peralatan'].totalItemsCount})
-            </button>
-          </div>
-
-          {/* Search Box */}
-          <div className="relative w-full sm:w-64">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Cari barang, relawan, PIC..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800"
-            />
-          </div>
-        </div>
+      <div className="text-center mb-5">
+        <h2 className="text-sm font-bold text-slate-900">Laporan Pengeluaran Gudang</h2>
+        <p className="text-xs text-slate-600 mt-0.5">Program Makan Bergizi Gratis</p>
+        <p className="text-xs font-semibold text-slate-800 mt-1">
+          Periode {range.label}
+          {categoryFilter !== 'ALL' && ` · ${categoryFilter}`}
+          {kindFilter !== 'ALL' && ` · ${KIND_LABEL[kindFilter]}`}
+        </p>
       </div>
 
-
-      {/* ========================================================================= */}
-      {/* SUMMARY NOMINAL CARDS: TOTAL & 3 KATEGORI (SESUAI PERMINTAAN USER) */}
-      {/* ========================================================================= */}
-      <div className="no-print grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {/* Card 1: Total Pengeluaran Periode */}
-        <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-          <div className="text-[11px] font-medium text-slate-500">
-            Total Pengeluaran Periode ({effectiveDateRange.label})
-          </div>
-          <div className="text-xl font-bold text-slate-900 mt-1">
-            Rp {grandTotalNominal.toLocaleString('id-ID')}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">
-            {filteredExpenses.length} catatan pengeluaran
-          </div>
+      <div className="mb-5">
+        <div className="font-bold text-xs text-slate-800 mb-2 border-b border-slate-300 pb-1">
+          A. Ringkasan per Kategori
         </div>
-
-        {/* Card 2: Bahan Basah */}
-        <div className="p-4 rounded-xl bg-white border border-emerald-200 shadow-2xs bg-gradient-to-b from-white to-emerald-50/20">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-emerald-800">Bahan Basah</span>
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-100/80 text-emerald-800 border border-emerald-200">
-              {grandTotalNominal > 0 ? Math.round((categoryBreakdowns['Bahan Basah'].totalNominal / grandTotalNominal) * 100) : 0}%
-            </span>
-          </div>
-          <div className="text-xl font-bold text-emerald-700 mt-1">
-            Rp {categoryBreakdowns['Bahan Basah'].totalNominal.toLocaleString('id-ID')}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">
-            {categoryBreakdowns['Bahan Basah'].items.length} jenis bahan basah
-          </div>
-        </div>
-
-        {/* Card 3: Bahan Kering */}
-        <div className="p-4 rounded-xl bg-white border border-amber-200 shadow-2xs bg-gradient-to-b from-white to-amber-50/20">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-amber-800">Bahan Kering</span>
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-100/80 text-amber-800 border border-amber-200">
-              {grandTotalNominal > 0 ? Math.round((categoryBreakdowns['Bahan Kering'].totalNominal / grandTotalNominal) * 100) : 0}%
-            </span>
-          </div>
-          <div className="text-xl font-bold text-amber-700 mt-1">
-            Rp {categoryBreakdowns['Bahan Kering'].totalNominal.toLocaleString('id-ID')}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">
-            {categoryBreakdowns['Bahan Kering'].items.length} jenis bahan kering
-          </div>
-        </div>
-
-        {/* Card 4: Bahan Peralatan */}
-        <div className="p-4 rounded-xl bg-white border border-blue-200 shadow-2xs bg-gradient-to-b from-white to-blue-50/20">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-blue-800">Bahan Peralatan</span>
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-100/80 text-blue-800 border border-blue-200">
-              {grandTotalNominal > 0 ? Math.round((categoryBreakdowns['Bahan Peralatan'].totalNominal / grandTotalNominal) * 100) : 0}%
-            </span>
-          </div>
-          <div className="text-xl font-bold text-blue-700 mt-1">
-            Rp {categoryBreakdowns['Bahan Peralatan'].totalNominal.toLocaleString('id-ID')}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">
-            {categoryBreakdowns['Bahan Peralatan'].items.length} jenis peralatan
-          </div>
-        </div>
+        <table className="w-full text-left text-xs border border-slate-300 border-collapse">
+          <thead>
+            <tr className="bg-slate-100 text-slate-700 font-semibold">
+              <th className="py-1.5 px-2 border border-slate-300 w-8 text-center">No</th>
+              <th className="py-1.5 px-2 border border-slate-300">Kategori</th>
+              <th className="py-1.5 px-2 border border-slate-300 text-center">Jenis barang</th>
+              <th className="py-1.5 px-2 border border-slate-300 text-center">Catatan</th>
+              <th className="py-1.5 px-2 border border-slate-300 text-right">Total belanja</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleCategories.map((cat, idx) => (
+              <tr key={cat}>
+                <td className="py-1.5 px-2 border border-slate-300 text-center">{idx + 1}</td>
+                <td className="py-1.5 px-2 border border-slate-300 font-semibold">{cat}</td>
+                <td className="py-1.5 px-2 border border-slate-300 text-center">{categoryItems[cat].length}</td>
+                <td className="py-1.5 px-2 border border-slate-300 text-center">
+                  {categoryItems[cat].reduce((s, it) => s + it.count, 0)}
+                </td>
+                <td className="py-1.5 px-2 border border-slate-300 text-right font-mono">
+                  {totals.byCategory[cat] > 0 ? formatRp(totals.byCategory[cat]) : '-'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-slate-100 font-bold">
+              <td colSpan={4} className="py-1.5 px-2 border border-slate-300 text-right">Total belanja tercatat</td>
+              <td className="py-1.5 px-2 border border-slate-300 text-right font-mono">{formatRp(totals.belanja)}</td>
+            </tr>
+          </tfoot>
+        </table>
+        <p className="text-[10px] text-slate-600 mt-1">
+          Total hanya menjumlahkan belanja yang harganya dicatat. Pengambilan barang dan pemakaian dapur dicatat jumlahnya saja.
+        </p>
       </div>
 
-      {/* View Switcher: Rekapitulasi Nominal vs Rincian Transaksi vs Lembar Cetak */}
-      <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-2xs">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-800">Tampilan Data:</span>
-          <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
-            <button
-              onClick={() => setActiveSubTab('SUMMARY')}
-              className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                activeSubTab === 'SUMMARY' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Rekapitulasi Barang & Biaya
-            </button>
-            <button
-              onClick={() => setActiveSubTab('TRANSACTIONS')}
-              className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                activeSubTab === 'TRANSACTIONS' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Log Catatan Transaksi
-            </button>
-            <button
-              onClick={() => setActiveSubTab('PRINT_VIEW')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                activeSubTab === 'PRINT_VIEW' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Printer className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Lembar Cetak Laporan (Resmi)</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="text-xs text-slate-500 font-medium">
-          Menampilkan periode: <strong className="text-slate-800">{effectiveDateRange.label}</strong>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* TAMPILAN 1: REKAPITULASI BARANG & NOMINAL PER KATEGORI (INTI PERMINTAAN USER) */}
-      {/* ========================================================================= */}
-      {activeSubTab === 'SUMMARY' && (
-        <div className="no-print space-y-6">
-          {(['Bahan Basah', 'Bahan Kering', 'Bahan Peralatan'] as MainItemCategory[]).map(cat => {
-            if (selectedCategoryTab !== 'ALL' && selectedCategoryTab !== cat) {
-              return null;
-            }
-
-            const data = categoryBreakdowns[cat];
-            const badgeClass =
-              cat === 'Bahan Basah'
-                ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                : cat === 'Bahan Kering'
-                ? 'bg-amber-100 text-amber-800 border-amber-200'
-                : 'bg-blue-100 text-blue-800 border-blue-200';
-
-            const subtotalClass =
-              cat === 'Bahan Basah'
-                ? 'text-emerald-700'
-                : cat === 'Bahan Kering'
-                ? 'text-amber-700'
-                : 'text-blue-700';
-
-            return (
-              <div
-                key={cat}
-                className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs"
-              >
-                {/* Category Header */}
-                <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-md border ${badgeClass}`}>
-                      {cat}
-                    </span>
-                    <h2 className="text-xs font-semibold text-slate-700">
-                      Rincian Barang & Pengeluaran ({effectiveDateRange.label})
-                    </h2>
-                  </div>
-
-                  <div className="text-xs font-semibold text-slate-600">
-                    Subtotal Pengeluaran {cat}:{' '}
-                    <strong className={`font-mono text-sm font-bold ${subtotalClass}`}>
-                      Rp {data.totalNominal.toLocaleString('id-ID')}
-                    </strong>
-                  </div>
-                </div>
-
-                {data.items.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400 text-xs italic">
-                    Belum ada pengeluaran {cat} yang tercatat pada periode ini.
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-slate-100/60 text-slate-600 font-semibold border-b border-slate-200 text-[11px]">
-                          <th className="py-2.5 px-4 w-12 text-center">No</th>
-                          <th className="py-2.5 px-4">Nama Barang</th>
-                          <th className="py-2.5 px-4 text-right">Total Volume Keluar</th>
-                          <th className="py-2.5 px-4 text-right">Estimasi Harga Satuan</th>
-                          <th className="py-2.5 px-4 text-right">Total Nominal (Rp)</th>
-                          <th className="py-2.5 px-4 text-center w-28">% Porsi Kategori</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {data.items.map((item, idx) => (
-                          <tr key={item.itemName} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="py-2.5 px-4 text-center text-slate-400 font-medium">
-                              {idx + 1}
-                            </td>
-                            <td className="py-2.5 px-4 font-bold text-slate-900">
-                              {item.itemName}
-                              <div className="text-[10px] text-slate-400 font-normal">
-                                {item.countOccurrences} kali pengambilan
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-4 text-right font-medium text-slate-800">
-                              {item.totalQty.toLocaleString('id-ID')} {item.unit}
-                            </td>
-                            <td className="py-2.5 px-4 text-right font-mono text-slate-600">
-                              Rp {item.unitPrice.toLocaleString('id-ID')} / {item.unit}
-                            </td>
-                            <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900">
-                              Rp {item.totalNominal.toLocaleString('id-ID')}
-                            </td>
-                            <td className="py-2.5 px-4 text-center">
-                              <div className="inline-flex items-center gap-1.5 font-semibold text-slate-700">
-                                <div className="w-12 bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                                  <div
-                                    className={`h-1.5 rounded-full ${
-                                      cat === 'Bahan Basah'
-                                        ? 'bg-emerald-600'
-                                        : cat === 'Bahan Kering'
-                                        ? 'bg-amber-600'
-                                        : 'bg-blue-600'
-                                    }`}
-                                    style={{ width: `${item.percentageOfCategory}%` }}
-                                  ></div>
-                                </div>
-                                <span className="text-[11px]">{item.percentageOfCategory}%</span>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+      <div className="mb-6 space-y-4">
+        <div className="font-bold text-xs text-slate-800 border-b border-slate-300 pb-1">B. Rincian per Barang</div>
+        {visibleCategories.map((cat, catIdx) => (
+          <div key={cat} className="space-y-1">
+            <div className="flex justify-between font-bold text-xs bg-slate-100 px-2 py-1 border border-slate-300">
+              <span>{catIdx + 1}. {cat}</span>
+              <span className="font-mono">{totals.byCategory[cat] > 0 ? formatRp(totals.byCategory[cat]) : '-'}</span>
+            </div>
+            {categoryItems[cat].length === 0 ? (
+              <div className="p-2 text-center text-slate-600 text-[11px] border border-slate-300">
+                Tidak ada catatan {cat.toLowerCase()} pada periode ini.
               </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAMPILAN 2: RINCIAN LOG TRANSAKSI PER BARIS */}
-      {/* ========================================================================= */}
-      {activeSubTab === 'TRANSACTIONS' && (
-        <div className="no-print bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-            <div className="flex items-center gap-2">
-              <TrendingDown className="w-4 h-4 text-rose-600" />
-              <h2 className="text-xs font-bold text-slate-900">
-                Log Transaksi Pengeluaran ({filteredExpenses.length} baris)
-              </h2>
-            </div>
-            <div className="text-xs text-slate-500 font-medium">
-              Total Nominal: <strong className="text-slate-900 font-mono">Rp {grandTotalNominal.toLocaleString('id-ID')}</strong>
-            </div>
-          </div>
-
-          {filteredExpenses.length === 0 ? (
-            <div className="p-12 text-center text-slate-400 text-xs italic">
-              Tidak ada transaksi pengeluaran pada periode yang dipilih.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
+            ) : (
+              <table className="w-full text-left text-[11px] border border-slate-300 border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
-                    <th className="py-2.5 px-3 text-center w-12">No</th>
-                    <th className="py-2.5 px-3">Tanggal & Jam</th>
-                    <th className="py-2.5 px-3">Kategori</th>
-                    <th className="py-2.5 px-3">Nama Barang</th>
-                    <th className="py-2.5 px-3 text-right">Jumlah</th>
-                    <th className="py-2.5 px-3 text-right">Harga Satuan</th>
-                    <th className="py-2.5 px-3 text-right">Total Nominal</th>
-                    <th className="py-2.5 px-3">Pengambil / Relawan</th>
-                    <th className="py-2.5 px-3">PIC Petugas</th>
-                    <th className="py-2.5 px-3">Keterangan</th>
-                    <th className="py-2.5 px-3 text-center w-12">Aksi</th>
+                  <tr className="bg-slate-50 text-slate-700 font-semibold">
+                    <th className="py-1 px-2 border border-slate-300 w-8 text-center">No</th>
+                    <th className="py-1 px-2 border border-slate-300">Nama barang</th>
+                    <th className="py-1 px-2 border border-slate-300 text-right">Jumlah</th>
+                    <th className="py-1 px-2 border border-slate-300 text-center">Berapa kali</th>
+                    <th className="py-1 px-2 border border-slate-300 text-right">Total belanja</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredExpenses.map((item, idx) => (
-                    <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-2.5 px-3 text-center text-slate-400 font-medium">{idx + 1}</td>
-                      <td className="py-2.5 px-3 font-medium text-slate-700 whitespace-nowrap">
-                        <div>{item.rawDate}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">Pukul {item.time}</div>
+                <tbody>
+                  {categoryItems[cat].map((it, itIdx) => (
+                    <tr key={it.key}>
+                      <td className="py-1 px-2 border border-slate-300 text-center">{itIdx + 1}</td>
+                      <td className="py-1 px-2 border border-slate-300 font-medium">{it.itemName}</td>
+                      <td className="py-1 px-2 border border-slate-300 text-right whitespace-nowrap">
+                        {it.totalQty.toLocaleString('id-ID')} {it.unit}
                       </td>
-                      <td className="py-2.5 px-3">
-                        <span
-                          className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold border ${
-                            item.category === 'Bahan Basah'
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : item.category === 'Bahan Kering'
-                              ? 'bg-amber-50 text-amber-800 border-amber-200'
-                              : 'bg-blue-50 text-blue-800 border-blue-200'
-                          }`}
-                        >
-                          {item.category}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 font-bold text-slate-900">
-                        {item.itemName}
-                        {item.source === 'KITCHEN' && item.referenceNo && (
-                          <div className="text-[10px] text-slate-400 font-mono font-normal">
-                            Ref: {item.referenceNo}
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-medium text-slate-800 whitespace-nowrap">
-                        {item.quantity} {item.unit}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-slate-600 text-[11px] whitespace-nowrap">
-                        Rp {item.unitPrice.toLocaleString('id-ID')}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
-                        Rp {item.nominal.toLocaleString('id-ID')}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-700 font-medium">
-                        {item.recipientOrVolunteer}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600 text-[11px]">
-                        {item.picOrUser}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-500 max-w-xs truncate" title={item.notes}>
-                        {item.notes || '-'}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        {item.source === 'MANUAL' && (
-                          <button
-                            onClick={() => handleDeleteManual(item.id, item.itemName)}
-                            title="Hapus baris ini"
-                            className="text-slate-300 hover:text-rose-600 p-1 rounded transition-colors cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                      <td className="py-1 px-2 border border-slate-300 text-center">{it.count}</td>
+                      <td className="py-1 px-2 border border-slate-300 text-right font-mono">
+                        {it.totalNominal > 0 ? formatRp(it.totalNominal) : '-'}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="pt-6 border-t border-slate-300 text-xs">
+        <div className="grid grid-cols-3 gap-6 text-center">
+          <div>
+            <div className="text-slate-600">Dibuat oleh,</div>
+            <div className="font-semibold text-slate-800">Petugas Gudang</div>
+            <div className="h-16 flex items-end justify-center font-bold">({currentUser.name})</div>
+          </div>
+          <div>
+            <div className="text-slate-600">Diperiksa oleh,</div>
+            <div className="font-semibold text-slate-800">Akuntan SPPG</div>
+            <div className="h-16 flex items-end justify-center font-bold">(Dewi Lestari, S.Ak)</div>
+          </div>
+          <div>
+            <div className="text-slate-600">Mengetahui,</div>
+            <div className="font-semibold text-slate-800">Kepala SPPG Tumpang Jeru</div>
+            <div className="h-16 flex items-end justify-center font-bold">(Rizky Iman Ramdhan, S.Pd)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      <style>{`
+        @media print {
+          @page { size: A4 portrait; margin: 10mm 12mm; }
+          body * { visibility: hidden; }
+          #print-expenses-area, #print-expenses-area * { visibility: visible; }
+          #print-expenses-area { position: absolute; left: 0; top: 0; width: 100%; }
+        }
+      `}</style>
+
+      <div className="no-print space-y-5">
+        {successNotice && (
+          <div role="status" className="flex items-center gap-2.5 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-lg text-xs font-medium">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{successNotice}</span>
+          </div>
+        )}
+
+        {/* HEADER */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-xl border border-slate-200">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Laporan Pengeluaran</h1>
+            <p className="text-xs text-slate-600 mt-0.5">
+              Uang belanja dan barang yang keluar dari gudang, per hari, minggu, atau bulan.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {onNavigate && can('RECEIVE_GOODS') && (
+              <button
+                type="button"
+                onClick={() => onNavigate('receiving')}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+              >
+                <Plus className="w-4 h-4" />
+                Catat Belanja
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-slate-500" />
+              Ekspor Excel
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsPrintPreviewOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+            >
+              <Printer className="w-4 h-4 text-slate-500" />
+              Cetak Laporan
+            </button>
+          </div>
+        </div>
+
+        {/* PERIODE */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div role="tablist" aria-label="Jenis periode" className="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-lg text-xs self-start">
+              {periodButton('DAILY', 'Harian')}
+              {periodButton('WEEKLY', 'Mingguan')}
+              {periodButton('MONTHLY', 'Bulanan')}
+              {periodButton('CUSTOM', 'Pilih tanggal')}
             </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {periodType === 'DAILY' && (
+                <label className="flex items-center gap-2">
+                  <span className="text-slate-600 font-medium">Tanggal</span>
+                  <input type="date" value={selectedDailyDate} onChange={e => setSelectedDailyDate(e.target.value)} className={dateInputClass} />
+                </label>
+              )}
+              {periodType === 'MONTHLY' && (
+                <label className="flex items-center gap-2">
+                  <span className="text-slate-600 font-medium">Bulan</span>
+                  <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className={dateInputClass} />
+                </label>
+              )}
+              {(periodType === 'WEEKLY' || periodType === 'CUSTOM') && (
+                <>
+                  <label className="flex items-center gap-2">
+                    <span className="text-slate-600 font-medium">Dari</span>
+                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className={dateInputClass} />
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="text-slate-600 font-medium">Sampai</span>
+                    <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className={dateInputClass} />
+                  </label>
+                </>
+              )}
+              {periodType === 'WEEKLY' && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => { setStartDate(shiftDays(today, -6)); setEndDate(today); }}
+                    className="px-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-medium text-slate-700 cursor-pointer min-h-[44px] sm:min-h-[34px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  >
+                    7 hari terakhir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setStartDate(shiftDays(startDate, -7)); setEndDate(shiftDays(endDate, -7)); }}
+                    className="px-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-medium text-slate-700 cursor-pointer min-h-[44px] sm:min-h-[34px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  >
+                    Mundur seminggu
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+          {rangeInvalid && (
+            <p className="text-xs text-rose-700 font-medium">Tanggal awal harus sebelum atau sama dengan tanggal akhir.</p>
           )}
+        </div>
+
+        {/* RINGKASAN */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="p-4 rounded-xl bg-white border border-slate-200 sm:col-span-2 lg:col-span-1">
+            <div className="text-xs font-medium text-slate-600">Total belanja · {range.label}</div>
+            <div className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">{formatRp(totals.belanja)}</div>
+            <div className="text-xs text-slate-600 mt-1">
+              {totals.belanjaCount} belanja · {totals.pengambilanCount} pengambilan · {totals.dapurCount} pemakaian dapur
+            </div>
+          </div>
+          {CATEGORIES.map(cat => (
+            <div key={cat} className="p-4 rounded-xl bg-white border border-slate-200">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-700">{cat}</span>
+                <span className="text-[11px] font-mono text-slate-600">
+                  {totals.belanja > 0 ? Math.round((totals.byCategory[cat] / totals.belanja) * 100) : 0}%
+                </span>
+              </div>
+              <div className="text-lg font-bold text-slate-900 mt-1 tabular-nums">{formatRp(totals.byCategory[cat])}</div>
+              <div className="text-xs text-slate-600 mt-0.5">{categoryItems[cat].length} jenis barang</div>
+            </div>
+          ))}
+        </div>
+
+        {(totals.pengambilanCount > 0 || unreadableDateCount > 0) && (
+          <div className="text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 space-y-1">
+            {totals.pengambilanCount > 0 && (
+              <p>
+                {totals.pengambilanCount} catatan belum ada harganya, jadi tidak ikut dijumlahkan ke total belanja.
+              </p>
+            )}
+            {unreadableDateCount > 0 && (
+              <p>
+                {unreadableDateCount} catatan lama tanggalnya tidak terbaca, sehingga tidak masuk periode mana pun.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* DAFTAR */}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="p-3.5 border-b border-slate-200 space-y-3">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div role="tablist" aria-label="Tampilan" className="flex gap-1 p-1 bg-slate-100 rounded-lg text-xs self-start">
+                {([
+                  { id: 'SUMMARY', label: 'Rekap per barang' },
+                  { id: 'TRANSACTIONS', label: `Semua catatan (${filteredExpenses.length})` },
+                ] as const).map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeView === tab.id}
+                    onClick={() => setActiveView(tab.id)}
+                    className={`px-3 rounded-md whitespace-nowrap cursor-pointer min-h-[44px] sm:min-h-[32px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+                      activeView === tab.id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              <div className="relative w-full lg:w-64">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+                <input
+                  type="search"
+                  aria-label="Cari catatan"
+                  placeholder="Cari barang, relawan, petugas"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-2 text-xs border border-slate-300 rounded-lg text-slate-800 min-h-[44px] sm:min-h-[34px] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              <button type="button" aria-pressed={categoryFilter === 'ALL'} onClick={() => setCategoryFilter('ALL')} className={chipClass(categoryFilter === 'ALL')}>
+                Semua kategori <span className="font-mono text-[11px] opacity-75">{categoryCounts.ALL}</span>
+              </button>
+              {CATEGORIES.map(cat => (
+                <button key={cat} type="button" aria-pressed={categoryFilter === cat} onClick={() => setCategoryFilter(cat)} className={chipClass(categoryFilter === cat)}>
+                  {cat} <span className="font-mono text-[11px] opacity-75">{categoryCounts[cat] || 0}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              <button type="button" aria-pressed={kindFilter === 'ALL'} onClick={() => setKindFilter('ALL')} className={chipClass(kindFilter === 'ALL')}>
+                Semua jenis <span className="font-mono text-[11px] opacity-75">{kindCounts.ALL}</span>
+              </button>
+              {(['BELANJA', 'PENGAMBILAN', 'DAPUR'] as ExpenseKind[]).map(kind => (
+                <button key={kind} type="button" aria-pressed={kindFilter === kind} onClick={() => setKindFilter(kind)} className={chipClass(kindFilter === kind)}>
+                  {KIND_LABEL[kind]} <span className="font-mono text-[11px] opacity-75">{kindCounts[kind]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filteredExpenses.length === 0 ? (
+            <div className="p-10 text-center text-sm text-slate-600">
+              {periodExpenses.length === 0
+                ? `Belum ada pengeluaran tercatat pada ${range.label}.`
+                : 'Tidak ada catatan yang cocok dengan filter atau pencarian ini.'}
+            </div>
+          ) : activeView === 'SUMMARY' ? (
+            <div className="divide-y divide-slate-200">
+              {visibleCategories.map(cat => {
+                const rows = categoryItems[cat];
+                if (rows.length === 0) return null;
+                return (
+                  <section key={cat}>
+                    <div className="px-4 py-2.5 bg-slate-50 flex items-center justify-between gap-2">
+                      <h2 className="text-xs font-bold text-slate-800">{cat}</h2>
+                      <span className={`text-xs font-semibold text-slate-700 ${totals.byCategory[cat] > 0 ? 'font-mono' : ''}`}>
+                        {totals.byCategory[cat] > 0 ? formatRp(totals.byCategory[cat]) : 'Belum ada belanja'}
+                      </span>
+                    </div>
+                    {/* Desktop */}
+                    <table className="hidden md:table w-full table-fixed text-left text-xs">
+                      <thead>
+                        <tr className="text-slate-600 font-semibold border-b border-slate-200">
+                          <th className="py-2 px-4">Nama barang</th>
+                          <th className="py-2 px-4 text-right w-36">Jumlah</th>
+                          <th className="py-2 px-4 text-center w-28">Berapa kali</th>
+                          <th className="py-2 px-4 text-right w-40">Total belanja</th>
+                          <th className="py-2 px-4 w-48">Porsi kategori</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {rows.map(item => {
+                          const pct = totals.byCategory[cat] > 0 ? Math.round((item.totalNominal / totals.byCategory[cat]) * 100) : 0;
+                          return (
+                            <tr key={item.key} className="hover:bg-slate-50">
+                              <td className="py-2.5 px-4 font-semibold text-slate-900">{item.itemName}</td>
+                              <td className="py-2.5 px-4 text-right text-slate-800 whitespace-nowrap">
+                                {item.totalQty.toLocaleString('id-ID')} {item.unit}
+                              </td>
+                              <td className="py-2.5 px-4 text-center text-slate-700">{item.count}</td>
+                              <td className="py-2.5 px-4 text-right font-mono font-semibold text-slate-900 whitespace-nowrap">
+                                {item.totalNominal > 0 ? formatRp(item.totalNominal) : <span className="text-slate-500 font-sans font-normal">-</span>}
+                              </td>
+                              <td className="py-2.5 px-4">
+                                {item.totalNominal > 0 ? (
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                      <div className="h-1.5 rounded-full bg-emerald-600" style={{ width: `${pct}%` }} />
+                                    </div>
+                                    <span className="text-[11px] font-mono text-slate-700 w-8 text-right">{pct}%</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-500">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {/* Mobile */}
+                    <ul className="md:hidden divide-y divide-slate-100">
+                      {rows.map(item => (
+                        <li key={item.key} className="px-4 py-3 flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-slate-900">{item.itemName}</div>
+                            <div className="text-xs text-slate-600 mt-0.5">
+                              {item.totalQty.toLocaleString('id-ID')} {item.unit} · {item.count} kali
+                            </div>
+                          </div>
+                          <div className="text-sm font-mono font-semibold text-slate-900 shrink-0">
+                            {item.totalNominal > 0 ? formatRp(item.totalNominal) : '-'}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                );
+              })}
+            </div>
+          ) : (
+            <>
+              {/* Desktop */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
+                      <th className="py-2.5 px-3">Tanggal</th>
+                      <th className="py-2.5 px-3">Jenis</th>
+                      <th className="py-2.5 px-3">Barang</th>
+                      <th className="py-2.5 px-3 text-right">Jumlah</th>
+                      <th className="py-2.5 px-3 text-right">Total</th>
+                      <th className="py-2.5 px-3">Diambil oleh / tujuan</th>
+                      <th className="py-2.5 px-3">Dicatat oleh</th>
+                      <th className="py-2.5 px-3 w-12"><span className="sr-only">Aksi</span></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredExpenses.map(item => (
+                      <tr key={item.id} className="hover:bg-slate-50 align-top">
+                        <td className="py-2.5 px-3 text-slate-800 whitespace-nowrap">
+                          <div>{item.parsedDate ? formatDateShort(item.parsedDate) : item.rawDate}</div>
+                          {item.time && <div className="text-[11px] text-slate-600 font-mono">{item.time}</div>}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-semibold border whitespace-nowrap ${KIND_BADGE[item.kind]}`}>
+                            {KIND_LABEL[item.kind]}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="font-semibold text-slate-900">{item.itemName}</div>
+                          <div className="text-[11px] text-slate-600">{item.category}</div>
+                          {item.notes && (
+                            <div className="text-[11px] text-slate-600 max-w-xs truncate" title={item.notes}>{item.notes}</div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-slate-800 whitespace-nowrap">{item.quantityLabel}</td>
+                        <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap">
+                          {item.nominal ? (
+                            <>
+                              <div className="font-semibold text-slate-900">{formatRp(item.nominal)}</div>
+                              {item.unitPrice && <div className="text-[11px] text-slate-600">@ {formatRp(item.unitPrice)}</div>}
+                            </>
+                          ) : (
+                            <span className="text-slate-500 font-sans">-</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-700">{item.takenBy || '-'}</td>
+                        <td className="py-2.5 px-3 text-slate-700">{item.recordedBy || '-'}</td>
+                        <td className="py-2.5 px-3 text-center">
+                          {item.kind !== 'DAPUR' && can('RECEIVE_GOODS') && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteManual(item.id, item.itemName)}
+                              aria-label={`Hapus catatan ${item.itemName}`}
+                              title="Hapus catatan"
+                              className="inline-flex items-center justify-center w-8 h-8 text-slate-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* Mobile */}
+              <ul className="md:hidden divide-y divide-slate-100">
+                {filteredExpenses.map(item => (
+                  <li key={item.id} className="px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-semibold border ${KIND_BADGE[item.kind]}`}>
+                            {KIND_LABEL[item.kind]}
+                          </span>
+                          <span className="text-xs text-slate-600">
+                            {item.parsedDate ? formatDateShort(item.parsedDate) : item.rawDate}
+                            {item.time && ` · ${item.time}`}
+                          </span>
+                        </div>
+                        <div className="text-sm font-semibold text-slate-900 mt-1">{item.itemName}</div>
+                        <div className="text-xs text-slate-600 mt-0.5">
+                          {item.quantityLabel}
+                          {item.takenBy && ` · ${item.takenBy}`}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-sm font-mono font-semibold text-slate-900">{item.nominal ? formatRp(item.nominal) : '-'}</div>
+                        {item.kind !== 'DAPUR' && can('RECEIVE_GOODS') && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteManual(item.id, item.itemName)}
+                            aria-label={`Hapus catatan ${item.itemName}`}
+                            className="mt-1 inline-flex items-center justify-center w-11 h-11 text-slate-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      </div>
+
+      {isPrintPreviewOpen && (
+        <div
+          className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="expenses-print-title"
+        >
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="px-4 sm:px-6 py-3 border-b border-slate-200 flex items-center justify-between gap-3 bg-slate-50 shrink-0">
+              <div className="min-w-0">
+                <h3 id="expenses-print-title" className="text-sm font-bold text-slate-900">Pratinjau cetak</h3>
+                <p className="text-xs text-slate-600 truncate">Mengikuti periode dan filter yang sedang dipilih.</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                >
+                  <Printer className="w-4 h-4" />
+                  Cetak
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPrintPreviewOpen(false)}
+                  aria-label="Tutup pratinjau"
+                  className="inline-flex items-center justify-center w-11 h-11 sm:w-9 sm:h-9 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-200/60 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="p-3 sm:p-6 overflow-auto bg-slate-100 flex-1">
+              <div className="bg-white p-5 sm:p-8 rounded-lg border border-slate-200 min-w-[640px]">
+                {renderPrintDocument()}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* TAMPILAN 3 / DOKUMEN CETAK: LEMBAR LAPORAN RESMI SPPG BERDASARKAN FILTER */}
-      {/* ========================================================================= */}
-      <div
-        id="print-expenses-area"
-        className={`${
-          activeSubTab === 'PRINT_VIEW' ? 'block' : 'hidden print:block'
-        } bg-white p-6 sm:p-10 rounded-2xl border border-slate-300 shadow-sm max-w-4xl mx-auto font-sans text-slate-900 print:p-0 print:border-none print:shadow-none`}
-      >
-        {/* Actions bar visible only on screen in PRINT_VIEW */}
-        <div className="no-print mb-6 pb-4 border-b border-slate-200 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-            <FileText className="w-4 h-4 text-emerald-600" />
-            <span>Pratinjau Format Cetak Dokumen Resmi SPPG</span>
-          </div>
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-          >
-            <Printer className="w-4 h-4" />
-            <span>Cetak / Simpan PDF Sekarang</span>
-          </button>
-        </div>
-
-        {/* KOP SURAT RESMI STANDAR SPPG (PERSIS SEPERTI CETAK FORM) */}
-        <div className="border-b-2 border-slate-900 pb-4 mb-6 flex items-start justify-between">
-          <div className="flex items-center gap-3.5">
-            <SppgLogo size="lg" variant="color" showText={false} />
-            <div>
-              <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
-                Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
-              </h1>
-              <p className="text-xs text-slate-600 font-medium">
-                SPPG MLG TUMPANG JERU - Unit Pelayanan Dapur Gizi
-              </p>
-              <p className="text-[10px] text-slate-500 mt-0.5">
-                Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
-              </p>
-            </div>
-          </div>
-
-          <div className="text-right text-[11px] text-slate-500 space-y-0.5">
-            <div className="font-bold text-slate-800 text-xs">
-              BERITA ACARA REKAP PENGELUARAN
-            </div>
-            <div>
-              Tanggal Cetak: <span className="font-semibold text-slate-700">{printDate}</span>
-            </div>
-            <div>
-              Operator: <span className="font-semibold text-slate-700">{currentUser.name}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* JUDUL DOKUMEN & IDENTITAS FILTER WAKTU */}
-        <div className="text-center my-5">
-          <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-            LAPORAN REKAPITULASI BIAYA & PENGELUARAN LOGISTIK
-          </h2>
-          <p className="text-xs text-slate-600 font-medium mt-0.5">
-            Program Makanan Bergizi Gratis (MBG) • Satuan Pelayanan Pemenuhan Gizi
-          </p>
-          <div className="inline-block mt-2 px-3 py-1 bg-slate-100 rounded-lg text-xs font-semibold text-slate-700 border border-slate-200">
-            Filter Periode: {effectiveDateRange.label}
-          </div>
-        </div>
-
-        {/* BAGIAN 1: REKAPITULASI PER KATEGORI (RINGKASAN TOTAL QTY & BIAYA) */}
-        <div className="mb-6">
-          <div className="font-bold text-xs text-slate-800 mb-2 flex items-center justify-between border-b border-slate-200 pb-1">
-            <span>A. Rekapitulasi Berdasarkan Kategori Bahan</span>
-            <span className="text-[11px] font-normal text-slate-500">Akumulasi Qty & Nominal Biaya</span>
-          </div>
-
-          <table className="w-full text-left text-xs border border-slate-300 border-collapse">
-            <thead>
-              <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-semibold">
-                <th className="py-2 px-3 border-r border-slate-300 text-center w-10">No</th>
-                <th className="py-2 px-3 border-r border-slate-300">Kategori Barang</th>
-                <th className="py-2 px-3 border-r border-slate-300 text-center w-28">Jumlah Ragam</th>
-                <th className="py-2 px-3 border-r border-slate-300 text-right w-36">Total Akumulasi Qty</th>
-                <th className="py-2 px-3 border-r border-slate-300 text-right w-44">Total Biaya (Rp)</th>
-                <th className="py-2 px-3 text-right w-24">Porsi (%)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {(['Bahan Basah', 'Bahan Kering', 'Bahan Peralatan'] as MainItemCategory[]).map((cat, idx) => {
-                const catData = categoryBreakdowns[cat];
-                const totalQty = catData.items.reduce((s, it) => s + it.totalQty, 0);
-                const pct = grandTotalNominal > 0 ? Math.round((catData.totalNominal / grandTotalNominal) * 100) : 0;
-
-                return (
-                  <tr key={cat} className="hover:bg-slate-50">
-                    <td className="py-2 px-3 border-r border-slate-300 text-center text-slate-500">{idx + 1}</td>
-                    <td className="py-2 px-3 border-r border-slate-300 font-semibold text-slate-800">{cat}</td>
-                    <td className="py-2 px-3 border-r border-slate-300 text-center">{catData.items.length} jenis item</td>
-                    <td className="py-2 px-3 border-r border-slate-300 text-right font-medium">{totalQty.toLocaleString('id-ID')}</td>
-                    <td className="py-2 px-3 border-r border-slate-300 text-right font-bold text-slate-900">
-                      Rp {catData.totalNominal.toLocaleString('id-ID')}
-                    </td>
-                    <td className="py-2 px-3 text-right font-semibold">{pct}%</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-100 font-bold border-t-2 border-slate-400 text-slate-900">
-                <td colSpan={2} className="py-2.5 px-3 border-r border-slate-300 text-right">
-                  TOTAL KESELURUHAN PENGELUARAN:
-                </td>
-                <td className="py-2.5 px-3 border-r border-slate-300 text-center">
-                  {categoryBreakdowns['Bahan Basah'].items.length +
-                    categoryBreakdowns['Bahan Kering'].items.length +
-                    categoryBreakdowns['Bahan Peralatan'].items.length} jenis
-                </td>
-                <td className="py-2.5 px-3 border-r border-slate-300 text-right">
-                  {(
-                    categoryBreakdowns['Bahan Basah'].items.reduce((s, it) => s + it.totalQty, 0) +
-                    categoryBreakdowns['Bahan Kering'].items.reduce((s, it) => s + it.totalQty, 0) +
-                    categoryBreakdowns['Bahan Peralatan'].items.reduce((s, it) => s + it.totalQty, 0)
-                  ).toLocaleString('id-ID')}
-                </td>
-                <td className="py-2.5 px-3 border-r border-slate-300 text-right text-emerald-800 text-sm">
-                  Rp {grandTotalNominal.toLocaleString('id-ID')}
-                </td>
-                <td className="py-2.5 px-3 text-right">100%</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        {/* BAGIAN 2: RINCIAN PENGELUARAN TERPISAH PER KATEGORI */}
-        <div className="mb-6 space-y-6">
-          <div className="font-bold text-xs text-slate-800 pb-1 border-b border-slate-200">
-            B. Rincian Item Barang Keluar per Kategori
-          </div>
-
-          {(['Bahan Basah', 'Bahan Kering', 'Bahan Peralatan'] as MainItemCategory[]).map((cat, catIdx) => {
-            const catData = categoryBreakdowns[cat];
-            const totalQty = catData.items.reduce((s, it) => s + it.totalQty, 0);
-
-            return (
-              <div key={cat} className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs font-bold bg-slate-100 px-3 py-1.5 rounded border border-slate-200">
-                  <span className="text-slate-800">
-                    {catIdx + 1}. Kategori {cat} ({catData.items.length} jenis barang)
-                  </span>
-                  <span className="text-slate-900 font-mono">
-                    Subtotal: Rp {catData.totalNominal.toLocaleString('id-ID')}
-                  </span>
-                </div>
-
-                {catData.items.length === 0 ? (
-                  <div className="p-3 text-center text-slate-400 text-[11px] italic border border-dashed border-slate-200 rounded">
-                    Tidak ada pengeluaran {cat} yang tercatat pada periode ini.
-                  </div>
-                ) : (
-                  <table className="w-full text-left text-[11px] border border-slate-300 border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-300 text-slate-600 font-semibold">
-                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-8">No</th>
-                        <th className="py-1.5 px-2 border-r border-slate-300">Nama Barang</th>
-                        <th className="py-1.5 px-2 border-r border-slate-300 text-center w-16">Satuan</th>
-                        <th className="py-1.5 px-2 border-r border-slate-300 text-right w-24">Total Qty</th>
-                        <th className="py-1.5 px-2 border-r border-slate-300 text-right w-28">Harga Satuan</th>
-                        <th className="py-1.5 px-2 border-r border-slate-300 text-right w-32">Total Biaya (Rp)</th>
-                        <th className="py-1.5 px-2 text-right w-16">% Kat.</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {catData.items.map((it, itIdx) => (
-                        <tr key={it.itemName} className="hover:bg-slate-50/60">
-                          <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-400">{itIdx + 1}</td>
-                          <td className="py-1.5 px-2 border-r border-slate-300 font-medium text-slate-900">{it.itemName}</td>
-                          <td className="py-1.5 px-2 border-r border-slate-300 text-center text-slate-600">{it.unit}</td>
-                          <td className="py-1.5 px-2 border-r border-slate-300 text-right font-semibold text-slate-800">
-                            {it.totalQty.toLocaleString('id-ID')}
-                          </td>
-                          <td className="py-1.5 px-2 border-r border-slate-300 text-right font-mono text-slate-600">
-                            Rp {it.unitPrice.toLocaleString('id-ID')}
-                          </td>
-                          <td className="py-1.5 px-2 border-r border-slate-300 text-right font-mono font-bold text-slate-900">
-                            Rp {it.totalNominal.toLocaleString('id-ID')}
-                          </td>
-                          <td className="py-1.5 px-2 text-right text-slate-600">{it.percentageOfCategory}%</td>
-                        </tr>
-                      ))}
-                      <tr className="bg-slate-50 font-bold border-t border-slate-300 text-slate-800">
-                        <td colSpan={3} className="py-1.5 px-2 border-r border-slate-300 text-right">
-                          Subtotal {cat}:
-                        </td>
-                        <td className="py-1.5 px-2 border-r border-slate-300 text-right font-bold">
-                          {totalQty.toLocaleString('id-ID')}
-                        </td>
-                        <td className="py-1.5 px-2 border-r border-slate-300"></td>
-                        <td className="py-1.5 px-2 border-r border-slate-300 text-right font-bold text-slate-900">
-                          Rp {catData.totalNominal.toLocaleString('id-ID')}
-                        </td>
-                        <td className="py-1.5 px-2 text-right">100%</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* LEMBAR PENGESAHAN DOKUMEN / TANDA TANGAN */}
-        <div className="pt-6 border-t border-slate-300 text-xs">
-          <div className="grid grid-cols-3 gap-6 text-center">
-            <div>
-              <div className="text-slate-500">Dibuat Oleh,</div>
-              <div className="font-semibold text-slate-800">Petugas Gudang / Logistik</div>
-              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
-                ({currentUser.name})
-              </div>
-            </div>
-
-            <div>
-              <div className="text-slate-500">Diverifikasi Oleh,</div>
-              <div className="font-semibold text-slate-800">Akuntan SPPG</div>
-              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
-                (Dewi Lestari, S.Ak)
-              </div>
-            </div>
-
-            <div>
-              <div className="text-slate-500">Mengetahui & Menyetujui,</div>
-              <div className="font-semibold text-slate-800">Kepala SPPG MLG TUMPANG JERU</div>
-              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
-                (Rizky Iman Ramdhan, S.Pd)
-              </div>
-            </div>
-          </div>
-        </div>
+      <div id="print-expenses-area" className="hidden print:block">
+        {renderPrintDocument()}
       </div>
     </div>
   );

@@ -317,7 +317,7 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
         {/* Custom Staff & Category Filters */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           {/* Custom Staff Selector */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
             <span className="text-xs font-medium text-slate-600 flex items-center gap-1">
               <Users className="w-3.5 h-3.5 text-slate-500" />
               Staf:
