@@ -244,11 +244,14 @@ export type AuditLogEntry = AuditLog;
 export interface DailyFlowRecord {
   itemId: string;
   itemName: string;
+  itemType: ItemType;
   category: FoodCategory;
   unit: BaseUnit;
+  location: string;
   openingBalance: number;
   receivedToday: number;
-  consumedToday: number;
+  consumedToday: number; // net pemakaian (sudah dikurangi koreksi)
+  adjustedToday: number; // selisih opname / penyesuaian, bertanda
   closingBalance: number;
 }
 

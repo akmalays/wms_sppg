@@ -2456,20 +2456,48 @@ class WarehouseDatabase {
     referenceDoc?: string
   ): InventoryTransaction {
     if (quantity <= 0) {
-      throw new Error('Jumlah pengeluaran bahan harus lebih dari 0.');
+      throw new Error('Jumlah pemakaian bahan harus lebih dari 0.');
     }
+    return this.postConsumption(itemId, -quantity, location, user, notes, referenceDoc);
+  }
+
+  // Koreksi pemakaian yang tercatat berlebih: bahan dikembalikan ke stok.
+  // Dicatat sebagai ISSUE_CONSUMPTION bernilai positif agar net pemakaian harian ikut turun.
+  public correctConsumption(
+    itemId: string,
+    quantity: number,
+    location: string,
+    user: User,
+    notes: string,
+    referenceDoc?: string
+  ): InventoryTransaction {
+    if (quantity <= 0) {
+      throw new Error('Jumlah koreksi harus lebih dari 0.');
+    }
+    return this.postConsumption(itemId, quantity, location, user, notes, referenceDoc);
+  }
+
+  private postConsumption(
+    itemId: string,
+    signedQty: number,
+    location: string,
+    user: User,
+    notes: string,
+    referenceDoc?: string
+  ): InventoryTransaction {
     const itemIndex = this.items.findIndex(i => i.id === itemId);
     if (itemIndex < 0) {
-      throw new Error('Item tidak ditemukan.');
+      throw new Error('Barang tidak ditemukan.');
     }
     const item = this.items[itemIndex];
+    const isCorrection = signedQty > 0;
+    const quantity = Math.abs(signedQty);
 
-    if (item.currentStock < quantity) {
-      // For real warehouse operations, alert if stock goes negative
-      console.warn(`Pengeluaran melebihi stok tercatat: ${quantity} > ${item.currentStock}`);
+    if (!isCorrection && item.currentStock < quantity) {
+      console.warn(`Pemakaian melebihi stok tercatat: ${quantity} > ${item.currentStock}`);
     }
 
-    const newStock = Number((item.currentStock - quantity).toFixed(2));
+    const newStock = Number((item.currentStock + signedQty).toFixed(2));
     const now = new Date();
     const timestampStr = localTimestamp(now);
     const ref = referenceDoc || `ISS-${localDateIso(now).replace(/-/g, '')}-${Math.floor(Math.random() * 100)}`;
@@ -2488,14 +2516,14 @@ class WarehouseDatabase {
       itemType: item.itemType,
       category: item.category,
       location: location || item.location,
-      quantity: -quantity,
+      quantity: signedQty,
       unit: item.baseUnit,
       transactionType: 'ISSUE_CONSUMPTION',
       referenceDocument: ref,
       userId: user.id,
       userName: user.name,
       userRole: user.role,
-      notes: notes || 'Pengeluaran untuk kebutuhan olahan dapur SPPG',
+      notes: notes || (isCorrection ? 'Koreksi pemakaian dapur' : 'Pemakaian dapur'),
       balanceAfter: newStock,
     };
 
@@ -2520,53 +2548,52 @@ class WarehouseDatabase {
       'STOCK_CONSUMED',
       'INVENTORY',
       item.id,
-      `Pengeluaran ${quantity} ${item.baseUnit} ${item.name} (${ref}): ${notes}`
+      `${isCorrection ? 'Koreksi pemakaian' : 'Pemakaian'} ${quantity} ${item.baseUnit} ${item.name} (${ref}): ${notes}`
     );
 
     return tx;
   }
 
-  // --- DAILY FLOW SUMMARY & BATCH CONSUMPTION ---
-  public getDailyFlowData(targetDate?: string): DailyFlowRecord[] {
+  // --- DAILY FLOW SUMMARY ---
+  // scope 'DAILY_FLOW' hanya bahan segar (dipakai ringkasan dashboard); 'ALL_FOOD' termasuk bahan kering.
+  public getDailyFlowData(targetDate?: string, scope: 'DAILY_FLOW' | 'ALL_FOOD' = 'DAILY_FLOW'): DailyFlowRecord[] {
     const date = targetDate || localDateIso();
-    // Daily flow applies to FOOD_DAILY_FLOW items: Protein, Sayuran, Buah
-    const dailyItems = this.items.filter(i => i.itemType === 'FOOD_DAILY_FLOW');
+    const flowItems = this.items.filter(i =>
+      scope === 'ALL_FOOD'
+        ? i.itemType === 'FOOD_DAILY_FLOW' || i.itemType === 'FOOD_CARRYING_STOCK'
+        : i.itemType === 'FOOD_DAILY_FLOW'
+    );
 
-    return dailyItems.map(item => {
-      // Find today's receiving for this item
-      const todayReceivingTx = this.transactions.filter(
-        tx =>
-          tx.itemId === item.id &&
-          tx.transactionType === 'RECEIVING' &&
-          tx.timestamp.startsWith(date)
-      );
-      const receivedToday = todayReceivingTx.reduce((sum, tx) => sum + tx.quantity, 0);
+    return flowItems.map(item => {
+      const sumOnDate = (types: string[]) =>
+        this.transactions
+          .filter(tx => tx.itemId === item.id && types.includes(tx.transactionType) && tx.timestamp.startsWith(date))
+          .reduce((sum, tx) => sum + tx.quantity, 0);
 
-      // Find today's consumption for this item
-      const todayConsumptionTx = this.transactions.filter(
-        tx =>
-          tx.itemId === item.id &&
-          tx.transactionType === 'ISSUE_CONSUMPTION' &&
-          tx.timestamp.startsWith(date)
-      );
-      const consumedToday = Math.abs(todayConsumptionTx.reduce((sum, tx) => sum + tx.quantity, 0));
+      const receivedToday = Number(sumOnDate(['RECEIVING']).toFixed(2));
+      // Pemakaian bernilai negatif, koreksi positif; net pemakaian = kebalikan jumlahnya.
+      const consumedToday = Number((-sumOnDate(['ISSUE_CONSUMPTION'])).toFixed(2));
+      const adjustedToday = Number(sumOnDate(['ADJUSTMENT', 'STOCK_OPNAME_ADJUSTMENT']).toFixed(2));
 
-      // Formula: Opening balance + Today's receiving - Today's consumption = Closing balance
-      // Closing balance for a past date = current stock minus every movement recorded after that date.
+      // Saldo akhir tanggal lampau = stok sekarang dikurangi semua pergerakan setelah tanggal itu.
       const netAfterDate = this.transactions
         .filter(tx => tx.itemId === item.id && tx.timestamp.slice(0, 10) > date)
         .reduce((sum, tx) => sum + tx.quantity, 0);
       const closingBalance = Number((item.currentStock - netAfterDate).toFixed(2));
-      const openingBalance = Math.max(0, Number((closingBalance - receivedToday + consumedToday).toFixed(2)));
+      // Tidak dipotong ke 0: saldo awal negatif menandakan ada pencatatan yang perlu dicek.
+      const openingBalance = Number((closingBalance - receivedToday + consumedToday - adjustedToday).toFixed(2));
 
       return {
         itemId: item.id,
         itemName: item.name,
+        itemType: item.itemType,
         category: item.category as any,
         unit: item.baseUnit,
+        location: item.location,
         openingBalance,
         receivedToday,
         consumedToday,
+        adjustedToday,
         closingBalance,
       };
     });

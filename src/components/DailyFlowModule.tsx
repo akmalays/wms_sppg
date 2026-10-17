@@ -1,245 +1,391 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { DailyFlowRecord } from '../types/warehouse';
 import { localDateIso } from '../utils/localDate';
-import { Utensils, CheckCircle2, ArrowRight, Zap, RefreshCw, Calendar, X } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Search, X } from 'lucide-react';
 
-interface DailyFlowModuleProps {
-  onRefreshData?: () => void;
-}
+type Scope = 'ALL' | 'FOOD_DAILY_FLOW' | 'FOOD_CARRYING_STOCK';
 
-export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData }) => {
+const SCOPE_TABS: { id: Scope; label: string }[] = [
+  { id: 'ALL', label: 'Semua' },
+  { id: 'FOOD_DAILY_FLOW', label: 'Bahan segar' },
+  { id: 'FOOD_CARRYING_STOCK', label: 'Bahan kering' },
+];
+
+const KITCHEN_LOCATION = 'Dapur SPPG Tumpang Jeru';
+
+const INPUT_CLS =
+  'w-full px-2.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600';
+const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
+
+const fmt = (n: number) => n.toLocaleString('id-ID', { maximumFractionDigits: 2 });
+
+// Angka nol ditampilkan sebagai tanda pisah agar baris yang bergerak mudah terlihat.
+const Num: React.FC<{ value: number; sign?: boolean; className?: string }> = ({ value, sign, className = '' }) =>
+  value === 0 ? (
+    <span className="text-slate-500">–</span>
+  ) : (
+    <span className={className}>
+      {sign && value > 0 ? '+' : ''}
+      {fmt(value)}
+    </span>
+  );
+
+const formatLongDate = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+const parseQty = (q: number | string): number => {
+  if (typeof q === 'number') return q;
+  const match = String(q).replace(',', '.').match(/[\d.]+/);
+  return match ? parseFloat(match[0]) : 0;
+};
+
+export const DailyFlowModule: React.FC = () => {
   const { currentUser, can } = useAuth();
   const today = localDateIso();
   const [selectedDate, setSelectedDate] = useState<string>(today);
-  const [dailyData, setDailyData] = useState<DailyFlowRecord[]>(() => warehouseDb.getDailyFlowData(today));
-  // Consumption is always stamped with the current time, so posting is only allowed for today.
+  const [dataVersion, setDataVersion] = useState(0);
+  const [scope, setScope] = useState<Scope>('ALL');
+  const [query, setQuery] = useState('');
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  // Isian modal: total pemakaian hari ini per barang (string agar kolom bisa kosong).
+  const [inputs, setInputs] = useState<Record<string, string>>({});
+  const [menuFilled, setMenuFilled] = useState(0);
+  const firstInputRef = useRef<HTMLInputElement>(null);
+
+  // Pemakaian selalu tercatat dengan jam sekarang, jadi pencatatan hanya untuk hari ini.
   const isToday = selectedDate === today;
-  const [successMessage, setSuccessMessage] = useState('');
-  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const canRecord = can('RECORD_CONSUMPTION') && isToday;
 
-  // Batch consumption input state: map itemId -> consumedQty
-  const [batchInputs, setBatchInputs] = useState<Record<string, number>>({});
+  const rows = useMemo(
+    () => warehouseDb.getDailyFlowData(selectedDate, 'ALL_FOOD'),
+    [selectedDate, dataVersion]
+  );
 
-  const refreshData = () => {
-    const updated = warehouseDb.getDailyFlowData(selectedDate);
-    setDailyData(updated);
-    if (onRefreshData) onRefreshData();
-  };
+  // Muat ulang saat data berubah (penerimaan baru, sinkronisasi Supabase).
+  useEffect(() => {
+    const onSync = () => setDataVersion(v => v + 1);
+    window.addEventListener('sppg_storage_items_changed', onSync);
+    window.addEventListener('sppg_warehouse_sync', onSync);
+    return () => {
+      window.removeEventListener('sppg_storage_items_changed', onSync);
+      window.removeEventListener('sppg_warehouse_sync', onSync);
+    };
+  }, []);
 
   useEffect(() => {
-    setDailyData(warehouseDb.getDailyFlowData(selectedDate));
+    setFeedback(null);
   }, [selectedDate]);
 
-  const handleOpenBatch = () => {
-    const inputs: Record<string, number> = {};
-    dailyData.forEach(item => {
-      // Default suggested consumption to either available today or existing consumed
-      const available = item.openingBalance + item.receivedToday;
-      inputs[item.itemId] = item.consumedToday > 0 ? item.consumedToday : Math.min(available, item.receivedToday || available);
+  const visibleRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rows
+      .filter(r => scope === 'ALL' || r.itemType === scope)
+      .filter(r => !q || r.itemName.toLowerCase().includes(q) || r.location.toLowerCase().includes(q))
+      .sort((a, b) => {
+        // Bahan yang bergerak hari ini di atas, lalu urut nama.
+        const movedA = a.receivedToday !== 0 || a.consumedToday !== 0 || a.adjustedToday !== 0;
+        const movedB = b.receivedToday !== 0 || b.consumedToday !== 0 || b.adjustedToday !== 0;
+        if (movedA !== movedB) return movedA ? -1 : 1;
+        return a.itemName.localeCompare(b.itemName, 'id');
+      });
+  }, [rows, scope, query]);
+
+  const scopeCounts = useMemo(
+    () => ({
+      ALL: rows.length,
+      FOOD_DAILY_FLOW: rows.filter(r => r.itemType === 'FOOD_DAILY_FLOW').length,
+      FOOD_CARRYING_STOCK: rows.filter(r => r.itemType === 'FOOD_CARRYING_STOCK').length,
+    }),
+    [rows]
+  );
+
+  const usedCount = rows.filter(r => r.consumedToday > 0).length;
+  const hasAdjustments = rows.some(r => r.adjustedToday !== 0);
+
+  // Kebutuhan bahan dari menu hari ini, hanya untuk barang yang satuannya sama dengan satuan stok.
+  const menuSuggestions = useMemo(() => {
+    const result: Record<string, number> = {};
+    if (!isToday) return result;
+    const byName = new Map(rows.map(r => [r.itemName.toLowerCase(), r]));
+    const byId = new Map(rows.map(r => [r.itemId, r]));
+    warehouseDb
+      .getMenuOrders()
+      .filter(o => o.date === today && o.status !== 'CANCELLED')
+      .forEach(o =>
+        (o.keyIngredients || []).forEach(ing => {
+          const row = (ing.itemId && byId.get(ing.itemId)) || byName.get((ing.itemName || ing.name || '').toLowerCase());
+          if (!row || (ing.unit || '').toLowerCase() !== (row.unit || '').toLowerCase()) return;
+          const qty = parseQty(ing.quantity);
+          if (qty > 0) result[row.itemId] = (result[row.itemId] || 0) + qty;
+        })
+      );
+    return result;
+  }, [rows, today, isToday, dataVersion]);
+
+  const openModal = () => {
+    const initial: Record<string, string> = {};
+    rows.forEach(r => {
+      if (r.consumedToday > 0) initial[r.itemId] = String(r.consumedToday);
     });
-    setBatchInputs(inputs);
-    setIsBatchModalOpen(true);
+    setInputs(initial);
+    setMenuFilled(0);
+    setFeedback(null);
+    setIsModalOpen(true);
   };
 
-  const handlePostBatchConsumption = (e: React.FormEvent) => {
+  const closeModal = () => setIsModalOpen(false);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    firstInputRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeModal();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isModalOpen]);
+
+  // Hanya bahan yang tampil di modal yang diisi, supaya tidak ada isian tersembunyi.
+  const visibleSuggestionIds = visibleRows.map(r => r.itemId).filter(id => menuSuggestions[id] !== undefined);
+  const menuSuggestionCount = visibleSuggestionIds.length;
+
+  const fillFromMenu = () => {
+    const next = { ...inputs };
+    let filled = 0;
+    visibleSuggestionIds.forEach(id => {
+      if (!next[id]) {
+        next[id] = String(menuSuggestions[id]);
+        filled++;
+      }
+    });
+    setInputs(next);
+    setMenuFilled(filled);
+  };
+
+  // Selisih antara isian dan yang sudah tercatat: positif = pemakaian baru, negatif = koreksi.
+  const changes = useMemo(() => {
+    return rows
+      .map(r => {
+        const raw = inputs[r.itemId];
+        const target = raw === undefined || raw === '' ? r.consumedToday : Number(raw);
+        const available = r.closingBalance + r.consumedToday;
+        return {
+          row: r,
+          target,
+          delta: Number((target - r.consumedToday).toFixed(2)),
+          invalid: Number.isNaN(target) || target < 0,
+          overStock: target > available,
+          available,
+        };
+      })
+      .filter(c => c.delta !== 0 || c.invalid);
+  }, [rows, inputs]);
+
+  const blocking = changes.filter(c => c.invalid || c.overStock);
+  const newUsage = changes.filter(c => !c.invalid && c.delta > 0).length;
+  const corrections = changes.filter(c => !c.invalid && c.delta < 0).length;
+
+  const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (blocking.length > 0 || changes.length === 0) return;
+    const ref = `DAPUR-${today}`;
+    let used = 0;
+    let corrected = 0;
     try {
-      let count = 0;
-      for (const item of dailyData) {
-        const qty = batchInputs[item.itemId] || 0;
-        if (qty > 0 && qty !== item.consumedToday) {
-          const delta = qty - item.consumedToday;
-          if (delta > 0) {
-            warehouseDb.recordConsumption(
-              item.itemId,
-              delta,
-              'Dapur Pengolahan SPPG MLG TUMPANG JERU',
-              currentUser,
-              `Konsumsi batch menu gizi harian (${selectedDate})`,
-              `DAILY-PREP-${selectedDate}`
-            );
-            count++;
-          }
+      for (const c of changes) {
+        if (c.delta > 0) {
+          warehouseDb.recordConsumption(c.row.itemId, c.delta, KITCHEN_LOCATION, currentUser, 'Pemakaian dapur harian', ref);
+          used++;
+        } else {
+          warehouseDb.correctConsumption(c.row.itemId, -c.delta, KITCHEN_LOCATION, currentUser, 'Koreksi pemakaian dapur harian', ref);
+          corrected++;
         }
       }
-      setSuccessMessage(`Berhasil memperbarui data konsumsi dapur harian untuk ${count} bahan.`);
-      refreshData();
-      setIsBatchModalOpen(false);
+      const parts = [used > 0 && `${used} bahan dicatat`, corrected > 0 && `${corrected} bahan dikoreksi`].filter(Boolean);
+      setFeedback({ type: 'success', text: `Tersimpan: ${parts.join(', ')}.` });
+      setIsModalOpen(false);
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan konsumsi harian.');
+      const done = used + corrected;
+      setFeedback({
+        type: 'error',
+        text: `${err?.message || 'Gagal menyimpan pemakaian.'}${done > 0 ? ` ${done} bahan sebelumnya sudah tersimpan.` : ''}`,
+      });
+      setIsModalOpen(false);
     }
+    setDataVersion(v => v + 1);
   };
 
+  const modalRows = isModalOpen ? visibleRows : [];
+
   return (
-    <div className="space-y-6">
-      {/* Notifications */}
-      {successMessage && (
-        <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-medium">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>{successMessage}</span>
-        </div>
-      )}
-
+    <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Pemakaian Dapur Harian</h2>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800">
-              Protein • Sayur • Buah
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Manajemen bahan cepat pakai: Saldo Awal + Penerimaan Hari Ini - Pengeluaran Dapur = Saldo Akhir.
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Pemakaian Dapur</h1>
+          <p className="text-xs text-slate-600 mt-0.5">
+            Catat bahan yang dipakai masak. Saldo akhir = saldo awal + masuk − dipakai ± penyesuaian opname.
           </p>
-          {!isToday && (
-            <p className="text-xs text-amber-700 mt-1">
-              Menampilkan data tanggal lampau. Pencatatan pemakaian hanya bisa untuk hari ini.
-            </p>
-          )}
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700">
-            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+        <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+          <div>
+            <label htmlFor="flow-date" className="block text-[11px] font-medium text-slate-700 mb-1">
+              Tanggal
+            </label>
             <input
+              id="flow-date"
               type="date"
               value={selectedDate}
               max={today}
               onChange={e => setSelectedDate(e.target.value || today)}
-              className="focus:outline-none text-xs text-slate-800"
+              className={`${INPUT_CLS} sm:w-40`}
             />
           </div>
-
-          {can('RECORD_CONSUMPTION') && isToday && (
+          {can('RECORD_CONSUMPTION') && (
             <button
-              onClick={handleOpenBatch}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              type="button"
+              onClick={openModal}
+              disabled={!isToday || rows.length === 0}
+              className={`inline-flex items-center justify-center px-4 min-h-[44px] sm:min-h-[34px] rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer ${FOCUS}`}
             >
-              <Zap className="w-3.5 h-3.5" />
-              Catat Konsumsi Harian Cepat
+              Catat pemakaian hari ini
             </button>
           )}
         </div>
       </div>
 
-      {/* Formula Explainer Card */}
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 p-4 rounded-xl bg-slate-900 text-white shadow-xs">
-        <div className="p-3 bg-slate-800/80 rounded-lg border border-slate-700">
-          <span className="text-xs font-medium text-slate-400">1. Saldo Awal (Pagi)</span>
-          <div className="text-sm font-bold mt-1 text-slate-200">Sisa Kemarin</div>
-          <p className="text-[10px] text-slate-400 mt-0.5">Stok bawaan dari penutupan shift sebelumnya.</p>
-        </div>
+      {!isToday && (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Menampilkan {formatLongDate(selectedDate)}. Pemakaian hanya bisa dicatat untuk hari ini.
+        </p>
+      )}
 
-        <div className="flex items-center justify-center font-black text-emerald-400 text-lg sm:hidden">
-          +
+      {feedback && (
+        <div
+          role="status"
+          className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-xs ${
+            feedback.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              : 'bg-rose-50 border-rose-200 text-rose-900'
+          }`}
+        >
+          {feedback.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 shrink-0 mt-px" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
+          )}
+          <span className="flex-1">{feedback.text}</span>
+          <button
+            type="button"
+            onClick={() => setFeedback(null)}
+            aria-label="Tutup pesan"
+            className={`-m-1 p-1 rounded cursor-pointer ${FOCUS}`}
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
+      )}
 
-        <div className="p-3 bg-slate-800/80 rounded-lg border border-slate-700">
-          <span className="text-xs font-medium text-emerald-400">2. Penerimaan (+ Masuk)</span>
-          <div className="text-sm font-bold mt-1 text-emerald-300">Penerimaan Pagi</div>
-          <p className="text-[10px] text-slate-400 mt-0.5">Barang segar datang dari supplier hari ini.</p>
+      {/* Filter */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div role="tablist" aria-label="Jenis bahan" className="inline-flex p-1 rounded-lg bg-slate-200/70 text-xs self-start">
+          {SCOPE_TABS.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={scope === t.id}
+              onClick={() => setScope(t.id)}
+              className={`px-3 min-h-[44px] sm:min-h-[30px] rounded-md whitespace-nowrap cursor-pointer ${FOCUS} ${
+                scope === t.id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-700 hover:text-slate-900 font-medium'
+              }`}
+            >
+              {t.label} <span className="text-slate-500 font-normal">{scopeCounts[t.id]}</span>
+            </button>
+          ))}
         </div>
-
-        <div className="flex items-center justify-center font-black text-amber-400 text-lg sm:hidden">
-          -
-        </div>
-
-        <div className="p-3 bg-slate-800/80 rounded-lg border border-slate-700">
-          <span className="text-xs font-medium text-amber-400">3. Konsumsi Dapur (- Keluar)</span>
-          <div className="text-sm font-bold mt-1 text-amber-300">Dipakai Masak</div>
-          <p className="text-[10px] text-slate-400 mt-0.5">Bahan diolah tim dapur untuk porsi gizi anak.</p>
-        </div>
-
-        <div className="flex items-center justify-center font-black text-sky-400 text-lg sm:hidden">
-          =
-        </div>
-
-        <div className="p-3 bg-slate-800/80 rounded-lg border border-slate-700 sm:col-span-2">
-          <span className="text-xs font-medium text-sky-400">4. Saldo Akhir (Sisa Chiller)</span>
-          <div className="text-sm font-bold mt-1 text-sky-300">Menjadi Saldo Awal Esok</div>
-          <p className="text-[10px] text-slate-400 mt-0.5">Sisa bahan tersimpan di chiller/freezer.</p>
+        <div className="relative sm:w-64">
+          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="search"
+            aria-label="Cari bahan"
+            placeholder="Cari bahan atau lokasi"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            className={`${INPUT_CLS} pl-8`}
+          />
         </div>
       </div>
 
-      {/* Main Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+      {/* Tabel */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-slate-200 text-xs text-slate-700">
+          {formatLongDate(selectedDate)} · <span className="font-semibold text-slate-900">{usedCount}</span> bahan dipakai
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100/90 text-slate-700 font-semibold border-b border-slate-200">
+          <table className="w-full min-w-[620px] text-left text-xs">
+            <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
               <tr>
-                <th className="py-3 px-4">Nama Bahan</th>
-                <th className="py-3 px-4">Kategori</th>
-                <th className="py-3 px-4 text-right">Saldo Awal</th>
-                <th className="py-3 px-4 text-right text-emerald-700">+ Masuk Hari Ini</th>
-                <th className="py-3 px-4 text-right">Total Tersedia</th>
-                <th className="py-3 px-4 text-right text-amber-700">- Konsumsi Dapur</th>
-                <th className="py-3 px-4 text-right text-sky-800 font-bold">= Saldo Akhir</th>
-                <th className="py-3 px-4">Satuan</th>
-                <th className="py-3 px-4">Status Aliran</th>
+                <th className="py-2.5 px-4 font-semibold">Bahan</th>
+                <th className="py-2.5 px-3 font-semibold text-right">Saldo awal</th>
+                <th className="py-2.5 px-3 font-semibold text-right">Masuk</th>
+                <th className="py-2.5 px-3 font-semibold text-right">Dipakai</th>
+                {hasAdjustments && <th className="py-2.5 px-3 font-semibold text-right">Penyesuaian</th>}
+                <th className="py-2.5 px-4 font-semibold text-right">Saldo akhir</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {dailyData.length === 0 ? (
+              {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400 italic">
-                    Belum ada item tipe FOOD_DAILY_FLOW terdaftar.
+                  <td colSpan={6} className="py-10 text-center text-slate-600">
+                    Belum ada bahan makanan terdaftar. Tambahkan barang di menu Stok.
+                  </td>
+                </tr>
+              ) : visibleRows.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-10 text-center text-slate-600">
+                    Tidak ada bahan yang cocok dengan pencarian.
                   </td>
                 </tr>
               ) : (
-                dailyData.map(item => {
-                  const totalAvailable = item.openingBalance + item.receivedToday;
-                  const isFullyConsumed = totalAvailable > 0 && item.closingBalance === 0;
-
+                visibleRows.map(r => {
+                  const needsCheck = r.openingBalance < 0 || r.closingBalance < 0;
                   return (
-                    <tr key={item.itemId} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3 px-4 font-bold text-slate-900">
-                        {item.itemName}
-                        <div className="text-[10px] font-mono text-slate-400 font-normal">{item.itemId}</div>
+                    <tr key={r.itemId} className="hover:bg-slate-50">
+                      <td className="py-2.5 px-4">
+                        <div className="font-semibold text-slate-900">{r.itemName}</div>
+                        <div className="text-[11px] text-slate-600">
+                          {r.location}
+                          {needsCheck && (
+                            <span className="ml-1.5 inline-flex items-center gap-1 text-amber-800 font-medium">
+                              <AlertTriangle className="w-3 h-3" />
+                              Saldo minus, cek pencatatan
+                            </span>
+                          )}
+                        </div>
                       </td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
-                            item.category === 'Protein'
-                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                              : item.category === 'Sayuran'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-amber-50 text-amber-700 border border-amber-200'
-                          }`}
-                        >
-                          {item.category}
-                        </span>
+                      <td className="py-2.5 px-3 text-right font-mono text-slate-700">
+                        <Num value={r.openingBalance} />
                       </td>
-                      <td className="py-3 px-4 text-right font-mono font-medium text-slate-600">
-                        {item.openingBalance}
+                      <td className="py-2.5 px-3 text-right font-mono">
+                        <Num value={r.receivedToday} sign className="text-slate-900" />
                       </td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-emerald-700 bg-emerald-50/40">
-                        +{item.receivedToday}
+                      <td className="py-2.5 px-3 text-right font-mono">
+                        <Num value={r.consumedToday} className="font-semibold text-emerald-800" />
                       </td>
-                      <td className="py-3 px-4 text-right font-mono font-semibold text-slate-800">
-                        {totalAvailable}
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-amber-700 bg-amber-50/40">
-                        -{item.consumedToday}
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono text-sm font-black text-sky-800 bg-sky-50/50">
-                        {item.closingBalance}
-                      </td>
-                      <td className="py-3 px-4 font-medium text-slate-500">{item.unit}</td>
-                      <td className="py-3 px-4">
-                        {isFullyConsumed ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
-                            Habis Sesuai Rencana
-                          </span>
-                        ) : item.closingBalance > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">
-                            Sisa {item.closingBalance} {item.unit} di Chiller
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-slate-400 italic">Nol</span>
-                        )}
+                      {hasAdjustments && (
+                        <td className="py-2.5 px-3 text-right font-mono">
+                          <Num value={r.adjustedToday} sign className="text-slate-900" />
+                        </td>
+                      )}
+                      <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                        {fmt(r.closingBalance)} <span className="font-sans font-normal text-slate-600">{r.unit}</span>
                       </td>
                     </tr>
                   );
@@ -250,94 +396,151 @@ export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData 
         </div>
       </div>
 
-      {/* QUICK BATCH CONSUMPTION MODAL */}
-      {isBatchModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+      {/* Modal pencatatan */}
+      {isModalOpen && canRecord && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/60">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="flow-modal-title"
+            className="bg-white w-full sm:max-w-2xl max-h-[92vh] flex flex-col rounded-t-xl sm:rounded-xl border border-slate-200 overflow-hidden"
+          >
+            <div className="px-4 sm:px-5 py-3 border-b border-slate-200 flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Pencatatan Masak Cepat Harian Dapur
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Masukkan jumlah bahan yang telah diolah hari ini ({selectedDate}). Sistem langsung menghitung sisa.
+                <h2 id="flow-modal-title" className="text-sm font-semibold text-slate-900">
+                  Catat pemakaian hari ini
+                </h2>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Isi total yang dipakai hari ini per bahan. Mengubah angka yang sudah tercatat akan menambah atau mengoreksi pemakaian.
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setIsBatchModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
-                title="Tutup dialog"
+                onClick={closeModal}
+                aria-label="Tutup"
+                className={`p-2 -m-1 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer ${FOCUS}`}
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handlePostBatchConsumption} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
-                <div className="border border-slate-200 rounded-lg overflow-hidden">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
-                      <tr>
-                        <th className="py-2.5 px-3">Bahan Makanan</th>
-                        <th className="py-2.5 px-3 text-right">Tersedia</th>
-                        <th className="py-2.5 px-3 w-36">Jumlah Diolah Masak</th>
-                        <th className="py-2.5 px-3">Satuan</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {dailyData.map(item => {
-                        const totalAvailable = item.openingBalance + item.receivedToday;
-                        return (
-                          <tr key={item.itemId} className="hover:bg-slate-50">
-                            <td className="py-2.5 px-3">
-                              <div className="font-semibold text-slate-800">{item.itemName}</div>
-                              <div className="text-[10px] text-slate-400">{item.category}</div>
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono text-slate-600">
-                              {totalAvailable}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              <input
-                                type="number"
-                                min="0"
-                                max={totalAvailable}
-                                step="any"
-                                value={batchInputs[item.itemId] ?? ''}
-                                onChange={e =>
-                                  setBatchInputs(prev => ({
-                                    ...prev,
-                                    [item.itemId]: parseFloat(e.target.value) || 0,
-                                  }))
-                                }
-                                className="w-full text-xs font-mono font-bold rounded border border-slate-300 p-1.5 text-slate-900 focus:ring-1 focus:ring-sky-500"
-                                placeholder="0"
-                              />
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-500 font-medium">{item.unit}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+            <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0">
+              <div className="px-4 sm:px-5 py-2.5 border-b border-slate-100 flex flex-wrap items-center gap-2 text-xs">
+                {menuSuggestionCount > 0 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={fillFromMenu}
+                      className={`px-3 min-h-[44px] sm:min-h-[30px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-medium text-slate-800 cursor-pointer ${FOCUS}`}
+                    >
+                      Isi dari menu hari ini ({menuSuggestionCount})
+                    </button>
+                    <span className="text-slate-600">
+                      {menuFilled > 0
+                        ? `${menuFilled} isian diambil dari rencana menu. Sesuaikan dengan yang benar-benar dipakai.`
+                        : 'Hanya mengisi kolom yang masih kosong.'}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-slate-600">Belum ada kebutuhan bahan dari menu hari ini. Isi manual.</span>
+                )}
+                <span className="text-slate-500 sm:ml-auto">Tampil: {SCOPE_TABS.find(t => t.id === scope)?.label.toLowerCase()}</span>
               </div>
 
-              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsBatchModalOpen(false)}
-                  className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="inline-flex items-center gap-1.5 px-5 py-2 font-bold text-white bg-sky-700 hover:bg-sky-800 rounded-xl shadow-2xs transition-colors cursor-pointer"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  Posting Konsumsi Dapur Harian
-                </button>
+              <div className="overflow-y-auto flex-1">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-700 sticky top-0">
+                    <tr>
+                      <th className="py-2 px-4 sm:px-5 font-semibold">Bahan</th>
+                      <th className="py-2 px-2 font-semibold text-right">Tersedia</th>
+                      <th className="py-2 px-4 sm:px-5 font-semibold w-36">Total dipakai</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {modalRows.map((r, idx) => {
+                      const change = changes.find(c => c.row.itemId === r.itemId);
+                      const available = r.closingBalance + r.consumedToday;
+                      return (
+                        <tr key={r.itemId}>
+                          <td className="py-2 px-4 sm:px-5">
+                            <label htmlFor={`use-${r.itemId}`} className="font-semibold text-slate-900">
+                              {r.itemName}
+                            </label>
+                            {r.consumedToday > 0 && (
+                              <div className="text-[11px] text-slate-600">
+                                Sudah tercatat {fmt(r.consumedToday)} {r.unit}
+                              </div>
+                            )}
+                            {change?.overStock && (
+                              <div className="text-[11px] text-rose-700 font-medium">
+                                Melebihi stok tersedia. Cek penerimaan barang dulu.
+                              </div>
+                            )}
+                            {change && !change.overStock && !change.invalid && change.delta < 0 && (
+                              <div className="text-[11px] text-amber-800 font-medium">
+                                Koreksi: {fmt(-change.delta)} {r.unit} kembali ke stok
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-2 px-2 text-right font-mono text-slate-700 whitespace-nowrap">
+                            {fmt(available)} <span className="font-sans text-slate-600">{r.unit}</span>
+                          </td>
+                          <td className="py-2 px-4 sm:px-5">
+                            <input
+                              ref={idx === 0 ? firstInputRef : undefined}
+                              id={`use-${r.itemId}`}
+                              type="number"
+                              inputMode="decimal"
+                              min="0"
+                              step="any"
+                              value={inputs[r.itemId] ?? ''}
+                              placeholder="0"
+                              aria-invalid={change?.overStock || change?.invalid || undefined}
+                              onChange={e => setInputs(prev => ({ ...prev, [r.itemId]: e.target.value }))}
+                              className={`${INPUT_CLS} text-right font-mono ${
+                                change?.overStock || change?.invalid ? 'border-rose-400 bg-rose-50' : ''
+                              }`}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {modalRows.length === 0 && (
+                      <tr>
+                        <td colSpan={3} className="py-8 text-center text-slate-600">
+                          Tidak ada bahan pada filter ini. Tutup lalu ubah filter atau pencarian.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="px-4 sm:px-5 py-3 border-t border-slate-200 bg-slate-50 flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <span className="text-slate-700">
+                  {blocking.length > 0
+                    ? `${blocking.length} isian perlu diperbaiki.`
+                    : changes.length === 0
+                    ? 'Belum ada perubahan.'
+                    : [newUsage > 0 && `${newUsage} pemakaian`, corrections > 0 && `${corrections} koreksi`].filter(Boolean).join(', ') +
+                      ' akan disimpan.'}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className={`flex-1 sm:flex-none px-4 min-h-[44px] sm:min-h-[34px] rounded-lg font-medium text-slate-700 hover:bg-slate-200/70 cursor-pointer ${FOCUS}`}
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={blocking.length > 0 || changes.length === 0}
+                    className={`flex-1 sm:flex-none px-4 min-h-[44px] sm:min-h-[34px] rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold cursor-pointer ${FOCUS}`}
+                  >
+                    Simpan pemakaian
+                  </button>
+                </div>
               </div>
             </form>
           </div>

@@ -248,7 +248,7 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'daily_flow' && (
-            <DailyFlowModule onRefreshData={handleRefresh} />
+            <DailyFlowModule />
           )}
 
           {activeTab === 'ledger' && <StockMovementModule />}
@@ -293,7 +293,7 @@ const MainLayout: React.FC = () => {
   );
 };
 
-const SELF_SYNCING_TABS = new Set(['receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs']);
+const SELF_SYNCING_TABS = new Set(['receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'daily_flow']);
 
 export default function App() {
   return (

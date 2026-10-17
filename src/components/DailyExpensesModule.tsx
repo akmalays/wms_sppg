@@ -187,7 +187,8 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
       .filter(tx => tx.transactionType === 'ISSUE_CONSUMPTION')
       .forEach(tx => {
         const rawDate = tx.timestamp.slice(0, 10);
-        const qty = Math.abs(tx.quantity);
+        // Pemakaian bernilai negatif; koreksi (bahan kembali ke stok) positif dan mengurangi total.
+        const qty = -tx.quantity;
         list.push({
           id: tx.id,
           kind: 'DAPUR',
@@ -196,7 +197,9 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
           time: tx.timestamp.slice(11, 16).replace(':', '.'),
           itemName: tx.itemName,
           category: normalizeItemCategory(tx.category, tx.itemName),
-          quantityLabel: `${qty.toLocaleString('id-ID')} ${tx.unit}`,
+          quantityLabel: qty < 0
+            ? `Koreksi ${Math.abs(qty).toLocaleString('id-ID')} ${tx.unit}`
+            : `${qty.toLocaleString('id-ID')} ${tx.unit}`,
           numericQty: qty,
           unit: tx.unit,
           unitPrice: null,
