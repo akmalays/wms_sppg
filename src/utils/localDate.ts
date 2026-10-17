@@ -6,3 +6,10 @@ export function localDateIso(date: Date = new Date()): string {
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
+
+// Stempel waktu lokal "YYYY-MM-DD HH:mm", format timestamp transaksi dan audit log.
+export function localTimestamp(date: Date = new Date()): string {
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${localDateIso(date)} ${h}:${min}`;
+}

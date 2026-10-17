@@ -42,6 +42,7 @@ import { getRomanMonth, getYearFromDate } from '../utils/poNumberGenerator';
 import { angkaTerbilang } from '../utils/numberToWords';
 import { removeFromPrintPool } from '../utils/poPrintPool';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { localDateIso, localTimestamp } from '../utils/localDate';
 
 const STORAGE_KEYS = {
   ITEMS: 'sppg_items_v1',
@@ -490,7 +491,7 @@ export const INITIAL_EQUIPMENT: EquipmentItem[] = [
 export const INITIAL_TODOS: DailyTodoItem[] = [
   {
     id: 'TODO-001',
-    date: new Date().toISOString().split('T')[0],
+    date: localDateIso(),
     title: 'Pemeriksaan kebersihan dan kesiapan area penyimpanan bahan',
     category: 'Penerimaan & QC',
     priority: 'Tinggi',
@@ -507,7 +508,7 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
   },
   {
     id: 'TODO-002',
-    date: new Date().toISOString().split('T')[0],
+    date: localDateIso(),
     title: 'Penerimaan & uji organoleptik ayam karkas dan telur segar dari supplier',
     category: 'Penerimaan & QC',
     priority: 'Tinggi',
@@ -524,7 +525,7 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
   },
   {
     id: 'TODO-003',
-    date: new Date().toISOString().split('T')[0],
+    date: localDateIso(),
     title: 'Penimbangan & sortasi sayuran segar (bayam, wortel, labu siam)',
     category: 'Persiapan Dapur',
     priority: 'Sedang',
@@ -541,7 +542,7 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
   },
   {
     id: 'TODO-004',
-    date: new Date().toISOString().split('T')[0],
+    date: localDateIso(),
     title: 'Serah terima bahan masak menu makan siang ke koki utama & tim masak',
     category: 'Persiapan Dapur',
     priority: 'Tinggi',
@@ -558,7 +559,7 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
   },
   {
     id: 'TODO-005',
-    date: new Date().toISOString().split('T')[0],
+    date: localDateIso(),
     title: 'Pengecekan stok aman bahan kering gudang (beras premium & minyak goreng)',
     category: 'Administrasi & Stok',
     priority: 'Sedang',
@@ -573,7 +574,7 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
   },
   {
     id: 'TODO-006',
-    date: new Date().toISOString().split('T')[0],
+    date: localDateIso(),
     title: 'Pencatatan rekapitulasi limbah organik dan sisa pengolahan dapur hari ini',
     category: 'Sanitasi & Kebersihan',
     priority: 'Sedang',
@@ -588,7 +589,7 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
   },
   {
     id: 'TODO-007',
-    date: new Date().toISOString().split('T')[0],
+    date: localDateIso(),
     title: 'Sterilisasi peralatan masak besar & sanitasi area pencucian bahan',
     category: 'Sanitasi & Kebersihan',
     priority: 'Tinggi',
@@ -603,7 +604,7 @@ export const INITIAL_TODOS: DailyTodoItem[] = [
   },
   {
     id: 'TODO-008',
-    date: new Date().toISOString().split('T')[0],
+    date: localDateIso(),
     title: 'Rekonsiliasi bon pengeluaran bahan & verifikasi buku mutasi stok harian',
     category: 'Administrasi & Stok',
     priority: 'Tinggi',
@@ -1586,7 +1587,7 @@ export function mapPoToSupabase(po: PurchaseOrderNota) {
   return {
     id: po.id,
     po_number: po.poNumber,
-    date: po.date || new Date().toISOString().slice(0, 10),
+    date: po.date || localDateIso(),
     delivery_date: po.deliveryDate || po.date,
     supplier_name: po.supplierName,
     status: po.status || 'DRAFT',
@@ -1675,7 +1676,7 @@ export function mapSupabaseToWaste(row: any): WasteLog {
 export function mapExpenseToSupabase(e: NonFoodExpense) {
   return {
     id: e.id,
-    date: e.date || new Date().toISOString().slice(0, 10),
+    date: e.date || localDateIso(),
     category: e.category,
     description: e.itemName || 'Pengeluaran Non-Food',
     nominal: Number(e.totalCost || 0),
@@ -1715,7 +1716,7 @@ export function mapSupabaseToExpense(row: any): NonFoodExpense {
 export function mapReceivingToSupabase(doc: ReceivingDocument) {
   return {
     id: doc.id,
-    date: doc.date || new Date().toISOString().slice(0, 10),
+    date: doc.date || localDateIso(),
     arrival_time: doc.arrivalTime || '08:00',
     supplier_id: doc.supplierId,
     supplier_name: doc.supplierName || null,
@@ -1988,7 +1989,7 @@ class WarehouseDatabase {
       if (!txErr && dbTxs) {
         this.transactions = dbTxs.map((row: any) => ({
           id: row.id,
-          timestamp: row.timestamp ? new Date(row.timestamp).toISOString().slice(0, 16).replace('T', ' ') : '',
+          timestamp: row.timestamp ? localTimestamp(new Date(row.timestamp)) : '',
           itemId: row.item_id,
           itemName: row.item_name,
           itemType: row.item_type,
@@ -2020,7 +2021,7 @@ class WarehouseDatabase {
           condition: e.condition,
           status: e.status,
           location: e.location_id,
-          lastInspectedDate: e.last_inspected_date || new Date().toISOString().slice(0, 10),
+          lastInspectedDate: e.last_inspected_date || localDateIso(),
           notes: e.notes || undefined,
         }));
       }
@@ -2162,7 +2163,7 @@ class WarehouseDatabase {
           const row = payload.new;
           const newTx: InventoryTransaction = {
             id: row.id,
-            timestamp: row.timestamp ? new Date(row.timestamp).toISOString().slice(0, 16).replace('T', ' ') : '',
+            timestamp: row.timestamp ? localTimestamp(new Date(row.timestamp)) : '',
             itemId: row.item_id,
             itemName: row.item_name,
             itemType: row.item_type,
@@ -2291,7 +2292,7 @@ class WarehouseDatabase {
     details: string
   ): void {
     const now = new Date();
-    const formatted = `${now.toISOString().slice(0, 10)} ${now.toTimeString().slice(0, 5)}`;
+    const formatted = localTimestamp(now);
     const newLog: AuditLog = {
       id: `AUD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       timestamp: formatted,
@@ -2342,7 +2343,7 @@ class WarehouseDatabase {
     const count = this.receivings.length + 1;
     const docId = `GR-${year}-${String(count).padStart(4, '0')}`;
     const now = new Date();
-    const timestampStr = `${now.toISOString().slice(0, 10)} ${now.toTimeString().slice(0, 5)}`;
+    const timestampStr = localTimestamp(now);
 
     const newLines = doc.lines.map((line, idx) => {
       const item = this.getItemById(line.itemId);
@@ -2370,7 +2371,7 @@ class WarehouseDatabase {
         this.items[itemIndex] = {
           ...item,
           currentStock: newStock,
-          lastMovementDate: doc.date || now.toISOString().slice(0, 10),
+          lastMovementDate: doc.date || localDateIso(now),
         };
 
         // Create transaction entry
@@ -2470,13 +2471,13 @@ class WarehouseDatabase {
 
     const newStock = Number((item.currentStock - quantity).toFixed(2));
     const now = new Date();
-    const timestampStr = `${now.toISOString().slice(0, 10)} ${now.toTimeString().slice(0, 5)}`;
-    const ref = referenceDoc || `ISS-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(Math.random() * 100)}`;
+    const timestampStr = localTimestamp(now);
+    const ref = referenceDoc || `ISS-${localDateIso(now).replace(/-/g, '')}-${Math.floor(Math.random() * 100)}`;
 
     this.items[itemIndex] = {
       ...item,
       currentStock: newStock,
-      lastMovementDate: now.toISOString().slice(0, 10),
+      lastMovementDate: localDateIso(now),
     };
 
     const tx: InventoryTransaction = {
@@ -2507,7 +2508,7 @@ class WarehouseDatabase {
       });
       supabase.from('item_master').update({
         current_stock: newStock,
-        last_movement_date: new Date().toISOString(),
+        last_movement_date: new Date(localDateIso()).toISOString(),
         updated_at: new Date().toISOString(),
       }).eq('id', item.id).then();
     }
@@ -2527,7 +2528,7 @@ class WarehouseDatabase {
 
   // --- DAILY FLOW SUMMARY & BATCH CONSUMPTION ---
   public getDailyFlowData(targetDate?: string): DailyFlowRecord[] {
-    const date = targetDate || new Date().toISOString().slice(0, 10);
+    const date = targetDate || localDateIso();
     // Daily flow applies to FOOD_DAILY_FLOW items: Protein, Sayuran, Buah
     const dailyItems = this.items.filter(i => i.itemType === 'FOOD_DAILY_FLOW');
 
@@ -2551,9 +2552,12 @@ class WarehouseDatabase {
       const consumedToday = Math.abs(todayConsumptionTx.reduce((sum, tx) => sum + tx.quantity, 0));
 
       // Formula: Opening balance + Today's receiving - Today's consumption = Closing balance
-      // We can derive opening balance as: CurrentStock - (receivedToday - consumedToday)
-      const current = item.currentStock;
-      const openingBalance = Math.max(0, Number((current - receivedToday + consumedToday).toFixed(2)));
+      // Closing balance for a past date = current stock minus every movement recorded after that date.
+      const netAfterDate = this.transactions
+        .filter(tx => tx.itemId === item.id && tx.timestamp.slice(0, 10) > date)
+        .reduce((sum, tx) => sum + tx.quantity, 0);
+      const closingBalance = Number((item.currentStock - netAfterDate).toFixed(2));
+      const openingBalance = Math.max(0, Number((closingBalance - receivedToday + consumedToday).toFixed(2)));
 
       return {
         itemId: item.id,
@@ -2563,7 +2567,7 @@ class WarehouseDatabase {
         openingBalance,
         receivedToday,
         consumedToday,
-        closingBalance: current,
+        closingBalance,
       };
     });
   }
@@ -2643,7 +2647,7 @@ class WarehouseDatabase {
     }
 
     const now = new Date();
-    const timestampStr = `${now.toISOString().slice(0, 10)} ${now.toTimeString().slice(0, 5)}`;
+    const timestampStr = localTimestamp(now);
 
     // Process adjustments for items with non-zero variance
     for (const opItem of session.items) {
@@ -2655,7 +2659,7 @@ class WarehouseDatabase {
           this.items[itemIdx] = {
             ...item,
             currentStock: newStock,
-            lastMovementDate: now.toISOString().slice(0, 10),
+            lastMovementDate: localDateIso(now),
           };
 
           const tx: InventoryTransaction = {
@@ -2699,7 +2703,7 @@ class WarehouseDatabase {
           if (item) {
             supabase.from('item_master').update({
               current_stock: item.currentStock,
-              last_movement_date: new Date().toISOString(),
+              last_movement_date: new Date(localDateIso()).toISOString(),
               updated_at: new Date().toISOString(),
             }).eq('id', item.id).then();
           }
@@ -2744,7 +2748,7 @@ class WarehouseDatabase {
       if (item.currentStock > 0) {
         const initTx: InventoryTransaction = {
           id: `TX-INIT-${Date.now().toString().slice(-6)}`,
-          timestamp: new Date().toISOString(),
+          timestamp: localTimestamp(),
           itemId: item.id,
           itemName: item.name,
           itemType: item.itemType,
@@ -2945,7 +2949,7 @@ class WarehouseDatabase {
       if (existingIdx < 0 && itemToSave.currentStock > 0) {
         const initTx: InventoryTransaction = {
           id: `TX-INIT-${Date.now().toString().slice(-6)}-${i + 1}`,
-          timestamp: now,
+          timestamp: localTimestamp(new Date(now)),
           itemId: itemToSave.id,
           itemName: itemToSave.name,
           itemType: itemToSave.itemType,
@@ -3118,7 +3122,7 @@ class WarehouseDatabase {
     if (idx < 0) throw new Error('Alat / Perlengkapan tidak ditemukan.');
 
     const old = this.equipment[idx];
-    const now = new Date().toISOString().slice(0, 10);
+    const now = localDateIso();
     const updated: EquipmentItem = {
       ...old,
       condition,
@@ -3855,10 +3859,10 @@ class WarehouseDatabase {
 
   // --- DAILY TODOS ---
   public getDailyTodos(date?: string): DailyTodoItem[] {
-    const targetDate = date || new Date().toISOString().split('T')[0];
+    const targetDate = date || localDateIso();
     const filtered = this.todos.filter(t => t.date === targetDate);
     // If no todos exist for requested date, and it's today, seed today's items
-    if (filtered.length === 0 && targetDate === new Date().toISOString().split('T')[0]) {
+    if (filtered.length === 0 && targetDate === localDateIso()) {
       const seeded = INITIAL_TODOS.map(t => ({ ...t, date: targetDate }));
       this.todos.push(...seeded);
       setStored(STORAGE_KEYS.TODOS, this.todos);
@@ -3944,7 +3948,7 @@ class WarehouseDatabase {
   }
 
   public resetDailyTodos(date?: string): DailyTodoItem[] {
-    const targetDate = date || new Date().toISOString().split('T')[0];
+    const targetDate = date || localDateIso();
     this.todos = this.todos.filter(t => t.date !== targetDate);
     const seeded = INITIAL_TODOS.map(t => ({
       ...t,

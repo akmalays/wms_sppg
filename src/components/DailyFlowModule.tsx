@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { DailyFlowRecord } from '../types/warehouse';
+import { localDateIso } from '../utils/localDate';
 import { Utensils, CheckCircle2, ArrowRight, Zap, RefreshCw, Calendar, X } from 'lucide-react';
 
 interface DailyFlowModuleProps {
@@ -10,8 +11,11 @@ interface DailyFlowModuleProps {
 
 export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData }) => {
   const { currentUser, can } = useAuth();
-  const [dailyData, setDailyData] = useState<DailyFlowRecord[]>(() => warehouseDb.getDailyFlowData());
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const today = localDateIso();
+  const [selectedDate, setSelectedDate] = useState<string>(today);
+  const [dailyData, setDailyData] = useState<DailyFlowRecord[]>(() => warehouseDb.getDailyFlowData(today));
+  // Consumption is always stamped with the current time, so posting is only allowed for today.
+  const isToday = selectedDate === today;
   const [successMessage, setSuccessMessage] = useState('');
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
 
@@ -23,6 +27,10 @@ export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData 
     setDailyData(updated);
     if (onRefreshData) onRefreshData();
   };
+
+  useEffect(() => {
+    setDailyData(warehouseDb.getDailyFlowData(selectedDate));
+  }, [selectedDate]);
 
   const handleOpenBatch = () => {
     const inputs: Record<string, number> = {};
@@ -78,7 +86,7 @@ export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Aliran Harian (Daily-Flow Consumables)</h2>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Pemakaian Dapur Harian</h2>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800">
               Protein • Sayur • Buah
             </span>
@@ -86,6 +94,11 @@ export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData 
           <p className="text-xs text-slate-500 mt-0.5">
             Manajemen bahan cepat pakai: Saldo Awal + Penerimaan Hari Ini - Pengeluaran Dapur = Saldo Akhir.
           </p>
+          {!isToday && (
+            <p className="text-xs text-amber-700 mt-1">
+              Menampilkan data tanggal lampau. Pencatatan pemakaian hanya bisa untuk hari ini.
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2.5">
@@ -94,12 +107,13 @@ export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ onRefreshData 
             <input
               type="date"
               value={selectedDate}
-              onChange={e => setSelectedDate(e.target.value)}
+              max={today}
+              onChange={e => setSelectedDate(e.target.value || today)}
               className="focus:outline-none text-xs text-slate-800"
             />
           </div>
 
-          {can('RECORD_CONSUMPTION') && (
+          {can('RECORD_CONSUMPTION') && isToday && (
             <button
               onClick={handleOpenBatch}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"

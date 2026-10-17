@@ -45,6 +45,7 @@ const DAILY_ITEMS: NavItem[] = [
   { id: 'receiving', label: 'Barang Datang' },
   { id: 'menu_orders', label: 'Menu' },
   { id: 'inventory', label: 'Stok' },
+  { id: 'daily_flow', label: 'Pemakaian Dapur' },
 ];
 
 const NAV_GROUPS: { id: 'laporan' | 'lainnya'; label: string; items: NavItem[] }[] = [
@@ -54,8 +55,6 @@ const NAV_GROUPS: { id: 'laporan' | 'lainnya'; label: string; items: NavItem[] }
     items: [
       { id: 'daily_expenses', label: 'Pengeluaran' },
       { id: 'waste_logs', label: 'Rekap Limbah' },
-      { id: 'daily_flow', label: 'Aliran Stok Harian' },
-      { id: 'ledger', label: 'Buku Mutasi' },
       { id: 'tools_forms', label: 'Cetak Form' },
     ],
   },

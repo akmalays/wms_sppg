@@ -909,12 +909,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
             </p>
           </div>
           <button type="button" onClick={() => onNavigate('daily_flow')} className={BTN_LINK}>
-            Buka Aliran Stok Harian
+            Buka Pemakaian Dapur
           </button>
         </div>
 
         {kgFlow.length === 0 ? (
-          <p className="py-8 px-4 text-center text-xs text-slate-600">Belum ada bahan segar yang dicatat di aliran stok harian.</p>
+          <p className="py-8 px-4 text-center text-xs text-slate-600">Belum ada bahan segar yang dicatat di Pemakaian Dapur.</p>
         ) : (
           <dl className="grid grid-cols-2 md:grid-cols-4 text-xs">
             {[

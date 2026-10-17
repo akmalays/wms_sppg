@@ -42,6 +42,8 @@ import { warehouseDb } from '../db/storage';
 import { useAuth } from '../context/AuthContext';
 import { ReceivingDocument, ItemMaster, EquipmentItem, Supplier, normalizeItemCategory } from '../types/warehouse';
 import { SppgLogo } from './SppgLogo';
+import QRCode from 'qrcode';
+import { localDateIso } from '../utils/localDate';
 
 type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'SUPPLIER_EXPENSE_NOTE';
 
@@ -69,192 +71,132 @@ export interface ItemTagData {
   totalCopies: number;
 }
 
-export const SAMPLE_DUMMY_TAG_ITEMS: ItemTagData[] = [
-  {
-    uniqueKey: 'dummy-aym-1',
-    id: 'ITM-AYM-001',
-    batchLotNo: 'LOT-AYM-20261011-01',
-    name: 'Daging Ayam Broiler Fillet (Dada)',
-    category: 'Bahan Basah (Unggas)',
-    warehouseType: 'GUDANG_BASAH',
-    storageLocation: 'Chiller Dapur D-01',
-    storageTemp: 'Chiller (1°C - 4°C)',
-    supplier: 'Peternakan Ayam Barokah Tumpang',
-    arrivalDate: '2026-10-11',
-    arrivalDateFormatted: '11 Okt 2026',
-    arrivalTime: '06:15 WIB',
-    expiryDate: '14 Okt 2026',
-    shelfLifeText: '3 Hari (Chiller Dapur)',
-    quantity: 45,
-    unit: 'Kg',
-    qcStatus: 'Lolos QC Organoleptik & Higiene',
-    inspector: 'Chef Rahmat (Kepala Dapur)',
-    notes: 'Kenyal segar, bebas memar & bau asing',
-    copyIndex: 1,
-    totalCopies: 3,
-  },
-  {
-    uniqueKey: 'dummy-ikn-1',
-    id: 'ITM-IKN-002',
-    batchLotNo: 'LOT-IKN-20261011-02',
-    name: 'Ikan Tongkol Segar Potong (Steak Gizi)',
-    category: 'Bahan Basah (Ikan Laut)',
-    warehouseType: 'GUDANG_BASAH',
-    storageLocation: 'Freezer Dapur F-02',
-    storageTemp: 'Freezer (≤ -18°C)',
-    supplier: 'Nelayan Bahari Sendangbiru Malang',
-    arrivalDate: '2026-10-11',
-    arrivalDateFormatted: '11 Okt 2026',
-    arrivalTime: '05:45 WIB',
-    expiryDate: '13 Okt 2026',
-    shelfLifeText: '2 Hari (Es Curah Segera Olah)',
-    quantity: 30,
-    unit: 'Kg',
-    qcStatus: 'Lolos QC Organoleptik & Higiene',
-    inspector: 'Akmal (Admin Gudang)',
-    notes: 'Insang merah segar, mata jernih, box es 2°C',
-    copyIndex: 1,
-    totalCopies: 2,
-  },
-  {
-    uniqueKey: 'dummy-wrt-1',
-    id: 'ITM-SYR-003',
-    batchLotNo: 'LOT-WRT-20261011-03',
-    name: 'Wortel Manis Berastagi Segar Grade A',
-    category: 'Bahan Basah (Sayur Mayur)',
-    warehouseType: 'GUDANG_BASAH',
-    storageLocation: 'Chiller Sayur C-02',
-    storageTemp: 'Chiller Sayur (4°C - 8°C)',
-    supplier: 'Kelompok Tani Sayur Jeru Tumpang',
-    arrivalDate: '2026-10-11',
-    arrivalDateFormatted: '11 Okt 2026',
-    arrivalTime: '06:40 WIB',
-    expiryDate: '18 Okt 2026',
-    shelfLifeText: '7 Hari (Chiller Sayuran)',
-    quantity: 25,
-    unit: 'Kg',
-    qcStatus: 'Lolos QC Organoleptik & Higiene',
-    inspector: 'Chef Rahmat (Kepala Dapur)',
-    notes: 'Bersih tanah, renyah tanpa layu / bintik',
-    copyIndex: 1,
-    totalCopies: 2,
-  },
-  {
-    uniqueKey: 'dummy-tlr-1',
-    id: 'ITM-TLR-004',
-    batchLotNo: 'LOT-TLR-20261011-04',
-    name: 'Telur Ayam Negeri Cangkang Cokelat Grade A',
-    category: 'Bahan Basah (Telur)',
-    warehouseType: 'GUDANG_BASAH',
-    storageLocation: 'Rak Sejuk Telur T-01',
-    storageTemp: 'Ruang Sejuk (15°C - 20°C)',
-    supplier: 'Koperasi Unggas Makmur Jeru',
-    arrivalDate: '2026-10-11',
-    arrivalDateFormatted: '11 Okt 2026',
-    arrivalTime: '07:10 WIB',
-    expiryDate: '25 Okt 2026',
-    shelfLifeText: '14 Hari (Rotasi Berkala)',
-    quantity: 60,
-    unit: 'Kg',
-    qcStatus: 'Lolos QC Organoleptik & Higiene',
-    inspector: 'Akmal (Admin Gudang)',
-    notes: 'Cangkang utuh bersih, bebas retak & kotoran',
-    copyIndex: 1,
-    totalCopies: 4,
-  },
-  {
-    uniqueKey: 'dummy-tmp-1',
-    id: 'ITM-TMP-005',
-    batchLotNo: 'LOT-TMP-20261011-05',
-    name: 'Tempe Kedelai Super Daun Pisang Murni',
-    category: 'Bahan Basah (Olahan Nabati)',
-    warehouseType: 'GUDANG_BASAH',
-    storageLocation: 'Meja Transit Dapur MT-01',
-    storageTemp: 'Suhu Sejuk (18°C - 22°C)',
-    supplier: 'Pengrajin Tempe Mandiri Tumpang',
-    arrivalDate: '2026-10-11',
-    arrivalDateFormatted: '11 Okt 2026',
-    arrivalTime: '05:30 WIB',
-    expiryDate: '13 Okt 2026',
-    shelfLifeText: '2 Hari (Fermentasi Siap Olah)',
-    quantity: 120,
-    unit: 'Pcs',
-    qcStatus: 'Lolos QC Organoleptik & Higiene',
-    inspector: 'Chef Rahmat (Kepala Dapur)',
-    notes: 'Kapang putih rapat rata, aroma wangi khas',
-    copyIndex: 1,
-    totalCopies: 2,
-  },
-  {
-    uniqueKey: 'dummy-brs-1',
-    id: 'ITM-BRS-006',
-    batchLotNo: 'LOT-BRS-20261011-06',
-    name: 'Beras Pandan Wangi Premium Kemasan 25Kg',
-    category: 'Bahan Kering (Sembako)',
-    warehouseType: 'GUDANG_KERING',
-    storageLocation: 'Palet Beras Utama P-01',
-    storageTemp: 'Suhu Ruang Kering (18°C - 25°C)',
-    supplier: 'Mitra Tani Tumpang Makmur (Gapoktan)',
-    arrivalDate: '2026-10-11',
-    arrivalDateFormatted: '11 Okt 2026',
-    arrivalTime: '08:00 WIB',
-    expiryDate: '11 Apr 2027',
-    shelfLifeText: '180 Hari (Simpan Kering Berpalet)',
-    quantity: 250,
-    unit: 'Kg',
-    qcStatus: 'Lolos QC Organoleptik & Higiene',
-    inspector: 'Akmal (Admin Gudang)',
-    notes: 'Karung utuh segel pabrik, kadar air ≤14%',
-    copyIndex: 1,
-    totalCopies: 5,
-  },
-  {
-    uniqueKey: 'dummy-ssu-1',
-    id: 'ITM-SSU-007',
-    batchLotNo: 'LOT-SSU-20261011-07',
-    name: 'Susu Sapi Murni Pasteurisasi Botol 1 Liter',
-    category: 'Bahan Basah (Susu Sehat)',
-    warehouseType: 'GUDANG_BASAH',
-    storageLocation: 'Chiller Susu CS-01',
-    storageTemp: 'Chiller Ketat (1°C - 3°C)',
-    supplier: 'KUD Susu Segar Malang Raya',
-    arrivalDate: '2026-10-11',
-    arrivalDateFormatted: '11 Okt 2026',
-    arrivalTime: '06:00 WIB',
-    expiryDate: '16 Okt 2026',
-    shelfLifeText: '5 Hari (Wajib Cold Chain)',
-    quantity: 40,
-    unit: 'Liter',
-    qcStatus: 'Lolos QC Organoleptik & Higiene',
-    inspector: 'Rizky I. R. (Kepala SPPG)',
-    notes: 'Segel foil rapat, uji alkohol negatif',
-    copyIndex: 1,
-    totalCopies: 2,
-  },
-  {
-    uniqueKey: 'dummy-myk-1',
-    id: 'ITM-MYK-008',
-    batchLotNo: 'LOT-MYK-20261011-08',
-    name: 'Minyak Goreng Sawit Higienis Jerigen 5 Liter',
-    category: 'Bahan Kering (Sembako)',
-    warehouseType: 'GUDANG_KERING',
-    storageLocation: 'Rak Minyak R-02',
-    storageTemp: 'Suhu Ruang Kering (18°C - 25°C)',
-    supplier: 'UD Berkah Jaya Sembako Tumpang',
-    arrivalDate: '2026-10-11',
-    arrivalDateFormatted: '11 Okt 2026',
-    arrivalTime: '08:30 WIB',
-    expiryDate: '11 Okt 2027',
-    shelfLifeText: '365 Hari (Ruang Bersih Terlindung)',
-    quantity: 60,
-    unit: 'Liter',
-    qcStatus: 'Lolos QC Organoleptik & Higiene',
-    inspector: 'Akmal (Admin Gudang)',
-    notes: 'Jerigen food-grade utuh, minyak jernih',
-    copyIndex: 1,
-    totalCopies: 3,
-  },
+// QR asli (bisa dipindai) berisi kode barang/rak, digambar sebagai SVG agar tajam saat dicetak.
+const QrSvg: React.FC<{ value: string; className?: string; color?: string }> = ({ value, className, color = '#0f172a' }) => {
+  const qr = useMemo(() => {
+    try {
+      return QRCode.create(value || '-', { errorCorrectionLevel: 'M' });
+    } catch {
+      return null;
+    }
+  }, [value]);
+  if (!qr) return null;
+  const size = qr.modules.size;
+  const cells: React.ReactNode[] = [];
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      if (qr.modules.get(x, y)) cells.push(<rect key={`${x}-${y}`} x={x} y={y} width={1.02} height={1.02} />);
+    }
+  }
+  return (
+    <svg viewBox={`0 0 ${size} ${size}`} className={className} fill={color} role="img" aria-label={`QR ${value}`} shapeRendering="crispEdges">
+      {cells}
+    </svg>
+  );
+};
+
+const ROLE_LABEL: Record<string, string> = {
+  SUPERADMIN: 'Superadmin',
+  KA_SPPG: 'Kepala SPPG',
+  ADMIN: 'Admin Gudang',
+  ASLAP: 'Asisten Lapangan',
+  AKUNTAN: 'Akuntan',
+};
+
+const formatLongDate = (iso: string) => {
+  const [y, m, d] = (iso || '').split('-').map(Number);
+  if (!y || !m || !d) return iso || '';
+  return new Date(y, m - 1, d).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
+  { id: 'RECEIVING_FORM', label: 'BA Penerimaan', hint: 'Berita acara serah terima barang dari supplier.' },
+  { id: 'OPNAME_SHEET', label: 'Lembar Opname', hint: 'Lembar hitung fisik stok per lokasi.' },
+  { id: 'BIN_CARD', label: 'Kartu Stok', hint: 'Kartu gantung di rak untuk mencatat keluar-masuk satu barang.' },
+  { id: 'KITCHEN_REQUISITION', label: 'Bon Dapur', hint: 'Bon permintaan bahan dari dapur ke gudang, diisi tangan.' },
+  { id: 'ITEM_TAG_LABEL', label: 'Tag Bahan Datang', hint: 'Tag kecil untuk wadah: supplier, jam datang, dan batas pakai.' },
+  { id: 'EQUIPMENT_LABEL', label: 'Label Barang & Aset', hint: 'Stiker berkode QR untuk barang gudang dan aset dapur.' },
+  { id: 'RACK_LABEL', label: 'Plakat Rak', hint: 'Plakat rak berisi daftar barang dan aturan penyimpanan.' },
+  { id: 'SUPPLIER_EXPENSE_NOTE', label: 'Nota Kas Keluar', hint: 'Bukti pembayaran ke supplier dengan tanda tangan.' },
 ];
+
+const INPUT_CLS =
+  'w-full px-2.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600';
+const LABEL_CLS = 'block text-slate-700 font-medium mb-1';
+
+const EXPENSE_STATUS_LABEL: Record<'LUNAS' | 'DP' | 'TEMPO' | 'PENDING', string> = {
+  LUNAS: 'Lunas',
+  DP: 'Uang muka (DP)',
+  TEMPO: 'Tempo',
+  PENDING: 'Menunggu verifikasi',
+};
+
+const formatRupiah = (n: number) => `Rp ${n.toLocaleString('id-ID')}`;
+
+// Garis kosong untuk isian tulis tangan saat data belum ada.
+const BLANK = '....................................';
+
+const DocTitle: React.FC<{ title: string; subtitle?: string }> = ({ title, subtitle }) => (
+  <div className="text-center">
+    <h2 className="text-sm font-bold text-slate-900">{title}</h2>
+    {subtitle && <p className="text-xs text-slate-700 mt-0.5">{subtitle}</p>}
+  </div>
+);
+
+// Baris "label: nilai". Nilai kosong dicetak sebagai titik-titik untuk diisi tangan.
+const Field: React.FC<{ label: string; value?: string; blank?: string; mono?: boolean; strong?: boolean }> = ({
+  label,
+  value,
+  blank = BLANK,
+  mono,
+  strong,
+}) => (
+  <div className="flex gap-2">
+    <span className="text-slate-600 w-28 shrink-0">{label}</span>
+    <span className={`text-slate-900 ${mono ? 'font-mono' : ''} ${strong ? 'font-bold' : 'font-medium'}`}>
+      {value ? value : <span className="text-slate-400">{blank}</span>}
+    </span>
+  </div>
+);
+
+const SignBox: React.FC<{ role: string; name?: string; signature?: string }> = ({ role, name, signature }) => (
+  <div className="text-center text-xs">
+    <p className="text-slate-700">{role}</p>
+    <div className="h-16 flex items-center justify-center">
+      {signature?.startsWith('data:image') && <img src={signature} alt={`Tanda tangan ${role}`} className="max-h-14 object-contain" />}
+    </div>
+    <div className="border-t border-slate-500 mx-auto w-40 pt-1 font-semibold text-slate-900">
+      {name || <span className="text-slate-400 font-normal">( {BLANK} )</span>}
+    </div>
+  </div>
+);
+
+// Baris status pilihan cetak untuk label, tag, dan plakat. Hanya tampil di layar.
+const SelectionBar: React.FC<{
+  selected: number;
+  total: number;
+  unit: string;
+  allSelected: boolean;
+  onToggleAll: () => void;
+  children?: React.ReactNode;
+}> = ({ selected, total, unit, allSelected, onToggleAll, children }) => (
+  <div className="no-print flex flex-wrap items-center justify-between gap-2 text-xs">
+    <span className="text-slate-700">
+      <span className="font-semibold text-slate-900">{selected}</span> dari {total} {unit} akan dicetak. Hapus centang untuk melewati.
+    </span>
+    <div className="flex items-center gap-2">
+      {children}
+      <button
+        type="button"
+        onClick={onToggleAll}
+        disabled={total === 0}
+        className="px-3 min-h-[44px] sm:min-h-[32px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-800 font-medium cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+      >
+        {allSelected ? 'Batal pilih semua' : 'Pilih semua'}
+      </button>
+    </div>
+  </div>
+);
 
 interface PrintableLabelItem {
   id: string;
@@ -324,7 +266,7 @@ const BASE_RACKS_CONFIG: Omit<WarehouseRack, 'items'>[] = [
     storageRule: 'Wajib di atas palet plastik/kayu min. 15 cm dari lantai & berjarak 5 cm dari dinding. Bebas kutu beras & hama.',
     rotationMethod: 'FIFO',
     capacityMax: '1.500 Kg (Kapasitas Maks. 30 Karung 25-50 Kg)',
-    picName: 'Pak Joko (Logistik Gudang Kering)',
+    picName: '',
     customNote: 'Periksa segel karung & catat nomor batch saat penumpukan.',
   },
   {
@@ -352,7 +294,7 @@ const BASE_RACKS_CONFIG: Omit<WarehouseRack, 'items'>[] = [
     storageRule: 'Letakkan jerigen di ambalan paling bawah untuk stabilitas. Pastikan tutup tersegel rapat agar tidak merembes.',
     rotationMethod: 'FIFO',
     capacityMax: '500 Liter (Maks. 100 Jerigen 5L)',
-    picName: 'Pak Joko (Logistik Gudang Kering)',
+    picName: '',
     customNote: 'Sedia wadah penampung tetesan jika kran jerigen digunakan.',
   },
   {
@@ -366,7 +308,7 @@ const BASE_RACKS_CONFIG: Omit<WarehouseRack, 'items'>[] = [
     storageRule: 'Gunakan kontainer tertutup food-grade setelah kemasan dibuka. Pasang kapur/anti semut di sekitar kaki rak.',
     rotationMethod: 'FEFO',
     capacityMax: '800 Kg (Ambalan Bertingkat SUS 304)',
-    picName: 'Pak Joko (Logistik Gudang Kering)',
+    picName: '',
     customNote: 'Jaga kebersihan ambalan dari ceceran butir gula atau tepung.',
   },
   {
@@ -380,7 +322,7 @@ const BASE_RACKS_CONFIG: Omit<WarehouseRack, 'items'>[] = [
     storageRule: 'Wadah kedap udara agar aroma rempah terjaga dan yodium garam tidak berkurang akibat kelembapan.',
     rotationMethod: 'FIFO',
     capacityMax: '400 Kg (Rak Bin Tertutup)',
-    picName: 'Pak Joko (Logistik Gudang Kering)',
+    picName: '',
     customNote: 'Tutup rapat toples/bin bumbu setelah penimbangan porsi masak.',
   },
   {
@@ -422,7 +364,7 @@ const BASE_RACKS_CONFIG: Omit<WarehouseRack, 'items'>[] = [
     storageRule: 'Wadah stainless tertutup rapat. Beri label tanggal kedatangan. Konsumsi maksimal 24 - 48 jam.',
     rotationMethod: 'FEFO',
     capacityMax: '300 Kg (Rak Bin Stainless Steel SUS 304)',
-    picName: 'Chef Rahmat / PIC Chiller Dapur',
+    picName: '',
     customNote: 'Pastikan pintu chiller tertutup rapat setelah pengambilan bahan.',
   },
   {
@@ -436,7 +378,7 @@ const BASE_RACKS_CONFIG: Omit<WarehouseRack, 'items'>[] = [
     storageRule: 'Jaga rantai dingin (cold chain). Dilarang membekukan ulang bahan yang sudah dicairkan (thawing).',
     rotationMethod: 'FEFO',
     capacityMax: '400 Kg (Deep Chest Freezer)',
-    picName: 'Chef Rahmat / PIC Cold Storage',
+    picName: '',
     customNote: 'Defrost berkala jika bunga es melebihi ketebalan 5 mm.',
   },
   {
@@ -541,111 +483,6 @@ export function angkaTerbilang(angka: number): string {
   return `${toWords(angka).trim()} Rupiah`;
 }
 
-const DEFAULT_EXPENSE_PRICE_MAP: Record<string, number> = {
-  beras: 14500,
-  minyak: 18000,
-  gula: 17500,
-  tepung: 11000,
-  garam: 4000,
-  kecap: 22000,
-  saus: 18000,
-  bawang: 35000,
-  bumbu: 25000,
-  ayam: 38000,
-  daging: 125000,
-  telur: 28000,
-  ikan: 35000,
-  tahu: 2000,
-  tempe: 2500,
-  bayam: 3500,
-  kangkung: 3500,
-  wortel: 12000,
-  buncis: 14000,
-  labu: 8000,
-  pisang: 16000,
-  semangka: 8500,
-  pepaya: 7500,
-  susu: 15000,
-  kresek: 15000,
-  plastik: 25000,
-  trashbag: 32000,
-  sunlight: 85000,
-  sabun: 18000,
-  masker: 25000,
-  tissue: 12000,
-};
-
-function getEstimatedItemPrice(name: string, category?: string): number {
-  const lower = (name || '').toLowerCase();
-  for (const [k, p] of Object.entries(DEFAULT_EXPENSE_PRICE_MAP)) {
-    if (lower.includes(k)) return p;
-  }
-  const norm = normalizeItemCategory(category);
-  if (norm === 'Bahan Basah') return 25000;
-  if (norm === 'Bahan Kering') return 15000;
-  if (norm === 'Bahan Peralatan') return 20000;
-  return 15000;
-}
-
-const SUPPLIER_BANK_DEFAULTS: Record<string, { bank: string; accountNo: string; holder: string }> = {
-  'SUP-001': { bank: 'Bank BRI', accountNo: '0182-01-002931-50-8', holder: 'UMKM Sumber Lumintu' },
-  'SUP-002': { bank: 'Bank Mandiri', accountNo: '132-00-8829102-1', holder: "UMKM Luber's Fresh" },
-  'SUP-003': { bank: 'BCA (Bank Central Asia)', accountNo: '841-092-4411', holder: 'UMKM Tumpang Grosir' },
-  'SUP-004': { bank: 'Bank BRI', accountNo: '0182-01-098877-50-1', holder: 'UMKM Tahu Rio' },
-  'SUP-005': { bank: 'Bank Mandiri', accountNo: '132-00-998877', holder: 'UMKM Ayam Segar FJR' },
-  'SUP-006': { bank: 'Bank BNI', accountNo: '082-991-4421', holder: 'UMKM Divarif Plastik' },
-  'SUP-007': { bank: 'Bank BRI', accountNo: '0182-01-077123-50-2', holder: 'Ayam Segar 98' },
-  'SUP-008': { bank: 'Bank Mandiri', accountNo: '132-00-776655', holder: 'Tempe Pak Tro' },
-  'SUP-009': { bank: 'Bank BRI', accountNo: '0182-01-055432-50-3', holder: 'Berkah Tahu Tempe Saidah' },
-  'SUP-010': { bank: 'BCA (Bank Central Asia)', accountNo: '524-118-9902', holder: 'PT Tuan Raja Emas Mulia' },
-  'SUP-011': { bank: 'Bank BRI', accountNo: '0182-01-088765-50-4', holder: 'Plastmart Murni' },
-  'SUP-012': { bank: 'Bank Mandiri', accountNo: '132-00-554433', holder: 'Mbak Pur Daging' },
-};
-
-function getDefaultLinesForSupplier(supplier: Supplier): SupplierExpenseLine[] {
-  const cat = (supplier.supplyCategory || '').toLowerCase();
-  if (cat.includes('beras') || cat.includes('sembako')) {
-    return [
-      { id: 'exp-1', name: 'Beras Premium Pandan Wangi (Karung 50kg)', category: 'Bahan Kering', quantity: 200, unit: 'Kg', unitPrice: 14500, totalPrice: 2900000, notes: 'Mutu beras pulen, putih & bebas kutu' },
-      { id: 'exp-2', name: 'Minyak Goreng Sawit Higienis (Jerigen)', category: 'Bahan Kering', quantity: 60, unit: 'Liter', unitPrice: 18000, totalPrice: 1080000, notes: 'Kemasan jerigen tersegel rapat' },
-      { id: 'exp-3', name: 'Gula Pasir Kristal Putih', category: 'Bahan Kering', quantity: 30, unit: 'Kg', unitPrice: 17500, totalPrice: 525000, notes: 'Gula tebu murni' },
-      { id: 'exp-4', name: 'Garam Halus Beriodium', category: 'Bahan Kering', quantity: 15, unit: 'Pack', unitPrice: 4000, totalPrice: 60000, notes: 'Konsumsi dapur gizi' }
-    ];
-  }
-  if (cat.includes('protein') || cat.includes('unggas') || cat.includes('daging')) {
-    return [
-      { id: 'exp-1', name: 'Daging Ayam Broiler Karkas Bersih', category: 'Bahan Basah', quantity: 50, unit: 'Kg', unitPrice: 38000, totalPrice: 1900000, notes: 'Ayam segar dingin dipotong pagi hari' },
-      { id: 'exp-2', name: 'Telur Ayam Negeri Ras Segar', category: 'Bahan Basah', quantity: 35, unit: 'Kg', unitPrice: 28000, totalPrice: 980000, notes: 'Cangkang bersih utuh tanpa retak' },
-      { id: 'exp-3', name: 'Tahu Kedelai Putih Segar', category: 'Bahan Basah', quantity: 60, unit: 'Pcs', unitPrice: 2000, totalPrice: 120000, notes: 'Tahu higienis non-pengawet' }
-    ];
-  }
-  if (cat.includes('sayur')) {
-    return [
-      { id: 'exp-1', name: 'Sayur Bayam Hijau Segar', category: 'Bahan Basah', quantity: 40, unit: 'Ikat', unitPrice: 3500, totalPrice: 140000, notes: 'Sayur petik pagi' },
-      { id: 'exp-2', name: 'Wortel Segar Brastagi', category: 'Bahan Basah', quantity: 30, unit: 'Kg', unitPrice: 12000, totalPrice: 360000, notes: 'Wortel manis kelas A' },
-      { id: 'exp-3', name: 'Buncis Muda Segar', category: 'Bahan Basah', quantity: 25, unit: 'Kg', unitPrice: 14000, totalPrice: 350000, notes: 'Buncis renyah tanpa serat tua' },
-      { id: 'exp-4', name: 'Labu Siam Manisa', category: 'Bahan Basah', quantity: 20, unit: 'Kg', unitPrice: 8000, totalPrice: 160000, notes: 'Kondisi segar keras' }
-    ];
-  }
-  if (cat.includes('buah')) {
-    return [
-      { id: 'exp-1', name: 'Pisang Cavendish Matang Pas', category: 'Bahan Basah', quantity: 45, unit: 'Kg', unitPrice: 16000, totalPrice: 720000, notes: 'Siap dibagikan ke penerima gizi' },
-      { id: 'exp-2', name: 'Semangka Merah Non-Biji', category: 'Bahan Basah', quantity: 60, unit: 'Kg', unitPrice: 8500, totalPrice: 510000, notes: 'Kadar manis tinggi & segar' },
-      { id: 'exp-3', name: 'Pepaya California Matang Pohon', category: 'Bahan Basah', quantity: 35, unit: 'Kg', unitPrice: 7500, totalPrice: 262500, notes: 'Tekstur daging padat' }
-    ];
-  }
-  if (cat.includes('hygiene') || cat.includes('clean') || cat.includes('alat')) {
-    return [
-      { id: 'exp-1', name: 'Sabun Cuci Piring Food-Grade 4L', category: 'Bahan Peralatan', quantity: 3, unit: 'Jerigen', unitPrice: 85000, totalPrice: 255000, notes: 'Sanitasi peralatan makan SPPG' },
-      { id: 'exp-2', name: 'Kantong Plastik Sampah HD Hitam Roll', category: 'Bahan Peralatan', quantity: 10, unit: 'Roll', unitPrice: 32000, totalPrice: 320000, notes: 'Pengelolaan limbah dapur' },
-      { id: 'exp-3', name: 'Masker Medis Dapur 3-Ply (Box 50 pcs)', category: 'Bahan Peralatan', quantity: 5, unit: 'Dus', unitPrice: 25000, totalPrice: 125000, notes: 'Protokol higienitas penjamah makanan' }
-    ];
-  }
-  return [
-    { id: 'exp-1', name: `Pasokan Bahan ${supplier.supplyCategory}`, category: 'Bahan Kering', quantity: 50, unit: 'Kg', unitPrice: 25000, totalPrice: 1250000, notes: 'Penerimaan bahan operasional' }
-  ];
-}
-
 // =========================================================================
 // UTILITY FUNCTIONS FOR TAG & LABEL CALCULATIONS (HOISTED FOR COMPONENT USE)
 // =========================================================================
@@ -678,27 +515,6 @@ export const addDaysToDate = (dateStr: string, days: number): string => {
   } catch {
     return dateStr;
   }
-};
-
-export const getDefaultSupplierForItem = (item: ItemMaster, fallbackSupplier = 'UMKM Sumber Lumintu'): string => {
-  const cat = (item.category || '').toLowerCase();
-  const name = (item.name || '').toLowerCase();
-  if (cat.includes('protein') || name.includes('ayam') || name.includes('telur') || name.includes('ikan') || name.includes('daging')) {
-    return 'UMKM Ayam Segar FJR';
-  }
-  if (cat.includes('sayur') || name.includes('sayur') || name.includes('bayam') || name.includes('wortel')) {
-    return "UMKM Luber's Fresh";
-  }
-  if (cat.includes('buah') || name.includes('buah') || name.includes('pisang')) {
-    return 'UMKM Sumber Lumintu';
-  }
-  if (cat.includes('clean') || cat.includes('hygiene') || cat.includes('pack')) {
-    return 'UMKM Divarif Plastik';
-  }
-  if (cat.includes('sembako') || name.includes('beras') || name.includes('minyak') || name.includes('gula') || name.includes('tepung') || name.includes('garam')) {
-    return 'UMKM Tumpang Grosir';
-  }
-  return fallbackSupplier;
 };
 
 export const getItemShelfLifeInfo = (item: ItemMaster): { durationText: string; shelfLifeDays: number } => {
@@ -841,14 +657,25 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const [activeForm, setActiveForm] = useState<FormType>(
     initialSupplierId ? 'SUPPLIER_EXPENSE_NOTE' : (initialForm || 'RECEIVING_FORM')
   );
-  const [unitName, setUnitName] = useState<string>('SPPG MLG TUMPANG JERU - Unit Pelayanan Dapur Gizi');
-  const [printDate, setPrintDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [printDate, setPrintDate] = useState<string>(localDateIso());
 
   // Data sources
   const [receivingDocs, setReceivingDocs] = useState<ReceivingDocument[]>(() => warehouseDb.getReceivings());
   const [items, setItems] = useState<ItemMaster[]>(() => warehouseDb.getItems());
   const equipment = useMemo(() => warehouseDb.getEquipment(), []);
   const suppliers = useMemo(() => warehouseDb.getSuppliers(), []);
+  const users = useMemo(() => warehouseDb.getUsers(), []);
+  const headOfficeName = users.find(u => u.role === 'KA_SPPG')?.name || '';
+  const accountantName = users.find(u => u.role === 'AKUNTAN')?.name || '';
+
+  // Supplier terakhir per barang, diambil dari dokumen penerimaan (bukan tebakan).
+  const lastSupplierByItem = useMemo(() => {
+    const map: Record<string, string> = {};
+    [...receivingDocs]
+      .sort((a, b) => (a.date < b.date ? -1 : 1))
+      .forEach(doc => doc.lines.forEach(l => { map[l.itemId] = doc.supplierName; }));
+    return map;
+  }, [receivingDocs]);
 
   // Sync data sources automatically when storage changes or window receives focus
   useEffect(() => {
@@ -868,13 +695,13 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const [selectedReceivingId, setSelectedReceivingId] = useState<string>(receivingDocs[0]?.id || 'BLANK');
   const [opnameLocation, setOpnameLocation] = useState<string>('ALL');
   const [selectedItemId, setSelectedItemId] = useState<string>(items[0]?.id || '');
-  const [menuToday, setMenuToday] = useState<string>('Nasi Putih Pulen, Ayam Fillet Semur Kecap, Sup Sayur Buncis & Wortel, Pisang Cavendish');
-  const [targetPortions, setTargetPortions] = useState<number>(1200);
-  const [kitchenPic, setKitchenPic] = useState<string>('Chef Rahmat (Kepala Dapur)');
+  const [menuToday, setMenuToday] = useState<string>('');
+  const [targetPortions, setTargetPortions] = useState<number>(0);
+  const [kitchenPic, setKitchenPic] = useState<string>('');
 
   // Supplier Expense Note States
   const [expenseSupplierId, setExpenseSupplierId] = useState<string>(
-    initialSupplierId || suppliers[0]?.id || 'SUP-001'
+    initialSupplierId || suppliers[0]?.id || ''
   );
   const [expenseInvoiceNo, setExpenseInvoiceNo] = useState<string>(() => {
     const today = new Date();
@@ -882,53 +709,42 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     const yyyy = today.getFullYear();
     return `BKK/SPPG-JT/${yyyy}/${mm}/001`;
   });
-  const [expenseDate, setExpenseDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [expensePaymentMethod, setExpensePaymentMethod] = useState<string>(() => {
-    const sId = initialSupplierId || suppliers[0]?.id || 'SUP-001';
-    const b = SUPPLIER_BANK_DEFAULTS[sId];
-    return b ? `Transfer ${b.bank}` : 'Transfer Bank';
-  });
-  const [expenseBankName, setExpenseBankName] = useState<string>(() => {
-    const sId = initialSupplierId || suppliers[0]?.id || 'SUP-001';
-    return SUPPLIER_BANK_DEFAULTS[sId]?.bank || 'Bank BRI';
-  });
-  const [expenseBankAccount, setExpenseBankAccount] = useState<string>(() => {
-    const sId = initialSupplierId || suppliers[0]?.id || 'SUP-001';
-    return SUPPLIER_BANK_DEFAULTS[sId]?.accountNo || '0182-01-002931-50-8';
-  });
-  const [expenseAccountHolder, setExpenseAccountHolder] = useState<string>(() => {
-    const sId = initialSupplierId || suppliers[0]?.id || 'SUP-001';
-    return SUPPLIER_BANK_DEFAULTS[sId]?.holder || suppliers[0]?.name || 'UMKM Sumber Lumintu';
-  });
-  const [expenseDeliveryRef, setExpenseDeliveryRef] = useState<string>('SJ-TG-8842 / GR-2026-0001');
-  const [expensePurpose, setExpensePurpose] = useState<string>(
-    'Pembayaran Belanja Bahan Baku Pangan Dapur Gizi SPPG MLG TUMPANG JERU'
-  );
+  const [expenseDate, setExpenseDate] = useState<string>(localDateIso());
+  // Data rekening supplier belum tersimpan di sistem, jadi diisi petugas saat membuat nota.
+  const [expenseBankName, setExpenseBankName] = useState<string>('');
+  const [expenseBankAccount, setExpenseBankAccount] = useState<string>('');
+  const [expenseAccountHolder, setExpenseAccountHolder] = useState<string>('');
+  const [expenseDeliveryRef, setExpenseDeliveryRef] = useState<string>('');
+  const [expensePurpose, setExpensePurpose] = useState<string>('Pembayaran belanja bahan pangan dapur SPPG Tumpang Jeru');
   const [expenseStatus, setExpenseStatus] = useState<'LUNAS' | 'DP' | 'TEMPO' | 'PENDING'>('LUNAS');
   const [expenseDiscount, setExpenseDiscount] = useState<number>(0);
   const [expenseShippingCost, setExpenseShippingCost] = useState<number>(0);
-  const [expenseNotes, setExpenseNotes] = useState<string>(
-    'Bahan pangan telah diperiksa mutu fisiknya oleh Tim Logistik & Penerimaan Gudang SPPG MLG TUMPANG JERU dalam kondisi segar, lengkap, dan memenuhi standar keamanan pangan.'
-  );
-  const [expensePicTreasurer, setExpensePicTreasurer] = useState<string>('Siti Aisyah (Bendahara)');
-  const [expensePicVerifier, setExpensePicVerifier] = useState<string>('Akmal (Admin Gudang)');
-  const [expensePicApprover, setExpensePicApprover] = useState<string>('Rizky Iman Ramdhan, S.Pd (Kepala SPPG)');
-  const [expenseLines, setExpenseLines] = useState<SupplierExpenseLine[]>(() => {
-    const defaultSup = suppliers.find(s => s.id === (initialSupplierId || suppliers[0]?.id)) || suppliers[0];
-    return defaultSup ? getDefaultLinesForSupplier(defaultSup) : [];
-  });
+  const [expenseNotes, setExpenseNotes] = useState<string>('');
+  const [expensePicTreasurer, setExpensePicTreasurer] = useState<string>(accountantName);
+  const [expensePicVerifier, setExpensePicVerifier] = useState<string>(currentUser?.name || '');
+  const [expensePicApprover, setExpensePicApprover] = useState<string>(headOfficeName);
+  const [expenseLines, setExpenseLines] = useState<SupplierExpenseLine[]>([]);
 
   const selectedSupplier = useMemo(() => {
     return suppliers.find(s => s.id === expenseSupplierId) || {
       id: expenseSupplierId,
-      name: 'Mitra Rekanan SPPG',
-      contactPerson: 'PIC Supplier',
-      phone: '-',
-      address: 'Malang, Jawa Timur',
-      supplyCategory: 'Logistik Pangan',
+      name: '',
+      contactPerson: '',
+      phone: '',
+      address: '',
+      supplyCategory: '',
       isActive: true,
     };
   }, [suppliers, expenseSupplierId]);
+
+  const supplierReceivings = useMemo(
+    () =>
+      receivingDocs.filter(
+        r => r.supplierId === expenseSupplierId || r.supplierName.toLowerCase() === selectedSupplier.name.toLowerCase()
+      ),
+    [receivingDocs, expenseSupplierId, selectedSupplier.name]
+  );
+  const [expenseReceivingId, setExpenseReceivingId] = useState<string>('');
 
   // Synchronize when initialSupplierId or initialForm changes from outside (e.g. from SuppliersModule)
   useEffect(() => {
@@ -942,69 +758,32 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
   const handleSupplierChange = (supId: string) => {
     setExpenseSupplierId(supId);
-    const sup = suppliers.find(s => s.id === supId);
-    if (!sup) return;
-
-    // Bank defaults
-    const bankDefault = SUPPLIER_BANK_DEFAULTS[sup.id] || {
-      bank: 'Bank BRI / Rekening Mitra',
-      accountNo: '0182-01-098877-50-1',
-      holder: sup.name
-    };
-    setExpensePaymentMethod(`Transfer ${bankDefault.bank}`);
-    setExpenseBankName(bankDefault.bank);
-    setExpenseBankAccount(bankDefault.accountNo);
-    setExpenseAccountHolder(bankDefault.holder);
-
-    // Look for recent receiving doc for this supplier
-    const supReceivings = receivingDocs.filter(
-      r => r.supplierId === sup.id || r.supplierName.toLowerCase() === sup.name.toLowerCase()
-    );
-    if (supReceivings.length > 0) {
-      const latest = supReceivings[0];
-      setExpenseDeliveryRef(latest.deliveryNoteNo ? `${latest.deliveryNoteNo} / ${latest.id}` : latest.id);
-      const convertedLines: SupplierExpenseLine[] = latest.lines.map((l, idx) => {
-        const unitPrice = getEstimatedItemPrice(l.itemName, l.category);
-        return {
-          id: `line-${Date.now()}-${idx}`,
-          name: l.itemName,
-          category: l.category || 'Bahan Pangan',
-          quantity: l.quantity,
-          unit: l.unit,
-          unitPrice,
-          totalPrice: l.quantity * unitPrice,
-          notes: l.conditionNote || 'Kondisi baik & sesuai PO'
-        };
-      });
-      setExpenseLines(convertedLines);
-    } else {
-      setExpenseDeliveryRef(`SJ-${sup.id.replace('SUP-', '')}-${new Date().toISOString().slice(2, 7).replace('-', '')}`);
-      setExpenseLines(getDefaultLinesForSupplier(sup));
-    }
+    setExpenseBankName('');
+    setExpenseBankAccount('');
+    setExpenseAccountHolder(suppliers.find(s => s.id === supId)?.name || '');
+    setExpenseReceivingId('');
+    setExpenseDeliveryRef('');
+    setExpenseLines([]);
   };
 
+  // Harga belum tercatat di dokumen penerimaan, jadi harga satuan diisi petugas.
   const handleLoadReceivingDocToExpense = (docId: string) => {
+    setExpenseReceivingId(docId);
     const doc = receivingDocs.find(r => r.id === docId);
     if (!doc) return;
     setExpenseDeliveryRef(doc.deliveryNoteNo ? `${doc.deliveryNoteNo} / ${doc.id}` : doc.id);
-    const convertedLines: SupplierExpenseLine[] = doc.lines.map((l, idx) => {
-      const unitPrice = getEstimatedItemPrice(l.itemName, l.category);
-      return {
+    setExpenseLines(
+      doc.lines.map((l, idx) => ({
         id: `line-${Date.now()}-${idx}`,
         name: l.itemName,
-        category: l.category || 'Bahan Pangan',
+        category: l.category || '',
         quantity: l.quantity,
         unit: l.unit,
-        unitPrice,
-        totalPrice: l.quantity * unitPrice,
-        notes: l.conditionNote || 'Kondisi baik & sesuai standar mutu gizi'
-      };
-    });
-    setExpenseLines(convertedLines);
-  };
-
-  const handleLoadDefaultTemplate = (sup: Supplier) => {
-    setExpenseLines(getDefaultLinesForSupplier(sup));
+        unitPrice: 0,
+        totalPrice: 0,
+        notes: l.conditionNote || '',
+      }))
+    );
   };
 
   const handleAddExpenseLine = () => {
@@ -1049,9 +828,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   // Label & QR feature states
   const [labelWarehouseFilter, setLabelWarehouseFilter] = useState<'ALL' | 'GUDANG_KERING' | 'GUDANG_BASAH' | 'EQUIPMENT'>('ALL');
   const [labelCategoryFilter, setLabelCategoryFilter] = useState<string>('ALL');
-  const [labelArrivalDate, setLabelArrivalDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [labelArrivalDate, setLabelArrivalDate] = useState<string>(localDateIso());
   const [labelGlobalSupplier, setLabelGlobalSupplier] = useState<string>('AUTO');
   const [labelGlobalShelfLife, setLabelGlobalShelfLife] = useState<string>('');
   const [labelGlobalExpiryDate, setLabelGlobalExpiryDate] = useState<string>(''); // Default kosong untuk isi manual!
@@ -1084,15 +861,11 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   // =========================================================================
   // ITEM TAG LABELS (TAG ITEM & BAHAN MASUK - SUPPLIER, JAM DATANG & EXPIRED)
   // =========================================================================
-  const [tagSourceType, setTagSourceType] = useState<'DUMMY_SAMPLE' | 'FROM_GR' | 'FROM_ITEMS'>('DUMMY_SAMPLE');
+  const [tagSourceType, setTagSourceType] = useState<'FROM_GR' | 'FROM_ITEMS'>(receivingDocs.length > 0 ? 'FROM_GR' : 'FROM_ITEMS');
   const [tagSelectedGrId, setTagSelectedGrId] = useState<string>(receivingDocs[0]?.id || '');
   const [tagGridCols, setTagGridCols] = useState<'4' | '3' | '2'>('4');
-  const [tagArrivalDate, setTagArrivalDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
-  const [tagArrivalTime, setTagArrivalTime] = useState<string>(
-    receivingDocs[0]?.arrivalTime || '08:30 WIB'
-  );
+  const [tagArrivalDate, setTagArrivalDate] = useState<string>(receivingDocs[0]?.date || localDateIso());
+  const [tagArrivalTime, setTagArrivalTime] = useState<string>(receivingDocs[0]?.arrivalTime || '');
   const [tagGlobalSupplier, setTagGlobalSupplier] = useState<string>(
     receivingDocs[0]?.supplierName || ''
   );
@@ -1104,42 +877,18 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const [tagSelectedKeys, setTagSelectedKeys] = useState<string[]>([]);
   const [tagHasCustomSelection, setTagHasCustomSelection] = useState<boolean>(false);
   const [tagQcStatus, setTagQcStatus] = useState<string>('Lolos QC Organoleptik & Higiene');
-  const [tagInspectorName, setTagInspectorName] = useState<string>(currentUser?.name || 'Petugas SPPG MLG TUMPANG JERU');
+  const [tagInspectorName, setTagInspectorName] = useState<string>(currentUser?.name || '');
 
   // Deriving Item Tags List
   const allItemTags = useMemo<ItemTagData[]>(() => {
     const list: ItemTagData[] = [];
 
-    if (tagSourceType === 'DUMMY_SAMPLE') {
-      SAMPLE_DUMMY_TAG_ITEMS.forEach(sample => {
-        const copies = Math.max(1, tagCopiesPerItem);
-        for (let c = 1; c <= copies; c++) {
-          list.push({
-            ...sample,
-            uniqueKey: `dummy-${sample.id}-${c}`,
-            copyIndex: c,
-            totalCopies: copies,
-            supplier: tagGlobalSupplier || sample.supplier,
-            arrivalDate: tagArrivalDate || sample.arrivalDate,
-            arrivalDateFormatted: tagArrivalDate ? formatDisplayDate(parseLocalDate(tagArrivalDate)) : sample.arrivalDateFormatted,
-            arrivalTime: tagArrivalTime || sample.arrivalTime,
-            expiryDate: tagExpiryMode === 'CUSTOM_DATE' && tagManualExpiryDate
-              ? formatDisplayDate(parseLocalDate(tagManualExpiryDate))
-              : sample.expiryDate,
-            qcStatus: tagQcStatus || sample.qcStatus,
-            inspector: tagInspectorName || sample.inspector,
-          });
-        }
-      });
-      return list;
-    }
-
     if (tagSourceType === 'FROM_GR') {
       const doc = receivingDocs.find(d => d.id === tagSelectedGrId) || receivingDocs[0];
       if (doc) {
-        const docSupplier = tagGlobalSupplier || doc.supplierName || 'Mitra Pemasok Rekanan';
+        const docSupplier = tagGlobalSupplier || doc.supplierName || '';
         const docDate = tagArrivalDate || doc.date;
-        const docTime = tagArrivalTime || doc.arrivalTime || '08:30 WIB';
+        const docTime = tagArrivalTime || doc.arrivalTime || '';
 
         (doc.lines || []).forEach((line, lineIdx) => {
           const matchedItem = items.find(
@@ -1205,7 +954,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
         const isFreezer = locLower.includes('freezer');
         const isChiller = locLower.includes('chiller');
         const autoShelf = getItemShelfLifeInfo(item);
-        const itemSupplier = tagGlobalSupplier || getDefaultSupplierForItem(item);
+        const itemSupplier = tagGlobalSupplier || lastSupplierByItem[item.id] || '';
         const arrivalFormatted = formatDisplayDate(parseLocalDate(tagArrivalDate));
 
         let expDateFormatted = '';
@@ -1238,7 +987,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             arrivalTime: tagArrivalTime,
             expiryDate: expDateFormatted,
             shelfLifeText: autoShelf.durationText,
-            quantity: item.minimumStock,
+            // Jumlah datang tidak diketahui dari katalog, jadi dikosongkan untuk ditulis tangan.
+            quantity: undefined,
             unit: item.baseUnit,
             qcStatus: tagQcStatus,
             inspector: tagInspectorName,
@@ -1264,6 +1014,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     tagCopiesPerItem,
     tagQcStatus,
     tagInspectorName,
+    lastSupplierByItem,
   ]);
 
   // Filtered Item Tags
@@ -1291,12 +1042,13 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   }, [filteredItemTags, tagHasCustomSelection, tagSelectedKeys]);
 
   const toggleSelectAllItemTags = () => {
-    if (tagHasCustomSelection && tagSelectedKeys.length === filteredItemTags.length) {
+    // Semua terpilih (termasuk kondisi awal tanpa pilihan khusus) -> kosongkan; selain itu pilih semua.
+    if (!tagHasCustomSelection || tagSelectedKeys.length === filteredItemTags.length) {
       setTagHasCustomSelection(true);
       setTagSelectedKeys([]);
     } else {
       setTagHasCustomSelection(false);
-      setTagSelectedKeys(filteredItemTags.map(t => t.uniqueKey));
+      setTagSelectedKeys([]);
     }
   };
 
@@ -1344,7 +1096,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       const isFreezer = locLower.includes('freezer');
       const isChiller = locLower.includes('chiller');
       const autoShelf = getItemShelfLifeInfo(item);
-      const autoSupplier = getDefaultSupplierForItem(item);
+      const autoSupplier = lastSupplierByItem[item.id] || '';
 
       const override = labelOverrides[item.id] || {};
       const itemArrival = override.arrivalDate || labelArrivalDate;
@@ -1449,7 +1201,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
         override.supplierName !== undefined
           ? override.supplierName
           : labelGlobalSupplier === 'AUTO'
-          ? 'CV Dapur Prima Mandiri'
+          ? ''
           : labelGlobalSupplier === 'BLANK'
           ? ''
           : labelGlobalSupplier;
@@ -1497,7 +1249,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     });
 
     return list;
-  }, [items, equipment, labelArrivalDate, labelGlobalSupplier, labelGlobalShelfLife, labelGlobalExpiryDate, labelCustomNote, labelOverrides]);
+  }, [items, equipment, labelArrivalDate, labelGlobalSupplier, labelGlobalShelfLife, labelGlobalExpiryDate, labelCustomNote, labelOverrides, lastSupplierByItem]);
 
   const openEditModal = (label: PrintableLabelItem) => {
     setEditingModalData({
@@ -1587,12 +1339,12 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   }, [filteredLabels, hasCustomSelection, selectedLabelIds]);
 
   const toggleSelectAll = () => {
-    if (hasCustomSelection && selectedLabelIds.length === filteredLabels.length) {
+    if (!hasCustomSelection || selectedLabelIds.length === filteredLabels.length) {
       setHasCustomSelection(true);
       setSelectedLabelIds([]);
     } else {
       setHasCustomSelection(false);
-      setSelectedLabelIds(filteredLabels.map(l => l.id));
+      setSelectedLabelIds([]);
     }
   };
 
@@ -1617,7 +1369,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const [rackSelectedId, setRackSelectedId] = useState<string>('ALL');
   const [rackSearchQuery, setRackSearchQuery] = useState<string>('');
   const [rackLayoutMode, setRackLayoutMode] = useState<'1' | '2'>('2');
-  const [rackGlobalPic, setRackGlobalPic] = useState<string>('Petugas Logistik SPPG');
+  const [rackGlobalPic, setRackGlobalPic] = useState<string>('');
   const [rackGlobalNote, setRackGlobalNote] = useState<string>('');
   const [selectedRackIds, setSelectedRackIds] = useState<string[]>([]);
   const [hasCustomRackSelection, setHasCustomRackSelection] = useState<boolean>(false);
@@ -1932,11 +1684,11 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   }, [filteredRacks, hasCustomRackSelection, selectedRackIds]);
 
   const toggleSelectAllRacks = () => {
-    if (!hasCustomRackSelection || selectedRackIds.length !== filteredRacks.length) {
+    if (!hasCustomRackSelection || selectedRackIds.length === filteredRacks.length) {
       setHasCustomRackSelection(true);
-      setSelectedRackIds(filteredRacks.map(r => r.id));
+      setSelectedRackIds([]);
     } else {
-      setHasCustomRackSelection(true);
+      setHasCustomRackSelection(false);
       setSelectedRackIds([]);
     }
   };
@@ -1995,7 +1747,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       capacityMax: '1.000 Kg',
       storageRule: 'Wajib di atas palet plastik/kayu min. 15 cm dari lantai & bersih dari hama.',
       rotationMethod: 'FIFO',
-      picName: rackGlobalPic || 'Petugas Logistik SPPG',
+      picName: rackGlobalPic,
       customNote: '',
       items: [],
     });
@@ -2196,8 +1948,31 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     window.print();
   };
 
+  // Modal ubah label/plakat bisa ditutup dengan Escape.
+  useEffect(() => {
+    if (!editingModalData && !editingRackData) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setEditingModalData(null);
+      setEditingRackData(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editingModalData, editingRackData]);
+
+  // Jumlah lembar/label yang akan tercetak, untuk label tombol cetak.
+  const printCount =
+    activeForm === 'ITEM_TAG_LABEL'
+      ? itemTagsToPrint.length
+      : activeForm === 'EQUIPMENT_LABEL'
+      ? labelsToPrint.length
+      : activeForm === 'RACK_LABEL'
+      ? racksToPrint.length
+      : null;
+  const printDisabled = printCount === 0 || (activeForm === 'BIN_CARD' && !selectedItem);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Print-specific style injected into head */}
       <style>{`
         @media print {
@@ -2218,13 +1993,24 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           nav, header, footer, .no-print {
             display: none !important;
           }
+          /* Latar abu-abu dan padding tata letak aplikasi ikut tercetak karena color-adjust: exact. */
+          #root, #root > div, main {
+            background: #ffffff !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: none !important;
+            min-height: 0 !important;
+          }
           #print-area {
             display: block !important;
             width: 100% !important;
+            max-width: none !important;
             margin: 0 !important;
             padding: 0 !important;
             box-shadow: none !important;
             border: none !important;
+            border-radius: 0 !important;
+            overflow: visible !important;
           }
           .page-break {
             page-break-after: always;
@@ -2269,211 +2055,58 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
         }
       `}</style>
 
-      {/* Screen Control Header */}
-      <div className="no-print bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Kontrol layar: tidak ikut tercetak */}
+      <div className="no-print bg-white rounded-xl border border-slate-200">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 pt-4">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-              Pusat Formulir & Alat Cetak Fisik
-            </h1>
-            <p className="text-xs text-slate-500 mt-1">
-              Cetak dokumen operasional lapangan standar untuk pencatatan fisik di rak gudang, ruang chiller, dan dapur pengolahan.
-            </p>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Cetak Form</h1>
+            <p className="text-xs text-slate-600 mt-0.5">Pilih form, atur isinya, lalu cetak atau simpan sebagai PDF.</p>
           </div>
+          <button
+            type="button"
+            onClick={handlePrint}
+            disabled={printDisabled}
+            className="inline-flex items-center justify-center gap-2 px-4 min-h-[44px] sm:min-h-[36px] rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+          >
+            <Printer className="w-4 h-4" />
+            {printCount === null ? 'Cetak' : `Cetak ${printCount} ${activeForm === 'RACK_LABEL' ? 'plakat' : activeForm === 'ITEM_TAG_LABEL' ? 'tag' : 'label'}`}
+          </button>
+        </div>
 
-          <div className="flex items-center gap-2.5">
+        <div role="tablist" aria-label="Jenis form" className="flex gap-1 overflow-x-auto px-4 mt-3 border-b border-slate-200">
+          {FORM_TABS.map(tab => (
             <button
-              onClick={handlePrint}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeForm === tab.id}
+              title={tab.hint}
+              onClick={() => setActiveForm(tab.id)}
+              className={`shrink-0 px-3 min-h-[44px] sm:min-h-[38px] text-xs whitespace-nowrap border-b-2 -mb-px cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 rounded-t-md ${
+                activeForm === tab.id
+                  ? 'border-emerald-700 text-emerald-800 font-semibold'
+                  : 'border-transparent text-slate-600 hover:text-slate-900 font-medium'
+              }`}
             >
-              <Printer className="w-4 h-4 text-emerald-100" />
-              Cetak Dokumen Sekarang (Print / PDF)
+              {tab.label}
             </button>
-          </div>
+          ))}
         </div>
+        <p className="px-4 pt-2 text-[11px] text-slate-600">{FORM_TABS.find(t => t.id === activeForm)?.hint}</p>
 
-        {/* Form Category Selector */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2.5 mt-6 pt-5 border-t border-slate-200">
-          <button
-            onClick={() => setActiveForm('RECEIVING_FORM')}
-            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-              activeForm === 'RECEIVING_FORM'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
-                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <FileText className={`w-4 h-4 ${activeForm === 'RECEIVING_FORM' ? 'text-emerald-700' : 'text-slate-500'}`} />
-              <span className="text-xs">BA Penerimaan</span>
-            </div>
-            <p className={`text-[11px] line-clamp-1 ${activeForm === 'RECEIVING_FORM' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
-              Bukti fisik serah terima supplier
-            </p>
-          </button>
-
-          <button
-            onClick={() => setActiveForm('OPNAME_SHEET')}
-            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-              activeForm === 'OPNAME_SHEET'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
-                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <ClipboardList className={`w-4 h-4 ${activeForm === 'OPNAME_SHEET' ? 'text-emerald-700' : 'text-slate-500'}`} />
-              <span className="text-xs">Lembar Opname Fisik</span>
-            </div>
-            <p className={`text-[11px] line-clamp-1 ${activeForm === 'OPNAME_SHEET' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
-              Tally sheet hitung rak & chiller
-            </p>
-          </button>
-
-          <button
-            onClick={() => setActiveForm('BIN_CARD')}
-            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-              activeForm === 'BIN_CARD'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
-                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <Layers className={`w-4 h-4 ${activeForm === 'BIN_CARD' ? 'text-emerald-700' : 'text-slate-500'}`} />
-              <span className="text-xs">Kartu Stok (Bin Card)</span>
-            </div>
-            <p className={`text-[11px] line-clamp-1 ${activeForm === 'BIN_CARD' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
-              Kartu gantung mutasi fisik rak
-            </p>
-          </button>
-
-          <button
-            onClick={() => setActiveForm('KITCHEN_REQUISITION')}
-            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-              activeForm === 'KITCHEN_REQUISITION'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
-                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <UtensilsCrossed className={`w-4 h-4 ${activeForm === 'KITCHEN_REQUISITION' ? 'text-emerald-700' : 'text-slate-500'}`} />
-              <span className="text-xs">Bon Permintaan Dapur</span>
-            </div>
-            <p className={`text-[11px] line-clamp-1 ${activeForm === 'KITCHEN_REQUISITION' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
-              Pengeluaran harian porsi masak
-            </p>
-          </button>
-
-          <button
-            onClick={() => setActiveForm('ITEM_TAG_LABEL')}
-            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-              activeForm === 'ITEM_TAG_LABEL'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
-                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <Tags className={`w-4 h-4 ${activeForm === 'ITEM_TAG_LABEL' ? 'text-emerald-700' : 'text-slate-500'}`} />
-              <span className="text-xs">Tag Item Bahan Datang</span>
-            </div>
-            <p className={`text-[11px] line-clamp-1 ${activeForm === 'ITEM_TAG_LABEL' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
-              Supplier, jam datang & expired (ukuran mini)
-            </p>
-          </button>
-
-          <button
-            onClick={() => setActiveForm('EQUIPMENT_LABEL')}
-            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-              activeForm === 'EQUIPMENT_LABEL'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
-                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <Tags className={`w-4 h-4 ${activeForm === 'EQUIPMENT_LABEL' ? 'text-emerald-700' : 'text-slate-500'}`} />
-              <span className="text-xs">Label & QR Gudang / Aset</span>
-            </div>
-            <p className={`text-[11px] line-clamp-1 ${activeForm === 'EQUIPMENT_LABEL' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
-              Stiker barang & aset kering/basah
-            </p>
-          </button>
-
-          <button
-            onClick={() => setActiveForm('RACK_LABEL')}
-            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-              activeForm === 'RACK_LABEL'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
-                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <Warehouse className={`w-4 h-4 ${activeForm === 'RACK_LABEL' ? 'text-emerald-700' : 'text-slate-500'}`} />
-              <span className="text-xs">Label Rak Gudang</span>
-            </div>
-            <p className={`text-[11px] line-clamp-1 ${activeForm === 'RACK_LABEL' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
-              Plakat rak fisik, daftar isi & pembeda
-            </p>
-          </button>
-
-          <button
-            onClick={() => setActiveForm('SUPPLIER_EXPENSE_NOTE')}
-            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-              activeForm === 'SUPPLIER_EXPENSE_NOTE'
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs font-semibold ring-1 ring-emerald-500/20'
-                : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-800'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <Receipt className={`w-4 h-4 ${activeForm === 'SUPPLIER_EXPENSE_NOTE' ? 'text-emerald-700' : 'text-slate-500'}`} />
-              <span className="text-xs">Nota Kas Keluar</span>
-            </div>
-            <p className={`text-[11px] line-clamp-1 ${activeForm === 'SUPPLIER_EXPENSE_NOTE' ? 'text-emerald-700/80' : 'text-slate-500'}`}>
-              Kop resmi & bukti bayar supplier
-            </p>
-          </button>
-        </div>
-
-        {/* Contextual Customizer Controls */}
-        <div className="mt-5 p-4 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 text-xs">
+        {/* Pengaturan sesuai form yang dipilih */}
+        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 text-xs">
           {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' && activeForm !== 'ITEM_TAG_LABEL' ? (
-            <>
-              <div>
-                <label className="block text-slate-600 font-medium mb-1">Nama Satuan Layanan (Header)</label>
-                <input
-                  type="text"
-                  value={unitName}
-                  onChange={e => setUnitName(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-600 font-medium mb-1">Tanggal Dokumen Cetak</label>
-                <input
-                  type="date"
-                  value={printDate}
-                  onChange={e => setPrintDate(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
-            </>
+            <div>
+              <label htmlFor="print-date" className={LABEL_CLS}>Tanggal dokumen</label>
+              <input id="print-date" type="date" value={printDate} onChange={e => setPrintDate(e.target.value || localDateIso())} className={INPUT_CLS} />
+            </div>
           ) : activeForm === 'SUPPLIER_EXPENSE_NOTE' ? (
             <>
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Nama Satuan Layanan (Header)</label>
-                <input
-                  type="text"
-                  value={unitName}
-                  onChange={e => setUnitName(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">Pilih Mitra Supplier</label>
-                <select
-                  value={expenseSupplierId}
-                  onChange={e => handleSupplierChange(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-medium text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                >
+                <label htmlFor="exp-supplier" className={LABEL_CLS}>Supplier</label>
+                <select id="exp-supplier" value={expenseSupplierId} onChange={e => handleSupplierChange(e.target.value)} className={INPUT_CLS}>
+                  {suppliers.length === 0 && <option value="">Belum ada supplier</option>}
                   {suppliers.map(s => (
                     <option key={s.id} value={s.id}>
                       {s.name} ({s.supplyCategory})
@@ -2483,107 +2116,174 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Tarik Dokumen Penerimaan</label>
-                <div className="flex gap-1.5">
-                  <select
-                    id="receivingDocSelect"
-                    defaultValue=""
-                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 truncate"
-                  >
-                    <option value="">-- Pilih Penerimaan Gudang --</option>
-                    {receivingDocs
-                      .filter(r => r.supplierId === expenseSupplierId || r.supplierName.toLowerCase() === selectedSupplier.name.toLowerCase())
-                      .map(r => (
-                        <option key={r.id} value={r.id}>
-                          {r.id} ({r.deliveryNoteNo || 'Tanpa SJ'}) - {r.date}
-                        </option>
-                      ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const sel = (document.getElementById('receivingDocSelect') as HTMLSelectElement)?.value;
-                      if (sel) handleLoadReceivingDocToExpense(sel);
-                    }}
-                    className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs whitespace-nowrap cursor-pointer transition-colors"
-                    title="Tarik daftar item dan surat jalan dari penerimaan ini"
-                  >
-                    Tarik
-                  </button>
-                </div>
+                <label htmlFor="exp-gr" className={LABEL_CLS}>Ambil rincian dari penerimaan</label>
+                <select
+                  id="exp-gr"
+                  value={expenseReceivingId}
+                  onChange={e => handleLoadReceivingDocToExpense(e.target.value)}
+                  className={INPUT_CLS}
+                >
+                  <option value="">{supplierReceivings.length === 0 ? 'Belum ada penerimaan dari supplier ini' : 'Pilih dokumen penerimaan'}</option>
+                  {supplierReceivings.map(r => (
+                    <option key={r.id} value={r.id}>
+                      {r.id} ({r.deliveryNoteNo || 'tanpa SJ'}), {formatLongDate(r.date)}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Tanggal Bayar / Dokumen</label>
+                <label htmlFor="exp-date" className={LABEL_CLS}>Tanggal bayar</label>
                 <input
+                  id="exp-date"
                   type="date"
                   value={expenseDate}
                   onChange={e => {
                     setExpenseDate(e.target.value);
                     setPrintDate(e.target.value);
                   }}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className={INPUT_CLS}
                 />
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">No. Bukti Kas Keluar (BKK)</label>
-                <input
-                  type="text"
-                  value={expenseInvoiceNo}
-                  onChange={e => setExpenseInvoiceNo(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
+                <label htmlFor="exp-no" className={LABEL_CLS}>No. bukti kas keluar</label>
+                <input id="exp-no" type="text" value={expenseInvoiceNo} onChange={e => setExpenseInvoiceNo(e.target.value)} className={`${INPUT_CLS} font-mono`} />
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Status Pembayaran</label>
-                <select
-                  value={expenseStatus}
-                  onChange={e => setExpenseStatus(e.target.value as any)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                >
-                  <option value="LUNAS">Lunas / Dibayarkan</option>
-                  <option value="DP">Uang Muka (DP)</option>
-                  <option value="TEMPO">Tempo / Kredit</option>
-                  <option value="PENDING">Menunggu Verifikasi</option>
+                <label htmlFor="exp-status" className={LABEL_CLS}>Status pembayaran</label>
+                <select id="exp-status" value={expenseStatus} onChange={e => setExpenseStatus(e.target.value as typeof expenseStatus)} className={INPUT_CLS}>
+                  <option value="LUNAS">Lunas</option>
+                  <option value="DP">Uang muka (DP)</option>
+                  <option value="TEMPO">Tempo</option>
+                  <option value="PENDING">Menunggu verifikasi</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Rekening Tujuan Transfer</label>
-                <div className="space-y-1.5">
-                  <input
-                    type="text"
-                    placeholder="Nama Bank (misal: Bank BRI)"
-                    value={expenseBankName}
-                    onChange={e => {
-                      setExpenseBankName(e.target.value);
-                      setExpensePaymentMethod(`Transfer ${e.target.value}`);
-                    }}
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Nomor Rekening"
-                    value={expenseBankAccount}
-                    onChange={e => setExpenseBankAccount(e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Nama Pemilik Rekening"
-                    value={expenseAccountHolder}
-                    onChange={e => setExpenseAccountHolder(e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  />
+                <label htmlFor="exp-ref" className={LABEL_CLS}>No. surat jalan / referensi</label>
+                <input id="exp-ref" type="text" value={expenseDeliveryRef} onChange={e => setExpenseDeliveryRef(e.target.value)} placeholder="Kosongkan untuk diisi tangan" className={`${INPUT_CLS} font-mono`} />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label htmlFor="exp-purpose" className={LABEL_CLS}>Perihal</label>
+                <input id="exp-purpose" type="text" value={expensePurpose} onChange={e => setExpensePurpose(e.target.value)} className={INPUT_CLS} />
+              </div>
+
+              <div>
+                <label htmlFor="exp-bank" className={LABEL_CLS}>Bank tujuan</label>
+                <input id="exp-bank" type="text" value={expenseBankName} onChange={e => setExpenseBankName(e.target.value)} placeholder="Kosongkan jika tunai" className={INPUT_CLS} />
+              </div>
+              <div>
+                <label htmlFor="exp-acc" className={LABEL_CLS}>No. rekening</label>
+                <input id="exp-acc" type="text" inputMode="numeric" value={expenseBankAccount} onChange={e => setExpenseBankAccount(e.target.value)} className={`${INPUT_CLS} font-mono`} />
+              </div>
+              <div>
+                <label htmlFor="exp-holder" className={LABEL_CLS}>Atas nama</label>
+                <input id="exp-holder" type="text" value={expenseAccountHolder} onChange={e => setExpenseAccountHolder(e.target.value)} className={INPUT_CLS} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label htmlFor="exp-disc" className={LABEL_CLS}>Potongan (Rp)</label>
+                  <input id="exp-disc" type="number" min="0" value={expenseDiscount || ''} onChange={e => setExpenseDiscount(Number(e.target.value) || 0)} className={`${INPUT_CLS} font-mono`} />
                 </div>
+                <div>
+                  <label htmlFor="exp-ship" className={LABEL_CLS}>Ongkir (Rp)</label>
+                  <input id="exp-ship" type="number" min="0" value={expenseShippingCost || ''} onChange={e => setExpenseShippingCost(Number(e.target.value) || 0)} className={`${INPUT_CLS} font-mono`} />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="exp-treasurer" className={LABEL_CLS}>Bendahara</label>
+                <input id="exp-treasurer" type="text" value={expensePicTreasurer} onChange={e => setExpensePicTreasurer(e.target.value)} className={INPUT_CLS} />
+              </div>
+              <div>
+                <label htmlFor="exp-verifier" className={LABEL_CLS}>Pemeriksa barang</label>
+                <input id="exp-verifier" type="text" value={expensePicVerifier} onChange={e => setExpensePicVerifier(e.target.value)} className={INPUT_CLS} />
+              </div>
+              <div>
+                <label htmlFor="exp-approver" className={LABEL_CLS}>Kepala SPPG</label>
+                <input id="exp-approver" type="text" value={expensePicApprover} onChange={e => setExpensePicApprover(e.target.value)} className={INPUT_CLS} />
+              </div>
+              <div>
+                <label htmlFor="exp-notes" className={LABEL_CLS}>Catatan (opsional)</label>
+                <input id="exp-notes" type="text" value={expenseNotes} onChange={e => setExpenseNotes(e.target.value)} className={INPUT_CLS} />
+              </div>
+
+              {/* Rincian belanja: harga diisi petugas karena belum tercatat di penerimaan */}
+              <div className="min-w-0 sm:col-span-2 lg:col-span-3 xl:col-span-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-semibold text-slate-800">Rincian belanja ({expenseLines.length})</span>
+                  <button
+                    type="button"
+                    onClick={handleAddExpenseLine}
+                    className="inline-flex items-center gap-1 px-3 min-h-[44px] sm:min-h-[32px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-medium cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Tambah baris
+                  </button>
+                </div>
+                {expenseLines.length === 0 ? (
+                  <p className="py-4 text-center text-slate-600 border border-dashed border-slate-300 rounded-lg">
+                    Belum ada rincian. Ambil dari dokumen penerimaan atau tambah baris manual.
+                  </p>
+                ) : (
+                  <div className="relative overflow-x-auto border border-slate-200 rounded-lg">
+                    <table className="w-full min-w-[560px] text-left">
+                      <thead className="bg-slate-50 text-slate-700">
+                        <tr>
+                          <th className="py-1.5 px-2 font-semibold">Uraian</th>
+                          <th className="py-1.5 px-2 font-semibold w-20 text-right">Jumlah</th>
+                          <th className="py-1.5 px-2 font-semibold w-20">Satuan</th>
+                          <th className="py-1.5 px-2 font-semibold w-32 text-right">Harga satuan (Rp)</th>
+                          <th className="py-1.5 px-2 font-semibold w-28 text-right">Total</th>
+                          <th className="py-1.5 px-2 w-10"><span className="sr-only">Hapus</span></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {expenseLines.map(line => (
+                          <tr key={line.id}>
+                            <td className="py-1 px-2">
+                              <input aria-label="Uraian" type="text" value={line.name} onChange={e => handleUpdateExpenseLine(line.id, 'name', e.target.value)} className={INPUT_CLS} />
+                            </td>
+                            <td className="py-1 px-2">
+                              <input aria-label="Jumlah" type="number" min="0" step="any" value={line.quantity} onChange={e => handleUpdateExpenseLine(line.id, 'quantity', Number(e.target.value) || 0)} className={`${INPUT_CLS} text-right font-mono`} />
+                            </td>
+                            <td className="py-1 px-2">
+                              <input aria-label="Satuan" type="text" value={line.unit} onChange={e => handleUpdateExpenseLine(line.id, 'unit', e.target.value)} className={INPUT_CLS} />
+                            </td>
+                            <td className="py-1 px-2">
+                              <input aria-label="Harga satuan" type="number" min="0" value={line.unitPrice || ''} placeholder="0" onChange={e => handleUpdateExpenseLine(line.id, 'unitPrice', Number(e.target.value) || 0)} className={`${INPUT_CLS} text-right font-mono`} />
+                            </td>
+                            <td className="py-1 px-2 text-right font-mono font-semibold text-slate-900">
+                              {(line.quantity * line.unitPrice).toLocaleString('id-ID')}
+                            </td>
+                            <td className="py-1 px-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExpenseLine(line.id)}
+                                aria-label={`Hapus ${line.name || 'baris'}`}
+                                className="p-2 rounded-lg text-slate-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {expenseLines.some(l => !l.unitPrice) && (
+                  <p className="mt-1.5 text-[11px] text-amber-800">Ada baris yang harganya masih kosong. Isi sebelum mencetak nota.</p>
+                )}
               </div>
             </>
           ) : activeForm === 'EQUIPMENT_LABEL' ? (
             <>
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Gudang / Sumber Label</label>
+                <label className={LABEL_CLS}>Gudang / Sumber Label</label>
                 <select
                   value={labelWarehouseFilter}
                   onChange={e => {
@@ -2591,26 +2291,26 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                     setLabelCategoryFilter('ALL');
                     setHasCustomSelection(false);
                   }}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 >
-                  <option value="ALL">Semua Gudang & Aset</option>
-                  <option value="GUDANG_KERING">Gudang Kering (Sembako & Non-Food)</option>
-                  <option value="GUDANG_BASAH">Gudang Basah (Chiller, Sayur, Protein)</option>
-                  <option value="EQUIPMENT">Aset & Peralatan Dapur</option>
+                  <option value="ALL">Semua gudang & aset</option>
+                  <option value="GUDANG_KERING">Gudang kering</option>
+                  <option value="GUDANG_BASAH">Gudang basah</option>
+                  <option value="EQUIPMENT">Aset dapur</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Pilih Kategori</label>
+                <label className={LABEL_CLS}>Kategori</label>
                 <select
                   value={labelCategoryFilter}
                   onChange={e => {
                     setLabelCategoryFilter(e.target.value);
                     setHasCustomSelection(false);
                   }}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 >
-                  <option value="ALL">Semua Kategori ({categoryCounts['ALL'] || 0})</option>
+                  <option value="ALL">Semua kategori ({categoryCounts['ALL'] || 0})</option>
                   {availableCategories.map(cat => (
                     <option key={cat} value={cat}>
                       {cat} ({categoryCounts[cat] || 0})
@@ -2620,125 +2320,113 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               </div>
 
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Pilih Supplier / Mitra</label>
+                <label className={LABEL_CLS}>Supplier</label>
                 <select
                   value={labelGlobalSupplier}
                   onChange={e => setLabelGlobalSupplier(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 >
-                  <option value="AUTO">Otomatis (Sesuai Bahan)</option>
+                  <option value="AUTO">Dari penerimaan terakhir</option>
                   {suppliers.map(s => (
                     <option key={s.id} value={s.name}>
                       {s.name} ({s.supplyCategory})
                     </option>
                   ))}
-                  <option value="BLANK">Kosongkan (Tulis Tangan Manual)</option>
+                  <option value="BLANK">Kosongkan (diisi tangan)</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Tanggal Datang / Masuk</label>
+                <label className={LABEL_CLS}>Tanggal datang</label>
                 <input
                   type="date"
                   value={labelArrivalDate}
                   onChange={e => setLabelArrivalDate(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Masa Expired (Form Edit)</label>
+                <label className={LABEL_CLS}>Masa simpan</label>
                 <input
                   type="text"
-                  placeholder="Otomatis sesuai bahan / ketik ubah..."
+                  placeholder="Otomatis sesuai jenis bahan"
                   value={labelGlobalShelfLife}
                   onChange={e => setLabelGlobalShelfLife(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-slate-600 font-medium">Batas Expired (Manual)</label>
-                  <span className="text-[10px] text-slate-400 italic">Default kosong</span>
+                  <label className="text-slate-600 font-medium">Batas pakai</label>
                 </div>
                 <input
                   type="text"
-                  placeholder="Kosongkan untuk isi manual tulis tangan..."
+                  placeholder="Kosongkan untuk diisi tangan"
                   value={labelGlobalExpiryDate}
                   onChange={e => setLabelGlobalExpiryDate(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Catatan Stiker (Bisa Kosong)</label>
+                <label className={LABEL_CLS}>Catatan</label>
                 <input
                   type="text"
-                  placeholder="Kosongkan untuk tulis tangan..."
+                  placeholder="Kosongkan untuk diisi tangan"
                   value={labelCustomNote}
                   onChange={e => setLabelCustomNote(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Tata Letak Stiker</label>
+                <label className={LABEL_CLS}>Ukuran label</label>
                 <select
                   value={labelGridCols}
                   onChange={e => setLabelGridCols(e.target.value as '2' | '3')}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 >
-                  <option value="2">2 Kolom (Standar Label Besar)</option>
-                  <option value="3">3 Kolom (Ringkas / Stiker Kecil)</option>
+                  <option value="2">Besar, 2 kolom</option>
+                  <option value="3">Kecil, 3 kolom</option>
                 </select>
               </div>
 
               <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
-                <label className="block text-slate-600 font-medium mb-1">Cari Nama / SKU / Rak</label>
+                <label className={LABEL_CLS}>Cari</label>
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="Ketik untuk mencari label..."
+                    placeholder="Nama, kode, atau lokasi"
                     value={labelSearchQuery}
                     onChange={e => setLabelSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="w-full pl-8 pr-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                   />
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
               </div>
             </>
           ) : activeForm === 'ITEM_TAG_LABEL' ? (
             <>
-              {/* 1. Sumber Data Bahan */}
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Sumber Data Bahan</label>
+                <label htmlFor="tag-source" className={LABEL_CLS}>Sumber data</label>
                 <select
+                  id="tag-source"
                   value={tagSourceType}
-                  onChange={e => setTagSourceType(e.target.value as any)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
+                  onChange={e => setTagSourceType(e.target.value as 'FROM_GR' | 'FROM_ITEMS')}
+                  className={INPUT_CLS}
                 >
-                  <option value="DUMMY_SAMPLE">Contoh Data Dummy (8 Sampel Bahan SPPG)</option>
-                  <option value="FROM_GR">Tarik dari Penerimaan (GR) Riil</option>
-                  <option value="FROM_ITEMS">Katalog Master Bahan SPPG</option>
+                  <option value="FROM_GR" disabled={receivingDocs.length === 0}>Dokumen penerimaan</option>
+                  <option value="FROM_ITEMS">Daftar barang (tanpa jumlah)</option>
                 </select>
               </div>
 
-              {/* 2. Banner / Pemilihan Dokumen GR jika FROM_GR */}
-              {tagSourceType === 'DUMMY_SAMPLE' ? (
-                <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-1">
-                  <div className="font-semibold flex items-center gap-1.5 text-emerald-900">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                    Contoh Data Dummy Aktif
-                  </div>
-                  <p className="text-[11px] text-emerald-800 leading-relaxed">
-                    Menampilkan 8 contoh label bahan basah (ayam, ikan, wortel, telur, tempe, susu) dan kering (beras, minyak) lengkap dengan supplier, jam datang, dan expired.
-                  </p>
-                </div>
-              ) : tagSourceType === 'FROM_GR' ? (
+              {tagSourceType === 'FROM_GR' ? (
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Pilih Dokumen GR Datang</label>
+                  <label htmlFor="tag-gr" className={LABEL_CLS}>Dokumen penerimaan</label>
                   <select
+                    id="tag-gr"
                     value={tagSelectedGrId}
                     onChange={e => {
                       const grId = e.target.value;
@@ -2747,165 +2435,162 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       if (doc) {
                         setTagGlobalSupplier(doc.supplierName);
                         setTagArrivalDate(doc.date);
-                        setTagArrivalTime(doc.arrivalTime || '08:30 WIB');
+                        setTagArrivalTime(doc.arrivalTime || '');
                       }
                     }}
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className={INPUT_CLS}
                   >
                     {receivingDocs.map(d => (
                       <option key={d.id} value={d.id}>
-                        {d.id} • {d.supplierName} ({d.date})
+                        {d.id}, {d.supplierName} ({formatLongDate(d.date)})
                       </option>
                     ))}
                   </select>
                 </div>
               ) : (
                 <div>
-                  <label className="block text-slate-600 font-medium mb-1">Filter Gudang / Suhu</label>
+                  <label className={LABEL_CLS}>Gudang</label>
                   <select
                     value={tagWarehouseFilter}
                     onChange={e => setTagWarehouseFilter(e.target.value as any)}
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                   >
-                    <option value="ALL">Semua Gudang (Basah & Kering)</option>
-                    <option value="GUDANG_BASAH">Gudang Basah (Chiller/Freezer)</option>
-                    <option value="GUDANG_KERING">Gudang Kering (Dry Storage)</option>
+                    <option value="ALL">Semua gudang</option>
+                    <option value="GUDANG_BASAH">Gudang basah (chiller/freezer)</option>
+                    <option value="GUDANG_KERING">Gudang kering</option>
                   </select>
                 </div>
               )}
 
               {/* 3. Ukuran Cetak (Muat Banyak per Lembar) */}
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">
-                  Ukuran Cetak (Kapasitas Lembar)
-                </label>
+                <label className={LABEL_CLS}>Ukuran tag</label>
                 <select
                   value={tagGridCols}
                   onChange={e => setTagGridCols(e.target.value as any)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-emerald-500 bg-emerald-50/50 text-emerald-950 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                  className={INPUT_CLS}
                 >
-                  <option value="4">Mini Kompak (4 Kolom • 16 Tag/Lembar)</option>
-                  <option value="3">Sedang (3 Kolom • 12 Tag/Lembar)</option>
-                  <option value="2">Standar / Wadah Besar (2 Kolom • 6 Tag/Lembar)</option>
+                  <option value="4">Kecil, 16 per lembar</option>
+                  <option value="3">Sedang, 12 per lembar</option>
+                  <option value="2">Besar, 6 per lembar</option>
                 </select>
               </div>
 
               {/* 4. Supplier */}
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Pemasok / Supplier</label>
+                <label className={LABEL_CLS}>Supplier</label>
                 <input
                   type="text"
                   value={tagGlobalSupplier}
                   onChange={e => setTagGlobalSupplier(e.target.value)}
-                  placeholder="Nama supplier..."
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
+                  placeholder="Kosongkan untuk diisi tangan"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-medium"
                 />
               </div>
 
               {/* 5. Tanggal Datang */}
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Tanggal Barang Datang</label>
+                <label className={LABEL_CLS}>Tanggal datang</label>
                 <input
                   type="date"
                   value={tagArrivalDate}
                   onChange={e => setTagArrivalDate(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-mono"
                 />
               </div>
 
               {/* 6. Waktu / Jam Datang */}
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Waktu / Jam Kedatangan</label>
+                <label className={LABEL_CLS}>Jam datang</label>
                 <input
                   type="text"
                   value={tagArrivalTime}
                   onChange={e => setTagArrivalTime(e.target.value)}
-                  placeholder="Contoh: 08:30 WIB"
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono font-semibold"
+                  placeholder="08:30"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-mono font-semibold"
                 />
               </div>
 
               {/* 7. Mode Estimasi Expired */}
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Mode Estimasi Expired</label>
+                <label className={LABEL_CLS}>Batas pakai</label>
                 <select
                   value={tagExpiryMode}
                   onChange={e => setTagExpiryMode(e.target.value as any)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 >
-                  <option value="AUTO">Otomatis Hitung (Sesuai Shelf Life)</option>
-                  <option value="CUSTOM_DATE">Tetapkan Tanggal Tertentu</option>
-                  <option value="BLANK">Kosongkan (Tulis Tangan)</option>
+                  <option value="AUTO">Hitung dari masa simpan</option>
+                  <option value="CUSTOM_DATE">Tanggal tertentu</option>
+                  <option value="BLANK">Kosongkan (diisi tangan)</option>
                 </select>
               </div>
 
               {/* 8. Tanggal Expired Manual (jika CUSTOM_DATE) atau Salinan Tag */}
               {tagExpiryMode === 'CUSTOM_DATE' ? (
                 <div>
-                  <label className="block text-slate-600 font-medium mb-1">Tanggal Expired Serentak</label>
+                  <label className={LABEL_CLS}>Tanggal batas pakai</label>
                   <input
                     type="date"
                     value={tagManualExpiryDate}
                     onChange={e => setTagManualExpiryDate(e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-mono"
                   />
                 </div>
               ) : (
                 <div>
-                  <label className="block text-slate-600 font-medium mb-1">Salinan per Item (Wadah)</label>
+                  <label className={LABEL_CLS}>Tag per barang</label>
                   <select
                     value={tagCopiesPerItem}
                     onChange={e => setTagCopiesPerItem(Number(e.target.value))}
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
+                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-medium"
                   >
-                    <option value={1}>1 Tag per Item (Default)</option>
-                    <option value={2}>2 Tag per Item (2 Wadah / Box)</option>
-                    <option value={3}>3 Tag per Item (3 Wadah / Box)</option>
-                    <option value={4}>4 Tag per Item (4 Wadah / Box)</option>
-                    <option value={5}>5 Tag per Item (5 Wadah / Box)</option>
-                    <option value={8}>8 Tag per Item (8 Wadah / Box)</option>
-                    <option value={10}>10 Tag per Item (10 Wadah / Box)</option>
+                    <option value={1}>1 tag</option>
+                    <option value={2}>2 tag (2 wadah)</option>
+                    <option value={3}>3 tag (3 wadah)</option>
+                    <option value={4}>4 tag (4 wadah)</option>
+                    <option value={5}>5 tag (5 wadah)</option>
+                    <option value={8}>8 tag (8 wadah)</option>
+                    <option value={10}>10 tag (10 wadah)</option>
                   </select>
                 </div>
               )}
 
               {/* 9. Petugas QC / Pemeriksa */}
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Petugas Penerima / QC</label>
+                <label className={LABEL_CLS}>Pemeriksa</label>
                 <input
                   type="text"
                   value={tagInspectorName}
                   onChange={e => setTagInspectorName(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 />
               </div>
 
               {/* 10. Status Uji QC Mutu */}
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Status Kontrol Kualitas</label>
+                <label className={LABEL_CLS}>Hasil QC</label>
                 <select
                   value={tagQcStatus}
                   onChange={e => setTagQcStatus(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-medium"
                 >
-                  <option value="Lolos QC Organoleptik & Higiene">✓ Lolos QC Organoleptik & Higiene</option>
-                  <option value="Segar & Standar SNI Pangan">✓ Segar & Standar SNI Pangan</option>
-                  <option value="Karantina / Uji Organoleptik">Karantina / Verifikasi Suhu</option>
-                  <option value="Kualitas Prima Petani Lokal">✓ Kualitas Prima Petani Lokal</option>
+                  <option value="Lolos QC Organoleptik & Higiene">Lolos QC organoleptik & higiene</option>
+                  <option value="Karantina / Uji Organoleptik">Karantina, perlu cek ulang</option>
+                  <option value="">Kosongkan (diisi tangan)</option>
                 </select>
               </div>
 
               {/* 11. Cari Bahan */}
               <div className="sm:col-span-2">
-                <label className="block text-slate-600 font-medium mb-1">Cari Bahan Tertentu</label>
+                <label className={LABEL_CLS}>Cari</label>
                 <div className="relative">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={tagSearchQuery}
                     onChange={e => setTagSearchQuery(e.target.value)}
-                    placeholder="Ketik nama bahan pangan atau nomor lot..."
-                    className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    placeholder="Nama bahan atau nomor lot"
+                    className="w-full pl-8 pr-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                   />
                 </div>
               </div>
@@ -2914,7 +2599,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             /* activeForm === 'RACK_LABEL' */
             <>
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Pembeda Tipe Gudang</label>
+                <label className={LABEL_CLS}>Gudang</label>
                 <select
                   value={rackWarehouseFilter}
                   onChange={e => {
@@ -2922,25 +2607,25 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                     setRackSelectedId('ALL');
                     setHasCustomRackSelection(false);
                   }}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 >
-                  <option value="ALL">Semua Gudang (Kering & Basah)</option>
-                  <option value="GUDANG_KERING">Gudang Kering (Sembako & Bumbu)</option>
-                  <option value="GUDANG_BASAH">Gudang Basah / Dingin (Chiller & Freezer)</option>
+                  <option value="ALL">Semua gudang</option>
+                  <option value="GUDANG_KERING">Gudang kering</option>
+                  <option value="GUDANG_BASAH">Gudang basah (chiller/freezer)</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Pilih Spesifik Rak</label>
+                <label className={LABEL_CLS}>Rak</label>
                 <select
                   value={rackSelectedId}
                   onChange={e => {
                     setRackSelectedId(e.target.value);
                     setHasCustomRackSelection(false);
                   }}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 >
-                  <option value="ALL">Semua Rak ({allWarehouseRacks.length} Rak Terdaftar)</option>
+                  <option value="ALL">Semua rak ({allWarehouseRacks.length})</option>
                   {allWarehouseRacks
                     .filter(r => rackWarehouseFilter === 'ALL' || r.warehouseType === rackWarehouseFilter)
                     .map(r => (
@@ -2952,50 +2637,50 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               </div>
 
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Tata Letak Plakat Cetak</label>
+                <label className={LABEL_CLS}>Ukuran plakat</label>
                 <select
                   value={rackLayoutMode}
                   onChange={e => setRackLayoutMode(e.target.value as '1' | '2')}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-medium"
                 >
-                  <option value="2">2 Plakat per Lembar A4 (Standar Hemat Kertas - Pas 2 Item)</option>
-                  <option value="1">1 Plakat Besar per Lembar A4 (Ukuran Penuh)</option>
+                  <option value="2">2 plakat per A4</option>
+                  <option value="1">1 plakat per A4</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Penanggung Jawab (PIC)</label>
+                <label className={LABEL_CLS}>Penanggung jawab</label>
                 <input
                   type="text"
-                  placeholder="Petugas Logistik SPPG..."
+                  placeholder="Kosongkan untuk diisi tangan"
                   value={rackGlobalPic}
                   onChange={e => setRackGlobalPic(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Catatan Tambahan Plakat</label>
+                <label className={LABEL_CLS}>Catatan</label>
                 <input
                   type="text"
-                  placeholder="Catatan umum rak gudang..."
+                  placeholder="Opsional"
                   value={rackGlobalNote}
                   onChange={e => setRackGlobalNote(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 />
               </div>
 
               <div className="sm:col-span-2 lg:col-span-3 xl:col-span-3">
-                <label className="block text-slate-600 font-medium mb-1">Cari Kode Rak / Nama Rak / Item di Rak</label>
+                <label className={LABEL_CLS}>Cari</label>
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="Ketik kode rak (misal: RAK-KRG-A1, CHL) atau nama item (misal: Beras, Ayam)..."
+                    placeholder="Kode rak, nama rak, atau barang"
                     value={rackSearchQuery}
                     onChange={e => setRackSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="w-full pl-8 pr-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                   />
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
               </div>
             </>
@@ -3003,16 +2688,12 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
           {activeForm === 'RECEIVING_FORM' && (
             <div className="sm:col-span-2">
-              <label className="block text-slate-600 font-medium mb-1">Pilih Dokumen Penerimaan</label>
-              <select
-                value={selectedReceivingId}
-                onChange={e => setSelectedReceivingId(e.target.value)}
-                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              >
-                <option value="BLANK">-- Formulir Kosong (Siap Tulis Tangan Lapangan) --</option>
+              <label htmlFor="rcv-doc" className={LABEL_CLS}>Dokumen penerimaan</label>
+              <select id="rcv-doc" value={selectedReceivingId} onChange={e => setSelectedReceivingId(e.target.value)} className={INPUT_CLS}>
+                <option value="BLANK">Form kosong (diisi tangan)</option>
                 {receivingDocs.map(d => (
                   <option key={d.id} value={d.id}>
-                    {d.id} • {d.supplierName} ({d.date})
+                    {d.id}, {d.supplierName} ({formatLongDate(d.date)})
                   </option>
                 ))}
               </select>
@@ -3021,32 +2702,25 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
           {activeForm === 'OPNAME_SHEET' && (
             <div className="sm:col-span-2">
-              <label className="block text-slate-600 font-medium mb-1">Filter Lokasi Rak / Ruang</label>
-              <select
-                value={opnameLocation}
-                onChange={e => setOpnameLocation(e.target.value)}
-                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              >
-                <option value="ALL">Semua Lokasi & Rak Bahan</option>
-                <option value="Gudang Kering">Gudang Kering (Sembako & Bumbu)</option>
-                <option value="Chiller">Chiller Bahan Segar (Sayur, Buah, Telur)</option>
-                <option value="Freezer">Cold Storage Freezer (Daging & Ikan)</option>
-                <option value="Dapur">Area Dapur & Persiapan</option>
+              <label htmlFor="opn-loc" className={LABEL_CLS}>Lokasi</label>
+              <select id="opn-loc" value={opnameLocation} onChange={e => setOpnameLocation(e.target.value)} className={INPUT_CLS}>
+                <option value="ALL">Semua lokasi</option>
+                <option value="Gudang Kering">Gudang kering</option>
+                <option value="Chiller">Chiller</option>
+                <option value="Freezer">Freezer</option>
+                <option value="Dapur">Dapur</option>
               </select>
             </div>
           )}
 
           {activeForm === 'BIN_CARD' && (
             <div className="sm:col-span-2">
-              <label className="block text-slate-600 font-medium mb-1">Pilih Master Bahan Pangan</label>
-              <select
-                value={selectedItemId}
-                onChange={e => setSelectedItemId(e.target.value)}
-                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              >
+              <label htmlFor="bin-item" className={LABEL_CLS}>Barang</label>
+              <select id="bin-item" value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)} className={INPUT_CLS}>
+                {items.length === 0 && <option value="">Belum ada barang terdaftar</option>}
                 {items.map(i => (
                   <option key={i.id} value={i.id}>
-                    {i.id} - {i.name} ({i.location})
+                    {i.name} ({i.location})
                   </option>
                 ))}
               </select>
@@ -3056,22 +2730,16 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           {activeForm === 'KITCHEN_REQUISITION' && (
             <>
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Target Porsi Masak</label>
-                <input
-                  type="number"
-                  value={targetPortions}
-                  onChange={e => setTargetPortions(Number(e.target.value))}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
+                <label htmlFor="kr-portions" className={LABEL_CLS}>Target porsi</label>
+                <input id="kr-portions" type="number" min="0" value={targetPortions || ''} placeholder="Kosongkan untuk diisi tangan" onChange={e => setTargetPortions(Number(e.target.value) || 0)} className={INPUT_CLS} />
               </div>
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Juru Masak / PIC Dapur</label>
-                <input
-                  type="text"
-                  value={kitchenPic}
-                  onChange={e => setKitchenPic(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
+                <label htmlFor="kr-pic" className={LABEL_CLS}>Peminta (dapur)</label>
+                <input id="kr-pic" type="text" value={kitchenPic} placeholder="Kosongkan untuk diisi tangan" onChange={e => setKitchenPic(e.target.value)} className={INPUT_CLS} />
+              </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="kr-menu" className={LABEL_CLS}>Menu</label>
+                <input id="kr-menu" type="text" value={menuToday} placeholder="Kosongkan untuk diisi tangan" onChange={e => setMenuToday(e.target.value)} className={INPUT_CLS} />
               </div>
             </>
           )}
@@ -3081,365 +2749,210 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       {/* Printable Paper Document Container */}
       <div
         id="print-area"
-        className={`bg-white rounded-2xl border border-slate-200 shadow-sm max-w-4xl mx-auto font-sans text-slate-900 ${
-          activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' || activeForm === 'ITEM_TAG_LABEL' ? 'p-4 sm:p-6' : 'p-8 sm:p-12'
+        className={`bg-white rounded-xl border border-slate-200 max-w-4xl mx-auto font-sans text-slate-900 overflow-x-auto ${
+          activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' || activeForm === 'ITEM_TAG_LABEL' ? 'p-4 sm:p-6' : 'p-5 sm:p-10'
         }`}
       >
-        {/* =========================================================================
-            HEADER RESMI SATUAN PELAYANAN PEMENUHAN GIZI (SPPG)
-            (Ditiadakan khusus untuk Label & QR, Label Rak, dan Tag Item agar lembar cetak maksimal)
-        ========================================================================= */}
+        {/* Kop dokumen, sama dengan Laporan Pengeluaran. Label dan plakat dicetak tanpa kop. */}
         {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'ITEM_TAG_LABEL' && (
-          <div className="border-b-2 border-slate-900 pb-4 mb-6 flex items-start justify-between">
-            <div className="flex items-center gap-3.5">
+          <div className="border-b-2 border-slate-900 pb-3 mb-5 flex items-start justify-between gap-4">
+            <div className="flex items-center gap-3">
               <SppgLogo size="lg" variant="color" showText={false} />
               <div>
-                <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
-                  Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
+                <h1 className="text-sm sm:text-base font-bold text-slate-900 leading-tight">
+                  Satuan Pelayanan Pemenuhan Gizi (SPPG) Tumpang Jeru
                 </h1>
-                <p className="text-xs text-slate-600 font-medium">{unitName}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">
+                <p className="text-[10px] text-slate-600 mt-0.5">
                   Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
                 </p>
               </div>
             </div>
-
-            <div className="text-right text-[11px] text-slate-500 space-y-0.5">
-              <div>
-                Tanggal Cetak: <span className="font-semibold text-slate-700">{printDate}</span>
-              </div>
-              <div>
-                Operator: <span className="font-semibold text-slate-700">{currentUser?.name || 'Petugas SPPG'}</span>
-              </div>
+            <div className="text-right text-[11px] text-slate-600 space-y-0.5 shrink-0">
+              <div>Dicetak: {formatLongDate(localDateIso())}</div>
+              <div>Oleh: {currentUser?.name || BLANK}</div>
             </div>
           </div>
         )}
 
-        {/* =========================================================================
-            1. BERITA ACARA PENERIMAAN BARANG (GOODS RECEIPT NOTE)
-        ========================================================================= */}
+        {/* 1. Berita acara penerimaan */}
         {activeForm === 'RECEIVING_FORM' && (
-          <div className="space-y-6">
-            <div className="text-center my-4">
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight border-b border-slate-300 pb-1 inline-block">
-                Berita Acara Penerimaan Bahan Pangan & Logistik
-              </h2>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Nomor Dokumen: <span className="font-mono font-semibold">{selectedReceivingDoc ? selectedReceivingDoc.id : 'GR-2026-____'}</span>
+          <div className="space-y-5 text-xs">
+            <DocTitle
+              title="Berita Acara Penerimaan Barang"
+              subtitle={`No. ${selectedReceivingDoc ? selectedReceivingDoc.id : BLANK}`}
+            />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+              <Field label="Supplier" value={selectedReceivingDoc?.supplierName} />
+              <Field label="Penerima" value={selectedReceivingDoc ? `${selectedReceivingDoc.receiverName} (${ROLE_LABEL[selectedReceivingDoc.receiverRole] || selectedReceivingDoc.receiverRole})` : undefined} />
+              <Field label="No. surat jalan" value={selectedReceivingDoc?.deliveryNoteNo} mono />
+              <Field
+                label="Status"
+                value={selectedReceivingDoc ? (selectedReceivingDoc.status === 'VERIFIED_POSTED' ? 'Diverifikasi, masuk stok' : 'Draf') : undefined}
+              />
+              <Field
+                label="Waktu datang"
+                value={selectedReceivingDoc ? `${formatLongDate(selectedReceivingDoc.date)}, ${selectedReceivingDoc.arrivalTime} WIB` : `${formatLongDate(printDate)}, pukul ..........`}
+              />
+              <Field label="Suhu kendaraan" value={undefined} blank=".......... °C" />
+            </div>
+
+            <table className="w-full border-collapse border border-slate-300 table-print">
+              <thead className="bg-slate-100 text-slate-800 font-semibold">
+                <tr>
+                  <th className="border border-slate-300 p-1.5 w-8 text-center">No</th>
+                  <th className="border border-slate-300 p-1.5 text-left">Barang</th>
+                  <th className="border border-slate-300 p-1.5 text-left">Kategori</th>
+                  <th className="border border-slate-300 p-1.5 text-right w-20">Jumlah</th>
+                  <th className="border border-slate-300 p-1.5 text-center w-16">Satuan</th>
+                  <th className="border border-slate-300 p-1.5 text-left">Kondisi / batch</th>
+                  <th className="border border-slate-300 p-1.5 text-center w-14">Sesuai</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedReceivingDoc && selectedReceivingDoc.lines.length > 0
+                  ? selectedReceivingDoc.lines.map((line, idx) => (
+                      <tr key={line.id} className="h-8">
+                        <td className="border border-slate-300 p-1.5 text-center font-mono">{idx + 1}</td>
+                        <td className="border border-slate-300 p-1.5 font-semibold">{line.itemName}</td>
+                        <td className="border border-slate-300 p-1.5 text-slate-700">{line.category}</td>
+                        <td className="border border-slate-300 p-1.5 text-right font-mono font-semibold">{line.quantity}</td>
+                        <td className="border border-slate-300 p-1.5 text-center">{line.unit}</td>
+                        <td className="border border-slate-300 p-1.5 text-slate-700">
+                          {[line.conditionNote, line.batchNumber].filter(Boolean).join(', ')}
+                        </td>
+                        <td className="border border-slate-300 p-1.5"></td>
+                      </tr>
+                    ))
+                  : Array.from({ length: 10 }).map((_, idx) => (
+                      <tr key={idx} className="h-8">
+                        <td className="border border-slate-300 p-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
+                        {Array.from({ length: 6 }).map((__, c) => (
+                          <td key={c} className="border border-slate-300 p-1.5"></td>
+                        ))}
+                      </tr>
+                    ))}
+              </tbody>
+            </table>
+
+            <div className="border border-slate-300 rounded p-2.5 min-h-[56px]">
+              <span className="font-semibold text-slate-800">Catatan pemeriksaan:</span>{' '}
+              <span className="text-slate-700">{selectedReceivingDoc?.notes || ''}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-8 pt-2">
+              <SignBox
+                role="Pengirim (supplier)"
+                name={selectedReceivingDoc?.supplierName}
+                signature={selectedReceivingDoc?.supplierSignature}
+              />
+              <SignBox
+                role="Penerima gudang"
+                name={selectedReceivingDoc?.receiverName}
+                signature={selectedReceivingDoc?.receiverSignature}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* 2. Lembar hitung fisik stok opname */}
+        {activeForm === 'OPNAME_SHEET' && (
+          <div className="space-y-5 text-xs">
+            <DocTitle
+              title="Lembar Hitung Fisik Stok Opname"
+              subtitle={`${opnameLocation === 'ALL' ? 'Semua lokasi' : opnameLocation}, ${formatLongDate(printDate)}`}
+            />
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-1.5">
+              <Field label="Penghitung" value={undefined} />
+              <Field label="Saksi" value={undefined} />
+              <Field label="Jumlah barang" value={`${filteredOpnameItems.length} barang`} />
+            </div>
+
+            {filteredOpnameItems.length === 0 ? (
+              <p className="py-8 text-center text-slate-600 border border-dashed border-slate-300 rounded">
+                Tidak ada barang di lokasi ini.
               </p>
-            </div>
-
-            {/* Document Metadata Grid */}
-            <div className="grid grid-cols-2 gap-4 p-4 border border-slate-300 rounded-lg text-xs bg-slate-50/50">
-              <div className="space-y-1.5">
-                <div>
-                  <span className="text-slate-500 font-medium w-28 inline-block">Nama Supplier:</span>
-                  <span className="font-semibold text-slate-900">
-                    {selectedReceivingDoc ? selectedReceivingDoc.supplierName : '___________________________'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium w-28 inline-block">No. Surat Jalan:</span>
-                  <span className="font-mono font-semibold text-slate-900">
-                    {selectedReceivingDoc ? selectedReceivingDoc.deliveryNoteNo || '-' : 'SJ-______________________'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium w-28 inline-block">Waktu Kedatangan:</span>
-                  <span className="font-semibold text-slate-900">
-                    {selectedReceivingDoc ? `${selectedReceivingDoc.date} pukul ${selectedReceivingDoc.arrivalTime} WIB` : `${printDate} pukul __:__ WIB`}
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <div>
-                  <span className="text-slate-500 font-medium w-28 inline-block">Petugas Penerima:</span>
-                  <span className="font-semibold text-slate-900">
-                    {selectedReceivingDoc ? `${selectedReceivingDoc.receiverName} (${selectedReceivingDoc.receiverRole})` : `${currentUser?.name || 'Petugas'} (${currentUser?.role || 'ADMIN'})`}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium w-28 inline-block">Status Verifikasi:</span>
-                  <span className="font-semibold text-slate-900">
-                    {selectedReceivingDoc ? selectedReceivingDoc.status : 'VERIFIED_POSTED'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium w-28 inline-block">Suhu Chiller / Mobil:</span>
-                  <span className="font-semibold text-slate-900">
-                    {selectedReceivingDoc ? 'Sesuai Standar (< 4°C)' : '___ °C (Standar Dingin)'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Items Table */}
-            <div>
-              <div className="text-xs font-semibold text-slate-700 mb-1.5">
-                Rincian Bahan / Barang yang Diserahterimakan:
-              </div>
-              <table className="w-full border-collapse border border-slate-300 text-xs table-print">
-                <thead className="bg-slate-100 text-slate-800 font-semibold text-center">
+            ) : (
+              <table className="w-full border-collapse border border-slate-300 table-print">
+                <thead className="bg-slate-100 text-slate-800 font-semibold">
                   <tr>
-                    <th className="border border-slate-300 p-2 w-10">No</th>
-                    <th className="border border-slate-300 p-2 text-left">Nama Bahan Pangan / Barang</th>
-                    <th className="border border-slate-300 p-2 text-left">Kategori</th>
-                    <th className="border border-slate-300 p-2 text-right w-24">Jumlah</th>
-                    <th className="border border-slate-300 p-2 text-center w-20">Satuan</th>
-                    <th className="border border-slate-300 p-2 text-left">Kondisi Fisik / Batch / Expired</th>
-                    <th className="border border-slate-300 p-2 text-center w-16">QC</th>
+                    <th className="border border-slate-300 p-1.5 w-8 text-center">No</th>
+                    <th className="border border-slate-300 p-1.5 text-left w-24">Kode</th>
+                    <th className="border border-slate-300 p-1.5 text-left">Barang</th>
+                    <th className="border border-slate-300 p-1.5 text-left w-32">Lokasi</th>
+                    <th className="border border-slate-300 p-1.5 text-center w-14">Satuan</th>
+                    <th className="border border-slate-300 p-1.5 text-right w-20">Stok sistem</th>
+                    <th className="border border-slate-300 p-1.5 text-center w-24">Hitung fisik</th>
+                    <th className="border border-slate-300 p-1.5 text-left w-32">Catatan</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedReceivingDoc && selectedReceivingDoc.lines.length > 0 ? (
-                    selectedReceivingDoc.lines.map((line, idx) => (
-                      <tr key={line.id}>
-                        <td className="border border-slate-300 p-2 text-center font-mono">{idx + 1}</td>
-                        <td className="border border-slate-300 p-2 font-semibold text-slate-900">{line.itemName}</td>
-                        <td className="border border-slate-300 p-2 text-slate-700">{line.category}</td>
-                        <td className="border border-slate-300 p-2 text-right font-mono font-bold text-slate-900">
-                          {line.quantity}
-                        </td>
-                        <td className="border border-slate-300 p-2 text-center text-slate-700">{line.unit}</td>
-                        <td className="border border-slate-300 p-2 text-slate-600">
-                          {line.conditionNote || line.batchNumber || 'Segar, Bersih, Lolos Uji Organoleptik'}
-                        </td>
-                        <td className="border border-slate-300 p-2 text-center text-emerald-700 font-bold">✓</td>
-                      </tr>
-                    ))
-                  ) : (
-                    // Blank lines for hand-written operational receipt
-                    Array.from({ length: 8 }).map((_, idx) => (
-                      <tr key={idx} className="h-8">
-                        <td className="border border-slate-300 p-2 text-center font-mono text-slate-400">{idx + 1}</td>
-                        <td className="border border-slate-300 p-2"></td>
-                        <td className="border border-slate-300 p-2"></td>
-                        <td className="border border-slate-300 p-2"></td>
-                        <td className="border border-slate-300 p-2"></td>
-                        <td className="border border-slate-300 p-2"></td>
-                        <td className="border border-slate-300 p-2"></td>
-                      </tr>
-                    ))
-                  )}
+                  {filteredOpnameItems.map((item, idx) => (
+                    <tr key={item.id} className="h-8">
+                      <td className="border border-slate-300 p-1.5 text-center font-mono text-slate-600">{idx + 1}</td>
+                      <td className="border border-slate-300 p-1.5 font-mono">{item.id}</td>
+                      <td className="border border-slate-300 p-1.5 font-semibold">{item.name}</td>
+                      <td className="border border-slate-300 p-1.5 text-slate-700">{item.location}</td>
+                      <td className="border border-slate-300 p-1.5 text-center">{item.baseUnit}</td>
+                      <td className="border border-slate-300 p-1.5 text-right font-mono">{item.currentStock}</td>
+                      <td className="border border-slate-300 p-1.5"></td>
+                      <td className="border border-slate-300 p-1.5"></td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
-            </div>
+            )}
 
-            {/* Notes Section */}
-            <div className="p-3 border border-slate-300 rounded text-xs space-y-1">
-              <span className="font-semibold text-slate-800">Catatan Pemeriksaan Mutu Fisik:</span>
-              <p className="text-slate-600 italic">
-                {selectedReceivingDoc?.notes ||
-                  'Bahan makanan diterima dalam kemasan higienis, bersih dari cemaran fisik, bau normal, dan suhu simpan rantai dingin terjaga.'}
-              </p>
-            </div>
-
-            {/* Signatures Section */}
-            <div className="grid grid-cols-2 gap-8 pt-6">
-              <div className="border border-slate-300 rounded p-3 text-center">
-                <p className="text-xs text-slate-600 font-medium">Pihak Pengirim / Pemasok</p>
-                <div className="h-24 flex items-center justify-center">
-                  {selectedReceivingDoc?.supplierSignature?.startsWith('data:image') ? (
-                    <img
-                      src={selectedReceivingDoc.supplierSignature}
-                      alt="Tanda Tangan Pengirim"
-                      className="max-h-20 object-contain"
-                    />
-                  ) : (
-                    <span className="text-slate-400 text-xs italic">[ Tanda Tangan & Nama Terang ]</span>
-                  )}
-                </div>
-                <div className="border-t border-slate-300 pt-1 text-xs font-semibold text-slate-900">
-                  {selectedReceivingDoc ? selectedReceivingDoc.supplierName : '( ................................................ )'}
-                </div>
-              </div>
-
-              <div className="border border-slate-300 rounded p-3 text-center">
-                <p className="text-xs text-slate-600 font-medium">Petugas Penerima Gudang SPPG</p>
-                <div className="h-24 flex items-center justify-center">
-                  {selectedReceivingDoc?.receiverSignature?.startsWith('data:image') ? (
-                    <img
-                      src={selectedReceivingDoc.receiverSignature}
-                      alt="Tanda Tangan Penerima"
-                      className="max-h-20 object-contain"
-                    />
-                  ) : (
-                    <span className="text-slate-400 text-xs italic">[ Tanda Tangan & Stempel SPPG ]</span>
-                  )}
-                </div>
-                <div className="border-t border-slate-300 pt-1 text-xs font-semibold text-slate-900">
-                  {selectedReceivingDoc ? `${selectedReceivingDoc.receiverName} (${selectedReceivingDoc.receiverRole})` : `( ${currentUser?.name || 'Petugas SPPG'} )`}
-                </div>
-              </div>
+            <div className="grid grid-cols-2 gap-8 pt-2">
+              <SignBox role="Petugas hitung" />
+              <SignBox role="Kepala gudang" />
             </div>
           </div>
         )}
 
-        {/* =========================================================================
-            2. LEMBAR KERJA FISIK STOCK OPNAME (TALLY SHEET)
-        ========================================================================= */}
-        {activeForm === 'OPNAME_SHEET' && (
-          <div className="space-y-6">
-            <div className="text-center my-4">
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight border-b border-slate-300 pb-1 inline-block">
-                Lembar Kerja Hitung Fisik (Stock Opname Tally Sheet)
-              </h2>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Area: <span className="font-semibold">{opnameLocation === 'ALL' ? 'Seluruh Gudang & Chiller' : opnameLocation}</span> • Tanggal: <span className="font-semibold">{printDate}</span>
-              </p>
-            </div>
-
-            <div className="p-3 bg-slate-50 border border-slate-300 rounded text-xs grid grid-cols-3 gap-3">
-              <div>
-                <span className="text-slate-500">Tim Penghitung (Checker):</span>
-                <div className="font-semibold text-slate-900">1. ........................................</div>
-              </div>
-              <div>
-                <span className="text-slate-500">Saksi / Supervisor:</span>
-                <div className="font-semibold text-slate-900">2. ........................................</div>
-              </div>
-              <div>
-                <span className="text-slate-500">Target Rekonsiliasi:</span>
-                <div className="font-semibold text-slate-900">{filteredOpnameItems.length} SKU Bahan</div>
-              </div>
-            </div>
-
-            <table className="w-full border-collapse border border-slate-300 text-xs table-print">
-              <thead className="bg-slate-100 text-slate-800 font-semibold">
-                <tr>
-                  <th className="border border-slate-300 p-2 w-8 text-center">No</th>
-                  <th className="border border-slate-300 p-2 text-left w-24">Kode SKU</th>
-                  <th className="border border-slate-300 p-2 text-left">Nama Bahan Makanan</th>
-                  <th className="border border-slate-300 p-2 text-left w-36">Lokasi Rak/Box</th>
-                  <th className="border border-slate-300 p-2 text-center w-16">Satuan</th>
-                  <th className="border border-slate-300 p-2 text-right w-20">Stok Sistem</th>
-                  <th className="border border-slate-300 p-2 text-center w-28 bg-emerald-50/70">
-                    Hitung Fisik (Tally)
-                  </th>
-                  <th className="border border-slate-300 p-2 text-left w-36">Kondisi / Catatan</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredOpnameItems.map((item, idx) => (
-                  <tr key={item.id} className="h-9">
-                    <td className="border border-slate-300 p-2 text-center font-mono text-slate-500">{idx + 1}</td>
-                    <td className="border border-slate-300 p-2 font-mono font-semibold text-slate-700">{item.id}</td>
-                    <td className="border border-slate-300 p-2 font-semibold text-slate-900">{item.name}</td>
-                    <td className="border border-slate-300 p-2 text-slate-600">{item.location}</td>
-                    <td className="border border-slate-300 p-2 text-center text-slate-700">{item.baseUnit}</td>
-                    <td className="border border-slate-300 p-2 text-right font-mono font-semibold text-slate-500">
-                      {item.currentStock}
-                    </td>
-                    <td className="border border-slate-300 p-2 text-center bg-emerald-50/30">
-                      {/* Blank box for pen writing */}
-                    </td>
-                    <td className="border border-slate-300 p-2 text-slate-400"></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="grid grid-cols-2 gap-8 pt-8 text-center text-xs">
-              <div>
-                <p className="text-slate-600">Petugas Hitung Lapangan</p>
-                <div className="h-20 flex items-end justify-center">
-                  <div className="border-t border-slate-400 w-48 pt-1 font-semibold text-slate-800">
-                    ( .................................................. )
-                  </div>
-                </div>
-              </div>
-              <div>
-                <p className="text-slate-600">Warehouse Manager / Kepala Gudang</p>
-                <div className="h-20 flex items-end justify-center">
-                  <div className="border-t border-slate-400 w-48 pt-1 font-semibold text-slate-800">
-                    ( .................................................. )
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+        {/* 3. Kartu stok gantung */}
+        {activeForm === 'BIN_CARD' && !selectedItem && (
+          <p className="py-10 text-center text-xs text-slate-600">Belum ada barang terdaftar. Tambahkan barang di menu Stok terlebih dahulu.</p>
         )}
-
-        {/* =========================================================================
-            3. KARTU STOK FISIK / BIN CARD (RAK & CHILLER)
-        ========================================================================= */}
         {activeForm === 'BIN_CARD' && selectedItem && (
-          <div className="space-y-6">
-            <div className="text-center my-4">
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight border-b border-slate-300 pb-1 inline-block">
-                Kartu Stok Fisik Gudang & Chiller (Bin Card)
-              </h2>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Ditempelkan pada rak penyimpanan atau keranjang bahan baku di gudang
-              </p>
+          <div className="space-y-5 text-xs">
+            <DocTitle title="Kartu Stok" subtitle="Digantung di rak, diisi setiap barang masuk atau keluar" />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 border-2 border-slate-900 rounded p-3">
+              <Field label="Barang" value={selectedItem.name} strong />
+              <Field label="Lokasi" value={selectedItem.location} />
+              <Field label="Kode" value={selectedItem.id} mono />
+              <Field label="Satuan" value={selectedItem.baseUnit} />
+              <Field label="Kategori" value={selectedItem.category} />
+              <Field label="Stok minimum" value={`${selectedItem.minimumStock} ${selectedItem.baseUnit}`} />
             </div>
 
-            {/* Card Header Spec */}
-            <div className="grid grid-cols-2 gap-3 p-3.5 border-2 border-slate-900 rounded-lg text-xs bg-slate-50">
-              <div className="space-y-1">
-                <div>
-                  <span className="text-slate-500 w-28 inline-block">Kode Bahan (SKU):</span>
-                  <span className="font-mono font-bold text-slate-900">{selectedItem.id}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 w-28 inline-block">Nama Bahan:</span>
-                  <span className="font-bold text-slate-900 text-sm">{selectedItem.name}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 w-28 inline-block">Kategori Pangan:</span>
-                  <span className="font-semibold text-slate-800">{selectedItem.category}</span>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <div>
-                  <span className="text-slate-500 w-32 inline-block">Lokasi Simpan:</span>
-                  <span className="font-bold text-slate-900">{selectedItem.location}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 w-32 inline-block">Satuan Pengukuran:</span>
-                  <span className="font-semibold text-slate-800">{selectedItem.baseUnit}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 w-32 inline-block">Batas Minimum:</span>
-                  <span className="font-mono font-bold text-amber-800">{selectedItem.minimumStock} {selectedItem.baseUnit}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Manual Tally Table */}
-            <table className="w-full border-collapse border border-slate-900 text-xs table-print">
-              <thead className="bg-slate-200 text-slate-900 font-bold text-center">
+            <table className="w-full border-collapse border border-slate-900 table-print">
+              <thead className="bg-slate-100 text-slate-900 font-semibold">
                 <tr>
-                  <th className="border border-slate-900 p-2 w-24">Tanggal</th>
-                  <th className="border border-slate-900 p-2 text-left">No. Bukti / Dokumen Ref</th>
-                  <th className="border border-slate-900 p-2 text-right w-20">Masuk (+)</th>
-                  <th className="border border-slate-900 p-2 text-right w-20">Keluar (-)</th>
-                  <th className="border border-slate-900 p-2 text-right w-24">Sisa Saldo</th>
-                  <th className="border border-slate-900 p-2 text-center w-24">Paraf Petugas</th>
+                  <th className="border border-slate-900 p-1.5 w-24">Tanggal</th>
+                  <th className="border border-slate-900 p-1.5 text-left">No. bukti</th>
+                  <th className="border border-slate-900 p-1.5 text-right w-20">Masuk</th>
+                  <th className="border border-slate-900 p-1.5 text-right w-20">Keluar</th>
+                  <th className="border border-slate-900 p-1.5 text-right w-20">Sisa</th>
+                  <th className="border border-slate-900 p-1.5 text-center w-20">Paraf</th>
                 </tr>
               </thead>
               <tbody>
-                {/* Initial Balance Row */}
-                <tr className="bg-slate-50 font-semibold">
-                  <td className="border border-slate-900 p-2 text-center font-mono">{printDate}</td>
-                  <td className="border border-slate-900 p-2">Saldo Awal Cetak Kartu</td>
-                  <td className="border border-slate-900 p-2 text-right font-mono">-</td>
-                  <td className="border border-slate-900 p-2 text-right font-mono">-</td>
-                  <td className="border border-slate-900 p-2 text-right font-mono font-bold">{selectedItem.currentStock}</td>
-                  <td className="border border-slate-900 p-2 text-center text-slate-500">Initial</td>
+                <tr className="h-8 font-semibold">
+                  <td className="border border-slate-900 p-1.5 text-center">{formatDisplayDate(parseLocalDate(printDate))}</td>
+                  <td className="border border-slate-900 p-1.5">Saldo saat kartu dicetak</td>
+                  <td className="border border-slate-900 p-1.5"></td>
+                  <td className="border border-slate-900 p-1.5"></td>
+                  <td className="border border-slate-900 p-1.5 text-right font-mono">{selectedItem.currentStock}</td>
+                  <td className="border border-slate-900 p-1.5"></td>
                 </tr>
-
-                {/* 10 Empty Grid Rows for Hand Writing */}
-                {Array.from({ length: 12 }).map((_, idx) => (
+                {Array.from({ length: 14 }).map((_, idx) => (
                   <tr key={idx} className="h-8">
-                    <td className="border border-slate-900 p-2 text-center"></td>
-                    <td className="border border-slate-900 p-2"></td>
-                    <td className="border border-slate-900 p-2"></td>
-                    <td className="border border-slate-900 p-2"></td>
-                    <td className="border border-slate-900 p-2"></td>
-                    <td className="border border-slate-900 p-2"></td>
+                    {Array.from({ length: 6 }).map((__, c) => (
+                      <td key={c} className="border border-slate-900 p-1.5"></td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -3447,162 +2960,63 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           </div>
         )}
 
-        {/* =========================================================================
-            4. FORMULIR PERMINTAAN BAHAN MASAK DAPUR (KITCHEN REQUISITION)
-        ========================================================================= */}
+        {/* 4. Bon permintaan bahan dapur: baris kosong, diisi tangan oleh dapur dan gudang */}
         {activeForm === 'KITCHEN_REQUISITION' && (
-          <div className="space-y-6">
-            <div className="text-center my-4">
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight border-b border-slate-300 pb-1 inline-block">
-                Bon Pengeluaran & Permintaan Bahan Pangan Dapur
-              </h2>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Dokumen Serah Terima Bahan Gudang/Chiller ke Tim Olahan Masak SPPG
-              </p>
-            </div>
+          <div className="space-y-5 text-xs">
+            <DocTitle title="Bon Permintaan Bahan Dapur" subtitle="Serah terima bahan dari gudang ke dapur" />
 
-            <div className="p-4 border border-slate-300 rounded-lg text-xs bg-slate-50 space-y-2">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="text-slate-500 font-medium">Hari / Tanggal Pengolahan:</span>
-                  <div className="font-bold text-slate-900 text-sm mt-0.5">{printDate}</div>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium">Target Porsi Anak Penerima:</span>
-                  <div className="font-bold text-emerald-800 text-sm mt-0.5">
-                    {targetPortions.toLocaleString('id-ID')} Porsi Makan Bergizi
-                  </div>
-                </div>
-              </div>
-              <div className="border-t border-slate-200 pt-2">
-                <span className="text-slate-500 font-medium">Menu Masakan Hari Ini:</span>
-                <div className="font-semibold text-slate-900 mt-0.5">{menuToday}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+              <Field label="Tanggal masak" value={formatLongDate(printDate)} />
+              <Field label="Target porsi" value={targetPortions > 0 ? `${targetPortions.toLocaleString('id-ID')} porsi` : undefined} />
+              <div className="sm:col-span-2">
+                <Field label="Menu" value={menuToday || undefined} />
               </div>
             </div>
 
-            <table className="w-full border-collapse border border-slate-300 text-xs table-print">
+            <table className="w-full border-collapse border border-slate-300 table-print">
               <thead className="bg-slate-100 text-slate-800 font-semibold">
                 <tr>
-                  <th className="border border-slate-300 p-2 w-8 text-center">No</th>
-                  <th className="border border-slate-300 p-2 text-left">Nama Bahan Pangan</th>
-                  <th className="border border-slate-300 p-2 text-left w-32">Lokasi Ambil</th>
-                  <th className="border border-slate-300 p-2 text-right w-24">Jumlah Diminta</th>
-                  <th className="border border-slate-300 p-2 text-right w-24">Jumlah Diserahkan</th>
-                  <th className="border border-slate-300 p-2 text-center w-16">Satuan</th>
-                  <th className="border border-slate-300 p-2 text-left">Pemeriksaan Suhu/Mutu</th>
+                  <th className="border border-slate-300 p-1.5 w-8 text-center">No</th>
+                  <th className="border border-slate-300 p-1.5 text-left">Bahan</th>
+                  <th className="border border-slate-300 p-1.5 text-right w-24">Diminta</th>
+                  <th className="border border-slate-300 p-1.5 text-right w-24">Diserahkan</th>
+                  <th className="border border-slate-300 p-1.5 text-center w-16">Satuan</th>
+                  <th className="border border-slate-300 p-1.5 text-left w-40">Kondisi / suhu</th>
                 </tr>
               </thead>
               <tbody>
-                {items.slice(0, 8).map((item, idx) => (
-                  <tr key={item.id} className="h-8">
-                    <td className="border border-slate-300 p-2 text-center font-mono">{idx + 1}</td>
-                    <td className="border border-slate-300 p-2 font-semibold text-slate-900">{item.name}</td>
-                    <td className="border border-slate-300 p-2 text-slate-600">{item.location}</td>
-                    <td className="border border-slate-300 p-2 text-right font-mono font-semibold text-slate-700">
-                      {Math.round(item.currentStock * 0.35)}
-                    </td>
-                    <td className="border border-slate-300 p-2 text-right font-mono font-bold text-emerald-800">
-                      {Math.round(item.currentStock * 0.35)}
-                    </td>
-                    <td className="border border-slate-300 p-2 text-center text-slate-700">{item.baseUnit}</td>
-                    <td className="border border-slate-300 p-2 text-slate-600">Suhu Aman, Baik</td>
+                {Array.from({ length: 14 }).map((_, idx) => (
+                  <tr key={idx} className="h-8">
+                    <td className="border border-slate-300 p-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
+                    {Array.from({ length: 5 }).map((__, c) => (
+                      <td key={c} className="border border-slate-300 p-1.5"></td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
             </table>
 
-            <div className="grid grid-cols-3 gap-4 pt-8 text-center text-xs">
-              <div>
-                <p className="text-slate-600">Diminta Oleh (Koki/Dapur)</p>
-                <div className="h-20 flex items-end justify-center">
-                  <div className="border-t border-slate-400 w-40 pt-1 font-semibold text-slate-800">
-                    {kitchenPic}
-                  </div>
-                </div>
-              </div>
-              <div>
-                <p className="text-slate-600">Diserahkan Oleh (Gudang)</p>
-                <div className="h-20 flex items-end justify-center">
-                  <div className="border-t border-slate-400 w-40 pt-1 font-semibold text-slate-800">
-                    {currentUser?.name || 'Petugas Gudang'}
-                  </div>
-                </div>
-              </div>
-              <div>
-                <p className="text-slate-600">Mengetahui (Kepala Unit)</p>
-                <div className="h-20 flex items-end justify-center">
-                  <div className="border-t border-slate-400 w-40 pt-1 font-semibold text-slate-800">
-                    Rizky Iman Ramdhan, S.Pd (Kepala SPPG)
-                  </div>
-                </div>
-              </div>
+            <div className="grid grid-cols-3 gap-6 pt-2">
+              <SignBox role="Diminta (dapur)" name={kitchenPic || undefined} />
+              <SignBox role="Diserahkan (gudang)" name={currentUser?.name} />
+              <SignBox role="Mengetahui (Kepala SPPG)" name={headOfficeName || undefined} />
             </div>
           </div>
         )}
 
-        {/* =========================================================================
-            4.5. TAG ITEM BAHAN DATANG (SUPPLIER, WAKTU & JAM DATANG, EXPIRED & UKURAN MINI)
-            Dicetak tanpa kop surat resmi agar satu lembar bisa muat banyak item (hingga 16 tag/A4)
-        ========================================================================= */}
+        {/* Tag bahan datang: tanpa kop agar satu A4 muat hingga 16 tag */}
         {activeForm === 'ITEM_TAG_LABEL' && (
           <div className="space-y-4">
-            {/* Screen-Only Control Toolbar & Guidance */}
-            <div className="no-print p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2 flex-wrap">
-                {tagSourceType === 'DUMMY_SAMPLE' ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold text-[11px] bg-emerald-100 text-emerald-900 border border-emerald-300">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-700" />
-                    Contoh Data Dummy (8 Sampel)
-                  </span>
-                ) : null}
-                <span className="font-semibold text-slate-800">
-                  {itemTagsToPrint.length} tag siap dicetak
-                </span>
-                <span className="text-slate-400">•</span>
-                <span className="text-slate-500">
-                  Total filter: {filteredItemTags.length} tag
-                </span>
-                <span className="text-slate-400">•</span>
-                <span className="text-emerald-700 font-medium">
-                  Ukuran: {tagGridCols === '4' ? 'Mini Kompak (16 per Lembar)' : tagGridCols === '3' ? 'Sedang (12 per Lembar)' : 'Standar (6 per Lembar)'}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                {tagSourceType !== 'DUMMY_SAMPLE' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTagSourceType('DUMMY_SAMPLE');
-                      setTagGlobalSupplier('');
-                    }}
-                    className="px-2.5 py-1 text-[11px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-lg hover:bg-emerald-100 transition-colors cursor-pointer"
-                  >
-                    Muat Contoh Data Dummy
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={toggleSelectAllItemTags}
-                  className="px-2.5 py-1 text-[11px] font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  {tagHasCustomSelection && tagSelectedKeys.length === filteredItemTags.length
-                    ? 'Batal Pilih Semua'
-                    : 'Pilih Semua'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg shadow-2xs transition-colors cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  Cetak Tag Item ({itemTagsToPrint.length})
-                </button>
-              </div>
-            </div>
+            <SelectionBar
+              selected={itemTagsToPrint.length}
+              total={filteredItemTags.length}
+              unit="tag"
+              allSelected={!tagHasCustomSelection || tagSelectedKeys.length === filteredItemTags.length}
+              onToggleAll={toggleSelectAllItemTags}
+            />
 
             {/* Tags Grid */}
-            {itemTagsToPrint.length === 0 ? (
+            {filteredItemTags.length === 0 ? (
               <div className="py-12 text-center text-slate-500 text-xs">
                 Tidak ada tag item yang sesuai dengan filter atau kata kunci pencarian.
               </div>
@@ -3616,7 +3030,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                     : 'grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-3.5 print:gap-2.5'
                 }`}
               >
-                {itemTagsToPrint.map(tag => {
+                {filteredItemTags.map(tag => {
                   const isSelected = !tagHasCustomSelection || tagSelectedKeys.includes(tag.uniqueKey);
                   const isMini = tagGridCols === '4';
                   const isCompact = tagGridCols === '3';
@@ -3634,8 +3048,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => toggleSelectItemTag(tag.uniqueKey)}
-                          className="w-3.5 h-3.5 accent-emerald-600 rounded cursor-pointer"
-                          title="Centang untuk cetak tag ini"
+                          className="w-5 h-5 accent-emerald-700 rounded cursor-pointer"
+                          aria-label={`Cetak tag ${tag.name}`}
                         />
                       </div>
 
@@ -3643,7 +3057,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       <div className="flex items-center justify-between border-b border-slate-200 pb-1 pr-4">
                         <div className="flex items-center gap-1 min-w-0">
                           <span className="font-bold text-[8.5px] text-slate-800 truncate">
-                            SPPG MLG TUMPANG JERU
+                            SPPG Tumpang Jeru
                           </span>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
@@ -3690,12 +3104,10 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         {/* High Contrast Compact QR Code */}
                         <div
                           className={`flex flex-col items-center justify-center p-0.5 border border-slate-900 rounded bg-white shrink-0 text-center ${
-                            isMini ? 'w-11 h-11' : isCompact ? 'w-13 h-13' : 'w-16 h-16'
+                            isMini ? 'w-12 h-12' : isCompact ? 'w-14 h-14' : 'w-16 h-16'
                           }`}
                         >
-                          <QrCode
-                            className={`${isMini ? 'w-6 h-6' : isCompact ? 'w-7 h-7' : 'w-9 h-9'} text-slate-900`}
-                          />
+                          <QrSvg value={tag.id} className={isMini ? 'w-9 h-9' : isCompact ? 'w-10 h-10' : 'w-12 h-12'} />
                           <span className="text-[6.5px] font-mono font-bold text-slate-800 truncate w-full mt-0.2">
                             {tag.id}
                           </span>
@@ -3708,19 +3120,19 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         <div className="flex items-center gap-1 text-slate-800 truncate">
                           <Truck className="w-2.5 h-2.5 text-emerald-700 shrink-0" />
                           <span className="text-slate-500 font-medium">Supplier:</span>
-                          <span className="font-bold text-slate-900 truncate">{tag.supplier}</span>
+                          <span className="font-bold text-slate-900 truncate">{tag.supplier || <span className="font-normal text-slate-400">{BLANK}</span>}</span>
                         </div>
 
                         {/* Baris 2: Tanggal & Waktu Datang */}
                         <div className="flex items-center gap-1 text-slate-800 truncate">
                           <Clock className="w-2.5 h-2.5 text-slate-500 shrink-0" />
-                          <span className="text-slate-500 font-medium">Waktu Datang:</span>
+                          <span className="text-slate-500 font-medium">Datang:</span>
                           <span className="font-mono font-bold text-slate-900">
                             {tag.arrivalDateFormatted}
                           </span>
                           <span className="text-slate-400 font-mono">•</span>
-                          <span className="font-mono font-bold text-emerald-800">
-                            {tag.arrivalTime}
+                          <span className="font-mono font-bold text-slate-900">
+                            {tag.arrivalTime || <span className="font-normal text-slate-400">..:..</span>}
                           </span>
                         </div>
 
@@ -3728,7 +3140,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         <div className="pt-0.5 border-t border-slate-200 flex items-center justify-between text-[8px]">
                           <span className="text-slate-600 font-semibold flex items-center gap-0.5">
                             <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
-                            Batas Expired:
+                            Batas pakai:
                           </span>
                           {tag.expiryDate ? (
                             <span className="font-mono font-bold text-rose-700 bg-rose-50 px-1 py-0.2 rounded border border-rose-200">
@@ -3736,14 +3148,14 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                             </span>
                           ) : (
                             <span className="font-mono text-slate-400">
-                              _____/_____/202___
+                              ..../..../........
                             </span>
                           )}
                         </div>
 
                         {/* Baris 4: Masa Simpan */}
                         <div className="text-[7.5px] text-slate-500 flex items-center justify-between truncate">
-                          <span>Masa Simpan:</span>
+                          <span>Masa simpan:</span>
                           <span className="font-medium text-emerald-800 truncate">{tag.shelfLifeText}</span>
                         </div>
                       </div>
@@ -3757,9 +3169,9 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                           </span>
                         </div>
                         <div className="text-right truncate">
-                          <span className="text-slate-400 block text-[6.5px]">Pemeriksa / QC:</span>
-                          <span className="font-semibold text-emerald-800 truncate block">
-                            {tag.qcStatus ? '✓ ' + tag.inspector : tag.inspector}
+                          <span className="text-slate-500 block text-[6.5px]">{tag.qcStatus || 'Hasil QC: ..........'}</span>
+                          <span className="font-semibold text-slate-900 truncate block">
+                            {tag.inspector || BLANK}
                           </span>
                         </div>
                       </div>
@@ -3768,7 +3180,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       <div className="pt-0.5 border-t border-slate-200">
                         <div className="min-h-[14px] border border-dashed border-slate-300 rounded px-1 text-[7px] text-slate-500 flex items-center justify-between">
                           <span>Catatan: {tag.notes || '-'}</span>
-                          <span className="text-[6.5px] text-slate-400">Paraf: [_______]</span>
+                          <span className="text-[6.5px] text-slate-500">Paraf: ..........</span>
                         </div>
                       </div>
                     </div>
@@ -3779,51 +3191,19 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           </div>
         )}
 
-        {/* =========================================================================
-            5. LABEL & QR GUDANG KERING, GUDANG BASAH & ASET PERALATAN
-            (Khusus formulir label & QR, kop surat resmi dihilangkan dari hasil cetak)
-        ========================================================================= */}
+        {/* Label barang & aset: tanpa kop */}
         {activeForm === 'EQUIPMENT_LABEL' && (
           <div className="space-y-4">
-            {/* Screen-Only Control Toolbar & Guidance (Hidden during print) */}
-            <div className="no-print p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-slate-800">
-                  {labelsToPrint.length} label siap dicetak
-                </span>
-                <span className="text-slate-400">•</span>
-                <span className="text-slate-500">
-                  Total filter: {filteredLabels.length} item
-                </span>
-                <span className="text-slate-400">•</span>
-                <span className="text-emerald-700 font-medium">
-                  Header dokumen resmi otomatis ditiadakan khusus label QR
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={toggleSelectAll}
-                  className="px-2.5 py-1 text-[11px] font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  {hasCustomSelection && selectedLabelIds.length === filteredLabels.length
-                    ? 'Batal Pilih Semua'
-                    : 'Pilih Semua'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg shadow-2xs transition-colors cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  Cetak Lembar Stiker ({labelsToPrint.length})
-                </button>
-              </div>
-            </div>
+            <SelectionBar
+              selected={labelsToPrint.length}
+              total={filteredLabels.length}
+              unit="label"
+              allSelected={!hasCustomSelection || selectedLabelIds.length === filteredLabels.length}
+              onToggleAll={toggleSelectAll}
+            />
 
             {/* Labels Grid */}
-            {labelsToPrint.length === 0 ? (
+            {filteredLabels.length === 0 ? (
               <div className="py-12 text-center text-slate-500 text-xs">
                 Tidak ada label yang sesuai dengan filter atau kata kunci pencarian.
               </div>
@@ -3835,7 +3215,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                     : 'grid-cols-1 sm:grid-cols-2 gap-3.5 print:grid-cols-2'
                 }`}
               >
-                {labelsToPrint.map(label => {
+                {filteredLabels.map(label => {
                   const isSelected = !hasCustomSelection || selectedLabelIds.includes(label.id);
                   return (
                     <div
@@ -3850,8 +3230,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => toggleSelectLabel(label.id)}
-                          className="w-3.5 h-3.5 accent-emerald-600 rounded cursor-pointer"
-                          title="Centang untuk cetak stiker ini"
+                          className="w-5 h-5 accent-emerald-700 rounded cursor-pointer"
+                          aria-label={`Cetak label ${label.name}`}
                         />
                       </div>
 
@@ -3859,7 +3239,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 pr-5">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="font-bold text-[10px] text-slate-800 truncate">
-                            SPPG MLG TUMPANG JERU
+                            SPPG Tumpang Jeru
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -3871,8 +3251,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                           <button
                             type="button"
                             onClick={() => openEditModal(label)}
-                            className="no-print p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-emerald-700 transition-colors cursor-pointer"
-                            title="Edit data label sebelum cetak"
+                            className="no-print p-2 -m-1 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-emerald-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                            aria-label={`Ubah label ${label.name}`}
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
@@ -3917,9 +3297,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                             labelGridCols === '3' ? 'w-16 h-16' : 'w-20 h-20'
                           }`}
                         >
-                          <QrCode
-                            className={`${labelGridCols === '3' ? 'w-8 h-8' : 'w-10 h-10'} text-slate-900`}
-                          />
+                          <QrSvg value={label.id} className={labelGridCols === '3' ? 'w-11 h-11' : 'w-14 h-14'} />
                           <span className="text-[7px] font-mono font-bold text-slate-800 truncate w-full mt-0.5">
                             {label.id}
                           </span>
@@ -3930,13 +3308,13 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       <div className="p-2 bg-slate-50/90 rounded-lg border border-slate-200 text-[9px] space-y-1">
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <span className="text-slate-500 font-medium block text-[8px]">Tanggal Datang:</span>
+                            <span className="text-slate-500 font-medium block text-[8px]">Tanggal datang:</span>
                             <span className="font-mono font-bold text-slate-900 text-[10px]">
                               {label.arrivalDateFormatted}
                             </span>
                           </div>
                           <div>
-                            <span className="text-slate-500 font-medium block text-[8px]">Masa Expired:</span>
+                            <span className="text-slate-500 font-medium block text-[8px]">Masa simpan:</span>
                             <span className="font-semibold text-emerald-800 text-[9px] block truncate" title={label.shelfLifeText}>
                               {label.shelfLifeText}
                             </span>
@@ -3944,14 +3322,14 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         </div>
 
                         <div className="pt-1 border-t border-slate-200/80 flex items-center justify-between text-[8px]">
-                          <span className="text-slate-500 font-medium">Batas Expired:</span>
+                          <span className="text-slate-500 font-medium">Batas pakai:</span>
                           {label.expiryDate ? (
                             <span className="font-mono font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
                               {label.expiryDate}
                             </span>
                           ) : (
                             <span className="font-mono text-slate-400 font-medium">
-                              _____ / _____ / 202___ <span className="text-[7px] italic text-slate-400 font-sans">(Isi Manual)</span>
+                              ..../..../........
                             </span>
                           )}
                         </div>
@@ -3961,39 +3339,18 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       <div className="pt-0.5 border-t border-slate-200">
                         <div className="flex items-center justify-between text-[8px] text-slate-500 font-medium mb-0.5">
                           <span className="font-semibold text-slate-700">Catatan:</span>
-                          <span className="text-[7px] text-slate-400 italic">
-                            {label.customNote ? 'Catatan label' : 'Bisa diisi tulisan tangan'}
-                          </span>
                         </div>
                         <div className="min-h-[22px] border border-dashed border-slate-300 rounded px-1.5 py-0.5 bg-slate-50/60 text-[8px] text-slate-800 flex items-center">
                           {label.customNote ? (
                             <span className="font-medium text-slate-900">{label.customNote}</span>
                           ) : (
-                            <span className="text-slate-300 select-none tracking-tight">
-                              ....................................................................................................
-                            </span>
+                            <span className="text-slate-400 select-none">{BLANK}</span>
                           )}
                         </div>
                       </div>
 
-                      {/* Label Footer: SPPG LOGISTIK dengan Tanggal di bawahnya */}
-                      <div className="flex items-center justify-between text-[9px] pt-1.5 border-t border-slate-200">
-                        <div>
-                          <span className="font-mono font-bold text-slate-800 text-[9px] block leading-tight">
-                            SPPG LOGISTIK
-                          </span>
-                          <span className="text-[8px] text-slate-600 font-medium block leading-tight">
-                            Tanggal: {label.arrivalDateFormatted}
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[8px] font-semibold text-slate-700 block leading-tight">
-                            {label.warehouseName}
-                          </span>
-                          <span className="text-[7px] text-slate-400 font-mono block leading-tight">
-                            STANDAR GIZI & HIGIENE
-                          </span>
-                        </div>
+                      <div className="text-right text-[8px] font-semibold text-slate-700 pt-1 border-t border-slate-200">
+                        {label.warehouseName}
                       </div>
                     </div>
                   );
@@ -4003,101 +3360,28 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           </div>
         )}
 
-        {/* =========================================================================
-            6. LABEL RAK GUDANG (WAREHOUSE RACK / BIN PLACARD)
-            Menampilkan identitas rak, pembeda basah/kering & daftar isi item di rak
-        ========================================================================= */}
+        {/* Plakat rak: tanpa kop, pembeda warna gudang kering (amber) dan basah (biru) */}
         {activeForm === 'RACK_LABEL' && (
           <div className="space-y-5">
-            {/* Screen-Only Control Toolbar & Guidance (Hidden during print) */}
-            <div className="no-print p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 shadow-2xs">
-              {/* Baris 1: Tombol Aksi Utama di Sebelah Kiri & Format Cetak di Kanan */}
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                {/* CTA Buttons Group (Sebelah Kiri) */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={handlePrint}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl shadow-xs transition-colors cursor-pointer"
-                    title="Cetak plakat rak gudang yang terpilih"
-                  >
-                    <Printer className="w-4 h-4 text-emerald-100" />
-                    <span>Cetak Plakat Rak ({racksToPrint.length})</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleCreateNewRack}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-xl hover:bg-emerald-100 transition-colors cursor-pointer"
-                    title="Tambah plakat rak fisik baru yang dapat dikustomisasi bebas"
-                  >
-                    <Plus className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Buat Plakat Rak Baru</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={toggleSelectAllRacks}
-                    className="px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
-                  >
-                    {hasCustomRackSelection && selectedRackIds.length === filteredRacks.length
-                      ? 'Batal Pilih Semua'
-                      : 'Pilih Semua'}
-                  </button>
-                </div>
-
-                {/* Segmented Control Format Cetak (Sebelah Kanan) */}
-                <div className="flex items-center gap-1.5 self-start lg:self-auto bg-white border border-slate-300 rounded-xl p-1 shadow-2xs">
-                  <span className="text-[11px] font-medium text-slate-500 pl-2 pr-1">Format A4:</span>
-                  <button
-                    type="button"
-                    onClick={() => setRackLayoutMode('2')}
-                    className={`px-3 py-1.5 text-xs rounded-lg transition-colors cursor-pointer font-medium ${
-                      rackLayoutMode === '2'
-                        ? 'bg-emerald-600 text-white font-semibold shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                    title="Tata letak hemat: 2 plakat pas dalam 1 lembar kertas A4"
-                  >
-                    2 Rak / Kertas A4 (Hemat)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRackLayoutMode('1')}
-                    className={`px-3 py-1.5 text-xs rounded-lg transition-colors cursor-pointer font-medium ${
-                      rackLayoutMode === '1'
-                        ? 'bg-emerald-600 text-white font-semibold shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                    title="Tata letak 1 plakat penuh per lembar kertas A4"
-                  >
-                    1 Rak / Kertas A4
-                  </button>
-                </div>
-              </div>
-
-              {/* Baris 2: Informasi Status & Panduan yang Bersih & Rapi */}
-              <div className="pt-2.5 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg font-semibold text-[11px] bg-emerald-100/80 text-emerald-900 border border-emerald-200">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>{racksToPrint.length} plakat siap dicetak</span>
-                  </span>
-                  <span className="text-slate-300">•</span>
-                  <span className="text-slate-500 font-medium">
-                    Total filter: {filteredRacks.length} rak
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1.5 text-slate-500 text-[11px]">
-                  <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span>Dilengkapi tabel daftar isi item & pembeda visual gudang basah/kering</span>
-                </div>
-              </div>
-            </div>
+            <SelectionBar
+              selected={racksToPrint.length}
+              total={filteredRacks.length}
+              unit="plakat"
+              allSelected={!hasCustomRackSelection || selectedRackIds.length === filteredRacks.length}
+              onToggleAll={toggleSelectAllRacks}
+            >
+              <button
+                type="button"
+                onClick={handleCreateNewRack}
+                className="inline-flex items-center gap-1 px-3 min-h-[44px] sm:min-h-[32px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-medium cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Plakat baru
+              </button>
+            </SelectionBar>
 
             {/* Racks Grid / List */}
-            {racksToPrint.length === 0 ? (
+            {filteredRacks.length === 0 ? (
               <div className="py-12 text-center text-slate-500 text-xs">
                 Tidak ada plakat rak yang sesuai dengan filter atau kata kunci pencarian.
               </div>
@@ -4109,7 +3393,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                     : 'grid-cols-1 gap-6 rack-print-container-1per-page'
                 }`}
               >
-                {racksToPrint.map(rack => {
+                {filteredRacks.map(rack => {
                   const isSelected = !hasCustomRackSelection || selectedRackIds.includes(rack.id);
                   const isDry = rack.warehouseType === 'GUDANG_KERING';
                   const isOverridden = Boolean(rackOverrides[rack.id] || rack.isCustom);
@@ -4143,17 +3427,17 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                           type="button"
                           onClick={() => openEditRackModal(rack)}
                           className="px-2 py-1 rounded-lg bg-white/90 border border-slate-300 hover:bg-slate-100 text-slate-700 text-[10px] font-medium transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                          title="Edit informasi rak dan sesuaikan daftar item bahan pangan"
+                          aria-label={`Ubah plakat ${rack.name}`}
                         >
                           <Edit3 className="w-3 h-3 text-emerald-700" />
-                          <span>Edit Rak</span>
+                          <span>Ubah</span>
                         </button>
                         {rack.isCustom && (
                           <button
                             type="button"
                             onClick={() => handleDeleteCustomRack(rack.id)}
                             className="p-1 rounded-lg bg-white/90 border border-slate-300 hover:bg-rose-50 text-slate-500 hover:text-rose-700 text-[10px] transition-colors cursor-pointer shadow-2xs"
-                            title="Hapus plakat kustom ini"
+                            aria-label={`Hapus plakat ${rack.name}`}
                           >
                             <Trash2 className="w-3 h-3" />
                           </button>
@@ -4162,8 +3446,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => toggleSelectRack(rack.id)}
-                          className="w-4 h-4 accent-emerald-600 rounded cursor-pointer"
-                          title="Centang untuk cetak plakat rak ini"
+                          className="w-5 h-5 accent-emerald-700 rounded cursor-pointer"
+                          aria-label={`Cetak plakat ${rack.name}`}
                         />
                       </div>
 
@@ -4199,7 +3483,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                           </div>
                           <div>
                             <div className="text-[9.5px] print:text-[8.5px] font-bold tracking-tight opacity-90">
-                              SPPG LOGISTIK • {rack.warehouseName}
+                              SPPG Tumpang Jeru • {rack.warehouseName}
                             </div>
                             <div className="text-xs sm:text-sm print:text-xs font-bold tracking-tight text-white leading-tight">
                               {rack.zone}
@@ -4222,11 +3506,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                               printColorAdjust: 'exact',
                             }}
                           >
-                            ROTASI: {rack.rotationMethod}
+                            Rotasi {rack.rotationMethod}
                           </span>
-                          <div className="text-[8.5px] print:text-[7.5px] opacity-80 mt-0.5 font-mono">
-                            Standar Gizi & Higiene
-                          </div>
                         </div>
                       </div>
 
@@ -4279,12 +3560,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                             printColorAdjust: 'exact',
                           }}
                         >
-                          <QrCode
-                            className={`w-8 h-8 print:w-7 print:h-7 ${
-                              isDry ? 'text-amber-800' : 'text-sky-800'
-                            }`}
-                            style={{ color: isDry ? '#92400e' : '#0369a1' }}
-                          />
+                          <QrSvg value={rack.id} className="w-11 h-11 print:w-10 print:h-10" color={isDry ? '#78350f' : '#075985'} />
                           <span
                             className={`text-[8px] print:text-[7px] font-mono font-bold truncate w-full mt-0.5 ${
                               isDry ? 'text-amber-900' : 'text-sky-900'
@@ -4300,29 +3576,23 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       <div className="space-y-1">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
-                            <span
-                              className={`w-1.5 h-3.5 rounded-full ${
-                                isDry ? 'bg-amber-600' : 'bg-sky-600'
-                              }`}
-                              style={{
-                                backgroundColor: isDry ? '#d97706' : '#0284c7',
-                                WebkitPrintColorAdjust: 'exact',
-                                printColorAdjust: 'exact',
-                              }}
-                            ></span>
                             <h3 className="font-bold text-[11px] print:text-[10px] text-slate-900">
-                              Daftar Bahan / Item di Rak Ini ({rack.items.length} Item)
+                              Isi rak ({rack.items.length} barang)
                             </h3>
                           </div>
-                          <span className="text-[9.5px] print:text-[8px] text-slate-500 font-medium">
-                            Katalog Fisik Penataan Rak
-                          </span>
                         </div>
 
                         {rack.items.length === 0 ? (
-                          <div className="p-2 rounded-lg border border-dashed border-slate-300 text-center text-[10px] text-slate-500 bg-slate-50">
-                            Belum ada item terdaftar di rak ini. Klik "Edit Rak" untuk mengambil item dari Master Stok Barang.
-                          </div>
+                          <>
+                            <div className="no-print p-2 rounded-lg border border-dashed border-slate-300 text-center text-[10px] text-slate-600 bg-slate-50">
+                              Rak ini belum berisi barang. Tekan "Ubah" untuk menambahkan barang dari daftar stok.
+                            </div>
+                            <div className="hidden print:block space-y-2 pt-1">
+                              {Array.from({ length: 4 }).map((_, i) => (
+                                <div key={i} className="border-b border-slate-300 h-4" />
+                              ))}
+                            </div>
+                          </>
                         ) : (
                           <div className="overflow-x-auto rounded-lg border border-slate-300">
                             <table className="w-full text-left text-xs border-collapse">
@@ -4386,8 +3656,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
                         {/* Garis Tambahan Item Lapangan */}
                         <div className="pt-0.5 flex items-center justify-between text-[8.5px] print:text-[7.5px] text-slate-500">
-                          <span className="font-medium text-slate-700 shrink-0">+ Tambahan Item Fisik:</span>
-                          <span className="font-mono text-slate-300 truncate pl-2">
+                          <span className="font-medium text-slate-700 shrink-0">Tambahan:</span>
+                          <span className="text-slate-400 truncate pl-2">
                             ...................................................................................................................................................
                           </span>
                         </div>
@@ -4412,7 +3682,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                             className={`w-3.5 h-3.5 shrink-0 ${isDry ? 'text-amber-700' : 'text-sky-700'}`}
                             style={{ color: isDry ? '#b45309' : '#0369a1' }}
                           />
-                          <span>Standar Penataan & Kebersihan Rak SPPG:</span>
+                          <span>Aturan penyimpanan:</span>
                         </div>
                         <p className="text-[9.5px] print:text-[8.5px] leading-snug text-slate-700">
                           {rack.storageRule}
@@ -4427,19 +3697,16 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       {/* Footer Plakat: PIC & Paraf */}
                       <div className="pt-1.5 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
                         <div>
-                          <span className="font-bold text-slate-800 block text-[10px] print:text-[9px]">
-                            SPPG MLG TUMPANG JERU • LOGISTIK & DISTRIBUSI
-                          </span>
-                          <span className="text-[9px] print:text-[8px] text-slate-500">
-                            Penanggung Jawab (PIC): <span className="font-semibold text-slate-800">{rack.picName}</span>
+                          <span className="text-[9px] print:text-[8px] text-slate-600">
+                            Penanggung jawab: <span className="font-semibold text-slate-900">{rack.picName || BLANK}</span>
                           </span>
                         </div>
                         <div className="text-right">
-                          <span className="text-[9px] print:text-[8px] text-slate-500 block">
-                            Paraf Juru Gudang / Tanggal Pasang:
+                          <span className="text-[9px] print:text-[8px] text-slate-600 block">
+                            Paraf / tanggal pasang
                           </span>
-                          <span className="font-mono text-slate-400 text-[10px] print:text-[9px]">
-                            _____________________ / _____ - _____ - 202___
+                          <span className="text-slate-400 text-[10px] print:text-[9px]">
+                            .................... / ..../..../........
                           </span>
                         </div>
                       </div>
@@ -4451,247 +3718,109 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           </div>
         )}
 
-        {/* =========================================================================
-            7. BUKTI KAS KELUAR / NOTA PENGELUARAN SUPPLIER (EXPENSE VOUCHER)
-        ========================================================================= */}
+        {/* 7. Bukti kas keluar ke supplier */}
         {activeForm === 'SUPPLIER_EXPENSE_NOTE' && (
-          <div className="space-y-6">
-            {/* Document Title Banner */}
-            <div className="text-center my-4 pb-3 border-b border-slate-300">
-              <span className="inline-block px-3 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-800 border border-slate-300 mb-1">
-                Bukti Kas Keluar (BKK) / Expense Voucher
-              </span>
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-                Nota Pengeluaran & Pembayaran Mitra Supplier
-              </h2>
-              <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-slate-600 mt-1.5">
-                <span>
-                  No. Bukti Kas: <strong className="font-mono text-slate-900">{expenseInvoiceNo}</strong>
-                </span>
-                <span>•</span>
-                <span>
-                  Tanggal Bayar: <strong className="text-slate-900">{expenseDate}</strong>
-                </span>
-                <span>•</span>
-                <span
-                  className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                    expenseStatus === 'LUNAS'
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      : expenseStatus === 'DP'
-                      ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                      : expenseStatus === 'TEMPO'
-                      ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                      : 'bg-slate-100 text-slate-700 border border-slate-300'
-                  }`}
-                >
-                  Status:{' '}
-                  {expenseStatus === 'LUNAS'
-                    ? 'Lunas / Dibayarkan'
-                    : expenseStatus === 'DP'
-                    ? 'Uang Muka (DP)'
-                    : expenseStatus === 'TEMPO'
-                    ? 'Tempo / Kredit'
-                    : 'Menunggu Verifikasi'}
-                </span>
-              </div>
+          <div className="space-y-5 text-xs">
+            <DocTitle
+              title="Bukti Kas Keluar"
+              subtitle={`No. ${expenseInvoiceNo || BLANK}, ${formatLongDate(expenseDate)}`}
+            />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+              <Field label="Dibayar kepada" value={selectedSupplier.name || undefined} strong />
+              <Field label="Status" value={EXPENSE_STATUS_LABEL[expenseStatus]} />
+              <Field
+                label="Kontak"
+                value={[selectedSupplier.contactPerson, selectedSupplier.phone].filter(Boolean).join(', ') || undefined}
+              />
+              <Field label="No. SJ / referensi" value={expenseDeliveryRef || undefined} mono />
+              <Field label="Alamat" value={selectedSupplier.address || undefined} />
+              <Field label="Cara bayar" value={expenseBankName ? `Transfer ${expenseBankName}` : undefined} blank="Tunai / transfer ...................." />
+              <Field label="Rekening" value={expenseBankAccount ? `${expenseBankAccount}${expenseAccountHolder ? ` a.n. ${expenseAccountHolder}` : ''}` : undefined} mono />
+              <Field label="Perihal" value={expensePurpose || undefined} />
             </div>
 
-            {/* Document Metadata Grid (2-Column) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border border-slate-300 rounded-lg text-xs bg-slate-50/50">
-              {/* Left Column: Supplier / Beneficiary Info */}
-              <div className="space-y-1.5">
-                <div className="font-bold text-slate-800 border-b border-slate-200 pb-1 mb-1.5 flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Penerima Dana (Mitra Supplier / Rekanan)</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium w-32 inline-block">Nama Perusahaan:</span>
-                  <span className="font-bold text-slate-900">{selectedSupplier.name}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium w-32 inline-block">PIC / Kontak:</span>
-                  <span className="text-slate-900 font-medium">
-                    {selectedSupplier.contactPerson} ({selectedSupplier.phone})
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium w-32 inline-block">Alamat Usaha:</span>
-                  <span className="text-slate-800">{selectedSupplier.address}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium w-32 inline-block">Kategori Pasokan:</span>
-                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    {selectedSupplier.supplyCategory}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium w-32 inline-block">Rekening Tujuan:</span>
-                  <span className="font-mono font-semibold text-slate-900">
-                    {expenseBankName} - {expenseBankAccount} (a.n {expenseAccountHolder})
-                  </span>
-                </div>
-              </div>
-
-              {/* Right Column: Transaction & Settlement Details */}
-              <div className="space-y-1.5">
-                <div className="font-bold text-slate-800 border-b border-slate-200 pb-1 mb-1.5 flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Informasi Dokumen & Pembayaran</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium w-32 inline-block">No. Surat Jalan / Ref:</span>
-                  <span className="font-mono font-bold text-slate-900">{expenseDeliveryRef || '-'}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium w-32 inline-block">Metode Bayar:</span>
-                  <span className="font-semibold text-slate-900">{expensePaymentMethod}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium w-32 inline-block">Sumber Dana / Kas:</span>
-                  <span className="text-slate-900 font-medium">Kas Operasional Pelayanan Gizi (SPPG MLG TUMPANG JERU)</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium w-32 inline-block">Perihal Belanja:</span>
-                  <span className="text-slate-800 font-medium">{expensePurpose}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-medium w-32 inline-block">Petugas Kasir / PIC:</span>
-                  <span className="text-slate-900">{currentUser?.name || 'Petugas SPPG'} ({currentUser?.role || 'ADMIN'})</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Table of Itemized Expenses */}
-            <div>
-              <table className="w-full text-xs border-collapse border border-slate-300 table-print">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300">
-                    <th className="border border-slate-300 p-2 text-center w-10">No</th>
-                    <th className="border border-slate-300 p-2 text-left">Uraian Bahan Pangan / Pengadaan Barang</th>
-                    <th className="border border-slate-300 p-2 text-center w-28">Kategori</th>
-                    <th className="border border-slate-300 p-2 text-right w-20">Volume</th>
-                    <th className="border border-slate-300 p-2 text-center w-16">Satuan</th>
-                    <th className="border border-slate-300 p-2 text-right w-28">Harga Satuan (Rp)</th>
-                    <th className="border border-slate-300 p-2 text-right w-32">Total Biaya (Rp)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {expenseLines.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="border border-slate-300 p-6 text-center text-slate-500 italic">
-                        Belum ada item belanja yang ditambahkan. Gunakan formulir di atas untuk memuat rincian bahan.
-                      </td>
-                    </tr>
-                  ) : (
-                    expenseLines.map((line, idx) => (
-                      <tr key={line.id || idx} className="hover:bg-slate-50/50">
-                        <td className="border border-slate-300 p-2 text-center font-medium">{idx + 1}</td>
-                        <td className="border border-slate-300 p-2">
-                          <div className="font-semibold text-slate-900">{line.name}</div>
-                          {line.notes && <div className="text-[10px] text-slate-500 italic mt-0.5">{line.notes}</div>}
-                        </td>
-                        <td className="border border-slate-300 p-2 text-center text-slate-700">{line.category}</td>
-                        <td className="border border-slate-300 p-2 text-right font-medium tabular-nums">{line.quantity}</td>
-                        <td className="border border-slate-300 p-2 text-center text-slate-600">{line.unit}</td>
-                        <td className="border border-slate-300 p-2 text-right tabular-nums text-slate-800">
-                          Rp {line.unitPrice.toLocaleString('id-ID')}
-                        </td>
-                        <td className="border border-slate-300 p-2 text-right tabular-nums font-semibold text-slate-900">
-                          Rp {(line.totalPrice || line.quantity * line.unitPrice).toLocaleString('id-ID')}
-                        </td>
+            <table className="w-full border-collapse border border-slate-300 table-print">
+              <thead className="bg-slate-100 text-slate-800 font-semibold">
+                <tr>
+                  <th className="border border-slate-300 p-1.5 text-center w-8">No</th>
+                  <th className="border border-slate-300 p-1.5 text-left">Uraian</th>
+                  <th className="border border-slate-300 p-1.5 text-right w-16">Jumlah</th>
+                  <th className="border border-slate-300 p-1.5 text-center w-14">Satuan</th>
+                  <th className="border border-slate-300 p-1.5 text-right w-28">Harga satuan</th>
+                  <th className="border border-slate-300 p-1.5 text-right w-32">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {expenseLines.length === 0
+                  ? Array.from({ length: 8 }).map((_, idx) => (
+                      <tr key={idx} className="h-8">
+                        <td className="border border-slate-300 p-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
+                        {Array.from({ length: 5 }).map((__, c) => (
+                          <td key={c} className="border border-slate-300 p-1.5"></td>
+                        ))}
                       </tr>
                     ))
-                  )}
-                </tbody>
-                <tfoot>
-                  <tr className="bg-slate-50 font-semibold text-slate-800">
-                    <td colSpan={5} className="border border-slate-300 p-2 text-right">Subtotal Belanja Bahan:</td>
-                    <td colSpan={2} className="border border-slate-300 p-2 text-right tabular-nums text-slate-900 font-bold">
-                      Rp {expenseSubtotal.toLocaleString('id-ID')}
-                    </td>
+                  : expenseLines.map((line, idx) => (
+                      <tr key={line.id}>
+                        <td className="border border-slate-300 p-1.5 text-center">{idx + 1}</td>
+                        <td className="border border-slate-300 p-1.5">
+                          <div className="font-semibold">{line.name || BLANK}</div>
+                          {line.notes && <div className="text-[10px] text-slate-600 mt-0.5">{line.notes}</div>}
+                        </td>
+                        <td className="border border-slate-300 p-1.5 text-right tabular-nums">{line.quantity}</td>
+                        <td className="border border-slate-300 p-1.5 text-center">{line.unit}</td>
+                        <td className="border border-slate-300 p-1.5 text-right tabular-nums">
+                          {line.unitPrice ? formatRupiah(line.unitPrice) : ''}
+                        </td>
+                        <td className="border border-slate-300 p-1.5 text-right tabular-nums font-semibold">
+                          {line.unitPrice ? formatRupiah(line.quantity * line.unitPrice) : ''}
+                        </td>
+                      </tr>
+                    ))}
+              </tbody>
+              <tfoot>
+                <tr className="font-semibold">
+                  <td colSpan={5} className="border border-slate-300 p-1.5 text-right">Subtotal</td>
+                  <td className="border border-slate-300 p-1.5 text-right tabular-nums">{expenseSubtotal ? formatRupiah(expenseSubtotal) : ''}</td>
+                </tr>
+                {expenseDiscount > 0 && (
+                  <tr>
+                    <td colSpan={5} className="border border-slate-300 p-1.5 text-right">Potongan</td>
+                    <td className="border border-slate-300 p-1.5 text-right tabular-nums">- {formatRupiah(expenseDiscount)}</td>
                   </tr>
-                  {expenseDiscount > 0 && (
-                    <tr className="bg-slate-50 text-slate-700">
-                      <td colSpan={5} className="border border-slate-300 p-1.5 text-right">Potongan / Diskon Supplier:</td>
-                      <td colSpan={2} className="border border-slate-300 p-1.5 text-right tabular-nums text-rose-700 font-semibold">
-                        - Rp {expenseDiscount.toLocaleString('id-ID')}
-                      </td>
-                    </tr>
-                  )}
-                  {expenseShippingCost > 0 && (
-                    <tr className="bg-slate-50 text-slate-700">
-                      <td colSpan={5} className="border border-slate-300 p-1.5 text-right">Ongkos Kirim & Penanganan:</td>
-                      <td colSpan={2} className="border border-slate-300 p-1.5 text-right tabular-nums text-slate-800 font-semibold">
-                        + Rp {expenseShippingCost.toLocaleString('id-ID')}
-                      </td>
-                    </tr>
-                  )}
-                  <tr className="bg-emerald-50/70 border-t-2 border-slate-400 font-bold text-slate-900 text-sm">
-                    <td colSpan={5} className="border border-slate-300 p-2.5 text-right">
-                      TOTAL DIBAYARKAN (KAS KELUAR):
-                    </td>
-                    <td colSpan={2} className="border border-slate-300 p-2.5 text-right tabular-nums text-emerald-950 text-base font-extrabold">
-                      Rp {expenseTotalPayable.toLocaleString('id-ID')}
-                    </td>
+                )}
+                {expenseShippingCost > 0 && (
+                  <tr>
+                    <td colSpan={5} className="border border-slate-300 p-1.5 text-right">Ongkos kirim</td>
+                    <td className="border border-slate-300 p-1.5 text-right tabular-nums">{formatRupiah(expenseShippingCost)}</td>
                   </tr>
-                </tfoot>
-              </table>
+                )}
+                <tr className="bg-slate-100 font-bold text-sm">
+                  <td colSpan={5} className="border border-slate-300 p-2 text-right">Total dibayarkan</td>
+                  <td className="border border-slate-300 p-2 text-right tabular-nums">{expenseTotalPayable ? formatRupiah(expenseTotalPayable) : ''}</td>
+                </tr>
+              </tfoot>
+            </table>
+
+            <div className="border border-slate-300 rounded p-2.5">
+              <span className="font-semibold text-slate-800">Terbilang:</span>{' '}
+              <span className="italic">
+                {expenseTotalPayable ? angkaTerbilang(expenseTotalPayable) : BLANK}
+              </span>
             </div>
 
-            {/* Terbilang Box */}
-            <div className="p-3 border-2 border-slate-300 rounded-lg bg-slate-50/70 text-xs">
-              <div className="flex items-start gap-2">
-                <span className="font-bold text-slate-700 shrink-0">Terbilang:</span>
-                <span className="italic font-semibold text-slate-900">
-                  # {angkaTerbilang(expenseTotalPayable)} #
-                </span>
-              </div>
-            </div>
+            {expenseNotes && (
+              <p className="text-slate-700">
+                <span className="font-semibold text-slate-800">Catatan:</span> {expenseNotes}
+              </p>
+            )}
 
-            {/* Catatan / Pernyataan Serah Terima */}
-            <div className="p-3 border border-slate-200 rounded-lg text-[11px] text-slate-600 bg-white space-y-1">
-              <div className="font-bold text-slate-700">Catatan & Pernyataan Serah Terima:</div>
-              <p>{expenseNotes}</p>
-            </div>
-
-            {/* 4-Signatory Signature Matrix */}
-            <div className="grid grid-cols-4 gap-4 text-center text-xs pt-4 border-t border-slate-200">
-              <div>
-                <p className="text-slate-600 font-medium">Penerima Dana (Rekanan)</p>
-                <div className="h-20 flex items-end justify-center">
-                  <div className="border-t border-slate-400 w-36 pt-1 font-semibold text-slate-800">
-                    {selectedSupplier.contactPerson || selectedSupplier.name}
-                  </div>
-                </div>
-                <p className="text-[10px] text-slate-400 mt-0.5">Cap / Tanda Tangan Mitra</p>
-              </div>
-              <div>
-                <p className="text-slate-600 font-medium">Bendahara Pengeluaran</p>
-                <div className="h-20 flex items-end justify-center">
-                  <div className="border-t border-slate-400 w-36 pt-1 font-semibold text-slate-800">
-                    {expensePicTreasurer}
-                  </div>
-                </div>
-                <p className="text-[10px] text-slate-400 mt-0.5">Staf Kasir SPPG</p>
-              </div>
-              <div>
-                <p className="text-slate-600 font-medium">Verifikator Logistik</p>
-                <div className="h-20 flex items-end justify-center">
-                  <div className="border-t border-slate-400 w-36 pt-1 font-semibold text-slate-800">
-                    {expensePicVerifier}
-                  </div>
-                </div>
-                <p className="text-[10px] text-slate-400 mt-0.5">Pemeriksa Fisik Bahan</p>
-              </div>
-              <div>
-                <p className="text-slate-600 font-medium">Menyetujui (Kepala SPPG)</p>
-                <div className="h-20 flex items-end justify-center">
-                  <div className="border-t border-slate-400 w-36 pt-1 font-semibold text-slate-800">
-                    {expensePicApprover}
-                  </div>
-                </div>
-                <p className="text-[10px] text-slate-400 mt-0.5">Kepala SPPG MLG TUMPANG JERU</p>
-              </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 pt-2">
+              <SignBox role="Penerima (supplier)" name={selectedSupplier.contactPerson || selectedSupplier.name || undefined} />
+              <SignBox role="Bendahara" name={expensePicTreasurer || undefined} />
+              <SignBox role="Pemeriksa barang" name={expensePicVerifier || undefined} />
+              <SignBox role="Menyetujui (Kepala SPPG)" name={expensePicApprover || undefined} />
             </div>
           </div>
         )}
@@ -4699,7 +3828,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
       {/* Modal Edit Label Khusus (Hanya di layar, hidden on print) */}
       {editingModalData && (
-        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+        <div role="dialog" aria-modal="true" className="no-print fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60">
           <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-5 border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-start justify-between border-b border-slate-200 pb-3">
               <div>
@@ -4727,7 +3856,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                   value={editingModalData.supplier}
                   onChange={e => setEditingModalData({ ...editingModalData, supplier: e.target.value })}
                   placeholder="Kosongkan jika ingin tulis tangan manual..."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 />
               </div>
 
@@ -4738,7 +3867,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                     type="date"
                     value={editingModalData.arrivalDate}
                     onChange={e => setEditingModalData({ ...editingModalData, arrivalDate: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="w-full px-3 py-2 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                   />
                 </div>
                 <div>
@@ -4748,7 +3877,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                     value={editingModalData.shelfLifeText}
                     onChange={e => setEditingModalData({ ...editingModalData, shelfLifeText: e.target.value })}
                     placeholder="Contoh: 1 - 2 Hari, 6 Bulan..."
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="w-full px-3 py-2 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                   />
                 </div>
               </div>
@@ -4763,7 +3892,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                   value={editingModalData.expiryDate}
                   onChange={e => setEditingModalData({ ...editingModalData, expiryDate: e.target.value })}
                   placeholder="Biarkan kosong untuk isi manual di kertas stiker..."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 />
               </div>
 
@@ -4774,7 +3903,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                   value={editingModalData.customNote}
                   onChange={e => setEditingModalData({ ...editingModalData, customNote: e.target.value })}
                   placeholder="Kosongkan untuk tulis tangan di kertas stiker..."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 />
               </div>
             </div>
@@ -4783,7 +3912,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               <button
                 type="button"
                 onClick={() => handleResetItemOverride(editingModalData.id)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs transition-colors cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 Reset ke Bawaan
@@ -4812,7 +3941,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
       {/* Modal Edit Plakat Rak (Hanya di layar, hidden on print) */}
       {editingRackData && (
-        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+        <div role="dialog" aria-modal="true" className="no-print fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60">
           <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full p-5 sm:p-6 border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-slate-200 pb-3">
@@ -4849,30 +3978,30 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Kode Rak / Barcode</label>
+                  <label className={LABEL_CLS}>Kode Rak / Barcode</label>
                   <input
                     type="text"
                     value={editingRackData.id}
                     disabled={!editingRackData.isNew}
                     onChange={e => setEditingRackData({ ...editingRackData, id: e.target.value.toUpperCase() })}
                     placeholder="Misal: RAK-KRG-A5"
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-mono font-bold text-slate-900 text-xs focus:ring-1 focus:ring-emerald-500 disabled:bg-slate-100 disabled:text-slate-500"
+                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white font-mono font-bold text-slate-900 text-xs focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:bg-slate-100 disabled:text-slate-500"
                   />
                 </div>
 
                 <div className="sm:col-span-2 lg:col-span-2">
-                  <label className="block text-slate-700 font-semibold mb-1">Nama Plakat Rak</label>
+                  <label className={LABEL_CLS}>Nama Plakat Rak</label>
                   <input
                     type="text"
                     value={editingRackData.name}
                     onChange={e => setEditingRackData({ ...editingRackData, name: e.target.value })}
                     placeholder="Misal: Rak A1 - Sembako Beras & Karung Pangan"
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-900 text-xs focus:ring-1 focus:ring-emerald-500"
+                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white font-medium text-slate-900 text-xs focus-visible:ring-2 focus-visible:ring-emerald-600"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Tipe Gudang</label>
+                  <label className={LABEL_CLS}>Tipe Gudang</label>
                   <select
                     value={editingRackData.warehouseType}
                     onChange={e =>
@@ -4885,21 +4014,21 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                             : 'Gudang Kering (Dry Storage)',
                       })
                     }
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-medium focus:ring-1 focus:ring-emerald-500"
+                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-medium focus-visible:ring-2 focus-visible:ring-emerald-600"
                   >
-                    <option value="GUDANG_KERING">Gudang Kering (Dry Storage)</option>
+                    <option value="GUDANG_KERING">Gudang kering</option>
                     <option value="GUDANG_BASAH">Gudang Basah / Dingin (Cold Storage)</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Metode Rotasi</label>
+                  <label className={LABEL_CLS}>Metode Rotasi</label>
                   <select
                     value={editingRackData.rotationMethod}
                     onChange={e =>
                       setEditingRackData({ ...editingRackData, rotationMethod: e.target.value as any })
                     }
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-medium focus:ring-1 focus:ring-emerald-500"
+                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-medium focus-visible:ring-2 focus-visible:ring-emerald-600"
                   >
                     <option value="FIFO">FIFO (First In First Out)</option>
                     <option value="FEFO">FEFO (First Expired First Out)</option>
@@ -4907,29 +4036,29 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Zona / Sektor Rak</label>
+                  <label className={LABEL_CLS}>Zona / Sektor Rak</label>
                   <input
                     type="text"
                     value={editingRackData.zone}
                     onChange={e => setEditingRackData({ ...editingRackData, zone: e.target.value })}
                     placeholder="Misal: Zona Sembako Sektor A"
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
+                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus-visible:ring-2 focus-visible:ring-emerald-600"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Kapasitas Beban Maksimal</label>
+                  <label className={LABEL_CLS}>Kapasitas Beban Maksimal</label>
                   <input
                     type="text"
                     value={editingRackData.capacityMax}
                     onChange={e => setEditingRackData({ ...editingRackData, capacityMax: e.target.value })}
                     placeholder="Misal: 1.500 Kg (30 Karung)"
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
+                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus-visible:ring-2 focus-visible:ring-emerald-600"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Parameter Suhu</label>
+                  <label className={LABEL_CLS}>Parameter Suhu</label>
                   <input
                     type="text"
                     value={editingRackData.temperatureGuide}
@@ -4937,12 +4066,12 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       setEditingRackData({ ...editingRackData, temperatureGuide: e.target.value })
                     }
                     placeholder="Misal: 20°C - 25°C (Suhu Ruang)"
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
+                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus-visible:ring-2 focus-visible:ring-emerald-600"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Parameter Kelembapan</label>
+                  <label className={LABEL_CLS}>Parameter Kelembapan</label>
                   <input
                     type="text"
                     value={editingRackData.humidityGuide || ''}
@@ -4950,34 +4079,34 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       setEditingRackData({ ...editingRackData, humidityGuide: e.target.value })
                     }
                     placeholder="Misal: Maks. 60% RH"
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
+                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus-visible:ring-2 focus-visible:ring-emerald-600"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Penanggung Jawab (PIC)</label>
+                  <label className={LABEL_CLS}>Penanggung jawab</label>
                   <input
                     type="text"
                     value={editingRackData.picName}
                     onChange={e => setEditingRackData({ ...editingRackData, picName: e.target.value })}
                     placeholder="Nama PIC Rak..."
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
+                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus-visible:ring-2 focus-visible:ring-emerald-600"
                   />
                 </div>
 
                 <div className="sm:col-span-2 lg:col-span-2">
-                  <label className="block text-slate-700 font-semibold mb-1">Standar Penataan (SOP Rak)</label>
+                  <label className={LABEL_CLS}>Standar Penataan (SOP Rak)</label>
                   <input
                     type="text"
                     value={editingRackData.storageRule}
                     onChange={e => setEditingRackData({ ...editingRackData, storageRule: e.target.value })}
                     placeholder="Wajib di atas palet min 15 cm dari lantai & bersih dari debu/hama..."
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
+                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus-visible:ring-2 focus-visible:ring-emerald-600"
                   />
                 </div>
 
                 <div className="sm:col-span-2 lg:col-span-4">
-                  <label className="block text-slate-700 font-semibold mb-1">
+                  <label className={LABEL_CLS}>
                     Catatan Khusus Plakat (Bisa Kosong)
                   </label>
                   <input
@@ -4985,7 +4114,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                     value={editingRackData.customNote}
                     onChange={e => setEditingRackData({ ...editingRackData, customNote: e.target.value })}
                     placeholder="Periksa segel karung & catat nomor batch saat penumpukan..."
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
+                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus-visible:ring-2 focus-visible:ring-emerald-600"
                   />
                 </div>
               </div>
@@ -5044,9 +4173,9 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         value={masterItemSearch}
                         onChange={e => setMasterItemSearch(e.target.value)}
                         placeholder="Cari nama / SKU master..."
-                        className="w-full pl-7 pr-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:ring-1 focus:ring-emerald-500"
+                        className="w-full pl-7 pr-2.5 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus-visible:ring-2 focus-visible:ring-emerald-600"
                       />
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2 pointer-events-none" />
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                     </div>
                   </div>
 
@@ -5054,7 +4183,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                     <select
                       value={selectedMasterItemId}
                       onChange={e => setSelectedMasterItemId(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs font-medium focus:ring-1 focus:ring-emerald-500 truncate"
+                      className="w-full px-2.5 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-900 text-xs font-medium focus-visible:ring-2 focus-visible:ring-emerald-600 truncate"
                     >
                       <option value="">-- Pilih Bahan / Barang dari Master Stok --</option>
                       {items
@@ -5105,7 +4234,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         placeholder="ITM-CUSTOM-01"
                         value={manualItemForm.id}
                         onChange={e => setManualItemForm({ ...manualItemForm, id: e.target.value })}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+                        className="w-full px-2.5 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-xs font-mono"
                       />
                     </div>
                     <div className="sm:col-span-2">
@@ -5117,7 +4246,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         placeholder="Misal: Beras Ramos 25 Kg..."
                         value={manualItemForm.name}
                         onChange={e => setManualItemForm({ ...manualItemForm, name: e.target.value })}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium"
+                        className="w-full px-2.5 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-xs font-medium"
                       />
                     </div>
                     <div>
@@ -5127,7 +4256,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         placeholder="Sembako / Sayur..."
                         value={manualItemForm.category}
                         onChange={e => setManualItemForm({ ...manualItemForm, category: e.target.value })}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs"
+                        className="w-full px-2.5 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-xs"
                       />
                     </div>
                     <div>
@@ -5137,7 +4266,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         placeholder="Kg / Liter / Pack"
                         value={manualItemForm.unit}
                         onChange={e => setManualItemForm({ ...manualItemForm, unit: e.target.value })}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs"
+                        className="w-full px-2.5 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-xs"
                       />
                     </div>
                   </div>
@@ -5149,7 +4278,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       onChange={e =>
                         setManualItemForm({ ...manualItemForm, handlingNote: e.target.value })
                       }
-                      className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs"
+                      className="flex-1 px-2.5 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-xs"
                     />
                     <button
                       type="button"
@@ -5261,7 +4390,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                   <button
                     type="button"
                     onClick={() => handleResetRackOverride(editingRackData.id)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs transition-colors cursor-pointer"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     Reset ke Standar Bawaan
