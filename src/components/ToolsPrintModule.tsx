@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { KopText } from './common/KopText';
 import {
   Printer,
   FileText,
@@ -45,7 +46,7 @@ import { SppgLogo } from './SppgLogo';
 import QRCode from 'qrcode';
 import { localDateIso } from '../utils/localDate';
 
-type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'SUPPLIER_EXPENSE_NOTE';
+export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'SUPPLIER_EXPENSE_NOTE';
 
 export interface ItemTagData {
   uniqueKey: string;
@@ -643,14 +644,22 @@ export const isWetItem = (item: ItemMaster): boolean => {
   return false;
 };
 
+export interface PrintTarget {
+  form: FormType;
+  supplierId?: string;
+  labelSearch?: string;
+}
+
 export interface ToolsPrintModuleProps {
   initialForm?: FormType;
   initialSupplierId?: string;
+  initialLabelSearch?: string;
 }
 
 export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   initialForm,
-  initialSupplierId
+  initialSupplierId,
+  initialLabelSearch,
 }) => {
   const { currentUser } = useAuth();
 
@@ -833,7 +842,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const [labelGlobalShelfLife, setLabelGlobalShelfLife] = useState<string>('');
   const [labelGlobalExpiryDate, setLabelGlobalExpiryDate] = useState<string>(''); // Default kosong untuk isi manual!
   const [labelCustomNote, setLabelCustomNote] = useState<string>('');
-  const [labelSearchQuery, setLabelSearchQuery] = useState<string>('');
+  const [labelSearchQuery, setLabelSearchQuery] = useState<string>(initialLabelSearch || '');
   const [labelGridCols, setLabelGridCols] = useState<'2' | '3'>('2');
   const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
   const [hasCustomSelection, setHasCustomSelection] = useState<boolean>(false);
@@ -2758,14 +2767,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           <div className="border-b-2 border-slate-900 pb-3 mb-5 flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
               <SppgLogo size="lg" variant="color" showText={false} />
-              <div>
-                <h1 className="text-sm sm:text-base font-bold text-slate-900 leading-tight">
-                  Satuan Pelayanan Pemenuhan Gizi (SPPG) Tumpang Jeru
-                </h1>
-                <p className="text-[10px] text-slate-600 mt-0.5">
-                  Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
-                </p>
-              </div>
+              <KopText />
             </div>
             <div className="text-right text-[11px] text-slate-600 space-y-0.5 shrink-0">
               <div>Dicetak: {formatLongDate(localDateIso())}</div>

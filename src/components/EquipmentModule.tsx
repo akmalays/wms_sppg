@@ -1,616 +1,489 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { EquipmentCategory, EquipmentCondition, EquipmentItem, EquipmentStatus } from '../types/warehouse';
-import { Wrench, CheckCircle2, AlertTriangle, XCircle, Search, Plus, QrCode, Edit3, X, Printer, ShieldCheck } from 'lucide-react';
+import { localDateIso } from '../utils/localDate';
+import { Plus, Search } from 'lucide-react';
+import {
+  BTN_PRIMARY,
+  BTN_SECONDARY,
+  FIELD_INPUT,
+  FIELD_LABEL,
+  FOCUS_RING,
+  Feedback,
+  FormDialog,
+} from './common/FormDialog';
 
 interface EquipmentModuleProps {
-  onRefreshData?: () => void;
+  onPrintLabel?: (assetId: string) => void;
 }
 
-export const EquipmentModule: React.FC<EquipmentModuleProps> = ({ onRefreshData }) => {
+// Nilai disimpan dalam kode bahasa Inggris (sesuai database); tampilan memakai label ini.
+const CATEGORY_LABEL: Record<EquipmentCategory, string> = {
+  'Kitchen Equipment': 'Alat masak',
+  'Cleaning Equipment': 'Alat kebersihan',
+  'Warehouse Equipment': 'Alat gudang',
+  'Electronic Equipment': 'Elektronik',
+};
+
+const CONDITION_LABEL: Record<EquipmentCondition, string> = {
+  GOOD: 'Baik',
+  NEEDS_INSPECTION: 'Perlu dicek',
+  DAMAGED: 'Rusak',
+};
+
+const CONDITION_BADGE: Record<EquipmentCondition, string> = {
+  GOOD: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  NEEDS_INSPECTION: 'bg-amber-50 text-amber-800 border-amber-200',
+  DAMAGED: 'bg-rose-50 text-rose-800 border-rose-200',
+};
+
+const STATUS_LABEL: Record<EquipmentStatus, string> = {
+  ACTIVE: 'Dipakai',
+  IN_REPAIR: 'Diservis',
+  LOST: 'Hilang',
+  RETIRED: 'Tidak dipakai lagi',
+};
+
+const daysSince = (iso: string) => {
+  const [y, m, d] = (iso || '').split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const [ty, tm, td] = localDateIso().split('-').map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(y, m - 1, d)) / 86400000);
+};
+
+const formatDate = (iso: string) => {
+  const [y, m, d] = (iso || '').split('-').map(Number);
+  if (!y || !m || !d) return '–';
+  return new Date(y, m - 1, d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+type FormState = {
+  id: string;
+  name: string;
+  category: EquipmentCategory;
+  quantity: string;
+  unit: string;
+  location: string;
+  condition: EquipmentCondition;
+  notes: string;
+};
+
+export const EquipmentModule: React.FC<EquipmentModuleProps> = ({ onPrintLabel }) => {
   const { currentUser, can } = useAuth();
-  const [equipmentList, setEquipmentList] = useState<EquipmentItem[]>(() => warehouseDb.getEquipment());
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterCondition, setFilterCondition] = useState<string>('ALL');
-  const [filterCategory, setFilterCategory] = useState<string>('ALL');
+  const canManage = can('MANAGE_EQUIPMENT');
+  const [version, setVersion] = useState(0);
+  const equipment = useMemo(() => warehouseDb.getEquipment(), [version]);
+  const [query, setQuery] = useState('');
+  const [conditionFilter, setConditionFilter] = useState<'ALL' | EquipmentCondition>('ALL');
+  const [categoryFilter, setCategoryFilter] = useState<'ALL' | EquipmentCategory>('ALL');
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Modals
-  const [updatingItem, setUpdatingItem] = useState<EquipmentItem | null>(null);
-  const [newCondition, setNewCondition] = useState<EquipmentCondition>('GOOD');
-  const [newStatus, setNewStatus] = useState<EquipmentStatus>('ACTIVE');
-  const [conditionNotes, setConditionNotes] = useState('');
+  // Dialog cek kondisi
+  const [checking, setChecking] = useState<EquipmentItem | null>(null);
+  const [checkCondition, setCheckCondition] = useState<EquipmentCondition>('GOOD');
+  const [checkStatus, setCheckStatus] = useState<EquipmentStatus>('ACTIVE');
+  const [checkNote, setCheckNote] = useState('');
+  const [checkError, setCheckError] = useState('');
 
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [labelItem, setLabelItem] = useState<EquipmentItem | null>(null);
-
-  // New Equipment Form State
-  const [formId, setFormId] = useState('');
-  const [formName, setFormName] = useState('');
-  const [formCategory, setFormCategory] = useState<EquipmentCategory>('Kitchen Equipment');
-  const [formQty, setFormQty] = useState<number>(1);
-  const [formUnit, setFormUnit] = useState('Unit');
-  const [formLocation, setFormLocation] = useState('Dapur Utama');
-  const [formCondition, setFormCondition] = useState<EquipmentCondition>('GOOD');
-  const [formStatus, setFormStatus] = useState<EquipmentStatus>('ACTIVE');
-  const [formNotes, setFormNotes] = useState('');
+  // Dialog tambah / ubah data
+  const [editing, setEditing] = useState<{ isNew: boolean; original?: EquipmentItem } | null>(null);
+  const [form, setForm] = useState<FormState | null>(null);
   const [formError, setFormError] = useState('');
 
-  const refreshData = () => {
-    setEquipmentList(warehouseDb.getEquipment());
-    if (onRefreshData) onRefreshData();
+  useEffect(() => {
+    const onSync = () => setVersion(v => v + 1);
+    window.addEventListener('sppg_storage_items_changed', onSync);
+    window.addEventListener('sppg_warehouse_sync', onSync);
+    return () => {
+      window.removeEventListener('sppg_storage_items_changed', onSync);
+      window.removeEventListener('sppg_warehouse_sync', onSync);
+    };
+  }, []);
+
+  const counts = useMemo(
+    () => ({
+      ALL: equipment.length,
+      GOOD: equipment.filter(e => e.condition === 'GOOD').length,
+      NEEDS_INSPECTION: equipment.filter(e => e.condition === 'NEEDS_INSPECTION').length,
+      DAMAGED: equipment.filter(e => e.condition === 'DAMAGED').length,
+    }),
+    [equipment]
+  );
+
+  const locations = useMemo(() => Array.from(new Set(equipment.map(e => e.location).filter(Boolean))).sort(), [equipment]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const rank: Record<EquipmentCondition, number> = { DAMAGED: 0, NEEDS_INSPECTION: 1, GOOD: 2 };
+    return equipment
+      .filter(e => conditionFilter === 'ALL' || e.condition === conditionFilter)
+      .filter(e => categoryFilter === 'ALL' || e.category === categoryFilter)
+      .filter(e => !q || [e.id, e.name, e.location, e.notes || ''].some(v => v.toLowerCase().includes(q)))
+      // Yang perlu tindakan (rusak, perlu dicek) di atas.
+      .sort((a, b) => rank[a.condition] - rank[b.condition] || a.name.localeCompare(b.name, 'id'));
+  }, [equipment, query, conditionFilter, categoryFilter]);
+
+  const openCheck = (eq: EquipmentItem) => {
+    setChecking(eq);
+    setCheckCondition(eq.condition);
+    setCheckStatus(eq.status);
+    setCheckNote('');
+    setCheckError('');
   };
 
-  const handleOpenUpdate = (eq: EquipmentItem) => {
-    setUpdatingItem(eq);
-    setNewCondition(eq.condition);
-    setNewStatus(eq.status);
-    setConditionNotes(eq.notes || '');
-  };
-
-  const handleSaveCondition = (e: React.FormEvent) => {
+  const saveCheck = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!updatingItem) return;
-
+    if (!checking) return;
+    if (!checkNote.trim()) {
+      setCheckError('Tulis hasil pemeriksaan singkat, misalnya "Api stabil, selang aman".');
+      return;
+    }
     try {
-      warehouseDb.updateEquipmentCondition(
-        updatingItem.id,
-        newCondition,
-        newStatus,
-        conditionNotes,
-        currentUser
-      );
-      refreshData();
-      setUpdatingItem(null);
+      warehouseDb.updateEquipmentCondition(checking.id, checkCondition, checkStatus, checkNote.trim(), currentUser);
+      setFeedback({ type: 'success', text: `Hasil cek ${checking.name} tersimpan.` });
+      setChecking(null);
+      setVersion(v => v + 1);
     } catch (err: any) {
-      alert(err.message || 'Gagal memperbarui status alat.');
+      setCheckError(err?.message || 'Gagal menyimpan hasil cek.');
     }
   };
 
-  const handleOpenAdd = () => {
-    setFormId(`EQ-${Date.now().toString().slice(-4)}`);
-    setFormName('');
-    setFormCategory('Kitchen Equipment');
-    setFormQty(1);
-    setFormUnit('Unit');
-    setFormLocation('Dapur Utama');
-    setFormCondition('GOOD');
-    setFormStatus('ACTIVE');
-    setFormNotes('');
+  const openNew = () => {
+    setEditing({ isNew: true });
+    setForm({
+      id: `EQ-${Date.now().toString().slice(-5)}`,
+      name: '',
+      category: 'Kitchen Equipment',
+      quantity: '1',
+      unit: 'Unit',
+      location: '',
+      condition: 'GOOD',
+      notes: '',
+    });
     setFormError('');
-    setIsAddModalOpen(true);
   };
 
-  const handleSaveNewEquipment = (e: React.FormEvent) => {
-    e.preventDefault();
+  const openEdit = (eq: EquipmentItem) => {
+    setEditing({ isNew: false, original: eq });
+    setForm({
+      id: eq.id,
+      name: eq.name,
+      category: eq.category,
+      quantity: String(eq.quantity),
+      unit: eq.unit,
+      location: eq.location,
+      condition: eq.condition,
+      notes: eq.notes || '',
+    });
     setFormError('');
+  };
 
+  const saveForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form || !editing) return;
+    const qty = Number(form.quantity);
+    if (!form.name.trim() || !form.location.trim() || !form.unit.trim()) {
+      setFormError('Nama, lokasi, dan satuan wajib diisi.');
+      return;
+    }
+    if (!Number.isInteger(qty) || qty < 1) {
+      setFormError('Jumlah harus bilangan bulat minimal 1.');
+      return;
+    }
+    const base = editing.original;
+    const item: EquipmentItem = {
+      id: form.id.trim(),
+      name: form.name.trim(),
+      category: form.category,
+      quantity: qty,
+      unit: form.unit.trim(),
+      location: form.location.trim(),
+      condition: base ? base.condition : form.condition,
+      status: base ? base.status : 'ACTIVE',
+      assignedTo: base?.assignedTo,
+      lastInspectedDate: base ? base.lastInspectedDate : localDateIso(),
+      notes: form.notes.trim() || undefined,
+    };
     try {
-      const newItem: EquipmentItem = {
-        id: formId.trim(),
-        name: formName.trim(),
-        category: formCategory,
-        quantity: Number(formQty),
-        unit: formUnit.trim(),
-        location: formLocation.trim(),
-        condition: formCondition,
-        status: formStatus,
-        lastInspectedDate: new Date().toISOString().slice(0, 10),
-        notes: formNotes.trim() || undefined,
-      };
-
-      warehouseDb.saveEquipment(newItem, currentUser, true);
-      refreshData();
-      setIsAddModalOpen(false);
+      warehouseDb.saveEquipment(item, currentUser, editing.isNew);
+      setFeedback({ type: 'success', text: editing.isNew ? `${item.name} ditambahkan.` : `Data ${item.name} diperbarui.` });
+      setEditing(null);
+      setForm(null);
+      setVersion(v => v + 1);
     } catch (err: any) {
-      setFormError(err.message || 'Gagal menambahkan alat kerja.');
+      setFormError(err?.message || 'Gagal menyimpan aset.');
     }
   };
 
-  // Metrics
-  const totalItems = equipmentList.length;
-  const goodCount = equipmentList.filter(e => e.condition === 'GOOD').length;
-  const inspectionCount = equipmentList.filter(e => e.condition === 'NEEDS_INSPECTION').length;
-  const damagedCount = equipmentList.filter(e => e.condition === 'DAMAGED').length;
+  const setField = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+    setForm(prev => (prev ? { ...prev, [key]: value } : prev));
 
-  // Filtered List
-  const filtered = equipmentList.filter(e => {
-    const q = searchQuery.toLowerCase();
-    const matchesSearch =
-      e.id.toLowerCase().includes(q) ||
-      e.name.toLowerCase().includes(q) ||
-      e.location.toLowerCase().includes(q);
-
-    const matchesCond = filterCondition === 'ALL' || e.condition === filterCondition;
-    const matchesCat = filterCategory === 'ALL' || e.category === filterCategory;
-
-    return matchesSearch && matchesCond && matchesCat;
-  });
+  const conditionChips: { id: 'ALL' | EquipmentCondition; label: string }[] = [
+    { id: 'ALL', label: 'Semua' },
+    { id: 'DAMAGED', label: 'Rusak' },
+    { id: 'NEEDS_INSPECTION', label: 'Perlu dicek' },
+    { id: 'GOOD', label: 'Baik' },
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Peralatan Dapur & Alat Kerja (Equipment)</h2>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
-              Aset Non-Konsumsi
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Pelacakan fisik peralatan masak, alat saji gizi, dan sanitasi berdasarkan ID unit, lokasi, dan riwayat kondisi.
-          </p>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Aset Dapur</h1>
+          <p className="text-xs text-slate-600 mt-0.5">Peralatan masak, kebersihan, dan gudang beserta kondisi dan lokasinya.</p>
         </div>
-
-        {can('MANAGE_EQUIPMENT') && (
-          <button
-            onClick={handleOpenAdd}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-          >
+        {canManage && (
+          <button type="button" onClick={openNew} className={BTN_PRIMARY}>
             <Plus className="w-4 h-4" />
-            Daftarkan Alat Baru
+            Tambah aset
           </button>
         )}
       </div>
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <span className="text-[11px] font-semibold text-slate-500">Total Alat Tercatat</span>
-          <div className="text-2xl font-black text-slate-900 mt-1">{totalItems}</div>
-          <span className="text-[10px] text-slate-400">Unit terdaftar di SPPG MLG TUMPANG JERU</span>
-        </div>
+      {feedback && <Feedback type={feedback.type} text={feedback.text} onClose={() => setFeedback(null)} />}
 
-        <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-200 shadow-2xs">
-          <span className="text-[11px] font-semibold text-emerald-800 flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Kondisi Baik (Good)
-          </span>
-          <div className="text-2xl font-black text-emerald-900 mt-1">{goodCount}</div>
-          <span className="text-[10px] text-emerald-700">Siap operasional masak</span>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
+        <div role="tablist" aria-label="Kondisi" className="inline-flex p-1 rounded-lg bg-slate-200/70 text-xs self-start overflow-x-auto max-w-full">
+          {conditionChips.map(c => (
+            <button
+              key={c.id}
+              type="button"
+              role="tab"
+              aria-selected={conditionFilter === c.id}
+              onClick={() => setConditionFilter(c.id)}
+              className={`px-3 min-h-[44px] sm:min-h-[30px] rounded-md whitespace-nowrap cursor-pointer ${FOCUS_RING} ${
+                conditionFilter === c.id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-700 hover:text-slate-900 font-medium'
+              }`}
+            >
+              {c.label} <span className="text-slate-500 font-normal">{counts[c.id]}</span>
+            </button>
+          ))}
         </div>
-
-        <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-200 shadow-2xs">
-          <span className="text-[11px] font-semibold text-amber-800 flex items-center gap-1">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> Perlu Inspeksi
-          </span>
-          <div className="text-2xl font-black text-amber-900 mt-1">{inspectionCount}</div>
-          <span className="text-[10px] text-amber-700">Pemeriksaan teknis terjadwal</span>
-        </div>
-
-        <div className="bg-rose-50/50 p-4 rounded-xl border border-rose-200 shadow-2xs">
-          <span className="text-[11px] font-semibold text-rose-800 flex items-center gap-1">
-            <XCircle className="w-3.5 h-3.5 text-rose-600" /> Rusak / Perbaikan
-          </span>
-          <div className="text-2xl font-black text-rose-900 mt-1">{damagedCount}</div>
-          <span className="text-[10px] text-rose-700">Dalam penanganan servis</span>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <select
+            aria-label="Kategori"
+            value={categoryFilter}
+            onChange={e => setCategoryFilter(e.target.value as 'ALL' | EquipmentCategory)}
+            className={`${FIELD_INPUT} sm:w-44`}
+          >
+            <option value="ALL">Semua kategori</option>
+            {(Object.keys(CATEGORY_LABEL) as EquipmentCategory[]).map(c => (
+              <option key={c} value={c}>
+                {CATEGORY_LABEL[c]}
+              </option>
+            ))}
+          </select>
+          <div className="relative sm:w-64">
+            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="search"
+              aria-label="Cari aset"
+              placeholder="Cari nama, kode, atau lokasi"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              className={`${FIELD_INPUT} pl-8`}
+            />
+          </div>
         </div>
       </div>
 
-      {/* Filter and Search */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-          <input
-            type="text"
-            placeholder="Cari ID alat, nama perlengkapan, atau lokasi..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <select
-            value={filterCategory}
-            onChange={e => setFilterCategory(e.target.value)}
-            className="text-xs rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          >
-            <option value="ALL">Semua Kategori</option>
-            <option value="Kitchen Equipment">Kitchen Equipment</option>
-            <option value="Cleaning Equipment">Cleaning Equipment</option>
-            <option value="Warehouse Equipment">Warehouse Equipment</option>
-            <option value="Electronic Equipment">Electronic Equipment</option>
-          </select>
-
-          <select
-            value={filterCondition}
-            onChange={e => setFilterCondition(e.target.value)}
-            className="text-xs rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          >
-            <option value="ALL">Semua Kondisi</option>
-            <option value="GOOD">Baik (Good)</option>
-            <option value="NEEDS_INSPECTION">Perlu Inspeksi</option>
-            <option value="DAMAGED">Rusak (Damaged)</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Main Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100/80 text-slate-600 font-semibold border-b border-slate-200">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="relative overflow-x-auto">
+          <table className="w-full min-w-[720px] text-left text-xs">
+            <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
               <tr>
-                <th className="py-3 px-4">Asset ID</th>
-                <th className="py-3 px-4">Nama Alat</th>
-                <th className="py-3 px-4">Kategori</th>
-                <th className="py-3 px-4 text-center">Jumlah Unit</th>
-                <th className="py-3 px-4">Lokasi Penempatan</th>
-                <th className="py-3 px-4">Kondisi Fisik</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4">Inspeksi Terakhir</th>
-                <th className="py-3 px-4 text-right">Aksi</th>
+                <th className="py-2.5 px-4 font-semibold">Aset</th>
+                <th className="py-2.5 px-3 font-semibold">Lokasi</th>
+                <th className="py-2.5 px-3 font-semibold text-right">Jumlah</th>
+                <th className="py-2.5 px-3 font-semibold">Kondisi</th>
+                <th className="py-2.5 px-3 font-semibold">Dicek terakhir</th>
+                <th className="py-2.5 px-4 font-semibold text-right">
+                  <span className="sr-only">Aksi</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filtered.length === 0 ? (
+              {equipment.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-400 italic">
-                    Tidak ada peralatan yang sesuai dengan filter.
+                  <td colSpan={6} className="py-10 text-center text-slate-600">
+                    Belum ada aset terdaftar.{canManage && ' Tekan "Tambah aset" untuk mulai.'}
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-10 text-center text-slate-600">
+                    Tidak ada aset yang cocok dengan filter.
                   </td>
                 </tr>
               ) : (
-                filtered.map(eq => (
-                  <tr key={eq.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-3 px-4 font-mono font-bold text-slate-800">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200">
-                        {eq.id}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-slate-900">{eq.name}</div>
-                      {eq.notes && <div className="text-[10px] text-slate-500 italic">{eq.notes}</div>}
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">{eq.category}</td>
-                    <td className="py-3 px-4 text-center font-mono font-bold text-slate-800">
-                      {eq.quantity} {eq.unit}
-                    </td>
-                    <td className="py-3 px-4 text-slate-700 font-medium">{eq.location}</td>
-                    <td className="py-3 px-4">
-                      {eq.condition === 'GOOD' && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3" /> GOOD
+                filtered.map(eq => {
+                  const age = daysSince(eq.lastInspectedDate);
+                  return (
+                    <tr key={eq.id} className="hover:bg-slate-50">
+                      <td className="py-2.5 px-4">
+                        <div className="font-semibold text-slate-900">{eq.name}</div>
+                        <div className="text-[11px] text-slate-600">
+                          {CATEGORY_LABEL[eq.category] || eq.category} · <span className="font-mono">{eq.id}</span>
+                          {eq.notes && <> · {eq.notes}</>}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-800">{eq.location}</td>
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                        <span className="font-mono font-semibold text-slate-900">{eq.quantity}</span>{' '}
+                        <span className="text-slate-600">{eq.unit}</span>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className={`inline-block whitespace-nowrap px-2 py-0.5 rounded-md border text-[11px] font-semibold ${CONDITION_BADGE[eq.condition]}`}>
+                          {CONDITION_LABEL[eq.condition]}
                         </span>
-                      )}
-                      {eq.condition === 'NEEDS_INSPECTION' && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
-                          <AlertTriangle className="w-3 h-3" /> NEEDS INSPECTION
-                        </span>
-                      )}
-                      {eq.condition === 'DAMAGED' && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200">
-                          <XCircle className="w-3 h-3" /> DAMAGED
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="text-[10px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
-                        {eq.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
-                      {eq.lastInspectedDate}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => setLabelItem(eq)}
-                          className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
-                          title="Lihat Label QR Aset"
-                        >
-                          <QrCode className="w-3.5 h-3.5" />
-                        </button>
-                        {can('MANAGE_EQUIPMENT') && (
-                          <button
-                            onClick={() => handleOpenUpdate(eq)}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded border border-amber-200 transition-colors cursor-pointer"
-                            title="Update kondisi alat"
-                          >
-                            <Edit3 className="w-3 h-3" />
-                            Update Kondisi
-                          </button>
+                        {eq.status !== 'ACTIVE' && (
+                          <div className="text-[11px] text-slate-600 mt-0.5">{STATUS_LABEL[eq.status]}</div>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-800 whitespace-nowrap">
+                        {formatDate(eq.lastInspectedDate)}
+                        {age !== null && age > 0 && <div className="text-[11px] text-slate-600">{age} hari lalu</div>}
+                      </td>
+                      <td className="py-2.5 px-4">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {canManage && (
+                            <button type="button" onClick={() => openCheck(eq)} className={BTN_SECONDARY}>
+                              Cek kondisi
+                            </button>
+                          )}
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={() => openEdit(eq)}
+                              aria-label={`Ubah data ${eq.name}`}
+                              className={`${BTN_SECONDARY} border-transparent bg-transparent hover:bg-slate-100`}
+                            >
+                              Ubah
+                            </button>
+                          )}
+                          {onPrintLabel && (
+                            <button
+                              type="button"
+                              onClick={() => onPrintLabel(eq.id)}
+                              aria-label={`Cetak label ${eq.name}`}
+                              className={`${BTN_SECONDARY} border-transparent bg-transparent hover:bg-slate-100`}
+                            >
+                              Label
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* UPDATE CONDITION MODAL */}
-      {updatingItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Update Kondisi & Status Alat
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Perbarui catatan inspeksi fisik dan status operasional perlengkapan
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setUpdatingItem(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
-                title="Tutup dialog"
-              >
-                <X className="w-5 h-5" />
-              </button>
+      {checking && (
+        <FormDialog
+          title={`Cek kondisi: ${checking.name}`}
+          description={`${checking.location} · terakhir dicek ${formatDate(checking.lastInspectedDate)}`}
+          onClose={() => setChecking(null)}
+          onSubmit={saveCheck}
+          submitLabel="Simpan hasil cek"
+          error={checkError}
+        >
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label htmlFor="chk-cond" className={FIELD_LABEL}>Kondisi</label>
+              <select id="chk-cond" value={checkCondition} onChange={e => setCheckCondition(e.target.value as EquipmentCondition)} className={FIELD_INPUT}>
+                {(Object.keys(CONDITION_LABEL) as EquipmentCondition[]).map(c => (
+                  <option key={c} value={c}>{CONDITION_LABEL[c]}</option>
+                ))}
+              </select>
             </div>
-
-            <form onSubmit={handleSaveCondition} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <div className="font-mono text-[11px] font-bold text-slate-500">{updatingItem.id}</div>
-                  <div className="font-bold text-slate-900 text-sm">{updatingItem.name}</div>
-                  <div className="text-slate-500 text-[11px] mt-0.5">{updatingItem.location}</div>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Kondisi Alat</label>
-                  <select
-                    value={newCondition}
-                    onChange={e => setNewCondition(e.target.value as EquipmentCondition)}
-                    className="w-full text-xs rounded-lg border border-slate-300 p-2 text-slate-800 font-semibold"
-                  >
-                    <option value="GOOD">GOOD (Baik, Siap Digunakan)</option>
-                    <option value="NEEDS_INSPECTION">NEEDS_INSPECTION (Perlu Pemeriksaan)</option>
-                    <option value="DAMAGED">DAMAGED (Rusak / Kendala Teknis)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Status Operasional</label>
-                  <select
-                    value={newStatus}
-                    onChange={e => setNewStatus(e.target.value as EquipmentStatus)}
-                    className="w-full text-xs rounded-lg border border-slate-300 p-2 text-slate-800 font-semibold"
-                  >
-                    <option value="ACTIVE">ACTIVE (Aktif)</option>
-                    <option value="IN_REPAIR">IN_REPAIR (Sedang Diservis)</option>
-                    <option value="LOST">LOST (Hilang)</option>
-                    <option value="RETIRED">RETIRED (Afkir / Dikeluarkan)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Catatan Inspeksi / Alasan Perubahan <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={conditionNotes}
-                    onChange={e => setConditionNotes(e.target.value)}
-                    placeholder="Jelaskan kondisi komponen atau tindak lanjut teknis..."
-                    className="w-full text-xs rounded-lg border border-slate-300 p-2 text-slate-800 focus:ring-1 focus:ring-amber-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setUpdatingItem(null)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl shadow-2xs transition-colors cursor-pointer"
-                >
-                  Simpan & Catat di Audit
-                </button>
-              </div>
-            </form>
+            <div>
+              <label htmlFor="chk-status" className={FIELD_LABEL}>Status</label>
+              <select id="chk-status" value={checkStatus} onChange={e => setCheckStatus(e.target.value as EquipmentStatus)} className={FIELD_INPUT}>
+                {(Object.keys(STATUS_LABEL) as EquipmentStatus[]).map(s => (
+                  <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                ))}
+              </select>
+            </div>
           </div>
-        </div>
+          <div>
+            <label htmlFor="chk-note" className={FIELD_LABEL}>Hasil pemeriksaan</label>
+            <textarea
+              id="chk-note"
+              rows={3}
+              value={checkNote}
+              onChange={e => setCheckNote(e.target.value)}
+              placeholder="Contoh: api stabil, selang gas aman"
+              className={`${FIELD_INPUT} py-2`}
+            />
+            <p className="text-[11px] text-slate-600 mt-1">Tersimpan di Riwayat Aktivitas. Tanggal cek diperbarui ke hari ini.</p>
+          </div>
+        </FormDialog>
       )}
 
-      {/* ASSET LABEL / QR PREVIEW MODAL */}
-      {labelItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 border border-slate-200 animate-in fade-in zoom-in-95 duration-150 text-center">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <span className="text-xs font-bold text-slate-800">Pratinjau Label Aset SPPG MLG TUMPANG JERU</span>
-              <button onClick={() => setLabelItem(null)} className="text-slate-400 hover:text-slate-600">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="my-5 p-4 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                <div className="text-left">
-                  <div className="text-[11px] font-bold text-emerald-800">SPPG MLG TUMPANG JERU Gudang & Dapur</div>
-                  <div className="text-xs font-black text-slate-800">{labelItem.id}</div>
-                </div>
-                <div className="w-8 h-8 rounded bg-slate-900 text-white flex items-center justify-center">
-                  <QrCode className="w-5 h-5" />
-                </div>
-              </div>
-
-              <div className="text-left">
-                <div className="text-sm font-bold text-slate-900 leading-tight">{labelItem.name}</div>
-                <div className="text-[10px] text-slate-500 mt-1">
-                  Kategori: <span className="font-semibold text-slate-700">{labelItem.category}</span>
-                </div>
-                <div className="text-[10px] text-slate-500">
-                  Lokasi: <span className="font-semibold text-slate-700">{labelItem.location}</span>
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-slate-200 text-[9px] font-mono text-slate-400">
-                PROPERTY OF SATUAN PELAYANAN PEMENUHAN GIZI
-              </div>
-            </div>
-
-            <button
-              onClick={() => window.print()}
-              className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              Cetak Label Fisik
-            </button>
+      {editing && form && (
+        <FormDialog
+          title={editing.isNew ? 'Tambah aset' : `Ubah data: ${editing.original?.name}`}
+          description={editing.isNew ? undefined : 'Kondisi dan status diubah lewat "Cek kondisi".'}
+          onClose={() => setEditing(null)}
+          onSubmit={saveForm}
+          submitLabel={editing.isNew ? 'Tambah aset' : 'Simpan perubahan'}
+          error={formError}
+        >
+          <div>
+            <label htmlFor="eq-name" className={FIELD_LABEL}>Nama aset</label>
+            <input id="eq-name" type="text" value={form.name} onChange={e => setField('name', e.target.value)} placeholder="Contoh: Kompor gas 2 tungku" className={FIELD_INPUT} />
           </div>
-        </div>
-      )}
-
-      {/* ADD EQUIPMENT MODAL */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <h3 className="text-sm font-bold text-slate-900">Daftarkan Peralatan Kerja Baru</h3>
-              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="w-4 h-4" />
-              </button>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label htmlFor="eq-id" className={FIELD_LABEL}>Kode</label>
+              <input id="eq-id" type="text" value={form.id} disabled={!editing.isNew} onChange={e => setField('id', e.target.value)} className={`${FIELD_INPUT} font-mono`} />
             </div>
-
-            {formError && (
-              <div className="mt-3 p-2 bg-rose-50 text-rose-800 text-xs rounded border border-rose-200">
-                {formError}
-              </div>
-            )}
-
-            <form onSubmit={handleSaveNewEquipment} className="mt-4 space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Asset ID (e.g. EQ-KIT-001)</label>
-                  <input
-                    type="text"
-                    value={formId}
-                    onChange={e => setFormId(e.target.value)}
-                    className="w-full font-mono font-bold rounded border border-slate-300 p-2 text-slate-900"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Kategori</label>
-                  <select
-                    value={formCategory}
-                    onChange={e => setFormCategory(e.target.value as EquipmentCategory)}
-                    className="w-full rounded border border-slate-300 p-2 text-slate-800"
-                  >
-                    <option value="Kitchen Equipment">Kitchen Equipment</option>
-                    <option value="Cleaning Equipment">Cleaning Equipment</option>
-                    <option value="Warehouse Equipment">Warehouse Equipment</option>
-                    <option value="Electronic Equipment">Electronic Equipment</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Nama Alat Lengkap</label>
-                <input
-                  type="text"
-                  placeholder="Contoh: Kompor Gas 4 Tungku, Wok Kuali 60cm..."
-                  value={formName}
-                  onChange={e => setFormName(e.target.value)}
-                  className="w-full rounded border border-slate-300 p-2 text-slate-900 font-semibold"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Jumlah</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={formQty}
-                    onChange={e => setFormQty(parseInt(e.target.value) || 1)}
-                    className="w-full font-mono rounded border border-slate-300 p-2"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Satuan</label>
-                  <input
-                    type="text"
-                    value={formUnit}
-                    onChange={e => setFormUnit(e.target.value)}
-                    className="w-full rounded border border-slate-300 p-2"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Lokasi Penempatan</label>
-                <input
-                  type="text"
-                  placeholder="Contoh: Dapur Utama - Jalur Masak 1"
-                  value={formLocation}
-                  onChange={e => setFormLocation(e.target.value)}
-                  className="w-full rounded border border-slate-300 p-2"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Kondisi Awal</label>
-                  <select
-                    value={formCondition}
-                    onChange={e => setFormCondition(e.target.value as EquipmentCondition)}
-                    className="w-full rounded border border-slate-300 p-2"
-                  >
-                    <option value="GOOD">GOOD</option>
-                    <option value="NEEDS_INSPECTION">NEEDS_INSPECTION</option>
-                    <option value="DAMAGED">DAMAGED</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Status</label>
-                  <select
-                    value={formStatus}
-                    onChange={e => setFormStatus(e.target.value as EquipmentStatus)}
-                    className="w-full rounded border border-slate-300 p-2"
-                  >
-                    <option value="ACTIVE">ACTIVE</option>
-                    <option value="IN_REPAIR">IN_REPAIR</option>
-                    <option value="LOST">LOST</option>
-                    <option value="RETIRED">RETIRED</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Catatan Tambahan</label>
-                <input
-                  type="text"
-                  placeholder="Merek, garansi, spesifikasi teknis..."
-                  value={formNotes}
-                  onChange={e => setFormNotes(e.target.value)}
-                  className="w-full rounded border border-slate-300 p-2"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs"
-                >
-                  Daftarkan Alat
-                </button>
-              </div>
-            </form>
+            <div>
+              <label htmlFor="eq-cat" className={FIELD_LABEL}>Kategori</label>
+              <select id="eq-cat" value={form.category} onChange={e => setField('category', e.target.value as EquipmentCategory)} className={FIELD_INPUT}>
+                {(Object.keys(CATEGORY_LABEL) as EquipmentCategory[]).map(c => (
+                  <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>
+                ))}
+              </select>
+            </div>
           </div>
-        </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label htmlFor="eq-qty" className={FIELD_LABEL}>Jumlah</label>
+              <input id="eq-qty" type="number" min="1" step="1" inputMode="numeric" value={form.quantity} onChange={e => setField('quantity', e.target.value)} className={`${FIELD_INPUT} font-mono`} />
+            </div>
+            <div>
+              <label htmlFor="eq-unit" className={FIELD_LABEL}>Satuan</label>
+              <input id="eq-unit" type="text" value={form.unit} onChange={e => setField('unit', e.target.value)} className={FIELD_INPUT} />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="eq-loc" className={FIELD_LABEL}>Lokasi</label>
+            <input id="eq-loc" type="text" list="eq-locations" value={form.location} onChange={e => setField('location', e.target.value)} placeholder="Contoh: Dapur utama" className={FIELD_INPUT} />
+            <datalist id="eq-locations">
+              {locations.map(l => <option key={l} value={l} />)}
+            </datalist>
+          </div>
+          {editing.isNew && (
+            <div>
+              <label htmlFor="eq-cond" className={FIELD_LABEL}>Kondisi awal</label>
+              <select id="eq-cond" value={form.condition} onChange={e => setField('condition', e.target.value as EquipmentCondition)} className={FIELD_INPUT}>
+                {(Object.keys(CONDITION_LABEL) as EquipmentCondition[]).map(c => (
+                  <option key={c} value={c}>{CONDITION_LABEL[c]}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label htmlFor="eq-notes" className={FIELD_LABEL}>Catatan (opsional)</label>
+            <input id="eq-notes" type="text" value={form.notes} onChange={e => setField('notes', e.target.value)} placeholder="Merek, ukuran, garansi" className={FIELD_INPUT} />
+          </div>
+        </FormDialog>
       )}
     </div>
   );

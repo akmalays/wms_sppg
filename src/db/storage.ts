@@ -3155,11 +3155,30 @@ class WarehouseDatabase {
       condition,
       status,
       lastInspectedDate: now,
-      notes: notes || old.notes,
+      // Catatan pemeriksaan dicatat di riwayat audit; catatan aset (merek, spesifikasi) tidak ditimpa.
+      notes: old.notes,
     };
 
     this.equipment[idx] = updated;
     setStored(STORAGE_KEYS.EQUIPMENT, this.equipment);
+
+    // Sebelumnya perubahan kondisi hanya tersimpan lokal dan hilang saat data dimuat ulang dari cloud.
+    if (isSupabaseConfigured()) {
+      supabase
+        .from('equipment_items')
+        .update({
+          condition,
+          status,
+          last_inspected_date: now,
+          notes: updated.notes || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', equipmentId)
+        .then(({ error }) => {
+          if (error) console.error('Supabase equipment condition update error:', error);
+        });
+    }
+    this.notifyAllChanged();
 
     this.logAudit(
       user,
@@ -3195,13 +3214,18 @@ class WarehouseDatabase {
         id: equipment.id,
         name: equipment.name,
         category: equipment.category,
+        quantity: equipment.quantity,
+        unit: equipment.unit,
         condition: equipment.condition,
         status: equipment.status,
         location_id: equipment.location,
+        assigned_to: equipment.assignedTo || null,
         last_inspected_date: equipment.lastInspectedDate,
         notes: equipment.notes || null,
         updated_at: new Date().toISOString(),
-      }).then();
+      }).then(({ error }) => {
+        if (error) console.error('Supabase equipment upsert error:', error);
+      });
     }
     this.notifyAllChanged();
     return equipment;

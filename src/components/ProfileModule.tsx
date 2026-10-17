@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { DailyTodoItem, TodoCategory, TodoPriority, UserRole } from '../types/warehouse';
@@ -890,22 +891,8 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
             {/* Report Header */}
             <div className="flex items-start justify-between border-b-2 border-slate-800 pb-5 mb-6">
               <div className="flex items-start gap-4">
-                <SppgLogo
-                  size="lg"
-                  variant="color"
-                  address="Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang"
-                />
-                <div>
-                  <h2 className="text-base font-bold text-slate-900 leading-tight">
-                    Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
-                  </h2>
-                  <p className="text-xs font-semibold text-slate-700">
-                    Unit Pelayanan Dapur Gizi SPPG MLG TUMPANG JERU 01
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    Sistem Manajemen Pergudangan, Higienitas, & Aliran Bahan Pangan
-                  </p>
-                </div>
+                <SppgLogo size="lg" variant="color" showText={false} />
+                <KopText />
               </div>
 
               <div className="text-right text-xs">

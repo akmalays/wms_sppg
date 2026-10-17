@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import {
@@ -795,17 +796,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
         <div className="border-b-2 border-slate-900 pb-4 mb-5 flex items-start justify-between">
           <div className="flex items-center gap-3.5">
             <SppgLogo size="lg" variant="color" showText={false} />
-            <div>
-              <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
-                Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
-              </h1>
-              <p className="text-xs text-slate-600 font-medium">
-                SPPG MLG TUMPANG JERU - Unit Pelayanan Dapur Gizi
-              </p>
-              <p className="text-[10px] text-slate-500 mt-0.5">
-                Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
-              </p>
-            </div>
+            <KopText />
           </div>
 
           <div className="text-right text-[11px] text-slate-500 space-y-0.5">
@@ -1336,17 +1327,7 @@ export const EmployeeAttendanceModule: React.FC = () => {
         <div className="border-b-2 border-slate-900 pb-4 mb-5 flex items-start justify-between">
           <div className="flex items-center gap-3.5">
             <SppgLogo size="lg" variant="color" showText={false} />
-            <div>
-              <h1 className="text-base font-bold tracking-tight text-slate-900 leading-tight">
-                Satuan Pelayanan Pemenuhan Gizi (SPPG MLG TUMPANG JERU)
-              </h1>
-              <p className="text-xs text-slate-600 font-medium">
-                SPPG MLG TUMPANG JERU - Unit Pelayanan Dapur Gizi
-              </p>
-              <p className="text-[10px] text-slate-500 mt-0.5">
-                Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang
-              </p>
-            </div>
+            <KopText />
           </div>
 
           <div className="text-right text-[11px] text-slate-500 space-y-0.5">

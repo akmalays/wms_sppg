@@ -8,7 +8,7 @@ import { InventoryModule } from './components/InventoryModule';
 import { NonFoodExpensesModule } from './components/NonFoodExpensesModule';
 import { MenuOrdersModule } from './components/MenuOrdersModule';
 import { WasteLogModule } from './components/WasteLogModule';
-import { ToolsPrintModule } from './components/ToolsPrintModule';
+import { ToolsPrintModule, PrintTarget } from './components/ToolsPrintModule';
 import { ProfileModule } from './components/ProfileModule';
 import { EmployeeAttendanceModule } from './components/EmployeeAttendanceModule';
 import { ReceivingModule } from './components/ReceivingModule';
@@ -68,7 +68,13 @@ const MainLayout: React.FC = () => {
   const [currentRoute, setCurrentRoute] = useState<AppRouteType>(getAppRoute);
   const [authView, setAuthView] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
   const [dataVersion, setDataVersion] = useState<number>(0);
-  const [selectedExpenseSupplierId, setSelectedExpenseSupplierId] = useState<string | undefined>(undefined);
+  // Form yang dibuka saat pindah ke Cetak Form dari halaman lain (nota supplier, label aset).
+  const [printTarget, setPrintTarget] = useState<PrintTarget | undefined>(undefined);
+
+  // Target cetak hanya berlaku sekali; dibersihkan begitu pengguna meninggalkan Cetak Form.
+  React.useEffect(() => {
+    if (activeTab !== 'tools_forms') setPrintTarget(undefined);
+  }, [activeTab]);
 
   // Sync state when browser URL changes (back/forward navigation or hash change)
   React.useEffect(() => {
@@ -123,8 +129,8 @@ const MainLayout: React.FC = () => {
     setCurrentRoute('MENU_TODAY');
   };
 
-  const handleNavigateToSupplierExpense = (supplierId: string) => {
-    setSelectedExpenseSupplierId(supplierId);
+  const openPrintForm = (target: PrintTarget) => {
+    setPrintTarget(target);
     setActiveTab('tools_forms');
   };
 
@@ -237,8 +243,9 @@ const MainLayout: React.FC = () => {
 
           {activeTab === 'tools_forms' && (
             <ToolsPrintModule
-              initialForm={selectedExpenseSupplierId ? 'SUPPLIER_EXPENSE_NOTE' : undefined}
-              initialSupplierId={selectedExpenseSupplierId}
+              initialForm={printTarget?.form}
+              initialSupplierId={printTarget?.supplierId}
+              initialLabelSearch={printTarget?.labelSearch}
             />
           )}
 
@@ -258,13 +265,12 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'equipment' && (
-            <EquipmentModule onRefreshData={handleRefresh} />
+            <EquipmentModule onPrintLabel={assetId => openPrintForm({ form: 'EQUIPMENT_LABEL', labelSearch: assetId })} />
           )}
 
           {activeTab === 'suppliers' && (
             <SuppliersModule
-              onRefreshData={handleRefresh}
-              onNavigateToExpense={handleNavigateToSupplierExpense}
+              onNavigateToExpense={supplierId => openPrintForm({ form: 'SUPPLIER_EXPENSE_NOTE', supplierId })}
             />
           )}
 
@@ -293,7 +299,7 @@ const MainLayout: React.FC = () => {
   );
 };
 
-const SELF_SYNCING_TABS = new Set(['receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'daily_flow']);
+const SELF_SYNCING_TABS = new Set(['receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'daily_flow', 'equipment', 'suppliers']);
 
 export default function App() {
   return (
