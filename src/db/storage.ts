@@ -1881,6 +1881,43 @@ export function mapSupabaseToAttendance(r: any): EmployeeAttendance {
   };
 }
 
+// Order menu disimpan utuh di kolom `data`; kolom lain untuk kueri & view website publik.
+export function mapMenuOrderToSupabase(o: MenuOrder) {
+  return {
+    id: o.id,
+    date: o.date,
+    meal_session: o.mealSession,
+    menu_title: o.menuTitle,
+    menu_description: o.menuDescription || null,
+    target_portions: o.targetPortions || 0,
+    status: o.status,
+    key_ingredients: o.keyIngredients || [],
+    chef_in_charge: o.chefInCharge || null,
+    notes: o.notes || null,
+    created_at: o.createdAt || new Date().toISOString(),
+    data: o,
+  };
+}
+
+export function mapSupabaseToMenuOrder(m: any): MenuOrder {
+  if (m.data && typeof m.data === 'object') return { ...(m.data as MenuOrder), id: m.id };
+  // Baris lama (sebelum kolom data ada)
+  return {
+    id: m.id,
+    date: m.date,
+    mealSession: m.meal_session || 'Siang',
+    menuTitle: m.menu_title || m.menu_name || 'Menu SPPG',
+    menuDescription: m.menu_description || undefined,
+    targetPortions: Number(m.target_portions) || 0,
+    status: m.status || 'PLANNED',
+    keyIngredients: Array.isArray(m.key_ingredients) ? m.key_ingredients : [],
+    poArrivalItems: Array.isArray(m.po_arrival_items) ? m.po_arrival_items : [],
+    chefInCharge: m.chef_in_charge || undefined,
+    notes: m.notes || undefined,
+    createdAt: m.created_at || new Date().toISOString(),
+  };
+}
+
 export function mapBeneficiaryToSupabase(b: SchoolBeneficiaryAllocation) {
   return {
     id: b.id,
@@ -2332,26 +2369,6 @@ class WarehouseDatabase {
         }));
       }
 
-      // 8. Order Menu SPPG
-      const { data: dbMenus, error: menuErr } = await supabase
-        .from('menu_orders')
-        .select('*')
-        .order('date', { ascending: false });
-      if (!menuErr && dbMenus && dbMenus.length > 0) {
-        this.menuOrders = dbMenus.map((m: any) => ({
-          id: m.id,
-          date: m.date,
-          day: m.day,
-          mealSession: m.meal_session || 'Siang',
-          menuTitle: m.menu_title || m.menu_name || 'Menu SPPG',
-          targetPortions: Number(m.target_portions) || 0,
-          status: m.status || 'DRAFT',
-          poArrivalItems: Array.isArray(m.po_arrival_items) ? m.po_arrival_items : [],
-          notes: m.notes || undefined,
-          createdAt: m.created_at || new Date().toISOString(),
-        }));
-      }
-
       // 9. Rekap Limbah
       const { data: dbWaste, error: wasteErr } = await supabase
         .from('waste_logs')
@@ -2399,6 +2416,17 @@ class WarehouseDatabase {
   }
 
   private async loadSyncedTables(seed: boolean): Promise<void> {
+    // Order menu hanya disimpan di cloud (tidak di-cache browser), jadi cloud selalu menjadi sumbernya.
+    const { data: dbMenus, error: menuErr } = await supabase
+      .from('menu_orders')
+      .select('*')
+      .order('date', { ascending: false });
+    if (menuErr) {
+      console.error('Supabase menu_orders gagal dimuat (sudah menjalankan migrasi 20261018000001?):', menuErr.message);
+    } else {
+      this.menuOrders = (dbMenus || []).map(mapSupabaseToMenuOrder);
+    }
+
     await this.loadOrSeed<Employee>({
       table: 'employees',
       fetch: () => supabase.from('employees').select('*').order('id'),
@@ -2660,6 +2688,7 @@ class WarehouseDatabase {
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'employees' }, () => this.refreshSyncedTables())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_orders' }, () => this.refreshSyncedTables())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_logs' }, () => this.refreshSyncedTables())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_opname_sessions' }, () => this.refreshSyncedTables())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_todos' }, () => this.refreshSyncedTables())
@@ -4142,6 +4171,7 @@ class WarehouseDatabase {
             ...mOrder,
             poArrivalItems: updatedArrivals,
           };
+          this.pushMenuOrder(this.menuOrders[mIdx]);
         }
       }
     });
@@ -4170,6 +4200,10 @@ class WarehouseDatabase {
     return [...this.menuOrders].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }
 
+  private pushMenuOrder(order: MenuOrder): void {
+    this.pushCloud('menu_orders', () => supabase.from('menu_orders').upsert(mapMenuOrderToSupabase(order)));
+  }
+
   public saveMenuOrder(order: MenuOrder, user: User, isNew: boolean = false): MenuOrder {
     if (isNew) {
       this.menuOrders.unshift(order);
@@ -4196,6 +4230,7 @@ class WarehouseDatabase {
       }
     }
     setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+    this.pushMenuOrder(order);
     return order;
   }
 
@@ -4206,6 +4241,7 @@ class WarehouseDatabase {
     const updated: MenuOrder = { ...old, status };
     this.menuOrders[idx] = updated;
     setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+    this.pushMenuOrder(updated);
 
     this.logAudit(
       user,
@@ -4242,6 +4278,7 @@ class WarehouseDatabase {
       if (targetOrder) {
         targetOrder.poArrivalItems = [];
         setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+        this.pushMenuOrder(targetOrder);
       }
       if (user) {
         this.logAudit(
@@ -4266,6 +4303,7 @@ class WarehouseDatabase {
 
     this.menuOrders.splice(idx, 1);
     setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+    this.pushCloud('menu_orders', () => supabase.from('menu_orders').delete().eq('id', orderId));
     this.logAudit(
       user,
       'MENU_ORDER_DELETED',

@@ -21,6 +21,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import { BTN_PRIMARY, BTN_SECONDARY, FIELD_INPUT, FOCUS_RING } from './common/FormDialog';
 import { warehouseDb, APP_SETTINGS_CHANGED_EVENT } from '../db/storage';
 import { useAuth } from '../context/AuthContext';
+import { SPPG_EMAIL, SPPG_PHONE } from './common/KopText';
 
 export interface ClassBreakdownItem {
   id: string;
@@ -1037,7 +1038,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                                 Jl. Raya Jeru No. 136, RT.01/RW.02, Kec. Tumpang, Kab. Malang, Jawa Timur 65156
                               </p>
                               <p className="text-[9.5px] text-slate-700 leading-tight">
-                                Email: sppg.mlgtumpangjeru@bgn.go.id • Hotline / WA: 0812-3456-7890
+                                Email: {SPPG_EMAIL} • Hotline / WA: {SPPG_PHONE}
                               </p>
                             </div>
                           </div>
@@ -1248,7 +1249,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                                 Jl. Raya Jeru No. 136, RT.01/RW.02, Kec. Tumpang, Kab. Malang, Jawa Timur 65156
                               </p>
                               <p className="text-[9.5px] text-slate-700 leading-tight">
-                                Email: sppg.mlgtumpangjeru@bgn.go.id • Hotline / WA: 0812-3456-7890
+                                Email: {SPPG_EMAIL} • Hotline / WA: {SPPG_PHONE}
                               </p>
                             </div>
                           </div>
@@ -1471,7 +1472,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                                 Jl. Raya Jeru No. 136, RT.01/RW.02, Kec. Tumpang, Kab. Malang, Jawa Timur 65156
                               </p>
                               <p className="text-[9.5px] text-slate-700 leading-tight">
-                                Email: sppg.mlgtumpangjeru@bgn.go.id • Hotline / WA: 0812-3456-7890
+                                Email: {SPPG_EMAIL} • Hotline / WA: {SPPG_PHONE}
                               </p>
                             </div>
                           </div>

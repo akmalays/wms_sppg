@@ -5,6 +5,8 @@ import sawahImg from '../assets/sawah_padi.jpg';
 import kebunSayurImg from '../assets/kebun_sayur.jpg';
 import peternakanAyamImg from '../assets/peternakan_ayam.jpg';
 import trayImg1 from '../assets/tray_sample_1.jpg';
+import menu3bImg from '../assets/menu_3b_ilustrasi.jpg';
+import anakSehatImg from '../assets/anak_sehat_mbg.jpg';
 
 import {
   getWebsiteConfig,
@@ -19,6 +21,9 @@ import {
   DailyHabitItem
 } from '../db/websiteConfigStorage';
 import { isSupabaseConfigured } from '../lib/supabase';
+import QRCode from 'qrcode';
+import { Butterfly, Bee, FarmLandscape, HeaderSky, SunRays } from './menuPublic/NatureAccents';
+import { FoodIllustration, FoodImage } from './menuPublic/FoodIllustrations';
 
 import {
   X,
@@ -44,10 +49,23 @@ import {
   CalendarDays,
   ShieldCheck,
   PartyPopper,
-  Sparkles
+  Sparkles,
+  Users,
+  School,
+  Baby,
+  Zap,
+  Drumstick,
+  Droplet,
+  BarChart3,
+  CheckCircle2,
+  UtensilsCrossed,
+  QrCode,
+  Download,
+  FileText
 } from 'lucide-react';
 
 type PortionKey = 'small' | 'large';
+type MenuType = 'reguler' | 'b3';
 type SyncState = 'loading' | 'synced' | 'offline' | 'error';
 
 const MENU_PATH = '/menu-mbg-hari-ini';
@@ -83,6 +101,12 @@ function groupOfCategory(category: string): FoodGroup | null {
   if (c.includes('buah')) return 'buah';
   return null;
 }
+
+// Warna latar ilustrasi bahan mengikuti kelompok makanannya.
+const tintOf = (category: string) => {
+  const group = groupOfCategory(category);
+  return group ? FOOD_GROUPS[group].soft : '#f4efe3';
+};
 
 // Foto ilustrasi lahan untuk tab "Asal bahan"; diberi keterangan bahwa ini bukan lokasi pemasok.
 function originIllustration(category: string): string | null {
@@ -155,6 +179,7 @@ function formatUpdatedAt(iso: string): string | null {
 const cleanList = (items: string[] | undefined) => (items || []).map(s => s.trim()).filter(Boolean);
 const splitSentences = (text: string) => text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
 const splitHighlights = (text: string) => text.split(/[•,;]/).map(s => s.trim()).filter(Boolean);
+const splitDishes = (text: string) => text.split(/[,;+\n]|\s+dan\s+/i).map(s => s.trim()).filter(Boolean);
 const shortName = (name: string) => name.trim().split(/\s+/)[0].toLowerCase();
 
 function readLocal(key: string): string | null {
@@ -192,6 +217,18 @@ const SafeImg: React.FC<React.ImgHTMLAttributes<HTMLImageElement> & { fallbackSr
     return <div role={alt ? 'img' : undefined} aria-label={alt || undefined} className={`${className ?? ''} bg-[#efe9dd]`} />;
   }
   return <img src={finalSrc} alt={alt} className={className} onError={() => setFailed(true)} {...rest} />;
+};
+
+// Foto unggahan petugas di lembar detail; ilustrasi tetap jadi gambar utama. Disembunyikan bila kosong atau gagal dimuat.
+const PhotoInset: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) return null;
+  return (
+    <figure className="absolute left-3 bottom-3 w-24 sm:w-28">
+      <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} className="w-full aspect-square rounded-2xl object-cover border-4 border-white shadow-sm" />
+      <figcaption className="sr-only">{alt}</figcaption>
+    </figure>
+  );
 };
 
 const GroupChip: React.FC<{ category: string; className?: string }> = ({ category, className = '' }) => {
@@ -278,7 +315,15 @@ const IngredientSheet: React.FC<{
         className="bg-white w-full sm:max-w-lg max-h-[90dvh] sm:max-h-[92vh] rounded-t-3xl sm:rounded-3xl overflow-y-auto flex flex-col"
       >
         <div className="relative shrink-0">
-          <SafeImg src={item.imageUrl} alt={`Foto ${item.name}`} className="w-full aspect-[16/9] object-cover rounded-t-3xl" />
+          <FoodImage
+            name={item.name}
+            category={item.category}
+            alt={item.name}
+            tint={tintOf(item.category)}
+            className="w-full aspect-[16/9] rounded-t-3xl"
+            illustrationClassName="h-[72%] w-auto"
+          />
+          <PhotoInset key={item.id} src={item.imageUrl} alt={`Foto ${item.name}`} />
           <button
             ref={closeRef}
             type="button"
@@ -405,39 +450,173 @@ const IngredientSheet: React.FC<{
 };
 
 /* ------------------------------------------------------------------ */
-/* Pilihan porsi: mengubah semua angka di halaman                       */
+/* Ilustrasi statis dari public/ilustrasi/. Selama file belum diunggah, */
+/* dipakai gambar bawaan (JPG berlatar putih, dibaurkan ke latar kartu   */
+/* dengan mix-blend-multiply).                                          */
 /* ------------------------------------------------------------------ */
-const PortionPicker: React.FC<{ tiers: { key: PortionKey; config: PortionTierConfig }[]; portion: PortionKey; onChange: (p: PortionKey) => void }> = ({
-  tiers,
-  portion,
-  onChange
-}) => (
-  <fieldset className="min-w-0 rounded-3xl bg-white border border-[#e9e0cc] p-3">
-    <legend className="sr-only">Takaran untuk</legend>
-    <p className="text-[13px] font-bold text-slate-600 px-1 mb-2" aria-hidden="true">Takaran untuk</p>
-    <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-[#f4efe3]">
-      {tiers.map(t => {
-        const { name, group } = splitTierName(t.config.tierName);
-        const active = portion === t.key;
-        return (
-          <button
-            key={t.key}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(t.key)}
-            className={`min-h-[56px] rounded-xl px-3 py-2 text-left cursor-pointer transition-colors duration-150 ${focusRing} ${active ? 'bg-white shadow-sm' : 'hover:bg-white/60'}`}
-          >
-            <span className={`block text-[15px] font-bold ${active ? 'text-[#15803d]' : 'text-slate-800'}`}>{name}</span>
-            {group && <span className="block text-xs text-slate-600 leading-tight mt-0.5">{group}</span>}
-          </button>
-        );
-      })}
-    </div>
-  </fieldset>
-);
+const Illustration: React.FC<{ src: string; fallbackSrc: string; className?: string }> = ({ src, fallbackSrc, className = '' }) => {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  return (
+    <img
+      src={failed ? fallbackSrc : src}
+      alt=""
+      aria-hidden="true"
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className={`${className} ${failed ? 'mix-blend-multiply' : ''}`}
+    />
+  );
+};
 
 /* ------------------------------------------------------------------ */
-/* Isi Piringku sekaligus daftar menu                                  */
+/* Ranting daun + bunga: motif yang sama dengan daun di footer. Hanya   */
+/* hiasan (aria-hidden), bergoyang pelan saat kartunya di-hover/disentuh. */
+/* ------------------------------------------------------------------ */
+const PETALS = [[0, -9], [8.6, -2.8], [5.3, 7.3], [-5.3, 7.3], [-8.6, -2.8]];
+
+// flip: dicerminkan dengan poros tengah bawah, agar kotaknya tetap di tempat (poros di tepi akan memindahkannya).
+const Sprig: React.FC<{ className?: string; flower?: boolean; flip?: boolean }> = ({ className = '', flower = true, flip = false }) => (
+  <svg
+    viewBox="0 0 120 120"
+    aria-hidden="true"
+    focusable="false"
+    className={`pointer-events-none ${flip ? '-scale-x-100 origin-bottom' : 'origin-bottom-left'} motion-safe:group-hover:animate-[sway_1.8s_ease-in-out_infinite] ${className}`}
+  >
+    <path d="M18 114 C 38 90, 50 64, 60 32" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    <path d="M30 96 C 12 92, 4 78, 8 64 C 24 68, 33 81, 30 96 Z" fill="currentColor" opacity="0.85" />
+    <path d="M44 74 C 62 73, 75 61, 78 45 C 61 45, 48 57, 44 74 Z" fill="currentColor" opacity="0.65" />
+    <path d="M52 54 C 37 48, 32 33, 36 22 C 49 28, 56 41, 52 54 Z" fill="currentColor" opacity="0.85" />
+    {flower && (
+      <g transform="translate(62 26)">
+        {PETALS.map(([x, y]) => <circle key={`${x}${y}`} cx={x} cy={y} r="7" fill="#fcd34d" />)}
+        <circle r="5" fill="#f59e0b" />
+      </g>
+    )}
+  </svg>
+);
+
+const CardTitle: React.FC<{ id: string; icon: React.ReactNode; title: string; subtitle?: string; action?: React.ReactNode }> = ({ id, icon, title, subtitle, action }) => (
+  <div className="flex items-start justify-between gap-3 mb-4">
+    <div className="flex items-start gap-2.5 min-w-0">
+      <span className="text-[#1f6b3a] shrink-0 mt-0.5" aria-hidden="true">{icon}</span>
+      <div className="min-w-0">
+        <h2 id={id} className="font-kids text-xl sm:text-2xl font-bold text-[#173d26] leading-tight">{title}</h2>
+        {subtitle && <p className="text-[13px] text-slate-600 mt-0.5">{subtitle}</p>}
+      </div>
+    </div>
+    {action}
+  </div>
+);
+
+const pillBtn = `inline-flex items-center gap-1 shrink-0 min-h-[40px] px-3.5 rounded-full border border-[#e3dccb] bg-white text-[13px] font-semibold text-[#1f2a22] hover:bg-[#f4efe3] cursor-pointer ${focusRing}`;
+
+/* ------------------------------------------------------------------ */
+/* Pilihan jenis menu: reguler (sekolah) atau 3B                        */
+/* ------------------------------------------------------------------ */
+const MENU_TYPES: Record<MenuType, { label: string; audience: string; Icon: typeof School }> = {
+  reguler: { label: 'Menu Reguler', audience: 'Peserta didik di sekolah', Icon: School },
+  b3: { label: 'Menu 3B', audience: 'Ibu hamil, ibu menyusui, balita non-PAUD', Icon: Baby }
+};
+
+const MenuTypeCard: React.FC<{ menuType: MenuType; hasB3: boolean; onChange: (t: MenuType) => void; onExplain: () => void }> = ({ menuType, hasB3, onChange, onExplain }) => (
+  <div className="grid lg:grid-cols-[minmax(0,1fr)_280px] gap-3.5 lg:gap-5">
+    <section aria-labelledby="jenis-title" className={cardCls}>
+      <CardTitle id="jenis-title" icon={<Users className="w-6 h-6" />} title="Pilih Jenis Menu" subtitle="Informasi ditampilkan sesuai kelompok penerima manfaat." />
+      <div role="radiogroup" aria-labelledby="jenis-title" className="grid sm:grid-cols-2 gap-3">
+        {(Object.keys(MENU_TYPES) as MenuType[]).map(key => {
+          const { label, audience, Icon } = MENU_TYPES[key];
+          const on = menuType === key;
+          const disabled = key === 'b3' && !hasB3;
+          return (
+            <button
+              key={key}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              aria-disabled={disabled}
+              onClick={() => !disabled && onChange(key)}
+              className={`flex items-center gap-3 rounded-2xl border-2 p-3.5 text-left transition-colors duration-150 ${focusRing} ${
+                disabled
+                  ? 'border-dashed border-[#e3dccb] bg-[#faf7ef] cursor-not-allowed'
+                  : on
+                    ? 'border-[#1f8a4c] bg-[#eef8f0] cursor-pointer'
+                    : 'border-[#e9e0cc] bg-white hover:bg-[#faf7ef] cursor-pointer'
+              }`}
+            >
+              <span className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${on ? 'bg-[#1f8a4c] text-white' : 'bg-[#f1ebdd] text-[#1f6b3a]'}`}>
+                <Icon className="w-5 h-5" />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[15px] font-bold text-[#173d26]">{label}</span>
+                <span className="block text-[13px] text-slate-600 leading-snug">{disabled ? 'Belum ada menu 3B untuk hari ini' : audience}</span>
+              </span>
+              <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${on ? 'bg-[#1f8a4c] border-[#1f8a4c]' : 'border-slate-300'}`}>
+                {on && <Check className="w-3.5 h-3.5 text-white stroke-[3]" />}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+    <aside aria-labelledby="beda-3b-title" className="rounded-3xl bg-[#eef6ec] border border-[#d6e8d2] p-4 sm:p-5 flex flex-col">
+      <h2 id="beda-3b-title" className="text-[15px] font-bold text-[#173d26]">Mau tahu perbedaan menu 3B?</h2>
+      <img src={menu3bImg} alt="" className="mx-auto my-2 h-28 object-contain mix-blend-multiply" />
+      <button type="button" onClick={onExplain} className={`${pillBtn} self-center mt-auto`}>
+        Lihat penjelasan menu 3B
+        <ChevronRight className="w-4 h-4" />
+      </button>
+    </aside>
+  </div>
+);
+
+const B3ExplainDialog: React.FC<{ dishes: string[]; onClose: () => void }> = ({ dishes, onClose }) => {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEscape(onClose, true);
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    return () => previouslyFocused?.focus();
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-[#0a1e12]/50 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="b3-title"
+        onClick={e => e.stopPropagation()}
+        className="bg-white w-full sm:max-w-lg max-h-[90dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <h2 id="b3-title" className="font-kids text-2xl font-bold text-[#173d26] leading-tight">Apa itu menu 3B?</h2>
+          <button ref={closeRef} type="button" onClick={onClose} aria-label="Tutup penjelasan" className={`w-11 h-11 shrink-0 rounded-full hover:bg-[#f4efe3] flex items-center justify-center cursor-pointer ${focusRing}`}>
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <img src={menu3bImg} alt="Ilustrasi ibu hamil, ibu menyusui, dan balita" className="mx-auto h-36 object-contain mix-blend-multiply" />
+        <p className="text-[15px] text-slate-800 leading-relaxed">
+          Selain peserta didik, Program Makan Bergizi Gratis juga melayani tiga kelompok yang disebut 3B: <strong>ibu hamil</strong>, <strong>ibu menyusui</strong>, dan <strong>balita</strong> yang belum bersekolah di PAUD.
+        </p>
+        <h3 className="text-[15px] font-bold text-[#173d26] mt-4">Bedanya dengan menu reguler</h3>
+        <ul className="mt-2 space-y-2 text-[15px] text-slate-800 leading-snug">
+          <li className="flex items-start gap-2"><Check className="w-5 h-5 text-[#15803d] shrink-0 mt-px" />Ibu hamil dan menyusui butuh tambahan energi, protein, zat besi, dan asam folat, jadi lauk dan sayurnya disesuaikan.</li>
+          <li className="flex items-start gap-2"><Check className="w-5 h-5 text-[#15803d] shrink-0 mt-px" />Balita mendapat porsi lebih kecil dengan tekstur yang lebih lembut dan mudah dikunyah.</li>
+          <li className="flex items-start gap-2"><Check className="w-5 h-5 text-[#15803d] shrink-0 mt-px" />Menunya disusun terpisah oleh tim gizi SPPG, sehingga bisa berbeda dari menu sekolah di hari yang sama.</li>
+        </ul>
+        {dishes.length > 0 && (
+          <div className="mt-4 rounded-2xl bg-[#eef6ec] border border-[#d6e8d2] p-3.5">
+            <p className="text-[13px] font-bold text-slate-700">Menu 3B hari ini</p>
+            <p className="text-[15px] font-bold text-[#173d26] mt-0.5">{dishes.join(', ')}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Isi Piringku                                                         */
 /* ------------------------------------------------------------------ */
 function polar(cx: number, cy: number, r: number, deg: number) {
   const rad = ((deg - 90) * Math.PI) / 180;
@@ -449,215 +628,328 @@ function sectorPath(cx: number, cy: number, r: number, from: number, to: number)
   return `M ${cx} ${cy} L ${a.x} ${a.y} A ${r} ${r} 0 ${to - from > 180 ? 1 : 0} 1 ${b.x} ${b.y} Z`;
 }
 
-const MenuPlateSection: React.FC<{ ingredients: IngredientNutritionInfo[]; portion: PortionKey; tip?: string; onOpenIngredient: (index: number) => void }> = ({
-  ingredients,
-  portion,
-  tip,
-  onOpenIngredient
-}) => {
+// Lauk pauk dipecah jadi protein hewani dan nabati seperti di desain; warnanya tetap warna lauk agar cocok dengan piring.
+const PLATE_LEGEND: { group: FoodGroup; label: string; role: string }[] = [
+  { group: 'pokok', label: 'Karbohidrat', role: 'sumber energi' },
+  { group: 'lauk', label: 'Protein hewani', role: 'membangun tubuh' },
+  { group: 'lauk', label: 'Protein nabati', role: 'menambah gizi' },
+  { group: 'sayur', label: 'Sayuran', role: 'kaya vitamin dan serat' },
+  { group: 'buah', label: 'Buah', role: 'menjaga daya tahan tubuh' }
+];
+
+const PlateCard: React.FC<{ ingredients: IngredientNutritionInfo[] }> = ({ ingredients }) => {
   const [selected, setSelected] = useState<FoodGroup | null>(null);
-  const photoOf = (g: FoodGroup) => ingredients.find(i => groupOfCategory(i.category) === g)?.imageUrl;
+  const itemOf = (g: FoodGroup) => ingredients.find(i => groupOfCategory(i.category) === g);
   const toggle = (g: FoodGroup) => setSelected(s => (s === g ? null : g));
 
   return (
-    <section id="menu" aria-labelledby="menu-title" className={cardCls}>
-      <SectionHead id="menu-title" title="Isi piringku hari ini" subtitle="Ketuk bagian piring atau makanan untuk melihat manfaatnya." />
-
-      <div className="grid grid-cols-[minmax(0,150px)_minmax(0,1fr)] sm:grid-cols-[180px_minmax(0,1fr)] gap-4 items-center">
+    <section aria-labelledby="piring-title" className={cardCls}>
+      <CardTitle id="piring-title" icon={<Leaf className="w-6 h-6" />} title="Kenali Isi Piringmu" subtitle="Ketuk bagian piring untuk melihat perannya." />
+      <div className="grid grid-cols-[minmax(0,140px)_minmax(0,1fr)] sm:grid-cols-[160px_minmax(0,1fr)] gap-4 items-center">
         <svg viewBox="0 0 240 240" className="w-full h-auto" role="group" aria-label="Piring dibagi empat: sayur sepertiga, buah seperenam, lauk pauk seperenam, makanan pokok sepertiga">
           <defs>
-            {PLATE_SECTORS.map(s => (
-              <clipPath key={s.group} id={`plate-${s.group}`}>
-                <path d={sectorPath(120, 120, 104, s.from, s.to)} />
+            {PLATE_SECTORS.map(sec => (
+              <clipPath key={sec.group} id={`plate-${sec.group}`}>
+                <path d={sectorPath(120, 120, 104, sec.from, sec.to)} />
               </clipPath>
             ))}
           </defs>
           <circle cx="120" cy="120" r="117" fill="#ffffff" stroke="#e9e0cc" strokeWidth="3" />
-          {PLATE_SECTORS.map(s => {
-            const g = FOOD_GROUPS[s.group];
-            const isActive = s.group === selected;
-            const mid = (s.from + s.to) / 2;
+          {PLATE_SECTORS.map(sec => {
+            const g = FOOD_GROUPS[sec.group];
+            const isActive = sec.group === selected;
+            const mid = (sec.from + sec.to) / 2;
             const shift = polar(0, 0, isActive ? 6 : 0, mid);
             const center = polar(120, 120, 56, mid);
-            const photo = photoOf(s.group);
+            const item = itemOf(sec.group);
             return (
               <g
-                key={s.group}
+                key={sec.group}
                 role="button"
                 tabIndex={0}
                 aria-label={g.label}
                 aria-pressed={isActive}
-                onClick={() => toggle(s.group)}
+                onClick={() => toggle(sec.group)}
                 onKeyDown={e => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    toggle(s.group);
+                    toggle(sec.group);
                   }
                 }}
                 className="cursor-pointer outline-none motion-safe:transition-[transform,opacity] motion-safe:duration-200 focus-visible:[&>path:last-child]:stroke-[#15803d]"
                 style={{ transform: `translate(${shift.x}px, ${shift.y}px)`, opacity: selected && !isActive ? 0.45 : 1 }}
               >
-                <path d={sectorPath(120, 120, 104, s.from, s.to)} fill={g.soft} />
-                {photo && (
-                  <image href={photo} x={center.x - 70} y={center.y - 70} width="140" height="140" preserveAspectRatio="xMidYMid slice" clipPath={`url(#plate-${s.group})`} />
-                )}
-                <path d={sectorPath(120, 120, 104, s.from, s.to)} fill="none" stroke={isActive ? g.fill : '#ffffff'} strokeWidth={isActive ? 5 : 3} />
+                <path d={sectorPath(120, 120, 104, sec.from, sec.to)} fill={g.soft} />
+                {item && <FoodIllustration name={item.name} category={item.category} x={center.x - 24} y={center.y - 24} width="48" height="48" />}
+                <path d={sectorPath(120, 120, 104, sec.from, sec.to)} fill="none" stroke={isActive ? g.fill : '#ffffff'} strokeWidth={isActive ? 5 : 3} />
               </g>
             );
           })}
         </svg>
-        <div className="min-w-0 space-y-1.5 text-[13px]">
-          {(['sayur', 'buah', 'lauk', 'pokok'] as FoodGroup[]).map(g => (
-            <div key={g} className="flex items-center gap-2 font-semibold">
-              <span className="w-3 h-3 rounded-[4px] shrink-0" style={{ backgroundColor: FOOD_GROUPS[g].fill }} />
-              {FOOD_GROUPS[g].label}
-            </div>
+        <ul className="min-w-0 space-y-2 text-[13px]">
+          {PLATE_LEGEND.map(({ group, label, role }) => (
+            <li key={label} className="flex items-start gap-2">
+              <span className="w-3 h-3 rounded-full shrink-0 mt-1" style={{ backgroundColor: FOOD_GROUPS[group].fill }} />
+              <span>
+                <span className="font-bold text-[#173d26]">{label}</span>
+                <span className="text-slate-600">: {role}</span>
+              </span>
+            </li>
           ))}
-          <p className="text-xs text-slate-600 leading-snug pt-1">Setengah piring sayur dan buah, setengahnya lagi makanan pokok dan lauk pauk.</p>
-        </div>
+        </ul>
       </div>
-
-      <div aria-live="polite" className="mt-3 min-h-0">
+      <div aria-live="polite">
         {selected && (
-          <p className="rounded-xl px-3 py-2 text-sm" style={{ backgroundColor: FOOD_GROUPS[selected].soft, color: FOOD_GROUPS[selected].ink }}>
+          <p className="mt-3 rounded-xl px-3 py-2 text-sm" style={{ backgroundColor: FOOD_GROUPS[selected].soft, color: FOOD_GROUPS[selected].ink }}>
             <strong>{FOOD_GROUPS[selected].label}:</strong> {FOOD_GROUPS[selected].role}
           </p>
         )}
       </div>
-
-      {ingredients.length === 0 ? (
-        <p className="mt-3 rounded-2xl border border-dashed border-[#d9cfb9] px-4 py-8 text-center text-sm text-slate-600">Rincian menu belum diisi petugas.</p>
-      ) : (
-        <ul className="mt-3 space-y-2">
-          {ingredients.map((item, i) => {
-            const group = groupOfCategory(item.category);
-            const dim = selected !== null && group !== selected;
-            return (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  onClick={() => onOpenIngredient(i)}
-                  className={`w-full grid grid-cols-[6px_56px_minmax(0,1fr)_auto] items-center gap-3 overflow-hidden rounded-2xl border border-[#e9e0cc] bg-white pr-2.5 text-left hover:bg-[#f4efe3] cursor-pointer motion-safe:transition-[background-color,opacity] duration-150 ${focusRing} ${dim ? 'opacity-40' : ''}`}
-                >
-                  <span className="self-stretch" style={{ backgroundColor: group ? FOOD_GROUPS[group].fill : '#cbd5e1' }} />
-                  <SafeImg src={item.imageUrl} alt="" loading="lazy" width={56} height={56} className="my-2 w-14 h-14 rounded-xl object-cover" />
-                  <span className="min-w-0 py-2">
-                    <span className="block text-[15px] font-bold leading-snug">{item.name}</span>
-                    <span className="mt-1 flex flex-wrap items-center gap-2">
-                      <GroupChip category={item.category} />
-                      <span className="text-[13px] font-semibold text-slate-600 tabular-nums">{portion === 'large' ? item.portionLarge : item.portionSmall}</span>
-                    </span>
-                  </span>
-                  <ChevronRight className="w-5 h-5 text-slate-500" />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {tip?.trim() && (
-        <div className="mt-3 flex items-start gap-3 rounded-2xl bg-[#fff6e0] p-4">
-          <Lightbulb className="w-5 h-5 text-[#8a4b06] shrink-0 mt-0.5" />
-          <div>
-            <div className="text-sm font-extrabold text-[#8a4b06]">Tips hari ini</div>
-            <p className="text-sm text-slate-800 mt-0.5 leading-snug">{tip}</p>
-          </div>
-        </div>
-      )}
+      <p className="text-xs text-slate-600 leading-snug mt-3">Setengah piring sayur dan buah, setengahnya lagi makanan pokok dan lauk pauk.</p>
     </section>
   );
 };
 
 /* ------------------------------------------------------------------ */
-/* Nilai gizi: energi, asal energi, mineral, setara aktivitas          */
+/* Rincian bahan                                                        */
 /* ------------------------------------------------------------------ */
-const NutritionSection: React.FC<{ tier: PortionTierConfig; calcium: string; iron: string; bodyWeight?: string }> = ({ tier, calcium, iron, bodyWeight }) => {
+const IngredientStrip: React.FC<{ ingredients: IngredientNutritionInfo[]; portion: PortionKey; onOpen: (index: number) => void }> = ({ ingredients, portion, onOpen }) => (
+  <section id="menu" aria-labelledby="bahan-title" className={cardCls}>
+    <CardTitle
+      id="bahan-title"
+      icon={<Leaf className="w-6 h-6" />}
+      title="Rincian Menu dan Bahan Makanan"
+      subtitle="Kategori dan takaran tiap bahan pada menu hari ini."
+      action={
+        ingredients.length > 0 ? (
+          <button type="button" onClick={() => onOpen(0)} className={`${pillBtn} max-sm:hidden`}>
+            Lihat detail bahan
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        ) : undefined
+      }
+    />
+    {ingredients.length === 0 ? (
+      <p className="rounded-2xl border border-dashed border-[#d9cfb9] px-4 py-8 text-center text-sm text-slate-600">Rincian menu belum diisi petugas.</p>
+    ) : (
+      <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+        {ingredients.map((item, i) => (
+          <li key={item.id}>
+            <button
+              type="button"
+              onClick={() => onOpen(i)}
+              className={`w-full h-full flex items-center gap-3 rounded-2xl border border-[#e9e0cc] bg-white p-2.5 text-left hover:bg-[#faf7ef] cursor-pointer ${focusRing}`}
+            >
+              <FoodImage name={item.name} category={item.category} alt="" tint={tintOf(item.category)} className="w-16 h-16 rounded-xl shrink-0" />
+              <span className="min-w-0">
+                <span className="block text-sm font-bold text-[#173d26] leading-snug">{item.name}</span>
+                <GroupChip category={item.category} className="mt-1" />
+                <span className="block text-[13px] text-slate-700 tabular-nums mt-1">{portion === 'large' ? item.portionLarge : item.portionSmall}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    )}
+  </section>
+);
+
+/* ------------------------------------------------------------------ */
+/* Informasi gizi per porsi                                            */
+/* ------------------------------------------------------------------ */
+const NUTRIENT_TILES = [
+  { key: 'energi', label: 'Energi', unit: 'kkal', Icon: Zap, bg: '#fff4d6', ink: '#a16207' },
+  { key: 'protein', label: 'Protein', unit: 'gram', Icon: Drumstick, bg: '#ffe4e2', ink: '#b42318' },
+  { key: 'karbo', label: 'Karbohidrat', unit: 'gram', Icon: Wheat, bg: '#f6ead8', ink: '#8a5a1f' },
+  { key: 'lemak', label: 'Lemak', unit: 'gram', Icon: Droplet, bg: '#e0f0ff', ink: '#1d5fa8' },
+  { key: 'serat', label: 'Serat Pangan', unit: 'gram', Icon: Leaf, bg: '#e2f4e4', ink: '#1f7a3e' },
+] as const;
+
+const numberOnly = (raw: string | undefined) => (raw || '').replace(/\s*(kkal|gram|g)\s*$/i, '').trim() || '-';
+
+const NutritionCard: React.FC<{
+  tiers: { key: PortionKey; config: PortionTierConfig }[];
+  portion: PortionKey;
+  onPortionChange: (p: PortionKey) => void;
+  calcium: string;
+  iron: string;
+  bodyWeight?: string;
+}> = ({ tiers, portion, onPortionChange, calcium, iron, bodyWeight }) => {
+  const [showDetail, setShowDetail] = useState(false);
+  const tier = tiers.find(t => t.key === portion)!.config;
   const kcal = parseNumber(tier.targetCalories);
   const kg = parseNumber(bodyWeight);
   const canEstimate = kcal > 0 && kg > 0;
-  const { name: tierName } = splitTierName(tier.tierName);
-
+  const values: Record<string, string> = {
+    energi: numberOnly(tier.targetCalories),
+    protein: numberOnly(tier.proteinGrams),
+    karbo: numberOnly(tier.carbGrams),
+    lemak: numberOnly(tier.fatGrams),
+    serat: numberOnly(tier.fiberGrams),
+  };
   // Atwater: karbohidrat dan protein 4 kkal/g, lemak 9 kkal/g.
   const parts = [
-    { label: 'Karbohidrat', value: tier.carbGrams, kcal: parseNumber(tier.carbGrams) * 4, color: FOOD_GROUPS.pokok.fill },
-    { label: 'Protein', value: tier.proteinGrams, kcal: parseNumber(tier.proteinGrams) * 4, color: FOOD_GROUPS.lauk.fill },
-    { label: 'Lemak', value: tier.fatGrams, kcal: parseNumber(tier.fatGrams) * 9, color: FOOD_GROUPS.buah.fill }
+    { label: 'Karbohidrat', kcal: parseNumber(tier.carbGrams) * 4, color: FOOD_GROUPS.pokok.fill },
+    { label: 'Protein', kcal: parseNumber(tier.proteinGrams) * 4, color: FOOD_GROUPS.lauk.fill },
+    { label: 'Lemak', kcal: parseNumber(tier.fatGrams) * 9, color: '#3b82f6' },
   ];
-  const macroTotal = parts.reduce((sum, p) => sum + (p.kcal > 0 ? p.kcal : 0), 0);
-  const energyNumber = tier.targetCalories.replace(/\s*kkal\s*/i, '');
+  const macroTotal = parts.reduce((sum, p) => sum + Math.max(p.kcal, 0), 0);
 
   return (
     <section id="gizi" aria-labelledby="gizi-title" className={cardCls}>
-      <SectionHead id="gizi-title" eyebrow={`${tierName} · ${tier.totalGramature}`} title="Nilai gizi satu ompreng" />
-
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className="font-kids text-[52px] font-extrabold leading-none tabular-nums">{energyNumber}</span>
-        <span className="text-lg font-bold">kkal</span>
-        <p className="w-full text-sm text-slate-600 mt-1">Energi total untuk belajar dan bermain sampai sore.</p>
-      </div>
-
-      {macroTotal > 0 && (
-        <div className="mt-5">
-          <p className="text-[13px] font-bold text-slate-600">Asal energinya</p>
-          <div className="mt-2 flex h-4 gap-0.5 rounded-full overflow-hidden" aria-hidden="true">
-            {parts.map(p => (
-              <div key={p.label} className="motion-safe:transition-[flex-grow] motion-safe:duration-300" style={{ flexGrow: Math.max(p.kcal, 0), backgroundColor: p.color }} />
-            ))}
-          </div>
-          <dl className="mt-2 grid grid-cols-3 gap-2">
-            {parts.map(p => (
-              <div key={p.label} className="rounded-2xl bg-[#f4efe3] p-2.5 sm:p-3">
-                <dt className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
-                  <span className="w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ backgroundColor: p.color }} />
-                  {p.label}
-                </dt>
-                <dd className="text-lg sm:text-xl font-extrabold tabular-nums leading-tight mt-0.5">{p.value}</dd>
-                {p.kcal > 0 && <dd className="text-xs text-slate-600 tabular-nums">{Math.round((p.kcal / macroTotal) * 100)}% energi</dd>}
-              </div>
-            ))}
-          </dl>
+      <CardTitle
+        id="gizi-title"
+        icon={<BarChart3 className="w-6 h-6" />}
+        title="Informasi Gizi per Porsi"
+        subtitle="Nilai gizi ditampilkan berdasarkan resep dan takaran yang tercatat."
+        action={
+          <button type="button" onClick={() => setShowDetail(v => !v)} aria-expanded={showDetail} aria-controls="gizi-detail" className={`${pillBtn} max-sm:hidden`}>
+            {showDetail ? 'Tutup detail' : 'Lihat detail gizi'}
+            <ChevronRight className={`w-4 h-4 transition-transform ${showDetail ? 'rotate-90' : ''}`} />
+          </button>
+        }
+      />
+      {/* Porsi kecil/besar mengubah angka gizi dan takaran bahan di halaman ini. */}
+      <div className="mb-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+        <div role="radiogroup" aria-label="Pilih porsi" className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[#f4efe3] sm:w-auto">
+          {tiers.map(t => {
+            const on = portion === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => onPortionChange(t.key)}
+                className={`min-h-[44px] px-4 rounded-lg text-sm font-bold cursor-pointer transition-colors duration-150 ${focusRing} ${on ? 'bg-[#15803d] text-white' : 'text-slate-700 hover:bg-white/70'}`}
+              >
+                {splitTierName(t.config.tierName).name}
+              </button>
+            );
+          })}
         </div>
-      )}
-
-      <dl className="mt-4 grid grid-cols-3 border-t border-[#e9e0cc] pt-3 text-center">
-        {[
-          { label: 'Serat', value: tier.fiberGrams },
-          { label: 'Kalsium*', value: calcium },
-          { label: 'Zat besi*', value: iron }
-        ].map((m, i) => (
-          <div key={m.label} className={i > 0 ? 'border-l border-[#e9e0cc]' : ''}>
-            <dd className="text-base font-extrabold tabular-nums">{m.value}</dd>
-            <dt className="text-xs text-slate-600">{m.label}</dt>
+        <p className="text-[13px] text-slate-600 leading-snug">
+          {[splitTierName(tier.tierName).group, tier.totalGramature].filter(Boolean).join(' · ')}
+        </p>
+      </div>
+      <dl className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+        {NUTRIENT_TILES.map(({ key, label, unit, Icon, bg, ink }) => (
+          <div key={key} className="rounded-2xl border border-[#efe8d8] bg-white p-3 flex sm:flex-col items-center sm:items-start gap-3 sm:gap-2">
+            <span className="w-11 h-11 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: bg, color: ink }} aria-hidden="true">
+              <Icon className="w-5 h-5" />
+            </span>
+            <div>
+              <dt className="text-[13px] text-slate-600">{label}</dt>
+              <dd className="text-2xl font-extrabold text-[#173d26] tabular-nums leading-tight">{values[key]}</dd>
+              <dd className="text-xs text-slate-600">{unit}</dd>
+            </div>
           </div>
         ))}
       </dl>
+      <button type="button" onClick={() => setShowDetail(v => !v)} aria-expanded={showDetail} aria-controls="gizi-detail" className={`${pillBtn} sm:hidden mt-3 w-full justify-center`}>
+        {showDetail ? 'Tutup detail gizi' : 'Lihat detail gizi'}
+      </button>
 
-      {canEstimate && (
-        <div className="mt-5">
-          <h3 className="text-[15px] font-bold">Energi ini kira-kira cukup untuk</h3>
-          <ul className="mt-2 space-y-2">
-            {ACTIVITIES.map(({ label, met, Icon }) => (
-              <li key={label} className="flex items-center gap-3">
-                <span className="w-10 h-10 rounded-xl bg-[#e3f3e7] text-[#15803d] flex items-center justify-center shrink-0">
-                  <Icon className="w-5 h-5" />
-                </span>
-                <span className="flex-1 text-[15px] font-semibold">{label}</span>
-                <span className="text-sm font-bold tabular-nums">{formatDuration(kcal / ((met * 3.5 * kg) / 200))}</span>
-              </li>
-            ))}
-          </ul>
+      {showDetail && (
+        <div id="gizi-detail" className="mt-4 pt-4 border-t border-[#efe8d8] space-y-4">
+          {tier.description?.trim() && (
+            <div>
+              <p className="text-[13px] font-bold text-slate-700">Kenapa porsinya berbeda?</p>
+              <p className="text-[13px] text-slate-700 leading-relaxed mt-1">{tier.description}</p>
+            </div>
+          )}
+          {macroTotal > 0 && (
+            <div>
+              <p className="text-[13px] font-bold text-slate-700">Asal energinya</p>
+              <div className="mt-2 flex h-3 gap-0.5 rounded-full overflow-hidden" aria-hidden="true">
+                {parts.map(p => <div key={p.label} style={{ flexGrow: Math.max(p.kcal, 0), backgroundColor: p.color }} />)}
+              </div>
+              <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
+                {parts.map(p => (
+                  <li key={p.label} className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color }} />
+                    {p.label} {p.kcal > 0 ? `${Math.round((p.kcal / macroTotal) * 100)}%` : '-'}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <dl className="grid grid-cols-2 gap-2 text-[13px]">
+            <div className="rounded-xl bg-[#faf7ef] px-3 py-2"><dt className="text-slate-600">Kalsium*</dt><dd className="font-bold tabular-nums">{calcium || '-'}</dd></div>
+            <div className="rounded-xl bg-[#faf7ef] px-3 py-2"><dt className="text-slate-600">Zat besi*</dt><dd className="font-bold tabular-nums">{iron || '-'}</dd></div>
+          </dl>
+          {canEstimate && (
+            <div>
+              <p className="text-[13px] font-bold text-slate-700">Energi ini kira-kira cukup untuk</p>
+              <ul className="mt-2 grid sm:grid-cols-3 gap-2">
+                {ACTIVITIES.map(({ label, met, Icon }) => (
+                  <li key={label} className="flex items-center gap-2.5 rounded-xl bg-[#faf7ef] px-3 py-2">
+                    <Icon className="w-5 h-5 text-[#1f6b3a] shrink-0" />
+                    <span className="flex-1 text-[13px] font-semibold">{label}</span>
+                    <span className="text-[13px] font-bold tabular-nums">{formatDuration(kcal / ((met * 3.5 * kg) / 200))}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <p className="text-xs text-slate-600 leading-relaxed">
+            *Rata-rata semua porsi.
+            {canEstimate && ` Perkiraan aktivitas untuk anak ${String(kg).replace('.', ',')} kg (acuan AKG 2019), nilai MET dari Compendium of Physical Activities 2011.`}
+          </p>
         </div>
       )}
-
-      <p className="text-xs text-slate-600 mt-4 leading-relaxed">
-        *Rata-rata semua porsi.
-        {canEstimate && ` Perkiraan aktivitas untuk anak ${String(kg).replace('.', ',')} kg (acuan AKG 2019) dengan nilai MET dari Compendium of Physical Activities 2011.`}
-        {' '}Sumber data: resep dan takaran porsi SPPG Tumpang Jeru.
-      </p>
     </section>
   );
 };
+
+// Menu 3B hanya tercatat sebagai daftar hidangan; angka gizi dan takarannya belum ada di data.
+const B3MenuCard: React.FC<{ dishes: string[]; onExplain: () => void }> = ({ dishes, onExplain }) => (
+  <section id="menu" aria-labelledby="menu-3b-title" className={cardCls}>
+    <CardTitle
+      id="menu-3b-title"
+      icon={<Baby className="w-6 h-6" />}
+      title="Rincian Menu 3B"
+      subtitle="Untuk ibu hamil, ibu menyusui, dan balita non-PAUD."
+      action={
+        <button type="button" onClick={onExplain} className={`${pillBtn} max-sm:hidden`}>
+          Apa bedanya?
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      }
+    />
+    <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+      {dishes.map(d => (
+        <li key={d} className="flex items-center gap-3 rounded-2xl border border-[#e9e0cc] bg-white p-3.5">
+          <UtensilsCrossed className="w-5 h-5 text-[#1f6b3a] shrink-0" aria-hidden="true" />
+          <span className="text-[15px] font-bold text-[#173d26] leading-snug">{d}</span>
+        </li>
+      ))}
+    </ul>
+    <p className="mt-3 text-[13px] text-slate-600 leading-relaxed">
+      Takaran dan nilai gizi menu 3B disesuaikan untuk tiap sasaran dan belum ditampilkan di halaman ini. Tanyakan rinciannya kepada petugas SPPG.
+    </p>
+  </section>
+);
+
+const CHILD_BENEFITS =['Memberi energi', 'Membantu pertumbuhan', 'Menjaga daya tahan tubuh', 'Mendukung konsentrasi belajar'];
+
+const BenefitsCard: React.FC = () => (
+  <aside aria-labelledby="manfaat-title" className="group relative overflow-hidden rounded-3xl bg-[#eef6ec] border border-[#d6e8d2] p-4 sm:p-5">
+    <Sprig className="absolute -bottom-3 -right-3 w-12 text-[#1f8a4c]/50" />
+    <h2 id="manfaat-title" className="font-kids text-xl font-bold text-[#173d26]">Manfaat untuk Anak</h2>
+    <div className="mt-3 flex items-center gap-3">
+      <Illustration src="/ilustrasi/manfaat-anak.webp" fallbackSrc={anakSehatImg} className="w-28 h-32 object-contain shrink-0" />
+      <ul className="space-y-2">
+        {CHILD_BENEFITS.map(b => (
+          <li key={b} className="flex items-start gap-2 text-[13px] font-semibold text-slate-800">
+            <CheckCircle2 className="w-4.5 h-4.5 text-[#1f8a4c] shrink-0 mt-px" />
+            {b}
+          </li>
+        ))}
+      </ul>
+    </div>
+  </aside>
+);
 
 /* ------------------------------------------------------------------ */
 /* Zona belajar: Pahlawan Gizi                                          */
@@ -671,12 +963,19 @@ const NutritionHeroPanel: React.FC<{ hero: NutritionHeroConfig; ingredients: Ing
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-[112px_minmax(0,1fr)] gap-4 items-center rounded-2xl p-3" style={{ backgroundColor: meta.soft }}>
-        <SafeImg src={hero.imageUrl} fallbackSrc={inTray?.imageUrl} alt={`Ilustrasi ${hero.name}`} className="w-28 h-28 rounded-xl object-cover bg-white" />
+      <div className="grid grid-cols-[104px_minmax(0,1fr)] gap-4 items-center">
+        <FoodImage
+          name={hero.name}
+          category={hero.category}
+          imageUrl={hero.imageUrl}
+          alt={`Ilustrasi ${hero.name}`}
+          tint={meta.soft}
+          className="w-26 h-26 rounded-2xl"
+          photoClassName="object-contain"
+        />
         <div className="min-w-0">
-          <span className="inline-flex rounded-md bg-white px-2 py-0.5 text-xs font-bold" style={{ color: meta.ink }}>{hero.category}</span>
-          <h3 className="font-kids text-3xl font-bold leading-tight mt-1" style={{ color: meta.ink }}>{hero.name}</h3>
-          <p className="text-sm text-slate-700">Pahlawan gizi hari ini</p>
+          <h3 className="font-kids text-3xl font-bold leading-tight text-[#173d26]">{hero.name}</h3>
+          <span className="inline-flex rounded-md px-2 py-0.5 text-xs font-bold mt-1" style={{ backgroundColor: meta.soft, color: meta.ink }}>{hero.category}</span>
         </div>
       </div>
 
@@ -699,16 +998,51 @@ const NutritionHeroPanel: React.FC<{ hero: NutritionHeroConfig; ingredients: Ing
         </ul>
       )}
 
-      {hero.funFact?.trim() && (
-        <div className="rounded-2xl bg-[#fff6e0] p-3.5">
-          <div className="flex items-center gap-1.5 text-sm font-extrabold text-[#8a4b06]">
-            <Lightbulb className="w-4 h-4" />
-            Tahukah kamu?
-          </div>
-          <p className="text-sm text-slate-800 mt-1 leading-snug">{hero.funFact}</p>
+    </div>
+  );
+};
+
+// Slide pertama pahlawan pilihan petugas, lalu bahan lain di menu hari ini memakai data gizinya sendiri.
+const NutritionHeroCarousel: React.FC<{ hero: NutritionHeroConfig; ingredients: IngredientNutritionInfo[] }> = ({ hero, ingredients }) => {
+  const slides = useMemo(() => {
+    const heroName = hero.name.trim().toLowerCase();
+    const fromIngredients: NutritionHeroConfig[] = ingredients
+      .filter(i => !heroName || !i.name.toLowerCase().includes(heroName))
+      .map(i => ({
+        name: i.name,
+        category: i.category,
+        imageUrl: '',
+        points: cleanList(i.whyGood).length ? cleanList(i.whyGood) : splitSentences(i.healthBenefits),
+        keyNutrients: splitHighlights(i.nutritionHighlight)
+      }));
+    return heroName ? [hero, ...fromIngredients] : fromIngredients;
+  }, [hero, ingredients]);
+  const [index, setIndex] = useState(0);
+  useEffect(() => setIndex(0), [slides]);
+
+  if (slides.length === 0) return null;
+  const current = slides[Math.min(index, slides.length - 1)];
+  const go = (step: number) => setIndex(i => (i + step + slides.length) % slides.length);
+  const navBtn = `w-11 h-11 rounded-full border border-[#e3dccb] bg-white flex items-center justify-center hover:bg-[#f4efe3] cursor-pointer ${focusRing}`;
+
+  return (
+    <section aria-labelledby="pahlawan-title" aria-roledescription="carousel" className={cardCls}>
+      <CardTitle id="pahlawan-title" icon={<Sprout className="w-6 h-6" />} title="Pahlawan Gizi Hari Ini" subtitle="Kenali lebih dekat makanan di menu hari ini." />
+      <div aria-live="polite">
+        <NutritionHeroPanel key={current.name} hero={current} ingredients={ingredients} />
+      </div>
+      {slides.length > 1 && (
+        <div className="mt-4 flex items-center justify-between gap-2">
+          <button type="button" onClick={() => go(-1)} aria-label="Makanan sebelumnya" className={navBtn}>
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <span className="text-sm text-slate-600 tabular-nums">{Math.min(index, slides.length - 1) + 1} / {slides.length}</span>
+          <button type="button" onClick={() => go(1)} aria-label="Makanan berikutnya" className={navBtn}>
+            <ChevronRight className="w-5 h-5" />
+          </button>
         </div>
       )}
-    </div>
+    </section>
   );
 };
 
@@ -721,6 +1055,46 @@ function pickHabit(habits: DailyHabitItem[]): DailyHabitItem | undefined {
   return filled.find(h => h.weekday === today) ?? [...filled].sort((a, b) => a.weekday - b.weekday)[0];
 }
 
+const HABIT_SHORT_LABELS: Record<number, string> = { 1: 'Sen', 2: 'Sel', 3: 'Rab', 4: 'Kam', 5: 'Jum', 6: 'Sab' };
+
+const HabitSection: React.FC<{ habits: DailyHabitItem[] }> = ({ habits }) => {
+  const filled = useMemo(() => habits.filter(h => h.title.trim()).sort((a, b) => a.weekday - b.weekday), [habits]);
+  const [weekday, setWeekday] = useState<number | null>(null);
+  const todayDow = new Date().getDay();
+  const habit = filled.find(h => h.weekday === weekday) ?? pickHabit(habits);
+  if (!habit) return null;
+
+  return (
+    <section aria-labelledby="misi-title" className={cardCls}>
+      <CardTitle id="misi-title" icon={<BookOpen className="w-6 h-6" />} title="Misi Sehat Hari Ini" />
+      {filled.length > 1 && (
+        <div role="group" aria-label="Pilih hari" className="mb-3 grid grid-cols-6 gap-1 p-1 rounded-xl bg-[#f4efe3]">
+          {filled.map(h => {
+            const on = h.weekday === habit.weekday;
+            const isToday = h.weekday === todayDow;
+            return (
+              <button
+                key={h.weekday}
+                type="button"
+                aria-pressed={on}
+                aria-label={`${HABIT_WEEKDAY_LABELS[h.weekday]}${isToday ? ' (hari ini)' : ''}`}
+                onClick={() => setWeekday(h.weekday)}
+                className={`min-h-[44px] rounded-lg text-[13px] font-bold leading-tight cursor-pointer transition-colors duration-150 ${focusRing} ${
+                  on ? 'bg-[#15803d] text-white' : 'text-slate-700 hover:bg-white/70'
+                }`}
+              >
+                {HABIT_SHORT_LABELS[h.weekday]}
+                {isToday && <span className="block text-[10px] font-semibold">hari ini</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <HabitPanel key={habit.weekday} habit={habit} />
+    </section>
+  );
+};
+
 const HabitPanel: React.FC<{ habit: DailyHabitItem }> = ({ habit }) => {
   const today = new Date();
   const todayKey = `${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`;
@@ -732,6 +1106,8 @@ const HabitPanel: React.FC<{ habit: DailyHabitItem }> = ({ habit }) => {
   const done = doneByKey[storageKey] ?? readDoneSteps(storageKey);
 
   const steps = cleanList(habit.steps);
+  // Ada ilustrasi: kalimat penyemangat jadi gelembung di atas gambar, seperti di desain.
+  const cheer = habit.cheer?.trim() || '';
   const allDone = steps.length > 0 && steps.every((_, i) => done.includes(i));
   const toggleStep = (i: number) => {
     const next = done.includes(i) ? done.filter(d => d !== i) : [...done, i];
@@ -742,8 +1118,13 @@ const HabitPanel: React.FC<{ habit: DailyHabitItem }> = ({ habit }) => {
   return (
     <div className="space-y-3">
       {habit.imageUrl && (
-        <div className="rounded-2xl bg-[#e0f2fe] overflow-hidden">
+        <div className="relative rounded-2xl bg-[#e0f2fe] overflow-hidden">
           <SafeImg src={habit.imageUrl} alt={`Ilustrasi: ${habit.title}`} loading="lazy" className="w-full aspect-[16/9] object-contain" />
+          {cheer && (
+            <p className="absolute bottom-2.5 right-2.5 max-w-[60%] -rotate-2 rounded-2xl border border-[#f2d98a] bg-[#fff6d6] px-3 py-2 font-kids text-sm font-bold leading-snug text-[#5c3d06] shadow-sm">
+              {cheer}
+            </p>
+          )}
         </div>
       )}
       <div>
@@ -778,10 +1159,10 @@ const HabitPanel: React.FC<{ habit: DailyHabitItem }> = ({ habit }) => {
       )}
 
       <div aria-live="polite">
-        {(allDone || habit.cheer?.trim()) && (
+        {(allDone || (cheer && !habit.imageUrl)) && (
           <div key={allDone ? 'done' : 'cheer'} className="flex items-center gap-3 rounded-2xl bg-[#e3f3e7] p-3.5 motion-safe:animate-[pop-in_300ms_ease-out]">
             {allDone ? <PartyPopper className="w-6 h-6 text-[#15803d] shrink-0" /> : <Sparkles className="w-6 h-6 text-[#15803d] shrink-0" />}
-            <p className="text-[15px] font-extrabold text-[#166534] leading-snug">{allDone ? 'Hebat! Kebiasaan baik hari ini sudah kamu lakukan.' : habit.cheer}</p>
+            <p className="text-[15px] font-extrabold text-[#166534] leading-snug">{allDone ? 'Hebat! Kebiasaan baik hari ini sudah kamu lakukan.' : cheer}</p>
           </div>
         )}
       </div>
@@ -795,7 +1176,8 @@ const HabitPanel: React.FC<{ habit: DailyHabitItem }> = ({ habit }) => {
 interface QuizOption {
   id: string;
   label: string;
-  imageUrl?: string;
+  /** Bahan menu yang diwakili pilihan ini; ditampilkan sebagai foto atau ilustrasi bawaan. */
+  food?: { name: string; category: string; imageUrl?: string };
 }
 interface QuizQuestion {
   id: string;
@@ -811,7 +1193,7 @@ const QUIZ_CATEGORIES = ['protein nabati', 'protein hewani', 'sayuran', 'buah', 
 function buildQuiz(ingredients: IngredientNutritionInfo[]): QuizQuestion[] {
   const questions: QuizQuestion[] = [];
   if (ingredients.length >= 3) {
-    const options = ingredients.slice(0, 6).map(i => ({ id: i.id, label: i.name, imageUrl: i.imageUrl }));
+    const options = ingredients.slice(0, 6).map(i => ({ id: i.id, label: i.name, food: { name: i.name, category: i.category, imageUrl: i.imageUrl } }));
     for (const category of QUIZ_CATEGORIES) {
       const matches = ingredients.filter(i => i.category.trim().toLowerCase() === category);
       if (matches.length !== 1 || !options.some(o => o.id === matches[0].id)) continue;
@@ -838,6 +1220,8 @@ function buildQuiz(ingredients: IngredientNutritionInfo[]): QuizQuestion[] {
   });
   return questions;
 }
+
+const NO_INGREDIENTS: IngredientNutritionInfo[] = [];
 
 const QuizPanel: React.FC<{ ingredients: IngredientNutritionInfo[] }> = ({ ingredients }) => {
   const questions = useMemo(() => buildQuiz(ingredients), [ingredients]);
@@ -897,62 +1281,90 @@ const QuizPanel: React.FC<{ ingredients: IngredientNutritionInfo[] }> = ({ ingre
         q && (
           <>
             <p className="mt-4 text-[17px] font-bold leading-snug">{q.prompt}</p>
-            <div className={`mt-3 grid gap-2 ${q.options.some(o => o.imageUrl) ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-1'}`}>
-              {q.options.map(opt => {
-                const wasPicked = picked.includes(opt.id);
-                const isAnswer = opt.id === q.answerId;
-                const state = wasPicked && isAnswer ? 'right' : wasPicked ? 'wrong' : solved ? 'muted' : 'idle';
-                const cls = {
-                  right: 'border-[#16a34a] bg-[#f0fdf4] ring-2 ring-[#16a34a] motion-safe:animate-[pop-in_260ms_ease-out]',
-                  wrong: 'border-[#fda4af] bg-[#fff1f2] opacity-80',
-                  muted: 'border-[#e9e0cc] bg-white opacity-60',
-                  idle: 'border-[#e9e0cc] bg-white hover:border-[#86efac]'
-                }[state];
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => choose(opt.id)}
-                    aria-disabled={solved || wasPicked}
-                    className={`relative rounded-2xl border-2 p-2 text-left transition-colors duration-150 cursor-pointer ${focusRing} ${cls}`}
-                  >
-                    {opt.imageUrl && <SafeImg src={opt.imageUrl} alt="" loading="lazy" className="w-full aspect-[4/3] rounded-xl object-cover mb-1.5" />}
-                    <span className="block px-1 min-h-[28px] text-sm font-bold leading-snug">{opt.label}</span>
-                    {state === 'right' && (
-                      <span className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-[#16a34a] text-white flex items-center justify-center">
-                        <Check className="w-4 h-4 stroke-[3]" />
+            {/* Desktop: pilihan teks di kiri, hasil di kanan (seperti desain). HP: kartu bergambar bertumpuk. */}
+            <div className="lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-4 lg:items-start">
+              <div className={`mt-3 grid gap-2 ${q.options.some(o => o.food) ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-2' : 'grid-cols-1 lg:grid-cols-2'}`}>
+                {q.options.map(opt => {
+                  const wasPicked = picked.includes(opt.id);
+                  const isAnswer = opt.id === q.answerId;
+                  const state = wasPicked && isAnswer ? 'right' : wasPicked ? 'wrong' : solved ? 'muted' : 'idle';
+                  const cls = {
+                    right: 'border-[#16a34a] bg-[#f0fdf4] ring-2 ring-[#16a34a] motion-safe:animate-[pop-in_260ms_ease-out]',
+                    wrong: 'border-[#fda4af] bg-[#fff1f2] opacity-80',
+                    muted: 'border-[#e9e0cc] bg-white opacity-60',
+                    idle: 'border-[#e9e0cc] bg-white hover:border-[#86efac]'
+                  }[state];
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => choose(opt.id)}
+                      aria-disabled={solved || wasPicked}
+                      className={`relative rounded-2xl border-2 p-2 lg:min-h-[48px] lg:flex lg:items-center lg:gap-2.5 lg:px-3 text-left transition-colors duration-150 cursor-pointer ${focusRing} ${cls}`}
+                    >
+                      {opt.food && (
+                        <FoodImage
+                          name={opt.food.name}
+                          category={opt.food.category}
+                          alt=""
+                          tint={tintOf(opt.food.category)}
+                          className="w-full aspect-[4/3] rounded-xl mb-1.5 lg:hidden"
+                          illustrationClassName="h-[70%] w-auto"
+                        />
+                      )}
+                      <span
+                        aria-hidden="true"
+                        className={`hidden lg:flex w-5 h-5 shrink-0 rounded-full border-2 items-center justify-center ${
+                          state === 'right' ? 'border-[#16a34a] bg-[#16a34a]' : state === 'wrong' ? 'border-[#e11d48] bg-[#e11d48]' : 'border-slate-300'
+                        }`}
+                      >
+                        {state === 'right' && <Check className="w-3 h-3 text-white stroke-[3]" />}
+                        {state === 'wrong' && <X className="w-3 h-3 text-white stroke-[3]" />}
                       </span>
-                    )}
-                    {state === 'wrong' && (
-                      <span className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-[#e11d48] text-white flex items-center justify-center">
-                        <X className="w-4 h-4 stroke-[3]" />
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                      <span className="block px-1 lg:px-0 min-h-[28px] lg:min-h-0 text-sm font-bold leading-snug">{opt.label}</span>
+                      {state === 'right' && (
+                        <span className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-[#16a34a] text-white flex items-center justify-center lg:hidden">
+                          <Check className="w-4 h-4 stroke-[3]" />
+                        </span>
+                      )}
+                      {state === 'wrong' && (
+                        <span className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-[#e11d48] text-white flex items-center justify-center lg:hidden">
+                          <X className="w-4 h-4 stroke-[3]" />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
 
-            <div aria-live="polite">
-              {solved && (
-                <div className="mt-3 rounded-2xl bg-[#e3f3e7] p-3.5 motion-safe:animate-[pop-in_260ms_ease-out]">
-                  <div className="flex items-center gap-2 text-lg font-extrabold text-[#166534]">
-                    <PartyPopper className="w-5 h-5" />
-                    Benar!
-                  </div>
-                  <p className="text-sm text-slate-800 mt-1 leading-relaxed">{q.explain}</p>
+              <div>
+                <div aria-live="polite">
+                  {solved && (
+                    <div className="relative mt-3 rounded-2xl bg-[#e3f3e7] p-3.5 motion-safe:animate-[pop-in_260ms_ease-out]">
+                      {/* Umpan balik jawaban benar: kupu-kupu terbang sekali lalu menghilang. */}
+                      <Butterfly wander={false} className="absolute right-4 top-1 w-9 opacity-0 motion-safe:animate-[fly-up_1.8s_ease-out_forwards] motion-reduce:hidden" />
+                      <div className="flex items-center gap-2 text-lg font-extrabold text-[#166534]">
+                        <CheckCircle2 className="w-6 h-6" />
+                        Benar!
+                      </div>
+                      <p className="text-sm text-slate-800 mt-1 leading-relaxed">{q.explain}</p>
+                    </div>
+                  )}
+                  {!solved && picked.length > 0 && (
+                    <p className="mt-3 rounded-2xl bg-[#fff1f2] p-3.5 text-sm font-semibold text-[#9f1239]">Belum tepat, coba pilih jawaban lain ya!</p>
+                  )}
+                  {!solved && picked.length === 0 && (
+                    <p className="hidden lg:block mt-3 rounded-2xl border border-dashed border-[#d9cfb9] p-3.5 text-sm text-slate-600">Pilih satu jawaban. Penjelasannya muncul di sini.</p>
+                  )}
                 </div>
-              )}
-              {!solved && picked.length > 0 && (
-                <p className="mt-3 rounded-2xl bg-[#fff1f2] p-3.5 text-sm font-semibold text-[#9f1239]">Belum tepat, coba pilih jawaban lain ya!</p>
-              )}
+                {solved && (
+                  <button type="button" onClick={next} className={`mt-3 w-full inline-flex items-center justify-center gap-2 min-h-[52px] rounded-2xl bg-[#15803d] hover:bg-[#166534] text-white font-bold cursor-pointer ${focusRing}`}>
+                    {index + 1 >= questions.length ? 'Lihat nilaiku' : 'Lanjut ke pertanyaan berikutnya'}
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
             </div>
-            {solved && (
-              <button type="button" onClick={next} className={`mt-3 w-full inline-flex items-center justify-center gap-2 min-h-[52px] rounded-2xl bg-[#15803d] hover:bg-[#166534] text-white font-bold cursor-pointer ${focusRing}`}>
-                {index + 1 >= questions.length ? 'Lihat nilaiku' : 'Lanjut ke pertanyaan berikutnya'}
-                <ArrowRight className="w-5 h-5" />
-              </button>
-            )}
           </>
         )
       )}
@@ -960,105 +1372,19 @@ const QuizPanel: React.FC<{ ingredients: IngredientNutritionInfo[] }> = ({ ingre
   );
 };
 
-/* ------------------------------------------------------------------ */
-/* Zona belajar: satu kartu bertab                                     */
-/* ------------------------------------------------------------------ */
-type LearnTab = 'pahlawan' | 'kebiasaan' | 'kuis';
-
-const LearningSection: React.FC<{ hero: NutritionHeroConfig; habits: DailyHabitItem[]; ingredients: IngredientNutritionInfo[] }> = ({ hero, habits, ingredients }) => {
-  const habit = useMemo(() => pickHabit(habits), [habits]);
-  const tabs = useMemo(() => {
-    const list: { key: LearnTab; label: string }[] = [];
-    if (hero.name.trim()) list.push({ key: 'pahlawan', label: 'Pahlawan' });
-    if (habit) list.push({ key: 'kebiasaan', label: 'Kebiasaan' });
-    list.push({ key: 'kuis', label: 'Kuis' });
-    return list;
-  }, [hero.name, habit]);
-  const [active, setActive] = useState<LearnTab>(tabs[0].key);
-  const current = tabs.some(t => t.key === active) ? active : tabs[0].key;
-  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-
-  const onTabKey = (e: React.KeyboardEvent, i: number) => {
-    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-    const nextTab = tabs[(i + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
-    setActive(nextTab.key);
-    tabRefs.current[nextTab.key]?.focus();
-  };
-
-  return (
-    <section id="belajar" aria-labelledby="belajar-title" className={cardCls}>
-      <SectionHead id="belajar-title" title="Zona belajar" subtitle="Kenali makananmu, coba kebiasaan baik, lalu jawab kuisnya." />
-
-      <div role="tablist" aria-label="Zona belajar" className="grid gap-1 p-1 rounded-2xl bg-[#f4efe3]" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
-        {tabs.map((t, i) => (
-          <button
-            key={t.key}
-            ref={el => { tabRefs.current[t.key] = el; }}
-            type="button"
-            role="tab"
-            id={`tab-${t.key}`}
-            aria-controls={`panel-${t.key}`}
-            aria-selected={current === t.key}
-            tabIndex={current === t.key ? 0 : -1}
-            onClick={() => setActive(t.key)}
-            onKeyDown={e => onTabKey(e, i)}
-            className={`min-h-[44px] rounded-xl text-sm font-bold cursor-pointer transition-colors duration-150 ${focusRing} ${current === t.key ? 'bg-[#15803d] text-white' : 'text-slate-700 hover:bg-white/70'}`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      <div role="tabpanel" id={`panel-${current}`} aria-labelledby={`tab-${current}`} className="mt-4">
-        {current === 'pahlawan' && <NutritionHeroPanel hero={hero} ingredients={ingredients} />}
-        {current === 'kebiasaan' && habit && <HabitPanel habit={habit} />}
-        {current === 'kuis' && <QuizPanel ingredients={ingredients} />}
-      </div>
-    </section>
-  );
-};
-
-/* ------------------------------------------------------------------ */
-/* Halaman                                                             */
-/* ------------------------------------------------------------------ */
-const NAV_ITEMS = [
-  { id: 'menu', label: 'Menu' },
-  { id: 'gizi', label: 'Nilai gizi' },
-  { id: 'belajar', label: 'Zona belajar' },
-  { id: 'bagikan', label: 'Bagikan' }
-];
-
-// Chip navigasi menyala sesuai bagian yang sedang terbaca di tengah layar.
-function useActiveSection(ids: string[]): string {
-  const [active, setActive] = useState(ids[0]);
-  useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver(
-      entries => entries.forEach(e => e.isIntersecting && setActive(e.target.id)),
-      { rootMargin: '-40% 0px -55% 0px' }
-    );
-    ids.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) observer.observe(el);
-    });
-    return () => observer.disconnect();
-  }, [ids]);
-  return active;
-}
-
-const NAV_IDS = NAV_ITEMS.map(n => n.id);
-
 export const DailyMenuPublicPage: React.FC = () => {
   const [config, setConfig] = useState<WebsiteConfig>(getWebsiteConfig);
   const [syncState, setSyncState] = useState<SyncState>(isSupabaseConfigured() ? 'loading' : 'offline');
   const [portion, setPortion] = useState<PortionKey>('large');
+  const [menuType, setMenuType] = useState<MenuType>('reguler');
+  const [isB3Open, setIsB3Open] = useState(false);
   const [detailIndex, setDetailIndex] = useState<number | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
-  const activeSection = useActiveSection(NAV_IDS);
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [isQrOpen, setIsQrOpen] = useState(false);
 
   const menuToday = config.menuToday;
   const ingredients = menuToday.ingredients;
-  const tier: PortionTierConfig = portion === 'large' ? menuToday.portionLarge : menuToday.portionSmall;
   const pageUrl = `${window.location.origin}${MENU_PATH}`;
   const pageHost = `${window.location.host}${MENU_PATH}`;
 
@@ -1066,6 +1392,23 @@ export const DailyMenuPublicPage: React.FC = () => {
   const menuDate = parseIndonesianDate(menuToday.dateText);
   const isOutdated = menuDate !== null && !isSameDay(menuDate, new Date());
   const updatedLabel = isSampleData ? null : formatUpdatedAt(config.lastUpdated);
+  const hero = menuToday.nutritionHero;
+  const funFact = hero.funFact?.trim() || menuToday.plateTip?.trim() || '';
+
+  // Halaman ini hanya diakses lewat QR: jangan muncul di mesin pencari.
+  useEffect(() => {
+    const meta = document.createElement('meta');
+    meta.name = 'robots';
+    meta.content = 'noindex, nofollow';
+    document.head.appendChild(meta);
+    return () => meta.remove();
+  }, []);
+
+  useEffect(() => {
+    QRCode.toDataURL(pageUrl, { width: 320, margin: 1, color: { dark: '#173d26', light: '#ffffff' } })
+      .then(setQrDataUrl)
+      .catch(() => setQrDataUrl(''));
+  }, [pageUrl]);
 
   const loadFromCloud = useCallback(async () => {
     if (!isSupabaseConfigured()) {
@@ -1086,6 +1429,9 @@ export const DailyMenuPublicPage: React.FC = () => {
   }, [loadFromCloud]);
 
   const closeDetail = useCallback(() => setDetailIndex(null), []);
+  const closeQr = useCallback(() => setIsQrOpen(false), []);
+  const closeB3 = useCallback(() => setIsB3Open(false), []);
+  useEscape(closeQr, isQrOpen);
 
   const handleCopyLink = async () => {
     try {
@@ -1109,54 +1455,54 @@ export const DailyMenuPublicPage: React.FC = () => {
     handleCopyLink();
   };
 
-  const scrollTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-  };
-
   const tiers: { key: PortionKey; config: PortionTierConfig }[] = [
     { key: 'small', config: menuToday.portionSmall },
     { key: 'large', config: menuToday.portionLarge }
   ];
+  const activeTier = portion === 'large' ? menuToday.portionLarge : menuToday.portionSmall;
   const bodyWeight = portion === 'large' ? menuToday.bodyWeightLargeKg : menuToday.bodyWeightSmallKg;
-  const menuTitle = menuToday.menuTitle.trim() || 'Menu sehat untuk hari ini';
+  // Daftar hidangan: dari rincian bahan bila ada, selain itu dari judul menu.
+  const regularDishes = ingredients.length > 0
+    ? ingredients.map(i => i.name)
+    : splitDishes(menuToday.menuTitle);
+  const b3Dishes = splitDishes(menuToday.menuB3 || '');
+  // Data lama atau menu baru tanpa 3B: kembali ke reguler agar pilihan tidak menunjuk ke menu kosong.
+  const activeType: MenuType = menuType === 'b3' && b3Dishes.length > 0 ? 'b3' : 'reguler';
+  const dishes = activeType === 'b3' ? b3Dishes : regularDishes;
+  const subtitle = menuToday.menuSubtitle?.trim() || 'Makanan bergizi untuk mendukung tumbuh kembang dan semangat belajar.';
 
   return (
-    <div className="min-h-screen bg-[#fbf8f1] text-[#1f2a22] font-sans antialiased text-[15px]">
-      {/* Header: tanpa tautan keluar halaman; chip hanya melompat ke bagian di halaman ini */}
-      <header className="sticky top-0 z-40 bg-[#fbf8f1]/95 backdrop-blur-sm border-b border-[#e9e0cc]">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center gap-2.5 pt-2.5 pb-1.5">
-            <img src={logoSppgImg} alt="" className="w-9 h-9 object-contain shrink-0" />
+    /* Latar langit ke padang rumput: krem seperti langit header di atas, hijau muda di bawah agar menyatu dengan pemandangan sawah dan footer. */
+    <div className="font-kids-body overflow-x-clip min-h-screen bg-[#f7f4ec] bg-[linear-gradient(180deg,#f7f4ec_0%,#f6f3e6_35%,#eef4e2_75%,#e6f1dc_100%)] text-[#1f2a22] antialiased text-[15px]">
+      <header className="sticky top-0 z-40 bg-[#f7f4ec]/95 backdrop-blur-sm">
+        <HeaderSky />
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="relative w-10 h-10 shrink-0">
+              <SunRays className="absolute -inset-2.5 w-[60px] h-[60px]" />
+              <img src={logoSppgImg} alt="" className="relative w-10 h-10 rounded-full object-cover" />
+            </span>
             <div className="min-w-0">
-              <div className="text-[15px] font-extrabold leading-tight truncate">SPPG Tumpang Jeru</div>
-              <div className="text-xs text-slate-600 leading-tight truncate">Menu Makan Bergizi Gratis</div>
+              <div className="font-kids text-[17px] font-bold text-[#173d26] leading-tight truncate">SPPG Tumpang Jeru</div>
+              <div className="text-xs text-slate-600 leading-tight truncate">
+                Dapur makan bergizi gratis<span className="hidden sm:inline"> di Tumpang, Malang</span>
+              </div>
             </div>
           </div>
-          <nav aria-label="Bagian halaman" className="-mx-4 px-4 sm:mx-0 sm:px-0 flex gap-1.5 overflow-x-auto pb-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {NAV_ITEMS.map(n => {
-              const on = activeSection === n.id;
-              return (
-                <a
-                  key={n.id}
-                  href={`#${n.id}`}
-                  aria-current={on ? 'location' : undefined}
-                  onClick={e => {
-                    e.preventDefault();
-                    scrollTo(n.id);
-                  }}
-                  className={`shrink-0 inline-flex items-center min-h-[38px] px-3.5 rounded-full text-[13.5px] font-bold transition-colors duration-150 ${focusRing} ${
-                    on ? 'bg-[#15803d] text-white' : 'bg-[#f1ebdd] text-[#1f2a22] hover:bg-[#e9e0cc]'
-                  }`}
-                >
-                  {n.label}
-                </a>
-              );
-            })}
-          </nav>
+          <div className="flex items-center gap-2 shrink-0">
+            <button type="button" onClick={handleShare} className={`inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-xl border border-[#e3dccb] bg-white text-sm font-semibold hover:bg-[#f4efe3] cursor-pointer ${focusRing}`}>
+              <Share2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Bagikan</span>
+            </button>
+            <button type="button" onClick={() => setIsQrOpen(true)} className={`inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-xl bg-[#1f4d2f] hover:bg-[#173d26] text-white text-sm font-semibold cursor-pointer ${focusRing}`}>
+              <QrCode className="w-4 h-4" />
+              <span className="hidden sm:inline">QR Code</span>
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-3 sm:px-6 pb-8">
+      <main className="max-w-6xl mx-auto px-3 sm:px-6 pb-10">
         {/* Status data */}
         <div aria-live="polite" className="pt-3 space-y-2 empty:hidden">
           {syncState === 'loading' && (
@@ -1175,7 +1521,7 @@ export const DailyMenuPublicPage: React.FC = () => {
             </div>
           )}
           {syncState !== 'loading' && isSampleData && (
-            <div className="rounded-xl border border-[#e9e0cc] bg-white px-3.5 py-2.5 text-[13px] text-slate-700">Ini contoh menu bawaan aplikasi. Petugas SPPG belum mengisi menu lewat CMS.</div>
+            <div className="rounded-xl border border-[#e9e0cc] bg-white px-3.5 py-2.5 text-[13px] text-slate-700">Ini contoh menu bawaan aplikasi. Petugas SPPG belum mengisi menu.</div>
           )}
           {isOutdated && !isSampleData && (
             <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-900">
@@ -1185,79 +1531,216 @@ export const DailyMenuPublicPage: React.FC = () => {
           )}
         </div>
 
-        {/* 1. Hero: nama menu + pilihan porsi + isi piring */}
-        <div className="pt-3 grid lg:grid-cols-2 gap-3.5 lg:gap-6 items-start">
-          <div className="grid gap-3.5 min-w-0">
-            <section aria-labelledby="hero-title" className="rounded-3xl bg-[#1e6b38] text-white overflow-hidden">
-              <div className="p-4 sm:p-6 pb-4">
-                <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[13px] font-semibold text-[#d4f0dc]">
-                  <li className="inline-flex items-center gap-1.5">
-                    <CalendarDays className="w-4 h-4" />
-                    {menuToday.dateText}
+        <div className="relative isolate pt-3 space-y-3.5 lg:space-y-5">
+          {/* Ranting besar dan samar di tepi halaman, sebesar daun footer, di belakang kartu (-z-10); hanya di layar lebar. */}
+          <Sprig className="hidden xl:block absolute -z-10 -left-32 top-[620px] w-40 text-[#1f8a4c]/20" />
+          <Sprig flip className="hidden xl:block absolute -z-10 -right-32 top-[1500px] w-40 text-[#1f8a4c]/20" />
+          <Butterfly className="hidden xl:block absolute -left-24 top-[560px] w-10" />
+          <Bee className="hidden xl:block absolute -right-20 top-[1460px] w-9" />
+          {/* Hero */}
+          <section aria-labelledby="hero-title" className="group rounded-3xl bg-white border border-[#e9e0cc] overflow-hidden grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+            <div className="relative p-5 sm:p-7 flex flex-col justify-center order-2 lg:order-1">
+              <Sprig className="absolute bottom-3 right-3 w-14 sm:w-20 text-[#1f8a4c]/70" />
+              <Butterfly className="absolute bottom-16 right-12 sm:bottom-24 sm:right-20 w-8 sm:w-10" />
+              <ul className="flex flex-wrap gap-2 text-[13px] font-semibold">
+                <li className="inline-flex items-center gap-1.5 rounded-lg border border-[#e3dccb] bg-[#faf7ef] px-2.5 py-1 text-[#173d26]">
+                  <CalendarDays className="w-4 h-4" />
+                  {menuToday.dateText}
+                </li>
+                <li className="inline-flex items-center gap-1.5 rounded-lg bg-[#1f8a4c] px-2.5 py-1 text-white">
+                  {React.createElement(MENU_TYPES[activeType].Icon, { className: 'w-4 h-4', 'aria-hidden': true })}
+                  {MENU_TYPES[activeType].label}
+                </li>
+                {menuToday.qcStatus?.trim() && (
+                  <li className="inline-flex items-center gap-1.5 rounded-lg border border-[#cfe6d4] bg-[#eef8f0] px-2.5 py-1 text-[#1f6b3a]">
+                    <ShieldCheck className="w-4 h-4" />
+                    {menuToday.qcStatus}
                   </li>
-                  {updatedLabel && (
-                    <li className="inline-flex items-center gap-1.5">
-                      <Clock className="w-4 h-4" />
-                      {updatedLabel}
-                    </li>
-                  )}
-                  {menuToday.qcStatus?.trim() && (
-                    <li className="inline-flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4" />
-                      {menuToday.qcStatus}
-                    </li>
-                  )}
-                </ul>
-                <h1 id="hero-title" className="font-kids text-[30px] sm:text-[40px] leading-[1.08] font-extrabold mt-2.5 [text-wrap:balance]">
-                  {menuTitle}
-                </h1>
-                <ul className="mt-3 flex flex-wrap gap-2 text-[13px] font-bold">
-                  <li className="rounded-full bg-white/15 px-3 py-1 tabular-nums">{tier.targetCalories}</li>
-                  <li className="rounded-full bg-white/15 px-3 py-1 tabular-nums">{tier.totalGramature}</li>
-                  {ingredients.length > 0 && <li className="rounded-full bg-white/15 px-3 py-1">{ingredients.length} komponen</li>}
-                </ul>
-              </div>
-              <figure className="relative">
-                <SafeImg src={menuToday.imageUrl || trayImg1} alt={`Foto ompreng menu: ${menuTitle}`} className="w-full aspect-[16/10] object-cover" />
-                <figcaption className="absolute left-3 bottom-3 rounded-full bg-black/55 px-2.5 py-0.5 text-xs text-white">Foto ompreng hari ini</figcaption>
-              </figure>
-            </section>
+                )}
+              </ul>
+              <h1 id="hero-title" className="font-kids text-[34px] sm:text-[44px] leading-[1.05] font-bold text-[#173d26] mt-3">Menu MBG Hari Ini</h1>
+              <p className="text-[15px] text-slate-700 mt-2 max-w-md">{subtitle}</p>
+              {dishes.length > 0 && (
+                <div className="mt-4 flex items-center gap-4 rounded-2xl bg-[#eef6ec] border border-[#d6e8d2] p-4">
+                  <span className="w-12 h-12 rounded-full bg-[#1f8a4c] text-white flex items-center justify-center shrink-0" aria-hidden="true">
+                    <UtensilsCrossed className="w-6 h-6" />
+                  </span>
+                  <ul aria-label="Isi menu" className="font-kids text-lg sm:text-xl font-bold text-[#173d26] leading-snug">
+                    {dishes.map(d => <li key={d}>{d}</li>)}
+                  </ul>
+                </div>
+              )}
+              {activeType === 'reguler' && (
+                <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+                  <dl className="flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-slate-700">
+                    {numberOnly(activeTier.targetCalories) !== '-' && (
+                      <div className="flex gap-1"><dt className="sr-only">Energi</dt><dd><strong className="text-[#173d26] tabular-nums">{numberOnly(activeTier.targetCalories)}</strong> kkal</dd></div>
+                    )}
+                    {activeTier.totalGramature?.trim() && (
+                      <div className="flex gap-1"><dt className="sr-only">Berat porsi</dt><dd className="font-semibold tabular-nums">{activeTier.totalGramature}</dd></div>
+                    )}
+                    {ingredients.length > 0 && (
+                      <div className="flex gap-1"><dt className="sr-only">Jumlah komponen</dt><dd><strong className="text-[#173d26] tabular-nums">{ingredients.length}</strong> komponen</dd></div>
+                    )}
+                  </dl>
+                  <a href="#gizi" className={`inline-flex items-center gap-1 min-h-[44px] text-[13px] font-bold text-[#15803d] underline underline-offset-2 rounded ${focusRing}`}>
+                    Lihat detail gizi
+                  </a>
+                </div>
+              )}
+              {updatedLabel && (
+                <p className="flex items-center gap-1.5 text-xs text-slate-600 mt-3">
+                  <Clock className="w-3.5 h-3.5" />
+                  {updatedLabel}
+                </p>
+              )}
+            </div>
+            <figure className="relative order-1 lg:order-2 min-h-[220px]">
+              {/* Foto ompreng hanya untuk menu reguler; menu 3B belum punya foto sendiri. */}
+              {activeType === 'b3' ? (
+                <div className="absolute inset-0 bg-[#eef6ec] flex items-center justify-center p-4">
+                  <img src={menu3bImg} alt="Ilustrasi ibu hamil, ibu menyusui, dan balita" className="h-full max-h-72 object-contain mix-blend-multiply" />
+                </div>
+              ) : (
+                <>
+                  <SafeImg src={menuToday.imageUrl || trayImg1} alt={`Foto ompreng menu: ${dishes.join(', ')}`} className="absolute inset-0 w-full h-full object-cover" />
+                  {/* Gradasi menyambungkan foto dengan kolom teks di desktop; tidak ada teks di atasnya. */}
+                  <div className="hidden lg:block absolute inset-y-0 left-0 w-28 bg-gradient-to-r from-white to-transparent" aria-hidden="true" />
+                  <p className="absolute top-3 right-3 sm:top-5 sm:right-5 max-w-[11rem] rotate-3 rounded-2xl border border-[#f2d98a] bg-[#fff6d6] px-3.5 py-2.5 font-kids text-sm sm:text-base font-bold leading-snug text-[#5c3d06] shadow-sm">
+                    Menu sehat untuk tubuh kuat dan semangat belajar!
+                  </p>
+                </>
+              )}
+            </figure>
+          </section>
 
-            <PortionPicker tiers={tiers} portion={portion} onChange={setPortion} />
+          <MenuTypeCard menuType={activeType} hasB3={b3Dishes.length > 0} onChange={setMenuType} onExplain={() => setIsB3Open(true)} />
+
+          {activeType === 'b3' ? (
+            <B3MenuCard dishes={b3Dishes} onExplain={() => setIsB3Open(true)} />
+          ) : (
+            <>
+              <div className="grid lg:grid-cols-[minmax(0,1fr)_280px] gap-3.5 lg:gap-5 items-start">
+                <NutritionCard
+                  tiers={tiers}
+                  portion={portion}
+                  onPortionChange={setPortion}
+                  calcium={menuToday.energySummary.calciumAvg}
+                  iron={menuToday.energySummary.ironAvg}
+                  bodyWeight={bodyWeight}
+                />
+                <BenefitsCard />
+              </div>
+
+              <IngredientStrip ingredients={ingredients} portion={portion} onOpen={setDetailIndex} />
+            </>
+          )}
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3.5 lg:gap-5 items-start">
+            <PlateCard ingredients={ingredients} />
+            <NutritionHeroCarousel hero={hero} ingredients={activeType === 'reguler' ? ingredients : NO_INGREDIENTS} />
+            <HabitSection habits={menuToday.dailyHabits} />
           </div>
 
-          <MenuPlateSection ingredients={ingredients} portion={portion} tip={menuToday.plateTip} onOpenIngredient={setDetailIndex} />
+          <div className="grid lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-3.5 lg:gap-5 items-start">
+            <section aria-labelledby="kuis-title" className={`${cardCls} group relative overflow-hidden`}>
+              <Sprig className="absolute top-2 right-3 w-12 sm:w-14 text-[#1f8a4c]/60" />
+              <Bee className="absolute top-3 right-16 sm:right-20 w-8" />
+              <CardTitle id="kuis-title" icon={<Lightbulb className="w-6 h-6 text-[#d99a00]" />} title="Kuis Gizi Singkat" />
+              {/* Soal bahan disusun dari menu reguler; di mode 3B tinggal soal Isi Piringku agar tidak membingungkan. */}
+              <QuizPanel ingredients={activeType === 'reguler' ? ingredients : NO_INGREDIENTS} />
+            </section>
+            {funFact && (
+              <section aria-labelledby="fakta-title" className={`${cardCls} group relative overflow-hidden`}>
+                <Sprig className="absolute -bottom-2 -right-2 w-20 text-[#1f8a4c]/40" />
+                <CardTitle id="fakta-title" icon={<BookOpen className="w-6 h-6" />} title="Tahukah Kamu?" />
+                <div className="flex items-center gap-3">
+                  <Illustration src="/ilustrasi/tahukah-kamu.webp" fallbackSrc={wortelMaskotImg} className="w-28 h-28 object-contain shrink-0" />
+                  <p className="rounded-2xl bg-[#faf7ef] border border-[#efe8d8] p-4 text-[15px] text-slate-800 leading-relaxed">{funFact}</p>
+                </div>
+              </section>
+            )}
+          </div>
         </div>
+      </main>
 
-        {/* 2-3. Nilai gizi & Zona belajar */}
-        <div className="mt-3.5 lg:mt-6 grid lg:grid-cols-2 gap-3.5 lg:gap-6 items-start">
-          <NutritionSection tier={tier} calcium={menuToday.energySummary.calciumAvg} iron={menuToday.energySummary.ironAvg} bodyWeight={bodyWeight} />
-          <LearningSection hero={menuToday.nutritionHero} habits={menuToday.dailyHabits} ingredients={ingredients} />
-        </div>
-
-        {/* 4. Bagikan. QR untuk dicetak tersedia di CMS. */}
-        <section id="bagikan" aria-labelledby="bagikan-title" className={`${cardCls} mt-3.5 lg:mt-6`}>
-          <div className="lg:flex lg:items-end lg:justify-between lg:gap-6">
-            <SectionHead id="bagikan-title" title="Bagikan ke orang tua" subtitle="Tautannya selalu sama. Isinya diperbarui petugas setiap pagi." />
-            <div className="grid grid-cols-2 gap-2 lg:w-96 lg:mb-4">
-              <button type="button" onClick={handleShare} className={`inline-flex items-center justify-center gap-2 min-h-[48px] rounded-2xl bg-[#15803d] hover:bg-[#166534] text-white text-sm font-bold cursor-pointer ${focusRing}`}>
-                <Share2 className="w-4 h-4" />
-                Bagikan
-              </button>
-              <button type="button" onClick={handleCopyLink} className={`inline-flex items-center justify-center gap-2 min-h-[48px] rounded-2xl border-2 border-[#e9e0cc] bg-white text-sm font-bold hover:bg-[#f4efe3] cursor-pointer ${focusRing}`}>
-                {copiedLink ? <Check className="w-4 h-4 text-[#15803d]" /> : <Copy className="w-4 h-4" />}
-                {copiedLink ? 'Tersalin' : 'Salin tautan'}
+      <FarmLandscape footerColor="#173d26" />
+      <footer className="relative overflow-hidden bg-[#173d26] text-white">
+        {/* Daun mengulang motif ikon judul kartu; di belakang teks dan sangat samar agar kontras tetap aman. */}
+        <Leaf className="absolute -bottom-8 -right-6 w-44 h-44 -rotate-12 text-emerald-200/10 pointer-events-none" aria-hidden="true" />
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-6 grid md:grid-cols-[auto_minmax(0,1fr)_auto] gap-5 md:gap-8 items-center">
+          <div className="flex items-center gap-4 min-w-0">
+            {qrDataUrl && <img src={qrDataUrl} alt="QR code halaman menu hari ini" className="w-24 h-24 rounded-xl bg-white p-1.5 shrink-0" />}
+            <div className="min-w-0">
+              <h2 className="text-base font-bold">Akses Menu Ini Kapan Saja</h2>
+              <p className="text-[13px] text-emerald-100/90 mt-0.5">Scan QR code atau buka tautan ini untuk melihat menu terbaru.</p>
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                className={`mt-2 inline-flex items-center gap-2 max-w-full min-h-[40px] px-3.5 rounded-full bg-white text-[#173d26] text-[13px] font-semibold cursor-pointer ${focusRing}`}
+              >
+                <span className="truncate">{pageHost}</span>
+                {copiedLink ? <Check className="w-4 h-4 shrink-0" /> : <Copy className="w-4 h-4 shrink-0" />}
+                <span className="sr-only">{copiedLink ? 'Tautan tersalin' : 'Salin tautan'}</span>
               </button>
             </div>
           </div>
-          <p className="font-mono text-[13px] text-slate-600 break-all">{pageHost}</p>
-        </section>
-      </main>
-
-      <footer className="text-center px-4 pb-8 text-[13px] text-slate-600">
-        <div className="font-extrabold text-[#1f2a22]">SPPG MLG Tumpang Jeru</div>
-        <div>Satuan Pelayanan Pemenuhan Gizi · Desa Jeru, Kec. Tumpang, Kab. Malang</div>
+          <div className="hidden md:block" />
+          <dl className="grid grid-cols-2 gap-5 text-[13px]">
+            <div className="flex items-start gap-2">
+              <Clock className="w-5 h-5 text-emerald-200 shrink-0" />
+              <div>
+                <dt className="font-semibold">Terakhir diperbarui</dt>
+                <dd className="text-emerald-100/90">{updatedLabel || menuToday.dateText}</dd>
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <FileText className="w-5 h-5 text-emerald-200 shrink-0" />
+              <div>
+                <dt className="font-semibold">Sumber data gizi</dt>
+                <dd className="text-emerald-100/90">Resep dan takaran porsi SPPG Tumpang Jeru</dd>
+              </div>
+            </div>
+          </dl>
+        </div>
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-3 border-t border-white/10 text-xs text-emerald-100/90">
+          <strong className="font-semibold text-white">SPPG MLG Tumpang Jeru</strong>, Satuan Pelayanan Pemenuhan Gizi · Desa Jeru, Kec. Tumpang, Kab. Malang
+        </div>
       </footer>
+
+      {isQrOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center sm:p-4" onClick={closeQr}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="qr-title"
+            onClick={e => e.stopPropagation()}
+            className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5 text-center"
+          >
+            <div className="flex items-center justify-between">
+              <h2 id="qr-title" className="font-kids text-xl font-bold text-[#173d26]">QR Menu Hari Ini</h2>
+              <button type="button" onClick={closeQr} aria-label="Tutup" className={`w-11 h-11 rounded-full hover:bg-[#f4efe3] flex items-center justify-center cursor-pointer ${focusRing}`}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {qrDataUrl && <img src={qrDataUrl} alt="QR code halaman menu hari ini" className="w-60 h-60 mx-auto mt-2" />}
+            <p className="text-[13px] text-slate-600 mt-2">Scan untuk membuka halaman ini di HP lain.</p>
+            {qrDataUrl && (
+              <a
+                href={qrDataUrl}
+                download="qr-menu-mbg-hari-ini.png"
+                className={`mt-3 inline-flex items-center justify-center gap-2 w-full min-h-[48px] rounded-xl bg-[#1f4d2f] hover:bg-[#173d26] text-white text-sm font-semibold ${focusRing}`}
+              >
+                <Download className="w-4 h-4" />
+                Simpan gambar QR
+              </a>
+            )}
+            <p className="font-mono text-[13px] text-slate-700 mt-1 break-all">{pageHost}</p>
+          </div>
+        </div>
+      )}
+
+      {isB3Open && <B3ExplainDialog dishes={b3Dishes} onClose={closeB3} />}
 
       {detailIndex !== null && (
         <IngredientSheet ingredients={ingredients} index={detailIndex} portion={portion} onIndexChange={setDetailIndex} onClose={closeDetail} />

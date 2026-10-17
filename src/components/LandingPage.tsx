@@ -27,43 +27,28 @@ import {
   DEFAULT_WEBSITE_CONFIG,
   WebsiteConfig
 } from '../db/websiteConfigStorage';
+import { fetchPublicSiteData, PublicSiteData, currentWeekRange } from '../db/publicSiteData';
+import { localDateIso } from '../utils/localDate';
 import {
   Lock,
-  LayoutDashboard,
   LayoutGrid,
   ArrowRight,
-  ShieldCheck,
   Building2,
   Home,
   Scale,
   Leaf,
   Utensils,
-  Truck,
-  HeartHandshake,
-  CheckCircle2,
-  Users,
   MapPin,
   Phone,
-  Mail,
   UtensilsCrossed,
-  Recycle,
-  Layers,
   Clock,
-  Calendar,
-  AlertCircle,
-  FileCheck,
-  Check,
   ChevronRight,
   ChevronLeft,
-  Sparkles,
-  Award,
   ChevronDown,
-  Info,
-  Play,
-  Pause,
-  Volume2,
-  VolumeX
+  Menu,
+  X
 } from 'lucide-react';
+import { SPPG_ADDRESS, SPPG_EMAIL, SPPG_PHONE } from './common/KopText';
 
 export interface LandingPageProps {
   onNavigateToLogin?: () => void;
@@ -81,79 +66,6 @@ interface TraySectionInfo {
   supplier: string;
   description: string;
 }
-
-export const WEEKLY_MENUS = [
-  {
-    day: 'Senin',
-    date: '12 Jan 2026',
-    title: 'Nasi Putih, Ayam Bumbu Kuning, Sayur Sop, dan Tempe',
-    description: 'Menu yang disiapkan untuk penyaluran MBG hari ini.',
-    image: trayImg1,
-    components: [
-      { name: 'Nasi Putih', image: nasiPutihBowlImg },
-      { name: 'Ayam Bumbu Kuning', image: ayamBumbuKuningImg },
-      { name: 'Sayur Sop', image: sayurSopImg },
-      { name: 'Tempe', image: tempeBacemImg },
-      { name: 'Buah Pisang', image: buahPisangImg },
-    ]
-  },
-  {
-    day: 'Selasa',
-    date: '13 Jan 2026',
-    title: 'Nasi Putih, Semur Daging Sapi, Perkedel, dan Tumis Buncis',
-    description: 'Kaya zat besi hewani dan serat pangan untuk energi belajar optimal.',
-    image: posterDoubleImg,
-    components: [
-      { name: 'Nasi Putih', image: nasiPutihBowlImg },
-      { name: 'Semur Daging Sapi', image: ayamBumbuKuningImg },
-      { name: 'Tumis Buncis', image: sayurSopImg },
-      { name: 'Perkedel Kentang', image: tempeBacemImg },
-      { name: 'Buah Pisang', image: buahPisangImg },
-    ]
-  },
-  {
-    day: 'Rabu',
-    date: '14 Jan 2026',
-    title: 'Nasi Putih, Ikan Bandeng Presto, Tahu Bacem, dan Sayur Bayam',
-    description: 'Sumber asam lemak omega-3 dan zat besi penunjang daya konsentrasi siswa.',
-    image: trayImg2,
-    components: [
-      { name: 'Nasi Putih', image: nasiPutihBowlImg },
-      { name: 'Ikan Bandeng', image: ayamBumbuKuningImg },
-      { name: 'Sayur Bayam', image: sayurSopImg },
-      { name: 'Tahu Bacem', image: tempeBacemImg },
-      { name: 'Buah Semangka', image: buahPisangImg },
-    ]
-  },
-  {
-    day: 'Kamis',
-    date: '15 Jan 2026',
-    title: 'Nasi Liwet Rempah, Ayam Panggang Madu, Tempe Mendoan, dan Capcay',
-    description: 'Perpaduan cita rasa rempah nusantara minim minyak jenuh dengan nutrisi seimbang.',
-    image: trayImg3,
-    components: [
-      { name: 'Nasi Liwet', image: nasiPutihBowlImg },
-      { name: 'Ayam Panggang', image: ayamBumbuKuningImg },
-      { name: 'Capcay Sayur', image: sayurSopImg },
-      { name: 'Tempe Mendoan', image: tempeBacemImg },
-      { name: 'Buah Pepaya', image: buahPisangImg },
-    ]
-  },
-  {
-    day: 'Jumat',
-    date: '16 Jan 2026',
-    title: 'Nasi Timbel, Telur Balado, Orek Tempe Manis, dan Sayur Lodeh',
-    description: 'Porsi gizi seimbang dengan cita rasa tradisional yang disukai seluruh siswa.',
-    image: posterMenuImg,
-    components: [
-      { name: 'Nasi Timbel', image: nasiPutihBowlImg },
-      { name: 'Telur Balado', image: ayamBumbuKuningImg },
-      { name: 'Sayur Lodeh', image: sayurSopImg },
-      { name: 'Orek Tempe', image: tempeBacemImg },
-      { name: 'Buah Jeruk', image: buahPisangImg },
-    ]
-  }
-];
 
 export const FOOD_COMPONENTS = [
   {
@@ -301,14 +213,63 @@ export const BENEFICIARY_SCHOOLS = [
   { name: 'SMPN 3 Tumpang', location: 'Tumpang' }
 ];
 
+const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+const parseIso = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+const shortDate = (iso: string) => parseIso(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+
+// "Nasi, Ayam Goreng, Sayur Sop dan Pisang" -> ["Nasi", "Ayam Goreng", "Sayur Sop", "Pisang"]
+const splitDishes = (title: string) =>
+  title.split(/,|\s+dan\s+|\s*\+\s*/i).map(x => x.trim()).filter(Boolean);
+
+// Foto ilustrasi pemasok menurut jenis pasokan (data pemasok tidak menyimpan foto).
+const supplierImage = (category: string) => {
+  const c = category.toLowerCase();
+  if (/beras|padi|sembako|grosir/.test(c)) return sawahPadiImg;
+  if (/ayam|daging|telur|unggas|protein hewani/.test(c)) return peternakanAyamImg;
+  if (/tahu|tempe|kedelai/.test(c)) return tempeMentahImg;
+  return kebunSayurImg;
+};
+
+// Tautan bagian lama yang tersimpan di konfigurasi website diarahkan ke id yang benar.
+const LEGACY_ANCHORS: Record<string, string> = { '#alur-pagi': '#alur-operasional' };
+const fixAnchor = (href: string | undefined, fallback: string) => {
+  const value = (href || '').trim() || fallback;
+  return LEGACY_ANCHORS[value] || value;
+};
+
+const NAV_LINKS = [
+  { href: '#siklus-menu', label: 'Menu MBG' },
+  { href: '#alur-operasional', label: 'Alur Operasional' },
+  { href: '#pemasok-bahan', label: 'Pemasok' },
+  { href: '#sekolah-penerima', label: 'Sekolah Penerima' },
+  { href: '#dokumentasi-kegiatan', label: 'Dokumentasi' },
+  { href: '#kontak-sppg', label: 'Kontak' },
+];
+
+const PUBLIC_FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#133d2c] focus-visible:ring-offset-2';
+
 export const LandingPage: React.FC<LandingPageProps> = ({
-  isStaffLoggedIn = false,
+  onNavigateToLogin,
   onReturnToDashboard,
   staffName
 }) => {
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [publicData, setPublicData] = useState<PublicSiteData | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetchPublicSiteData().then(data => {
+      if (alive) setPublicData(data);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [config, setConfig] = useState<WebsiteConfig>(getWebsiteConfig);
-  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-  const [isMenuAutoPlay, setIsMenuAutoPlay] = useState(true);
+  const [selectedMenuDate, setSelectedMenuDate] = useState<string>('');
   const [selectedComponentId, setSelectedComponentId] = useState('karbohidrat');
   const [showAllSchools, setShowAllSchools] = useState(false);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
@@ -348,21 +309,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       );
     }
     return <span className="text-white">{title}</span>;
-  };
-
-  const getFormattedHeroDate = () => {
-    try {
-      const now = new Date();
-      const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-      const dayName = days[now.getDay()];
-      const dateNum = now.getDate();
-      const monthName = months[now.getMonth()];
-      const year = now.getFullYear();
-      return `${dayName}, ${dateNum} ${monthName} ${year}`;
-    } catch {
-      return 'Selasa, 14 Jan 2026';
-    }
   };
 
   // Timer auto-slide foto hero kotak kanan
@@ -469,16 +415,49 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     return () => window.removeEventListener(WEBSITE_CONFIG_UPDATED_EVENT, handleConfigUpdate);
   }, []);
 
-  // Timer Auto-Slide untuk Seksi Foto Menu MBG Mingguan
   useEffect(() => {
-    if (!isMenuAutoPlay) return;
-    const intervalTime = Math.max(2, config.menuSlider.intervalSeconds || 5) * 1000;
-    const timer = setInterval(() => {
-      setSelectedDayIndex(prev => (prev + 1) % WEEKLY_MENUS.length);
-    }, intervalTime);
+    if (!showSupplierModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowSupplierModal(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showSupplierModal]);
 
-    return () => clearInterval(timer);
-  }, [isMenuAutoPlay, config.menuSlider.intervalSeconds]);
+  // --- Data turunan untuk seksi menu, bahan, sekolah, pemasok ---
+  const todayIso = localDateIso();
+  const week = currentWeekRange();
+  const weekMenus = publicData?.weekMenus || [];
+  const menuDates = Array.from(new Set(weekMenus.map(m => m.date)));
+  const activeMenuDate = menuDates.includes(selectedMenuDate)
+    ? selectedMenuDate
+    : menuDates.includes(todayIso) ? todayIso : menuDates[0] || '';
+  const activeMenus = weekMenus.filter(m => m.date === activeMenuDate);
+  // Foto sajian hanya ada untuk menu hari ini (diunggah di Atur Website); hari lain memakai foto ilustrasi.
+  const menuTodayIsToday = (config.menuToday?.menuTitle || '').trim() !== '' && activeMenuDate === todayIso;
+  const activeMenuImage = menuTodayIsToday && config.menuToday?.imageUrl ? config.menuToday.imageUrl : trayImg1;
+
+  const todayIngredients = config.menuToday?.ingredients || [];
+  const componentCards = todayIngredients.length > 0
+    ? todayIngredients.map(ing => ({
+        id: ing.id,
+        category: ing.category || 'Bahan',
+        title: ing.name,
+        portion: [ing.portionSmall, ing.portionLarge].filter(Boolean).join(' / ') || '-',
+        origin: ing.supplier || '-',
+        description: ing.healthBenefits || ing.nutritionHighlight || '',
+        image: ing.imageUrl || nasiPutihBowlImg,
+      }))
+    : FOOD_COMPONENTS;
+  const isSampleComponents = todayIngredients.length === 0;
+  const activeComponentId = componentCards.some(c => c.id === selectedComponentId) ? selectedComponentId : componentCards[0]?.id;
+
+  const schools = publicData?.schools.length
+    ? publicData.schools.map(sc => ({ name: sc.name, location: sc.category }))
+    : BENEFICIARY_SCHOOLS;
+  const suppliers = publicData?.suppliers.length
+    ? publicData.suppliers.map(sp => ({ name: sp.name, location: '', product: sp.category, image: supplierImage(`${sp.category} ${sp.name}`) }))
+    : LOCAL_SUPPLIERS;
 
   return (
     <div className="min-h-screen bg-[#faf8f4] text-[#1c2420] font-sans selection:bg-[#d8eedf] selection:text-[#0c3123] antialiased">
@@ -506,25 +485,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           {/* Navigasi Seksi Publik */}
-          <nav className="hidden lg:flex items-center gap-6 text-xs font-semibold text-[#44534a]">
-            <a href="#siklus-menu" className="hover:text-[#0c3123] transition-colors">
-              Menu MBG
-            </a>
-            <a href="#alur-operasional" className="hover:text-[#0c3123] transition-colors">
-              Alur Operasional
-            </a>
-            <a href="#pemasok-bahan" className="hover:text-[#0c3123] transition-colors">
-              Pemasok
-            </a>
-            <a href="#sekolah-penerima" className="hover:text-[#0c3123] transition-colors">
-              Sekolah Penerima
-            </a>
-            <a href="#dokumentasi-kegiatan" className="hover:text-[#0c3123] transition-colors">
-              Dokumentasi
-            </a>
-            <a href="#kontak-sppg" className="hover:text-[#0c3123] transition-colors">
-              Kontak
-            </a>
+          <nav aria-label="Bagian halaman" className="hidden lg:flex items-center gap-6 text-xs font-semibold text-[#44534a]">
+            {NAV_LINKS.map(link => (
+              <a key={link.href} href={link.href} className={`hover:text-[#0c3123] rounded ${PUBLIC_FOCUS}`}>
+                {link.label}
+              </a>
+            ))}
           </nav>
 
           {/* Status Layanan Publik / Tombol Dashboard untuk Staf */}
@@ -557,14 +523,55 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   </div>
                 </div>
               </div>
-            ) : (
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#ecf7f0] text-[#0c3123] border border-[#c4e5ce]">
-                <span className="w-2 h-2 rounded-full bg-[#10b981] animate-pulse" />
-                <span className="font-semibold">Layanan Publik Aktif</span>
-              </div>
-            )}
+            ) : onNavigateToLogin ? (
+              <button
+                type="button"
+                onClick={onNavigateToLogin}
+                className={`hidden sm:inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-lg text-xs font-semibold text-[#2a3830] border border-[#ded7c8] bg-white hover:bg-[#f6f2e8] cursor-pointer ${PUBLIC_FOCUS}`}
+              >
+                <Lock className="w-3.5 h-3.5" />
+                Masuk petugas
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setIsMobileNavOpen(v => !v)}
+              aria-expanded={isMobileNavOpen}
+              aria-controls="mobile-public-nav"
+              aria-label={isMobileNavOpen ? 'Tutup menu' : 'Buka menu'}
+              className={`lg:hidden w-11 h-11 rounded-lg border border-[#ded7c8] bg-white flex items-center justify-center text-[#141d18] cursor-pointer ${PUBLIC_FOCUS}`}
+            >
+              {isMobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
         </div>
+
+        {isMobileNavOpen && (
+          <nav id="mobile-public-nav" aria-label="Bagian halaman" className="lg:hidden border-t border-[#e5dfd3] bg-[#faf8f4]">
+            <div className="max-w-7xl mx-auto px-4 py-2 flex flex-col">
+              {NAV_LINKS.map(link => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setIsMobileNavOpen(false)}
+                  className={`flex items-center px-3 min-h-[44px] rounded-lg text-sm font-medium text-[#2a3830] hover:bg-[#f0ece1] ${PUBLIC_FOCUS}`}
+                >
+                  {link.label}
+                </a>
+              ))}
+              {!onReturnToDashboard && onNavigateToLogin && (
+                <button
+                  type="button"
+                  onClick={onNavigateToLogin}
+                  className={`flex items-center gap-2 px-3 min-h-[44px] rounded-lg text-sm font-medium text-[#2a3830] hover:bg-[#f0ece1] text-left cursor-pointer ${PUBLIC_FOCUS}`}
+                >
+                  <Lock className="w-4 h-4" />
+                  Masuk petugas
+                </button>
+              )}
+            </div>
+          </nav>
+        )}
       </header>
 
       {/* 4. Hero Section: Editorial Headline dengan Video Latar Belakang Sinematik */}
@@ -594,7 +601,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <div className="absolute inset-0 bg-gradient-to-t from-[#091811]/90 via-transparent to-[#0a1b13]/35" />
           </div>
         ) : (
-          <div className="absolute inset-0 z-0 bg-[#faf8f4]" />
+          // Foto statis: latar foto (diatur di Atur Website) dengan lapisan gelap yang sama agar teks putih tetap terbaca.
+          <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+            <img
+              src={config.hero.videoPoster || trayImg1}
+              alt=""
+              className="w-full h-full object-cover object-center brightness-[0.78]"
+            />
+            <div
+              className="absolute inset-0 bg-gradient-to-r from-[#0c2217]/85 via-[#0d261a]/65 to-[#081710]/45"
+              style={{ opacity: Math.max(0.25, Math.min(0.85, config.hero.videoOverlayOpacity)) }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#091811]/90 via-transparent to-[#0a1b13]/35" />
+          </div>
         )}
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -617,7 +636,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               {/* Tombol Aksi Publik & Kontrol Media Hero */}
               <div className="flex flex-wrap items-center gap-3.5 pt-2">
                 <a
-                  href={config.hero.primaryCtaLink || '#siklus-menu'}
+                  href={fixAnchor(config.hero.primaryCtaLink, '#siklus-menu')}
                   className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl text-xs sm:text-sm font-semibold text-white bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 transition-all cursor-pointer shadow-lg border border-emerald-500/30"
                 >
                   <Utensils className="w-4 h-4 text-emerald-200" />
@@ -626,7 +645,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </a>
 
                 <a
-                  href={config.hero.secondaryCtaLink || '#alur-pagi'}
+                  href={fixAnchor(config.hero.secondaryCtaLink, '#alur-operasional')}
                   className="inline-flex items-center gap-2.5 px-5 py-3.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors border bg-white/10 hover:bg-white/20 text-white border-white/25 backdrop-blur-md"
                 >
                   <Clock className="w-4 h-4 text-white/90" />
@@ -639,11 +658,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             {/* Visual Dokumentasi Operasional: Dokumentasi Slide Foto (Auto Slide & Kustomisasi) */}
             <div className="lg:col-span-5">
               <div
-                className={`rounded-2xl p-3 border shadow-2xl backdrop-blur-md transition-all ${
-                  config.hero.backgroundType === 'video'
-                    ? 'bg-slate-900/90 border-slate-700/80 shadow-black/40'
-                    : 'bg-white border-[#ded7c8]'
-                }`}
+                className="rounded-2xl p-3 border bg-slate-900/90 border-slate-700/80"
                 onMouseEnter={() => setIsHeroPhotoPaused(true)}
                 onMouseLeave={() => setIsHeroPhotoPaused(false)}
               >
@@ -668,15 +683,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/35 pointer-events-none" />
 
                   {/* Badge Kategori & Status di Pojok Kiri Atas */}
-                  <div className="absolute top-3 left-3 bg-black/80 text-white text-xs px-2.5 py-1.5 rounded-lg border border-white/10 shadow-sm pointer-events-none backdrop-blur-xs flex flex-col items-start gap-0.5">
-                    <div className="flex items-center gap-1.5 font-semibold text-white">
-                      <span className="w-2 h-2 rounded-full bg-[#10b981]" />
-                      <span>{currentHeroPhoto?.badge || 'Menu Hari Ini'}</span>
+                  {currentHeroPhoto?.badge && (
+                    <div className="absolute top-3 left-3 bg-black/80 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-white/10 pointer-events-none">
+                      {currentHeroPhoto.badge}
                     </div>
-                    <span className="text-[10px] text-slate-300 pl-3.5 font-normal">
-                      {getFormattedHeroDate()}
-                    </span>
-                  </div>
+                  )}
 
                   {/* Counter Slide di Pojok Kanan Atas */}
                   {heroPhotoSlides.length > 1 && (
@@ -694,7 +705,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                           e.stopPropagation();
                           setCurrentHeroPhotoIndex(prev => (prev - 1 + heroPhotoSlides.length) % heroPhotoSlides.length);
                         }}
-                        className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 active:bg-black text-white flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 sm:opacity-0 focus:opacity-100 cursor-pointer border border-white/20 shadow-md backdrop-blur-xs"
+                        className="absolute left-2.5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-opacity [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer border border-white/20"
                         aria-label="Foto Sebelumnya"
                         title="Foto Sebelumnya"
                       >
@@ -707,7 +718,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                           e.stopPropagation();
                           setCurrentHeroPhotoIndex(prev => (prev + 1) % heroPhotoSlides.length);
                         }}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 active:bg-black text-white flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 sm:opacity-0 focus:opacity-100 cursor-pointer border border-white/20 shadow-md backdrop-blur-xs"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-opacity [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 cursor-pointer border border-white/20"
                         aria-label="Foto Berikutnya"
                         title="Foto Berikutnya"
                       >
@@ -739,13 +750,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </div>
 
                 {/* Deskripsi & Keterangan Slide Foto */}
-                <div className={`mt-3 p-3.5 rounded-xl border space-y-1 transition-all shadow-lg ${
-                  config.hero.backgroundType === 'video'
-                    ? 'bg-[#091523]/95 border-slate-800/80 text-slate-200'
-                    : 'bg-[#f7f4ec] border-[#e8e2d4]'
-                }`}>
+                <div className="mt-3 p-3.5 rounded-xl border space-y-1 bg-[#091523]/95 border-slate-800/80 text-slate-200">
                   <div className="flex items-center justify-between text-xs sm:text-sm">
-                    <span className={`font-bold truncate pr-2 ${config.hero.backgroundType === 'video' ? 'text-white' : 'text-[#141d18]'}`}>
+                    <span className="font-bold truncate pr-2 text-white">
                       {currentHeroPhoto?.title || 'Nasi, Ayam Kecap, Tempe, Sayur, dan Buah'}
                     </span>
                     {currentHeroPhoto?.targetGrams && (
@@ -754,9 +761,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       </span>
                     )}
                   </div>
-                  <p className={`text-[11px] leading-relaxed ${
-                    config.hero.backgroundType === 'video' ? 'text-slate-300' : 'text-[#55645c]'
-                  }`}>
+                  <p className="text-[11px] leading-relaxed text-slate-300">
                     {currentHeroPhoto?.description || 'Menu ini disajikan sesuai standar gizi dengan porsi yang sesuai untuk anak sekolah.'}
                   </p>
                 </div>
@@ -809,157 +814,93 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           ======================================================== */}
       <section id="siklus-menu" className="py-14 sm:py-20 bg-[#faf8f4] border-b border-[#e5dfd3]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Header Seksi */}
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#133d2c] text-white text-xs font-semibold mb-3 shadow-2xs">
-                <span>Menu MBG</span>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#133d2c] text-white text-xs font-semibold mb-3">
+                Menu MBG
               </div>
               <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-serif-display text-[#141d18] tracking-tight">
                 Menu MBG Minggu Ini
               </h2>
               <p className="text-xs sm:text-sm text-[#55645c] mt-2 max-w-2xl leading-relaxed">
-                Variasi menu yang disiapkan untuk sekolah penerima manfaat setiap hari.
+                {shortDate(week.start)} – {shortDate(week.end)} {parseIso(week.end).getFullYear()}. Menu yang disiapkan untuk sekolah penerima manfaat.
               </p>
             </div>
+          </div>
 
-            {/* Kontrol Putar Otomatis & Panah Indikator */}
-            <div className="flex items-center gap-3 shrink-0">
-              <button
-                type="button"
-                onClick={() => setIsMenuAutoPlay(!isMenuAutoPlay)}
-                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#ded7c8] text-xs font-semibold text-[#141d18] hover:bg-[#f6f2e8] transition-colors shadow-2xs cursor-pointer"
-                title={isMenuAutoPlay ? 'Jeda putar otomatis' : 'Mulai putar otomatis'}
-              >
-                {isMenuAutoPlay ? (
-                  <Pause className="w-3.5 h-3.5 text-amber-600" />
-                ) : (
-                  <Play className="w-3.5 h-3.5 text-emerald-700" />
-                )}
-                <span>Putar Otomatis</span>
-              </button>
-
-              <div className="flex items-center gap-1 bg-white p-1 rounded-full border border-[#ded7c8] shadow-2xs">
-                <button
-                  type="button"
-                  onClick={() => setSelectedDayIndex(prev => (prev - 1 + WEEKLY_MENUS.length) % WEEKLY_MENUS.length)}
-                  className="w-7 h-7 rounded-full hover:bg-[#f2ece1] flex items-center justify-center text-[#141d18] transition-colors cursor-pointer"
-                  aria-label="Hari sebelumnya"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span className="text-xs font-mono font-bold px-2 text-[#2d3b32]">
-                  {selectedDayIndex + 1} / {WEEKLY_MENUS.length}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedDayIndex(prev => (prev + 1) % WEEKLY_MENUS.length)}
-                  className="w-7 h-7 rounded-full hover:bg-[#f2ece1] flex items-center justify-center text-[#141d18] transition-colors cursor-pointer"
-                  aria-label="Hari berikutnya"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
+          {publicData === null ? (
+            <div className="bg-white rounded-2xl border border-[#ded7c8] p-8 text-center text-sm text-[#55645c]">Memuat menu…</div>
+          ) : menuDates.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-[#ded7c8] p-8 text-center">
+              <UtensilsCrossed className="w-8 h-8 text-[#9aa79f] mx-auto mb-3" aria-hidden="true" />
+              <p className="text-sm font-semibold text-[#141d18]">Menu pekan ini belum diumumkan.</p>
             </div>
-          </div>
-
-          {/* Baris Tab 5 Hari (Senin - Jumat) */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 sm:gap-3 mb-8">
-            {WEEKLY_MENUS.map((item, idx) => {
-              const isActive = selectedDayIndex === idx;
-              return (
-                <button
-                  key={item.day}
-                  type="button"
-                  onClick={() => setSelectedDayIndex(idx)}
-                  className={`p-3 rounded-2xl text-left transition-all cursor-pointer border ${
-                    isActive
-                      ? 'bg-[#133d2c] text-white border-[#133d2c] shadow-xs'
-                      : 'bg-white text-[#2a3830] border-[#ded7c8] hover:bg-[#f7f4ec]'
-                  }`}
-                >
-                  <div className="text-sm font-bold">{item.day}</div>
-                  <div className={`text-[11px] mt-0.5 ${isActive ? 'text-emerald-200 font-medium' : 'text-[#707e76]'}`}>
-                    {item.date}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Kartu Utama Menu Terpilih */}
-          {(() => {
-            const currentMenu = WEEKLY_MENUS[selectedDayIndex] || WEEKLY_MENUS[0];
-            return (
-              <div className="bg-white rounded-3xl border border-[#ded7c8] p-5 sm:p-7 shadow-xs grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-                {/* Kolom Kiri: Foto Nampan Makanan Resolusi Tinggi dengan Panah Melayang */}
-                <div className="lg:col-span-7 relative aspect-4/3 sm:aspect-16/10 rounded-2xl overflow-hidden bg-slate-900 border border-[#ded7c8] group">
-                  <img
-                    key={currentMenu.day}
-                    src={currentMenu.image}
-                    alt={currentMenu.title}
-                    className="w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-102"
-                  />
-                  {/* Panah Navigasi Melayang Kiri */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDayIndex(prev => (prev - 1 + WEEKLY_MENUS.length) % WEEKLY_MENUS.length)}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/95 hover:bg-white text-[#141d18] shadow-md flex items-center justify-center transition-transform hover:scale-105 cursor-pointer z-10"
-                    aria-label="Menu Sebelumnya"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  {/* Panah Navigasi Melayang Kanan */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDayIndex(prev => (prev + 1) % WEEKLY_MENUS.length)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/95 hover:bg-white text-[#141d18] shadow-md flex items-center justify-center transition-transform hover:scale-105 cursor-pointer z-10"
-                    aria-label="Menu Berikutnya"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Kolom Kanan: Judul, Deskripsi & Komponen Menu Bulat */}
-                <div className="lg:col-span-5 flex flex-col justify-between space-y-6">
-                  <div>
-                    <div className="text-xs font-semibold text-[#6a7c73]">
-                      {currentMenu.day}, {currentMenu.date}
-                    </div>
-                    <h3 className="text-xl sm:text-2xl font-bold font-serif-display text-[#141d18] mt-1.5 leading-snug">
-                      {currentMenu.title}
-                    </h3>
-                    <p className="text-xs sm:text-sm text-[#55645c] mt-2.5 leading-relaxed">
-                      {currentMenu.description}
-                    </p>
-
-                    {/* Box Komponen Menu */}
-                    <div className="mt-6 p-4 sm:p-5 rounded-2xl bg-[#faf8f4] border border-[#ede7db]">
-                      <div className="text-xs font-bold text-[#141d18] mb-3">
-                        Komponen Menu
+          ) : (
+            <>
+              <div role="tablist" aria-label="Hari" className="flex gap-2 overflow-x-auto pb-1 mb-6">
+                {menuDates.map(date => {
+                  const isActive = date === activeMenuDate;
+                  return (
+                    <button
+                      key={date}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => setSelectedMenuDate(date)}
+                      className={`shrink-0 min-w-[96px] px-4 py-2.5 rounded-xl text-left border cursor-pointer ${PUBLIC_FOCUS} ${
+                        isActive ? 'bg-[#133d2c] text-white border-[#133d2c]' : 'bg-white text-[#2a3830] border-[#ded7c8] hover:bg-[#f7f4ec]'
+                      }`}
+                    >
+                      <div className="text-sm font-bold">{DAY_NAMES[parseIso(date).getDay()]}</div>
+                      <div className={`text-[11px] mt-0.5 ${isActive ? 'text-emerald-100' : 'text-[#5f6e66]'}`}>
+                        {shortDate(date)}{date === todayIso ? ' · hari ini' : ''}
                       </div>
-                      <div className="grid grid-cols-5 gap-2">
-                        {currentMenu.components.map((comp) => (
-                          <div key={comp.name} className="flex flex-col items-center text-center">
-                            <div className="w-12 h-12 rounded-full overflow-hidden border border-[#ded7c8] shadow-2xs bg-white">
-                              <img
-                                src={comp.image}
-                                alt={comp.name}
-                                className="w-full h-full object-cover object-center"
-                              />
-                            </div>
-                            <span className="text-[10px] font-semibold text-[#25322a] mt-1.5 leading-tight line-clamp-2">
-                              {comp.name}
-                            </span>
-                          </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="bg-white rounded-2xl border border-[#ded7c8] p-5 sm:p-7 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
+                <figure className="lg:col-span-7">
+                  <div className="aspect-4/3 sm:aspect-16/10 rounded-xl overflow-hidden bg-slate-900 border border-[#ded7c8]">
+                    <img src={activeMenuImage} alt={menuTodayIsToday ? `Foto sajian ${activeMenus[0]?.title}` : ''} className="w-full h-full object-cover" />
+                  </div>
+                  {!menuTodayIsToday && (
+                    <figcaption className="text-[11px] text-[#5f6e66] mt-2">Foto ilustrasi sajian MBG.</figcaption>
+                  )}
+                </figure>
+
+                <div className="lg:col-span-5 space-y-6">
+                  {activeMenus.map(menu => (
+                    <div key={menu.id}>
+                      <div className="text-xs font-semibold text-[#5f6e66]">
+                        {DAY_NAMES[parseIso(menu.date).getDay()]}, {shortDate(menu.date)}
+                        {activeMenus.length > 1 && ` · ${menu.mealSession}`}
+                      </div>
+                      <h3 className="text-xl sm:text-2xl font-bold font-serif-display text-[#141d18] mt-1.5 leading-snug">
+                        {menu.title}
+                      </h3>
+                      {menu.description && (
+                        <p className="text-xs sm:text-sm text-[#55645c] mt-2 leading-relaxed">{menu.description}</p>
+                      )}
+                      <ul className="mt-4 flex flex-wrap gap-2" aria-label="Komponen menu">
+                        {splitDishes(menu.title).map(dish => (
+                          <li key={dish} className="px-3 py-1.5 rounded-full bg-[#faf8f4] border border-[#ede7db] text-xs font-semibold text-[#25322a]">
+                            {dish}
+                          </li>
                         ))}
-                      </div>
+                      </ul>
+                      {menu.specialDietB3 && (
+                        <p className="text-xs text-[#55645c] mt-3">
+                          <span className="font-semibold text-[#141d18]">Balita & ibu hamil:</span> {menu.specialDietB3}
+                        </p>
+                      )}
                     </div>
-                  </div>
+                  ))}
                 </div>
               </div>
-            );
-          })()}
+            </>
+          )}
         </div>
       </section>
 
@@ -973,10 +914,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <span>Komponen Menu</span>
             </div>
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-serif-display text-[#141d18] tracking-tight">
-              Bahan dan Porsi Makanan
+              {isSampleComponents ? 'Bahan dan Porsi Makanan' : 'Bahan Menu Hari Ini'}
             </h2>
             <p className="text-xs sm:text-sm text-[#55645c] mt-2 max-w-2xl leading-relaxed">
-              Informasi bahan makanan dan perkiraan porsi dari menu yang disajikan.
+              {isSampleComponents
+                ? 'Contoh komponen menu MBG beserta perkiraan porsinya.'
+                : `Bahan menu ${config.menuToday.dateText || 'terbaru'}, porsi kecil / besar, dan asal bahannya.`}
             </p>
           </div>
 
@@ -985,8 +928,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
               {/* Kolom 1: Daftar Tab Komponen */}
               <div className="lg:col-span-4 space-y-2.5">
-                {FOOD_COMPONENTS.map((item) => {
-                  const isSelected = selectedComponentId === item.id;
+                {componentCards.map((item) => {
+                  const isSelected = activeComponentId === item.id;
                   return (
                     <button
                       key={item.id}
@@ -1011,7 +954,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
               {/* Kolom 2 & 3: Tampilan Foto Resolusi Tinggi & Detail Spesifikasi */}
               {(() => {
-                const currentComp = FOOD_COMPONENTS.find(c => c.id === selectedComponentId) || FOOD_COMPONENTS[0];
+                const currentComp = componentCards.find(c => c.id === activeComponentId) || componentCards[0];
                 return (
                   <>
                     {/* Kolom 2: Foto Sajian dalam Mangkuk / Piring */}
@@ -1136,24 +1079,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 Foto kegiatan dari dapur hingga penyaluran makanan ke sekolah.
               </p>
             </div>
-
-            {/* Tombol Panah Navigasi */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                className="w-8 h-8 rounded-full bg-[#faf8f4] border border-[#ded7c8] flex items-center justify-center text-[#141d18] hover:bg-[#f0ece1] transition-colors cursor-pointer"
-                aria-label="Dokumentasi Sebelumnya"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                className="w-8 h-8 rounded-full bg-[#faf8f4] border border-[#ded7c8] flex items-center justify-center text-[#141d18] hover:bg-[#f0ece1] transition-colors cursor-pointer"
-                aria-label="Dokumentasi Berikutnya"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
           </div>
 
           {/* 4 Kartu Foto Dokumentasi Kegiatan */}
@@ -1217,7 +1142,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
           {/* 4 Kartu Pemasok Lokal */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {LOCAL_SUPPLIERS.map((sup) => (
+            {suppliers.slice(0, 4).map((sup) => (
               <div
                 key={sup.name}
                 className="bg-white rounded-3xl p-4 border border-[#ded7c8] shadow-xs flex flex-col justify-between hover:border-[#133d2c] transition-all group"
@@ -1233,9 +1158,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   <h3 className="text-sm font-bold text-[#141d18]">
                     {sup.name}
                   </h3>
-                  <div className="text-[11px] text-[#707e76] mt-0.5">
-                    {sup.location}
-                  </div>
+                  {sup.location && (
+                    <div className="text-[11px] text-[#5f6e66] mt-0.5">
+                      {sup.location}
+                    </div>
+                  )}
                   <div className="mt-3 pt-2.5 border-t border-[#f0ece1] text-xs">
                     <span className="text-[#707e76]">Bahan yang dipasok: </span>
                     <span className="font-bold text-[#133d2c]">{sup.product}</span>
@@ -1268,14 +1195,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             {/* Badge Total 14 Sekolah */}
             <div className="shrink-0">
               <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#f6f2e8] border border-[#ded7c8] text-xs font-semibold text-[#141d18]">
-                <span>Total 14 Sekolah</span>
+                <span>Total {schools.length} sekolah</span>
               </span>
             </div>
           </div>
 
           {/* Grid Kartu Sekolah */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {(showAllSchools ? BENEFICIARY_SCHOOLS : BENEFICIARY_SCHOOLS.slice(0, 8)).map((sch) => (
+            {(showAllSchools ? schools : schools.slice(0, 8)).map((sch) => (
               <div
                 key={sch.name}
                 className="p-4 rounded-2xl bg-[#faf8f4] border border-[#ded7c8] flex items-center gap-3.5 hover:border-[#133d2c] transition-colors"
@@ -1296,14 +1223,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           {/* Tombol Lihat Seluruh Sekolah */}
-          {BENEFICIARY_SCHOOLS.length > 8 && (
+          {schools.length > 8 && (
             <div className="mt-8 text-center">
               <button
                 type="button"
                 onClick={() => setShowAllSchools(!showAllSchools)}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#faf8f4] border border-[#ded7c8] text-xs font-bold text-[#133d2c] hover:bg-[#f0ece1] transition-colors cursor-pointer"
               >
-                <span>{showAllSchools ? 'Tampilkan Lebih Sedikit' : 'Lihat Seluruh 14 Sekolah Penerima'}</span>
+                <span>{showAllSchools ? 'Tampilkan lebih sedikit' : `Lihat seluruh ${schools.length} sekolah penerima`}</span>
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAllSchools ? 'rotate-180' : ''}`} />
               </button>
             </div>
@@ -1332,7 +1259,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
                 <div className="pt-2">
                   <a
-                    href="mailto:sppg.tumpangjeru@bgn.go.id"
+                    href={`mailto:${SPPG_EMAIL}`}
                     className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white text-[#0c2419] font-bold text-xs sm:text-sm hover:bg-[#f0ece1] transition-all shadow-md cursor-pointer"
                   >
                     <span>Hubungi SPPG</span>
@@ -1374,7 +1301,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <div>
                   <div className="font-bold text-white">Alamat</div>
                   <div className="text-[11px] text-slate-300 mt-0.5">
-                    Desa Jeru, Kec. Tumpang, Kab. Malang
+                    {SPPG_ADDRESS}
                   </div>
                 </div>
               </div>
@@ -1395,8 +1322,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <Phone className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                 <div>
                   <div className="font-bold text-white">Kontak</div>
-                  <div className="text-[11px] text-slate-300 mt-0.5 font-mono">0812-3456-7890</div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">sppg.tumpangjeru@bgn.go.id</div>
+                  <a href={`tel:${SPPG_PHONE.replace(/[^0-9+]/g, '')}`} className="block text-[11px] text-slate-300 mt-0.5 font-mono hover:text-white">{SPPG_PHONE}</a>
+                  <a href={`mailto:${SPPG_EMAIL}`} className="block text-[11px] text-slate-300 mt-0.5 hover:text-white break-all">{SPPG_EMAIL}</a>
                 </div>
               </div>
             </div>
@@ -1406,11 +1333,20 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* Modal Daftar Pemasok Lengkap */}
       {showSupplierModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 border border-[#ded7c8] shadow-2xl space-y-6 animate-in fade-in zoom-in-95 duration-150">
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center sm:p-4"
+          onClick={() => setShowSupplierModal(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="supplier-modal-title"
+            onClick={e => e.stopPropagation()}
+            className="bg-white rounded-t-2xl sm:rounded-2xl max-w-2xl w-full p-5 sm:p-8 border border-[#ded7c8] space-y-6 max-h-[92vh] overflow-y-auto"
+          >
             <div className="flex items-center justify-between pb-4 border-b border-[#eee8dc]">
               <div>
-                <h3 className="text-xl font-bold font-serif-display text-[#141d18]">
+                <h3 id="supplier-modal-title" className="text-xl font-bold font-serif-display text-[#141d18]">
                   Daftar Pemasok Bahan Pangan Lokal
                 </h3>
                 <p className="text-xs text-[#55645c] mt-1">
@@ -1420,14 +1356,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <button
                 type="button"
                 onClick={() => setShowSupplierModal(false)}
-                className="w-8 h-8 rounded-full bg-[#faf8f4] hover:bg-[#f0ece1] flex items-center justify-center text-slate-600 transition-colors cursor-pointer text-sm font-bold"
+                aria-label="Tutup"
+                className={`w-11 h-11 rounded-full bg-[#faf8f4] hover:bg-[#f0ece1] flex items-center justify-center text-slate-700 cursor-pointer shrink-0 ${PUBLIC_FOCUS}`}
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-              {LOCAL_SUPPLIERS.map((sup) => (
+              {suppliers.map((sup) => (
                 <div key={sup.name} className="p-4 rounded-2xl bg-[#faf8f4] border border-[#ded7c8] flex items-center gap-4">
                   <img
                     src={sup.image}
@@ -1436,7 +1373,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-bold text-[#141d18]">{sup.name}</div>
-                    <div className="text-xs text-[#707e76]">{sup.location}</div>
+                    {sup.location && <div className="text-xs text-[#5f6e66]">{sup.location}</div>}
                     <div className="text-xs font-semibold text-[#133d2c] mt-1">
                       Komoditas Pasokan: {sup.product}
                     </div>

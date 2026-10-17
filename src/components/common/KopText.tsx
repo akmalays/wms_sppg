@@ -2,6 +2,8 @@ import React from 'react';
 
 export const SPPG_OFFICIAL_NAME = 'Satuan Pelayanan Pemenuhan Gizi (SPPG) Tumpang Jeru';
 export const SPPG_ADDRESS = 'Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang';
+export const SPPG_EMAIL = 'sppg.jeru@gmail.com';
+export const SPPG_PHONE = '0812-3456-7890';
 
 // Teks kop surat untuk semua dokumen cetak: instansi induk, nama SPPG, alamat.
 // Ditaruh di samping logo; logo dan sisi kanan kop tetap diatur masing-masing dokumen.

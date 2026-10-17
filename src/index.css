@@ -18,6 +18,11 @@
     font-family: 'Baloo 2', var(--font-sans);
   }
 
+  /* Teks isi halaman publik Menu MBG: ujung huruf membulat, tetap mudah dibaca anak */
+  .font-kids-body {
+    font-family: 'Nunito', var(--font-sans);
+  }
+
   .font-serif-display {
     font-family: var(--font-serif);
     font-optical-sizing: auto;
@@ -82,6 +87,54 @@
 }
 
 /* Umpan balik singkat di halaman publik menu (kuis benar, kebiasaan selesai) */
+@keyframes sway {
+  0%, 100% { transform: rotate(0deg); }
+  30% { transform: rotate(-6deg); }
+  70% { transform: rotate(4deg); }
+}
+
+/* Hiasan alam halaman Menu MBG (NatureAccents.tsx) */
+@keyframes flutter {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(0.35); }
+}
+@keyframes wander {
+  0%, 100% { transform: translate(0, 0) rotate(-4deg); }
+  25% { transform: translate(10px, -8px) rotate(6deg); }
+  50% { transform: translate(18px, 2px) rotate(-2deg); }
+  75% { transform: translate(6px, 8px) rotate(4deg); }
+}
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes drift {
+  from { transform: translateX(-40px); }
+  to { transform: translateX(40px); }
+}
+@keyframes fly-across {
+  from { transform: translateX(0); }
+  to { transform: translateX(1560px); }
+}
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+@keyframes peck {
+  0%, 55%, 100% { transform: rotate(0deg); }
+  65% { transform: rotate(32deg); }
+  75% { transform: rotate(0deg); }
+  85% { transform: rotate(32deg); }
+}
+@keyframes fly-up {
+  0% { opacity: 0; transform: translate(0, 12px) scale(0.6); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(36px, -70px) scale(1); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .nature-drift { animation: drift var(--dur) ease-in-out infinite alternate; }
+  .nature-fly { animation: fly-across var(--dur) linear infinite; }
+}
+
 @keyframes pop-in {
   0% { transform: scale(0.92); opacity: 0; }
   60% { transform: scale(1.03); opacity: 1; }

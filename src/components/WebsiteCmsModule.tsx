@@ -572,7 +572,7 @@ export const WebsiteCmsModule: React.FC = () => {
     const current = config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
     const ok = await askConfirm({
       title: `Isi dari menu "${order.menuTitle}"?`,
-      message: 'Tanggal, nama menu, deskripsi, dan daftar bahan diganti. Data gizi bahan yang namanya sama tetap dipakai.',
+      message: 'Tanggal, nama menu, menu 3B, deskripsi, dan daftar bahan diganti. Data gizi bahan yang namanya sama tetap dipakai.',
       confirmText: 'Isi otomatis',
       variant: 'warning',
     });
@@ -615,6 +615,7 @@ export const WebsiteCmsModule: React.FC = () => {
           ...c,
           dateText: formatMenuDate(order.date),
           menuTitle: order.menuTitle,
+          menuB3: order.specialDietB3?.trim() || '',
           description: order.menuDescription?.trim() || c.description,
           // Order tanpa daftar bahan: pertahankan daftar lama daripada mengosongkan halaman publik.
           ingredients: ingredients.length > 0 ? ingredients : c.ingredients,
@@ -1532,43 +1533,23 @@ export const WebsiteCmsModule: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Tanggal Sajian Menu
-                      </label>
-                      <input
-                        type="text"
-                        value={menuToday.dateText}
-                        onChange={e => setConfig(prev => ({
-                          ...prev,
-                          menuToday: {
-                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                            dateText: e.target.value
-                          }
-                        }))}
-                        placeholder="Contoh: Rabu, 15 Oktober 2026"
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Label Badge Status
-                      </label>
-                      <input
-                        type="text"
-                        value={menuToday.badge || ''}
-                        onChange={e => setConfig(prev => ({
-                          ...prev,
-                          menuToday: {
-                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                            badge: e.target.value
-                          }
-                        }))}
-                        placeholder="Contoh: Menu Hari Ini • Segar & Halal"
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                      />
-                    </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Tanggal Sajian Menu
+                    </label>
+                    <input
+                      type="text"
+                      value={menuToday.dateText}
+                      onChange={e => setConfig(prev => ({
+                        ...prev,
+                        menuToday: {
+                          ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                          dateText: e.target.value
+                        }
+                      }))}
+                      placeholder="Contoh: Rabu, 15 Oktober 2026"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                    />
                   </div>
 
                   <div>
@@ -1588,6 +1569,27 @@ export const WebsiteCmsModule: React.FC = () => {
                       placeholder="Contoh: Nasi Ayam Ungkep Bumbu Kuning & Sop Sayur Segar"
                       className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                     />
+                  </div>
+
+                  <div>
+                    <label htmlFor="menu-b3" className="block text-xs font-semibold text-slate-700 mb-1">
+                      Menu 3B (ibu hamil, ibu menyusui, balita)
+                    </label>
+                    <input
+                      id="menu-b3"
+                      type="text"
+                      value={menuToday.menuB3 || ''}
+                      onChange={e => setConfig(prev => ({
+                        ...prev,
+                        menuToday: {
+                          ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
+                          menuB3: e.target.value
+                        }
+                      }))}
+                      placeholder="Pisahkan dengan koma. Contoh: Nasi tim, Ayam suwir, Sayur bayam, Pisang"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                    />
+                    <p className="text-[11px] text-slate-600 mt-1">Terisi otomatis dari Rekap Order Menu. Kosongkan bila hari ini tidak ada menu 3B.</p>
                   </div>
 
                   <div>

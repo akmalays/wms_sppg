@@ -156,6 +156,8 @@ export interface WebsiteMenuTodayConfig {
   menuTitle: string;
   menuSubtitle: string;
   badge?: string;
+  /** Menu 3B (ibu hamil, ibu menyusui, balita non-PAUD), dipisah koma; kosong = pilihan 3B dinonaktifkan */
+  menuB3?: string;
   description: string;
   imageUrl: string;
   energySummary: {
@@ -265,7 +267,7 @@ export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = {
     primaryCtaText: 'Lihat Menu MBG',
     primaryCtaLink: '#siklus-menu',
     secondaryCtaText: 'Jadwal Operasional',
-    secondaryCtaLink: '#alur-pagi',
+    secondaryCtaLink: '#alur-operasional',
     autoSlidePhotos: true,
     photoSlideInterval: 4,
     photoSlides: [
