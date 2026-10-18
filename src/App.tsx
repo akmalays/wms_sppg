@@ -24,6 +24,9 @@ import { LoginPage } from './components/LoginPage';
 import { LandingPage } from './components/LandingPage';
 import { WebsiteCmsModule } from './components/WebsiteCmsModule';
 import { DailyMenuPublicPage } from './components/DailyMenuPublicPage';
+import { ScanResultModule } from './components/ScanResultModule';
+import { QrScannerDialog } from './components/common/QrScannerDialog';
+import { SCAN_PATH, ScanTarget, scanTargetFromLocation } from './utils/scanCode';
 
 export type AppRouteType = 'DASHBOARD' | 'MENU_TODAY' | 'LANDING';
 
@@ -43,6 +46,8 @@ export const getAppRoute = (): AppRouteType => {
   }
 
   if (
+    // Tautan QR label (/s/<kode>) membuka hasil pindai di dashboard; belum login berarti login dulu.
+    path.startsWith(SCAN_PATH) ||
     path === '/dashboard' ||
     path.startsWith('/dashboard/') ||
     path === '/login' ||
@@ -62,7 +67,10 @@ export const getAppRoute = (): AppRouteType => {
 
 const MainLayout: React.FC = () => {
   const { currentUser, isAuthenticated } = useAuth();
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  // Dibaca sekali saat aplikasi dibuka dari tautan QR, dan tetap tersimpan selama proses login.
+  const [scanTarget, setScanTarget] = useState<ScanTarget | null>(scanTargetFromLocation);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>(() => (scanTargetFromLocation() ? 'scan' : 'dashboard'));
   const [currentRoute, setCurrentRoute] = useState<AppRouteType>(getAppRoute);
   const [dataVersion, setDataVersion] = useState<number>(0);
   // Form yang dibuka saat pindah ke Cetak Form dari halaman lain (nota supplier, label aset).
@@ -126,6 +134,19 @@ const MainLayout: React.FC = () => {
     setCurrentRoute('MENU_TODAY');
   };
 
+  // Alamat /s/... dibersihkan saat pindah menu, agar muat ulang halaman tidak membuka hasil pindai lagi.
+  React.useEffect(() => {
+    if (activeTab !== 'scan' && window.location.pathname.startsWith(SCAN_PATH)) {
+      window.history.replaceState(null, '', '/dashboard');
+    }
+  }, [activeTab]);
+
+  const openScanResult = React.useCallback((target: ScanTarget) => {
+    setScanTarget(target);
+    setActiveTab('scan');
+    setIsScannerOpen(false);
+  }, []);
+
   const openPrintForm = (target: PrintTarget) => {
     setPrintTarget(target);
     setActiveTab('tools_forms');
@@ -166,7 +187,11 @@ const MainLayout: React.FC = () => {
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         onViewLanding={navigateToHome}
+        onOpenScanner={() => setIsScannerOpen(true)}
       />
+      {isScannerOpen && (
+        <QrScannerDialog hint="Arahkan ke QR pada label barang, plakat rak, tag, atau aset." onResult={openScanResult} onClose={() => setIsScannerOpen(false)} />
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -256,6 +281,7 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'audit' && <AuditLogModule />}
+          {activeTab === 'scan' && <ScanResultModule target={scanTarget} onTargetChange={setScanTarget} onNavigate={setActiveTab} />}
         </div>
       </main>
 
@@ -270,7 +296,7 @@ const MainLayout: React.FC = () => {
   );
 };
 
-const SELF_SYNCING_TABS = new Set(['profile', 'receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit']);
+const SELF_SYNCING_TABS = new Set(['profile', 'receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit', 'scan']);
 
 export default function App() {
   return (

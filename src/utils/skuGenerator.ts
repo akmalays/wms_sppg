@@ -37,13 +37,13 @@ export const WAREHOUSE_SKU_DEFINITIONS: Record<WarehouseSkuType, WarehouseSkuDef
     prefix: 'ITM-KRG',
     shortDesc: 'Beras, Minyak, Gula, Tepung, Garam, Bumbu Kering & Bahan Pangan Awet',
     temperature: '20°C - 25°C (Suhu Ruang Terkendali)',
-    defaultLocation: 'Gudang Kering - Rak A1 (Sembako Beras & Karung Pangan)',
+    defaultLocation: 'Gudang Kering - Rak 1 (Garam, Rempah & Bumbu Dasar)',
     suggestedLocations: [
-      'Gudang Kering - Rak A1 (Sembako Beras & Karung Pangan)',
-      'Gudang Kering - Palet Tengah (Sembako Sak & Karung Curah)',
-      'Gudang Kering - Rak A2 (Minyak, Lemak & Cairan Pangan)',
-      'Gudang Kering - Rak A3 (Gula, Pemanis & Tepung Olahan)',
-      'Gudang Kering - Rak A4 (Garam, Bumbu Kering & Rempah)',
+      'Gudang Kering - Palet Tengah (Sembako Berat)',
+      'Gudang Kering - Rak 1 (Garam, Rempah & Bumbu Dasar)',
+      'Gudang Kering - Rak 2 (Tepung, Gula & Bumbu Bubuk)',
+      'Gudang Kering - Rak 3 (Saus, Kecap & Mentega)',
+      'Gudang Kering - Rak 4 (Stok Cadangan Dus)',
     ],
   },
   GUDANG_BASAH: {
@@ -231,79 +231,79 @@ export const STANDARD_STORAGE_RACKS: Record<string, StorageRackSpecification> = 
     id: 'PLT-KRG-T1',
     shortName: 'Gudang Kering - Palet Tengah',
     rackCode: 'Palet Tengah',
-    commodityDetail: 'Sembako Sak & Karung Curah',
-    fullDisplay: 'Gudang Kering - Palet Tengah (Sembako Sak & Karung Curah)',
+    commodityDetail: 'Sembako Berat',
+    fullDisplay: 'Gudang Kering - Palet Tengah (Sembako Berat)',
     warehouseType: 'GUDANG_KERING',
-    zone: 'Zona Tengah Gudang Kering - Palet Lantai (Floor Bulk Storage Bay)',
-    temperature: '20°C - 25°C (Suhu Ruang Kering Terkontrol)',
-    humidity: 'Maks. 60% RH (Sirkulasi Terbuka & Bebas Lembap)',
-    capacityMax: '2.500 Kg (Maks. 50-60 Sak / Karung Pangan 25-50 Kg)',
-    storageRule: 'Wajib beralaskan palet plastik/kayu fumigasi min. 15 cm di atas lantai. Susun bersilangan (interlocking) maks. 8 tumpukan sak demi kestabilan. Beri lorong sirkulasi udara min. 50 cm antar tumpukan.',
-    description: 'Area palet tengah lantai (floor pallet bay) khusus penempatan komoditas pangan pokok berbobot berat dalam kemasan sak/karung 25–50 kg (seperti karung beras premium, sak gula pasir, sak tepung terigu, serta buffer stock pangan curah volume besar). Memudahkan manuver hand pallet/forklift dan penerapan rotasi FIFO pengeluaran bahan.',
+    zone: 'Lantai tengah gudang kering, di atas palet',
+    temperature: 'Suhu ruang 20°C - 25°C',
+    humidity: 'Kering, maks. 60% RH',
+    capacityMax: '± 50-60 sak / karung',
+    storageRule: 'Selalu di atas palet, min. 15 cm dari lantai dan 5 cm dari dinding. Tumpuk sak bersilangan, maks. 8 tumpuk. Sisakan lorong agar sak lama mudah diambil lebih dulu.',
+    description: 'Barang berat dalam sak, karung, atau dus/jerigen besar: beras sak, tepung sak (terigu, panir, bubbling), gula sak, minyak goreng.',
     rotationMethod: 'FIFO',
     picDefault: 'Petugas Logistik Gudang Kering'
   },
   'RAK-KRG-A1': {
     id: 'RAK-KRG-A1',
-    shortName: 'Gudang Kering - Rak A1',
-    rackCode: 'Rak A1',
-    commodityDetail: 'Sembako Beras & Karung Pangan',
-    fullDisplay: 'Gudang Kering - Rak A1 (Sembako Beras & Karung Pangan)',
+    shortName: 'Gudang Kering - Rak 1',
+    rackCode: 'Rak 1',
+    commodityDetail: 'Garam, Rempah & Bumbu Dasar',
+    fullDisplay: 'Gudang Kering - Rak 1 (Garam, Rempah & Bumbu Dasar)',
     warehouseType: 'GUDANG_KERING',
-    zone: 'Zona Sembako Sektor A (Beban Berat)',
-    temperature: '20°C - 25°C (Suhu Ruang Terkendali)',
-    humidity: 'Maks. 60% RH (Hindari Lembap)',
-    capacityMax: '1.500 Kg (Kapasitas Maks. 30 Karung 25-50 Kg)',
-    storageRule: 'Wajib di atas palet plastik/kayu min. 15 cm dari lantai & berjarak 5 cm dari dinding. Bebas kutu beras & hama.',
-    description: 'Penyimpanan beras kemasan karung 25-50 kg berlabel Halal & SNI, ketan, dan biji-bijian pangan kemasan bertingkat.',
+    zone: 'Gudang Kering - Rak 1',
+    temperature: 'Suhu ruang 20°C - 25°C',
+    humidity: 'Kering, wadah tertutup',
+    capacityMax: 'Ambalan bumbu',
+    storageRule: 'Bumbu yang sudah dibuka pindahkan ke toples/wadah tertutup dan beri label tanggal buka.',
+    description: 'Bumbu berbentuk utuh atau padat: garam, kemiri, cengkeh, ketumbar utuh, terasi, petis.',
     rotationMethod: 'FIFO',
     picDefault: 'Petugas Logistik Gudang Kering'
   },
   'RAK-KRG-A2': {
     id: 'RAK-KRG-A2',
-    shortName: 'Gudang Kering - Rak A2',
-    rackCode: 'Rak A2',
-    commodityDetail: 'Minyak, Lemak & Cairan Pangan',
-    fullDisplay: 'Gudang Kering - Rak A2 (Minyak, Lemak & Cairan Pangan)',
+    shortName: 'Gudang Kering - Rak 2',
+    rackCode: 'Rak 2',
+    commodityDetail: 'Tepung, Gula & Bumbu Bubuk',
+    fullDisplay: 'Gudang Kering - Rak 2 (Tepung, Gula & Bumbu Bubuk)',
     warehouseType: 'GUDANG_KERING',
-    zone: 'Zona Cairan & Jerigen Sektor A',
-    temperature: '20°C - 25°C (Terhindar Cahaya Langsung)',
-    humidity: 'Sirkulasi Udara Aktif',
-    capacityMax: '500 Liter (Maks. 100 Jerigen 5L)',
-    storageRule: 'Letakkan jerigen di ambalan paling bawah untuk stabilitas. Pastikan tutup tersegel rapat agar tidak merembes.',
-    description: 'Penyimpanan minyak goreng jerigen 5 Liter, minyak bantal fortifikasi Vitamin A, mentega, dan margarin kemasan karton.',
-    rotationMethod: 'FIFO',
+    zone: 'Gudang Kering - Rak 2',
+    temperature: 'Suhu ruang 20°C - 25°C',
+    humidity: 'Kering, maks. 55% RH (mudah menggumpal)',
+    capacityMax: 'Ambalan bertingkat',
+    storageRule: 'Kemasan terbuka wajib diikat/masuk wadah tertutup. Jaga dari semut dan ceceran.',
+    description: 'Bahan berbentuk bubuk atau butiran dalam kemasan kecil: tepung beras/kanji/hunkwee, gula pasir & gula merah, royco/kaldu, lada & ketumbar bubuk, pala bubuk, baking soda.',
+    rotationMethod: 'FEFO',
     picDefault: 'Petugas Logistik Gudang Kering'
   },
   'RAK-KRG-A3': {
     id: 'RAK-KRG-A3',
-    shortName: 'Gudang Kering - Rak A3',
-    rackCode: 'Rak A3',
-    commodityDetail: 'Gula, Pemanis & Tepung Olahan',
-    fullDisplay: 'Gudang Kering - Rak A3 (Gula, Pemanis & Tepung Olahan)',
+    shortName: 'Gudang Kering - Rak 3',
+    rackCode: 'Rak 3',
+    commodityDetail: 'Saus, Kecap & Mentega',
+    fullDisplay: 'Gudang Kering - Rak 3 (Saus, Kecap & Mentega)',
     warehouseType: 'GUDANG_KERING',
-    zone: 'Zona Bahan Bubuk & Pemanis Sektor A',
-    temperature: '20°C - 25°C (Kering & Bebas Semut)',
-    humidity: 'Maks. 55% RH (Sangat Rentan Gumpal)',
-    capacityMax: '800 Kg (Ambalan Bertingkat SUS 304)',
-    storageRule: 'Gunakan kontainer tertutup food-grade setelah kemasan dibuka. Pasang kapur/anti semut di sekitar kaki rak.',
-    description: 'Penyimpanan gula pasir kristal putih 1kg, tepung terigu protein sedang/tinggi, tepung beras, dan tepung maizena.',
+    zone: 'Gudang Kering - Rak 3',
+    temperature: 'Suhu ruang 20°C - 25°C',
+    humidity: 'Sirkulasi udara baik, jauh dari sinar matahari',
+    capacityMax: 'Ambalan botol & pouch',
+    storageRule: 'Botol berdiri dan tutup rapat. Botol besar/pouch di ambalan bawah. Ambil yang kedaluwarsanya paling dekat lebih dulu.',
+    description: 'Bahan berbentuk cair atau kental dalam botol/pouch: kecap, saus tomat/sambal/teriyaki, kecap ikan, cuka, minyak wijen, mayones, mentega.',
     rotationMethod: 'FEFO',
     picDefault: 'Petugas Logistik Gudang Kering'
   },
   'RAK-KRG-A4': {
     id: 'RAK-KRG-A4',
-    shortName: 'Gudang Kering - Rak A4',
-    rackCode: 'Rak A4',
-    commodityDetail: 'Garam, Bumbu Kering & Rempah',
-    fullDisplay: 'Gudang Kering - Rak A4 (Garam, Bumbu Kering & Rempah)',
+    shortName: 'Gudang Kering - Rak 4',
+    rackCode: 'Rak 4',
+    commodityDetail: 'Stok Cadangan Dus',
+    fullDisplay: 'Gudang Kering - Rak 4 (Stok Cadangan Dus)',
     warehouseType: 'GUDANG_KERING',
-    zone: 'Zona Bumbu & Rempah Sektor A',
-    temperature: '20°C - 25°C (Suhu Ruang Kering)',
-    humidity: 'Kedap Udara & Tidak Lembap',
-    capacityMax: '400 Kg (Rak Bin Tertutup)',
-    storageRule: 'Wadah kedap udara agar aroma rempah terjaga dan yodium garam tidak berkurang akibat kelembapan.',
-    description: 'Penyimpanan garam beryodium halus, ketumbar bubuk, merica, bumbu penyedap rasa terstandarisasi, dan rempah kering.',
+    zone: 'Gudang Kering - Rak 4',
+    temperature: 'Suhu ruang 20°C - 25°C',
+    humidity: 'Kering',
+    capacityMax: 'Tumpukan dus',
+    storageRule: 'Hanya dus yang belum dibuka. Tulis nama barang & tanggal datang di sisi dus. Dus lama dibuka lebih dulu untuk mengisi ulang Rak 1-3.',
+    description: 'Cadangan dus tertutup untuk Rak 1, Rak 2, dan Rak 3. Di sistem, stoknya tetap tercatat di rak asal barangnya.',
     rotationMethod: 'FIFO',
     picDefault: 'Petugas Logistik Gudang Kering'
   },
@@ -449,18 +449,10 @@ export function getStorageLocationDetails(rawLocation: string): StorageRackSpeci
     return STANDARD_STORAGE_RACKS['PLT-KRG-T1'];
   }
 
-  // 2. Cek Rak Kering Lainnya
-  if (l.includes('rak a1') || l.includes('sembako beras') || l.includes('karung pangan')) {
-    return STANDARD_STORAGE_RACKS['RAK-KRG-A1'];
-  }
-  if (l.includes('rak a2') || l.includes('minyak') || l.includes('lemak') || l.includes('cairan pangan')) {
-    return STANDARD_STORAGE_RACKS['RAK-KRG-A2'];
-  }
-  if (l.includes('rak a3') || l.includes('gula') || l.includes('tepung')) {
-    return STANDARD_STORAGE_RACKS['RAK-KRG-A3'];
-  }
-  if (l.includes('rak a4') || l.includes('garam') || l.includes('bumbu') || l.includes('rempah')) {
-    return STANDARD_STORAGE_RACKS['RAK-KRG-A4'];
+  // 2. Rak 1-4 gudang kering (dibagi menurut bentuk barang)
+  const rakNo = l.match(/\brak\s*([1-4])\b/);
+  if (rakNo) {
+    return STANDARD_STORAGE_RACKS[`RAK-KRG-A${rakNo[1]}`];
   }
 
   // 3. Cek Non-Food

@@ -10,12 +10,15 @@ import {
   Menu,
   UserCheck,
   X,
+  ScanLine,
 } from 'lucide-react';
 
 interface NavbarProps {
   activeTab: string;
   onSelectTab: (tab: string) => void;
   onViewLanding?: () => void;
+  /** Membuka pemindai QR label (barang, rak, tag, aset). */
+  onOpenScanner?: () => void;
 }
 
 // Role switching and database reset are demo tools: any user could promote themselves or wipe stock.
@@ -76,7 +79,7 @@ const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:rin
 const MENU_PANEL = 'absolute mt-2 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 z-50';
 const MENU_ITEM = `w-full text-left flex items-center gap-2.5 px-3.5 py-2 text-xs cursor-pointer min-h-[40px] transition-colors ${FOCUS}`;
 
-export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onViewLanding }) => {
+export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onViewLanding, onOpenScanner }) => {
   const { currentUser, switchUser, logout, can } = useAuth();
   const allowed = (item: NavItem) => !item.permission || can(item.permission);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
@@ -165,9 +168,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onViewLa
                   onClick={() => toggle(group.id)}
                   aria-expanded={isOpen}
                   aria-haspopup="menu"
+                  title={activeChild ? `${group.label}: ${activeChild.label}` : undefined}
                   className={navButtonClass(!!activeChild)}
                 >
-                  {activeChild ? `${group.label}: ${activeChild.label}` : group.label}
+                  {/* Label grup tetap pendek; halaman aktif ditandai warna dan terlihat di dropdown */}
+                  {group.label}
                   <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isOpen && (
@@ -194,7 +199,19 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onViewLa
 
         {/* Right side */}
         <div className="flex items-center gap-2 ml-auto shrink-0">
-          <span className="hidden xl:block text-xs text-slate-600 tabular-nums">{dateLabel}</span>
+          {onOpenScanner && (
+            <button
+              type="button"
+              onClick={onOpenScanner}
+              aria-label="Pindai QR label"
+              title="Pindai QR label"
+              className={`inline-flex items-center gap-1.5 px-2.5 min-h-[44px] lg:min-h-[40px] rounded-lg border border-slate-200 text-xs font-semibold text-slate-800 hover:bg-slate-50 cursor-pointer ${FOCUS}`}
+            >
+              <ScanLine className="w-4 h-4 text-emerald-700" />
+              {/* Isi navbar dibatasi max-w-7xl, jadi di desktop teks ini tidak muat di breakpoint mana pun */}
+              <span className="hidden sm:inline lg:hidden">Pindai</span>
+            </button>
+          )}
 
           <div className="relative" data-menu>
             <button
@@ -224,6 +241,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onViewLa
                   <div className="text-sm font-semibold text-slate-900 truncate">{currentUser.name}</div>
                   {currentUser.email && <div className="text-[11px] text-slate-600 truncate">{currentUser.email}</div>}
                   <div className="text-[11px] text-slate-600 mt-0.5">{roleInfo?.label || currentUser.role}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5 tabular-nums">{dateLabel}</div>
                 </div>
 
                 <div className="py-1">

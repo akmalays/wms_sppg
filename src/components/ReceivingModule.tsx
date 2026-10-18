@@ -75,6 +75,14 @@ import { ActionDropdown } from './common/ActionDropdown';
 import { angkaTerbilang } from './ToolsPrintModule';
 import { generateNextPoNumber } from '../utils/poNumberGenerator';
 import { localDateIso } from '../utils/localDate';
+import { isCountableUnit, normalizeQtyForUnit } from '../utils/unitConversion';
+import { suggestDryLocation } from '../utils/warehouseRacks';
+
+// Jumlah dari belanja bisa berupa teks ("2 pack"); angka ditampilkan dengan koma desimal
+const formatRecordQty = (qty: string | number): string => {
+  const n = typeof qty === 'number' ? qty : Number(qty);
+  return Number.isFinite(n) ? n.toLocaleString('id-ID', { maximumFractionDigits: 3 }) : String(qty);
+};
 import {
   getPrintPoolIds,
   addToPrintPool,
@@ -281,8 +289,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
   const [selectedPoForWeighing, setSelectedPoForWeighing] = useState<PurchaseOrderNota | null>(null);
   const [showAllPoQueue, setShowAllPoQueue] = useState(false);
 
+  // Nota yang dibuat dari penerimaan barang (relatedReceivingId) stoknya sudah masuk,
+  // jadi tidak ikut antrean timbang supaya stok tidak bertambah dua kali.
   const pendingPOs = useMemo(
-    () => purchaseOrders.filter(po => po.status !== 'SELESAI'),
+    () => purchaseOrders.filter(po => po.status !== 'SELESAI' && !po.relatedReceivingId),
     [purchaseOrders]
   );
 
@@ -530,7 +540,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
       minimumStock: 0,
       reorderPoint: 0,
       currentStock: 0,
-      location: WAREHOUSE_SKU_DEFINITIONS[warehouse]?.defaultLocation || 'Gudang Utama',
+      location:
+        (warehouse === 'GUDANG_KERING' ? suggestDryLocation(name) : undefined) ||
+        WAREHOUSE_SKU_DEFINITIONS[warehouse]?.defaultLocation ||
+        'Gudang Utama',
       expiryTrackingEnabled: quickItem.category === 'Bahan Basah' || quickItem.category === 'Bahan Kering',
       isActive: true,
       createdAt: now,
@@ -642,6 +655,12 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
       }
       if (line.quantity <= 0) {
         const msg = `Baris ${idx + 1} (${line.itemName}): isi jumlah hasil timbang.`;
+        setErrorMessage(msg);
+        toast.error(msg, 'Validasi Gagal');
+        return;
+      }
+      if (isCountableUnit(line.unit) && !Number.isInteger(line.quantity)) {
+        const msg = `Baris ${idx + 1} (${line.itemName}): satuan ${line.unit} harus bilangan bulat, bukan ${line.quantity}.`;
         setErrorMessage(msg);
         toast.error(msg, 'Validasi Gagal');
         return;
@@ -829,7 +848,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     const targetDate = r.date || localDateIso();
     const nextPoNum = generateNextPoNumber(purchaseOrders, targetDate);
     const suppObj = suppliers.find(s => s.name.toLowerCase() === r.supplierOrStore.toLowerCase());
-    const numQty = parseFloat(String(r.quantity)) || 1;
+    const numQty = normalizeQtyForUnit(parseFloat(String(r.quantity).replace(',', '.')) || 1, r.unit || 'Pcs');
     const unitPrice = r.unitPrice > 0 ? r.unitPrice : Math.round(r.nominal / numQty);
 
     const initialItem: PurchaseOrderItem = {
@@ -900,7 +919,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     const nextPoNum = generateNextPoNumber(purchaseOrders, targetDate);
 
     const poItems: PurchaseOrderItem[] = rawRecords.map((r, i) => {
-      const numQty = parseFloat(String(r.quantity)) || 1;
+      const numQty = normalizeQtyForUnit(parseFloat(String(r.quantity).replace(',', '.')) || 1, r.unit || 'Pcs');
       const unitPrice = r.unitPrice > 0 ? r.unitPrice : Math.round(r.nominal / numQty);
       return {
         id: `POI-${Date.now()}-${i}`,
@@ -957,8 +976,12 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
   };
 
   const handleCreateNotaFromSelected = () => {
-    const selectedRecords = periodRecords.filter(r => selectedRecordIds.includes(r.id));
-    if (selectedRecords.length === 0) return;
+    const selectedRecords = periodRecords.filter(r => selectedRecordIds.includes(r.id) && !getMatchingNotaForRecord(r));
+    if (selectedRecords.length === 0) {
+      toast.info('Barang yang dipilih sudah punya nota.', 'Nota Sudah Ada');
+      setSelectedRecordIds([]);
+      return;
+    }
 
     // Detect supplier: use the first valid supplier name or 'Supplier Gabungan'
     const firstSupplier = selectedRecords.find(r => r.supplierOrStore && r.supplierOrStore !== '-')?.supplierOrStore || 'Supplier Gabungan';
@@ -1282,14 +1305,19 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     });
   }, [periodRecords, selectedCategoryTab, selectedSupplierFilter, searchQuery]);
 
-  const allFilteredSelected = filteredRecords.length > 0 && filteredRecords.every(r => selectedRecordIds.includes(r.id));
-  const someFilteredSelected = filteredRecords.some(r => selectedRecordIds.includes(r.id));
+  // Baris yang sudah punya nota tidak bisa dipilih lagi, supaya tidak terbit nota ganda
+  const selectableRecords = filteredRecords.filter(r => !getMatchingNotaForRecord(r));
+  const allFilteredSelected = selectableRecords.length > 0 && selectableRecords.every(r => selectedRecordIds.includes(r.id));
+  const someFilteredSelected = selectableRecords.some(r => selectedRecordIds.includes(r.id));
+  const selectedTotal = periodRecords
+    .filter(r => selectedRecordIds.includes(r.id))
+    .reduce((sum, r) => sum + r.nominal, 0);
 
   const handleToggleSelectAll = () => {
     if (allFilteredSelected) {
       setSelectedRecordIds([]);
     } else {
-      setSelectedRecordIds(filteredRecords.map(r => r.id));
+      setSelectedRecordIds(selectableRecords.map(r => r.id));
     }
   };
 
@@ -1447,8 +1475,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
           <div className="p-4 sm:p-5">
             {(() => {
               const displayedQueue = [...(showAllPoQueue ? purchaseOrders : pendingPOs)].sort((a, b) => {
-                const aDone = a.status === 'SELESAI' ? 1 : 0;
-                const bDone = b.status === 'SELESAI' ? 1 : 0;
+                const aDone = a.status === 'SELESAI' || a.relatedReceivingId ? 1 : 0;
+                const bDone = b.status === 'SELESAI' || b.relatedReceivingId ? 1 : 0;
                 if (aDone !== bDone) return aDone - bDone;
                 return (a.deliveryDate || a.date).localeCompare(b.deliveryDate || b.date);
               });
@@ -1485,7 +1513,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
               return (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {displayedQueue.map(po => {
-                    const isFinished = po.status === 'SELESAI';
+                    const isFinished = po.status === 'SELESAI' || !!po.relatedReceivingId;
                     const targetDeliveryDate = (po.deliveryDate || po.date || '').slice(0, 10);
                     const isToday = targetDeliveryDate === today;
                     const isLate = !isFinished && targetDeliveryDate !== '' && targetDeliveryDate < today;
@@ -1546,7 +1574,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                               <li key={idx} className="flex items-center justify-between text-xs gap-2">
                                 <span className="text-slate-700 truncate">{it.name}</span>
                                 <span className="font-mono font-semibold text-slate-900 shrink-0 tabular-nums">
-                                  {it.quantity} {it.unit}
+                                  {normalizeQtyForUnit(Number(it.quantity) || 0, it.unit).toLocaleString('id-ID', { maximumFractionDigits: 2 })} {it.unit}
                                 </span>
                               </li>
                             ))}
@@ -1561,9 +1589,13 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                         <div className="pt-3 mt-3 border-t border-slate-200 space-y-2.5">
                           <div className="flex items-center justify-between text-[11px] text-slate-600">
                             <span>Nilai PO</span>
-                            <span className="font-mono font-semibold text-slate-900 tabular-nums">
-                              Rp {po.grandTotal.toLocaleString('id-ID')}
-                            </span>
+                            {po.grandTotal > 0 ? (
+                              <span className="font-mono font-semibold text-slate-900 tabular-nums">
+                                Rp {po.grandTotal.toLocaleString('id-ID')}
+                              </span>
+                            ) : (
+                              <span className="font-semibold text-amber-700">Harga belum diisi</span>
+                            )}
                           </div>
                           <div className="flex flex-wrap items-center gap-1.5">
                             {!isFinished && (
@@ -1783,8 +1815,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                         <td className="py-2.5 px-3">
                           <input
                             type="number"
-                            min="0.1"
-                            step="any"
+                            min={isCountableUnit(line.unit) ? 1 : 0}
+                            step={isCountableUnit(line.unit) ? 1 : 'any'}
                             value={line.quantity || ''}
                             onChange={e => handleLineQtyChange(idx, e.target.value)}
                             className="w-full text-xs rounded border border-slate-300 px-2 py-1.5 font-mono font-bold text-slate-900 focus:ring-1 focus:ring-emerald-500 text-right"
@@ -2458,6 +2490,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                             <input
                               type="checkbox"
                               checked={allFilteredSelected}
+                              disabled={selectableRecords.length === 0}
+                              title={selectableRecords.length === 0 ? 'Semua baris sudah punya nota' : 'Pilih untuk dibuatkan nota gabungan'}
                               ref={el => {
                                 if (el) el.indeterminate = someFilteredSelected && !allFilteredSelected;
                               }}
@@ -2488,8 +2522,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                                   type="checkbox"
                                   checked={selectedRecordIds.includes(r.id)}
                                   onChange={() => handleToggleSelectRecord(r.id)}
+                                  disabled={!!matchingNota}
+                                  title={matchingNota ? `Sudah ada nota ${matchingNota.poNumber}` : 'Pilih untuk dibuatkan nota gabungan'}
                                   aria-label={`Pilih ${r.itemName}`}
-                                  className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer w-3.5 h-3.5"
+                                  className="rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer w-3.5 h-3.5 disabled:opacity-30 disabled:cursor-not-allowed"
                                 />
                               </td>
                               <td className="py-3 px-3">
@@ -2514,7 +2550,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                                 )}
                               </td>
                               <td className="py-3 px-3 text-right font-mono font-semibold text-slate-900 whitespace-nowrap">
-                                {r.quantity} {r.unit}
+                                {formatRecordQty(r.quantity)} {r.unit}
                               </td>
                               <td className="py-3 px-3 text-right">
                                 {/* Penerimaan lama tanpa belanja tertaut tidak punya harga. */}
@@ -2582,14 +2618,15 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => handleToggleSelectRecord(r.id)}
+                              disabled={!!matchingNota}
                               aria-label={`Pilih ${r.itemName}`}
-                              className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer w-4 h-4 shrink-0"
+                              className="mt-0.5 disabled:opacity-30 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer w-4 h-4 shrink-0"
                             />
                             <div className="min-w-0 flex-1">
                               <div className="flex items-start justify-between gap-2">
                                 <h4 className="text-sm font-semibold text-slate-900 leading-snug">{r.itemName}</h4>
                                 <span className="font-mono text-xs font-semibold text-slate-900 shrink-0">
-                                  {r.quantity} {r.unit}
+                                  {formatRecordQty(r.quantity)} {r.unit}
                                 </span>
                               </div>
                               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600">
@@ -2641,16 +2678,24 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
             </div>
           )}
 
+          {/* Ruang kosong agar bar mengambang tidak menutupi baris terakhir */}
+          {selectedRecordIds.length > 0 && viewMode === 'TABLE' && <div className="h-20" aria-hidden="true" />}
+
           {/* Floating Action Bar for Selected Rows */}
           {selectedRecordIds.length > 0 && viewMode === 'TABLE' && (
-            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] sm:w-auto bg-slate-900 text-white px-4 py-3 rounded-xl shadow-lg flex flex-wrap items-center justify-between gap-3">
+            <div
+              role="region"
+              aria-label="Barang dipilih"
+              className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] sm:w-auto bg-slate-900 text-white pl-4 pr-2 py-2 rounded-xl shadow-lg flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
+            >
               <div className="flex items-center gap-2 text-xs">
                 <CheckSquare className="w-4 h-4 text-emerald-400" />
                 <span className="font-semibold">{selectedRecordIds.length} barang dipilih</span>
-                <span className="text-slate-500">|</span>
-                <span className="text-emerald-300 font-mono font-bold">
-                  Rp {periodRecords.filter(r => selectedRecordIds.includes(r.id)).reduce((sum, r) => sum + r.nominal, 0).toLocaleString('id-ID')}
-                </span>
+                {selectedTotal > 0 ? (
+                  <span className="text-emerald-300 font-mono font-semibold">· Rp {selectedTotal.toLocaleString('id-ID')}</span>
+                ) : (
+                  <span className="text-slate-300">· harga belum tercatat</span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -2664,7 +2709,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                 <button
                   type="button"
                   onClick={() => setSelectedRecordIds([])}
-                  className="text-slate-500 hover:text-white text-xs px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                  className="text-slate-300 hover:text-white hover:bg-slate-800 text-xs px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
                 >
                   Batal
                 </button>

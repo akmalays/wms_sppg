@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import {exportMultiSheetExcel, exportToExcel} from "../lib/excelExport";
 import {localDateIso} from "../utils/localDate";
+import {normalizeQtyForUnit} from "../utils/unitConversion";
 import {FormDialog, FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY, FOCUS_RING} from "./common/FormDialog";
 import {ActionDropdown} from "./common/ActionDropdown";
 import {SppgLogo} from "./SppgLogo";
@@ -1452,12 +1453,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
         const nextPoNum = generateNextPoNumber(currentSeqList, poTargetDate);
 
         const poItems: PurchaseOrderItem[] = supplierItems.map((sItem, sIdx) => {
-          const numQty = parseNumericQuantity(sItem.qtyOrder || sItem.qtyArrived) || 1;
-          const unitPrice = estimatePrice(sItem.itemName);
-          const subtotal = sItem.totalCost && sItem.totalCost > 0 ? sItem.totalCost : Math.round(numQty * unitPrice);
-
           const unitMatch = (sItem.qtyOrder || sItem.qtyArrived || "").match(/[a-zA-Z]+/g);
           const unitStr = unitMatch ? unitMatch.join(" ") : "Kg";
+
+          const numQty = normalizeQtyForUnit(parseNumericQuantity(sItem.qtyOrder || sItem.qtyArrived) || 1, unitStr);
+          const unitPrice = estimatePrice(sItem.itemName);
+          const subtotal = sItem.totalCost && sItem.totalCost > 0 ? sItem.totalCost : Math.round(numQty * unitPrice);
 
           return {
             id: `POI-${Date.now()}-${sIdx}`,

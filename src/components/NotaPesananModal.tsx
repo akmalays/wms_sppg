@@ -24,6 +24,7 @@ import { normalizeToStandardCategory } from '../utils/categoryStandards';
 import { syncPoNumberWithDate } from '../utils/poNumberGenerator';
 import { useToast } from '../context/ToastContext';
 import { warehouseDb } from '../db/storage';
+import { normalizeQtyForUnit } from '../utils/unitConversion';
 
 export interface NotaPesananModalProps {
   isOpen: boolean;
@@ -250,12 +251,23 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
     }));
   };
 
+  // Jumlah dari input masih berupa teks; satuan hitung (Pcs, Botol, ...) dibulatkan minimal 1
+  const buildNormalizedNota = (): PurchaseOrderNota => {
+    const items = formData.items.map(it => {
+      const rawQty = parseFloat(String(it.quantity).replace(',', '.')) || 0;
+      const qty = normalizeQtyForUnit(rawQty, it.unit);
+      const unitPrice = Number(it.unitPrice) || 0;
+      // Subtotal dari belanja asli dipertahankan kecuali jumlahnya ikut dibulatkan
+      const subtotal = qty === rawQty && it.subtotal ? it.subtotal : Math.round(qty * unitPrice);
+      return { ...it, quantity: qty, unitPrice, subtotal };
+    });
+    return { ...formData, items, ...recalculateTotals(items), approvedBy: signerName };
+  };
+
   const handleSaveOnly = () => {
     try {
-      const updated: PurchaseOrderNota = {
-        ...formData,
-        approvedBy: signerName,
-      };
+      const updated = buildNormalizedNota();
+      setFormData(updated);
       onSaveNota(updated);
       toast.success(`Nota PO ${formData.poNumber} berhasil disimpan.`, 'Nota Disimpan');
       setSaveToast(true);
@@ -267,10 +279,8 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
 
   const handlePrint = () => {
     try {
-      const updated: PurchaseOrderNota = {
-        ...formData,
-        approvedBy: signerName,
-      };
+      const updated = buildNormalizedNota();
+      setFormData(updated);
       onSaveNota(updated);
       window.print();
     } catch (err: any) {
@@ -954,10 +964,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      const updated: PurchaseOrderNota = {
-                        ...formData,
-                        approvedBy: signerName,
-                      };
+                      const updated = buildNormalizedNota();
                       onSaveNota(updated);
                       onTogglePool(updated.id);
                       if (!isInPool) {
@@ -985,10 +992,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      const updated: PurchaseOrderNota = {
-                        ...formData,
-                        approvedBy: signerName,
-                      };
+                      const updated = buildNormalizedNota();
                       onSaveNota(updated);
                       onOpenBatchPool();
                     }}

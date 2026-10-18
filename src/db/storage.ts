@@ -43,6 +43,7 @@ import { angkaTerbilang } from '../utils/numberToWords';
 import { removeFromPrintPool } from '../utils/poPrintPool';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { localDateIso, localTimestamp } from '../utils/localDate';
+import { convertQty, unitKey } from '../utils/unitConversion';
 
 const MAX_AUDIT_LOGS = 2000;
 
@@ -3959,7 +3960,7 @@ class WarehouseDatabase {
     weighedItems: WeighedPoItemInput[],
     metadata: ReceivePoMetadata,
     user: User
-  ): { success: boolean; message: string; po?: PurchaseOrderNota; receivingId?: string } {
+  ): { success: boolean; message: string; po?: PurchaseOrderNota; receivingId?: string; unconvertedItems?: string[] } {
     const poIndex = this.purchaseOrders.findIndex(p => p.id === poId);
     if (poIndex < 0) {
       return { success: false, message: 'Nota Pesanan (PO) tidak ditemukan.' };
@@ -3970,15 +3971,27 @@ class WarehouseDatabase {
     if (po.status === 'SELESAI') {
       return { success: false, message: `PO ${po.poNumber} sudah diterima sebelumnya. Penerimaan tidak bisa disimpan dua kali.` };
     }
+    // Nota yang dibuat dari dokumen penerimaan: barangnya sudah masuk stok lewat Terima Barang.
+    if (po.relatedReceivingId) {
+      return {
+        success: false,
+        message: `Barang di ${po.poNumber} sudah masuk stok lewat penerimaan ${po.relatedReceivingId}. Penerimaan tidak disimpan lagi agar stok tidak dobel.`,
+      };
+    }
     const nowIso = new Date().toISOString();
-    const todayStr = metadata.date || nowIso.slice(0, 10);
+    const todayStr = metadata.date || localDateIso();
     const arrivalTime = metadata.arrivalTime || new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
     // 1. Generate ReceivingDocument
     const receivingId = `GR-${Date.now().toString().slice(-6)}`;
-    const receivingLines = weighedItems.map(item => ({
-      id: `RL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      itemId: item.itemId || `ITM-${Date.now().toString().slice(-4)}`,
+    // Resolve each line to its master item up front so the receiving line, the new
+    // master item (if any) and the stock transaction all share the same id.
+    const receivingLines = weighedItems.map((item, idx) => ({
+      id: `RL-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+      itemId:
+        item.itemId ||
+        this.items.find(i => i.name.trim().toLowerCase() === item.name.trim().toLowerCase())?.id ||
+        `ITM-${Date.now().toString().slice(-5)}-${idx}`,
       itemName: item.name,
       category: item.category as any,
       quantity: item.actualQty,
@@ -4013,8 +4026,11 @@ class WarehouseDatabase {
     }
 
     // 2. Auto-update Inventory Stock & Transactions if selected
+    // Bahan yang satuannya tidak bisa dikonversi ke satuan stok (mis. Pcs ke Kg) tidak ditambahkan,
+    // supaya stok tidak tercampur; petugas diminta menyesuaikan lewat koreksi stok.
+    const unconvertedItems: string[] = [];
     if (metadata.autoUpdateStock !== false) {
-      weighedItems.forEach(itemInput => {
+      weighedItems.forEach((itemInput, idx) => {
         if (itemInput.actualQty <= 0) return;
 
         let targetItem = this.items.find(
@@ -4024,7 +4040,7 @@ class WarehouseDatabase {
 
         let itemToUpdate: ItemMaster;
         if (!targetItem) {
-          const newSku = `ITM-${Date.now().toString().slice(-5)}-${Math.floor(Math.random() * 100)}`;
+          const newSku = receivingLines[idx].itemId;
           itemToUpdate = {
             id: newSku,
             name: itemInput.name,
@@ -4045,27 +4061,37 @@ class WarehouseDatabase {
           itemToUpdate = targetItem;
         }
 
-        const newStock = Math.round((itemToUpdate.currentStock + itemInput.actualQty) * 100) / 100;
+        const stockQty = convertQty(itemInput.actualQty, itemInput.unit, itemToUpdate.baseUnit);
+        if (stockQty === null) {
+          unconvertedItems.push(`${itemInput.name} (${itemInput.unit} → ${itemToUpdate.baseUnit})`);
+          return;
+        }
+        const convertedNote =
+          unitKey(itemInput.unit) !== unitKey(itemToUpdate.baseUnit)
+            ? ` Diterima ${itemInput.actualQty} ${itemInput.unit} = ${stockQty} ${itemToUpdate.baseUnit}.`
+            : '';
+
+        const newStock = Math.round((itemToUpdate.currentStock + stockQty) * 1000) / 1000;
         itemToUpdate.currentStock = newStock;
         itemToUpdate.updatedAt = nowIso;
         itemToUpdate.lastMovementDate = todayStr;
 
         const tx: InventoryTransaction = {
           id: `TX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`,
-          timestamp: `${nowIso.slice(0, 10)} ${arrivalTime}`,
+          timestamp: `${todayStr} ${arrivalTime}`,
           itemId: itemToUpdate.id,
           itemName: itemToUpdate.name,
           itemType: itemToUpdate.itemType,
           category: itemToUpdate.category,
           location: itemToUpdate.location,
-          quantity: itemInput.actualQty,
+          quantity: stockQty,
           unit: itemToUpdate.baseUnit,
           transactionType: 'RECEIVING',
           referenceDocument: po.poNumber,
           userId: user.id,
           userName: user.name,
           userRole: user.role,
-          notes: `Penerimaan resmi PO ${po.poNumber} (${po.supplierName}). ${itemInput.conditionNote || ''}`.trim(),
+          notes: `Penerimaan resmi PO ${po.poNumber} (${po.supplierName}).${convertedNote} ${itemInput.conditionNote || ''}`.trim(),
           balanceAfter: newStock,
         };
         this.transactions.unshift(tx);
@@ -4112,8 +4138,10 @@ class WarehouseDatabase {
     }
 
     // 4. Update the Purchase Order itself: mark as SELESAI
-    const updatedPoItems: PurchaseOrderItem[] = weighedItems.map(w => ({
+    const updatedPoItems: PurchaseOrderItem[] = weighedItems.map((w, idx) => ({
+      ...(po.items.find(orig => orig.id === w.poiId) || {}),
       id: w.poiId,
+      itemId: w.itemId || receivingLines[idx].itemId,
       name: w.name,
       category: w.category,
       quantity: w.actualQty,
@@ -4185,12 +4213,16 @@ class WarehouseDatabase {
       'PO_RECEIVED_COMPLETED',
       'RECEIVING',
       po.id,
-      `Penerimaan & penimbangan fisik PO ${po.poNumber} dari ${po.supplierName}. Total Rp ${newGrandTotal.toLocaleString('id-ID')}, ${weighedItems.length} bahan diterima & stok otomatis diupdate.`
+      `Penerimaan & penimbangan fisik PO ${po.poNumber} dari ${po.supplierName}. Total Rp ${newGrandTotal.toLocaleString('id-ID')}, ${weighedItems.filter(w => w.actualQty > 0).length} dari ${weighedItems.length} bahan diterima.`
     );
 
     return {
       success: true,
-      message: `Penerimaan PO ${po.poNumber} berhasil diselesaikan. Stok gudang dan laporan pengeluaran telah diperbarui!`,
+      message:
+        unconvertedItems.length > 0
+          ? `Penerimaan PO ${po.poNumber} tersimpan, tetapi stok bahan berikut belum ditambah karena satuannya berbeda dengan satuan stok: ${unconvertedItems.join(', ')}. Sesuaikan lewat koreksi stok.`
+          : `Penerimaan PO ${po.poNumber} berhasil diselesaikan. Stok gudang dan laporan pengeluaran telah diperbarui!`,
+      unconvertedItems,
       po: updatedPo,
       receivingId,
     };

@@ -3,6 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { DailyFlowRecord } from '../types/warehouse';
 import { OperationalIssuePanel } from './OperationalIssuePanel';
+import { ScanButton } from './common/QrScannerDialog';
+import { ScanTarget } from '../utils/scanCode';
 import { localDateIso } from '../utils/localDate';
 import { CheckCircle2, AlertTriangle, Search, X } from 'lucide-react';
 
@@ -52,6 +54,26 @@ export const DailyFlowModule: React.FC = () => {
   const [scope, setScope] = useState<Scope>('ALL');
   // Bahan dapur: pemakaian bahan masak harian. Operasional: tisu, sabun, ATK, gas, kemasan.
   const [section, setSection] = useState<'DAPUR' | 'OPERASIONAL'>('DAPUR');
+  const [scanNote, setScanNote] = useState('');
+
+  // Pindai label di modal: hapus filter lalu fokuskan isian bahan yang dipindai.
+  const handleModalScan = ({ code }: ScanTarget) => {
+    const row = rows.find(r => r.itemId.toUpperCase() === code.toUpperCase());
+    if (!row) {
+      const other = warehouseDb.getItems().find(i => i.id.toUpperCase() === code.toUpperCase());
+      setScanNote(other ? `${other.name} bukan bahan dapur. Catat di tab Operasional.` : `Kode ${code} tidak ada di daftar bahan.`);
+      return;
+    }
+    setScanNote('');
+    setScope('ALL');
+    setQuery('');
+    setTimeout(() => {
+      const el = document.getElementById(`use-${row.itemId}`) as HTMLInputElement | null;
+      el?.scrollIntoView({ block: 'center' });
+      el?.focus();
+      el?.select();
+    }, 60);
+  };
   const [query, setQuery] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -444,7 +466,9 @@ export const DailyFlowModule: React.FC = () => {
                 <p className="text-[11px] text-slate-600 mt-0.5">
                   Isi total yang dipakai hari ini per bahan. Mengubah angka yang sudah tercatat akan menambah atau mengoreksi pemakaian.
                 </p>
+                {scanNote && <p role="alert" className="mt-1.5 text-[11px] font-medium text-amber-900">{scanNote}</p>}
               </div>
+              <ScanButton onResult={handleModalScan} hint="Arahkan ke QR label atau tag bahan." className="shrink-0" />
               <button
                 type="button"
                 onClick={closeModal}

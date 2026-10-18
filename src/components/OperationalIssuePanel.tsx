@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { localDateIso } from '../utils/localDate';
 import { SearchPicker } from './common/SearchPicker';
+import { ScanButton } from './common/QrScannerDialog';
+import { ScanTarget } from '../utils/scanCode';
 
 const INPUT_CLS =
   'w-full px-2.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600';
@@ -66,6 +68,19 @@ export const OperationalIssuePanel: React.FC = () => {
   const lowStock = items.filter(i => i.currentStock <= i.minimumStock);
   const canRecord = can('RECORD_CONSUMPTION');
 
+  const handleScan = ({ code }: ScanTarget) => {
+    setError('');
+    setFeedback('');
+    const found = items.find(i => i.id.toUpperCase() === code.toUpperCase());
+    if (found) return setItemId(found.id);
+    const other = warehouseDb.getItems().find(i => i.id.toUpperCase() === code.toUpperCase());
+    setError(
+      other
+        ? `${other.name} adalah bahan makanan. Catat di tab Bahan dapur.`
+        : `Kode ${code} bukan barang operasional di Master Barang.`
+    );
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -117,6 +132,8 @@ export const OperationalIssuePanel: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 text-xs">
             <div className="sm:col-span-5">
               <label htmlFor="op-item" className={LABEL_CLS}>Barang</label>
+              <div className="flex gap-2">
+              <div className="flex-1 min-w-0">
               <SearchPicker
                 id="op-item"
                 value={itemId}
@@ -126,6 +143,9 @@ export const OperationalIssuePanel: React.FC = () => {
                 searchPlaceholder="Cari tisu, sabun, HVS..."
                 noun="barang"
               />
+              </div>
+              <ScanButton onResult={handleScan} hint="Arahkan ke QR label barang." />
+              </div>
             </div>
             <div className="sm:col-span-2">
               <label htmlFor="op-qty" className={LABEL_CLS}>Jumlah{selected ? ` (${selected.baseUnit})` : ''}</label>

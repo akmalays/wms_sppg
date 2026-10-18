@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { ScanButton } from './common/QrScannerDialog';
+import { ScanTarget } from '../utils/scanCode';
 import { Select } from './common/Select';
 import { useConfirm } from '../context/ConfirmContext';
 import { KopText } from './common/KopText';
@@ -51,6 +53,7 @@ import { exportToExcel, downloadExcelTemplate } from '../lib/excelExport';
 import { SppgLogo } from './SppgLogo';
 import { useToast } from '../context/ToastContext';
 import { localDateIso } from '../utils/localDate';
+import { suggestDryLocation } from '../utils/warehouseRacks';
 
 import {
   STANDARD_CATEGORIES,
@@ -189,6 +192,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
   const [opnameFormNotes, setOpnameFormNotes] = useState('');
   const [opnameStatusFilter, setOpnameStatusFilter] = useState<'ALL' | 'PENDING_APPROVAL' | 'APPROVED'>('ALL');
   const [opnameSearchQuery, setOpnameSearchQuery] = useState('');
+  const [opnameScanNote, setOpnameScanNote] = useState('');
   const [countingItems, setCountingItems] = useState<
     { itemId: string; name: string; category: SppgCategory; unit: string; systemStock: number; physicalCount: number | null; variance: number; reason: string }[]
   >([]);
@@ -748,6 +752,27 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
     initOpnameItems(cat);
   };
 
+  // Pindai label saat menghitung: gulir ke barang itu dan fokuskan isian jumlah fisiknya (yang terlihat: tabel atau kartu HP).
+  const handleOpnameScan = ({ code }: ScanTarget) => {
+    const row = countingItems.find(c => c.itemId.toUpperCase() === code.toUpperCase());
+    if (!row) {
+      const other = warehouseDb.getItems().find(i => i.id.toUpperCase() === code.toUpperCase());
+      setOpnameScanNote(
+        other
+          ? `${other.name} tidak ada di daftar hitung ini (kategori ${other.category}). Ganti filter kategori opname bila perlu.`
+          : `Kode ${code} tidak ditemukan di Master Barang.`
+      );
+      return;
+    }
+    setOpnameScanNote('');
+    setTimeout(() => {
+      const el = [...document.querySelectorAll<HTMLInputElement>(`[data-opname-item="${row.itemId}"]`)].find(x => x.offsetParent !== null);
+      el?.scrollIntoView({ block: 'center' });
+      el?.focus();
+      el?.select();
+    }, 60);
+  };
+
   const handlePhysicalCountChange = (index: number, val: string) => {
     const count = val.trim() === '' ? null : Math.max(0, parseFloat(val) || 0);
     setCountingItems(prev => {
@@ -1036,7 +1061,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
         minimumStock: minStockVal,
         reorderPoint: minStockVal * 1.5,
         currentStock: editingItem ? editingItem.currentStock : initialStockVal,
-        location: formLocation.trim() || WAREHOUSE_SKU_DEFINITIONS[formWarehouse]?.defaultLocation || 'Gudang Utama',
+        // Barang kering baru yang lokasinya masih default diarahkan ke rak sesuai bentuknya
+        location:
+          (!editingItem &&
+          formWarehouse === 'GUDANG_KERING' &&
+          (!formLocation.trim() || formLocation.trim() === WAREHOUSE_SKU_DEFINITIONS.GUDANG_KERING.defaultLocation)
+            ? suggestDryLocation(formName)
+            : undefined) ||
+          formLocation.trim() ||
+          WAREHOUSE_SKU_DEFINITIONS[formWarehouse]?.defaultLocation ||
+          'Gudang Utama',
         expiryTrackingEnabled: finalCategory === 'Bahan Basah' || finalCategory === 'Bahan Kering',
         isActive: formIsActive,
         notes: formNotes.trim() || undefined,
@@ -2343,10 +2377,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                   <div className="font-semibold text-slate-800">
                     Daftar Barang ({countingItems.length} item • {opnameCategoryFilter})
                   </div>
-                  <div className="text-slate-500 text-[11px]">
-                    Tekan <strong>Sesuai</strong> jika jumlah fisik sama dengan sistem
+                  <div className="flex items-center gap-3">
+                    <div className="text-slate-500 text-[11px]">
+                      Tekan <strong>Sesuai</strong> jika jumlah fisik sama dengan sistem
+                    </div>
+                    <ScanButton onResult={handleOpnameScan} hint="Pindai label barang untuk langsung mengisi jumlah fisiknya." />
                   </div>
                 </div>
+                {opnameScanNote && (
+                  <p role="alert" className="px-4 py-2 text-[11px] font-medium text-amber-900 bg-amber-50 border-b border-amber-200">{opnameScanNote}</p>
+                )}
 
                 <div className="hidden md:block overflow-x-auto max-h-[50vh]">
                   <table className="w-full text-left text-xs">
@@ -2396,6 +2436,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                                     min="0"
                                     value={item.physicalCount ?? ''}
                                     placeholder="?"
+                                    data-opname-item={item.itemId}
                                     aria-label={`Jumlah fisik ${item.name}`}
                                     onChange={e => handlePhysicalCountChange(idx, e.target.value)}
                                     className="w-16 h-7 text-xs text-center font-mono font-semibold text-slate-900 border-x border-slate-200 focus:outline-none focus:bg-emerald-50/50 placeholder:text-slate-500"
@@ -2504,6 +2545,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                             step="any"
                             value={item.physicalCount ?? ''}
                             placeholder="?"
+                            data-opname-item={item.itemId}
                             aria-label={`Jumlah fisik ${item.name}`}
                             onChange={e => handlePhysicalCountChange(idx, e.target.value)}
                             className="w-20 h-11 text-sm text-center font-mono font-semibold text-slate-900 border-x border-slate-300 focus:outline-none focus:bg-emerald-50 placeholder:text-slate-500"

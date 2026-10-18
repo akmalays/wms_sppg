@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { buildScanUrl } from '../utils/scanCode';
+import { BASE_RACKS_CONFIG, RackConfig, matchItemToRackId, dynamicRackId } from '../utils/warehouseRacks';
 import { SearchPicker } from './common/SearchPicker';
 import { Select } from './common/Select';
 import { KopText } from './common/KopText';
@@ -53,6 +55,8 @@ export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN
 export interface ItemTagData {
   uniqueKey: string;
   id: string;
+  /** Nomor penerimaan (GR) bila tag dibuat dari dokumen penerimaan; ikut di tautan QR. */
+  receivingId?: string;
   batchLotNo: string;
   name: string;
   category: string;
@@ -74,7 +78,8 @@ export interface ItemTagData {
   totalCopies: number;
 }
 
-// QR asli (bisa dipindai) berisi kode barang/rak, digambar sebagai SVG agar tajam saat dicetak.
+// QR asli (bisa dipindai) berisi tautan /s/<kode> ke halaman hasil pindai (tag mini: kode saja agar
+// tidak terlalu padat). Digambar sebagai SVG agar tajam saat dicetak.
 const QrSvg: React.FC<{ value: string; className?: string; color?: string }> = ({ value, className, color = '#0f172a' }) => {
   const qr = useMemo(() => {
     try {
@@ -239,194 +244,11 @@ export interface RackItemDetail {
   handlingNote?: string;
 }
 
-export interface WarehouseRack {
-  id: string;
-  name: string;
-  warehouseType: 'GUDANG_KERING' | 'GUDANG_BASAH';
-  warehouseName: string;
-  zone: string;
-  temperatureGuide: string;
-  humidityGuide?: string;
-  storageRule: string;
-  rotationMethod: 'FIFO' | 'FEFO';
-  capacityMax: string;
-  picName: string;
-  customNote?: string;
+export interface WarehouseRack extends RackConfig {
   isCustom?: boolean;
   items: RackItemDetail[];
 }
 
-const BASE_RACKS_CONFIG: Omit<WarehouseRack, 'items'>[] = [
-  // --- GUDANG KERING (DRY STORAGE) ---
-  {
-    id: 'RAK-KRG-A1',
-    name: 'Rak A1 - Sembako Beras & Karung Pangan',
-    warehouseType: 'GUDANG_KERING',
-    warehouseName: 'Gudang Kering (Dry Storage)',
-    zone: 'Zona Sembako Sektor A (Beban Berat)',
-    temperatureGuide: '20°C - 25°C (Suhu Ruang Terkendali)',
-    humidityGuide: 'Maks. 60% RH (Hindari Lembap)',
-    storageRule: 'Wajib di atas palet plastik/kayu min. 15 cm dari lantai & berjarak 5 cm dari dinding. Bebas kutu beras & hama.',
-    rotationMethod: 'FIFO',
-    capacityMax: '1.500 Kg (Kapasitas Maks. 30 Karung 25-50 Kg)',
-    picName: '',
-    customNote: 'Periksa segel karung & catat nomor batch saat penumpukan.',
-  },
-  {
-    id: 'PLT-KRG-T1',
-    name: 'Gudang Kering - Palet Tengah (Sembako Sak & Karung Curah)',
-    warehouseType: 'GUDANG_KERING',
-    warehouseName: 'Gudang Kering (Dry Storage)',
-    zone: 'Zona Tengah Gudang Kering - Palet Lantai (Floor Bulk Storage Bay)',
-    temperatureGuide: '20°C - 25°C (Suhu Ruang Kering Terkontrol)',
-    humidityGuide: 'Maks. 60% RH (Sirkulasi Terbuka & Bebas Lembap)',
-    storageRule: 'Wajib beralaskan palet plastik/kayu fumigasi min. 15 cm di atas lantai. Susun bersilangan (interlocking) maks. 8 tumpukan sak demi kestabilan. Beri lorong sirkulasi udara min. 50 cm antar tumpukan.',
-    rotationMethod: 'FIFO',
-    capacityMax: '2.500 Kg (Kapasitas Maks. 50-60 Sak / Karung Pangan 25-50 Kg)',
-    picName: 'Petugas Logistik Gudang Kering',
-    customNote: 'Khusus muatan komoditas berat: beras karung 25-50kg, gula sak 50kg, tepung sak, dan buffer stock pangan curah volume besar.',
-  },
-  {
-    id: 'RAK-KRG-A2',
-    name: 'Rak A2 - Minyak, Lemak & Cairan Pangan',
-    warehouseType: 'GUDANG_KERING',
-    warehouseName: 'Gudang Kering (Dry Storage)',
-    zone: 'Zona Cairan & Jerigen Sektor A',
-    temperatureGuide: '20°C - 25°C (Terhindar Cahaya Langsung)',
-    humidityGuide: 'Sirkulasi Udara Aktif',
-    storageRule: 'Letakkan jerigen di ambalan paling bawah untuk stabilitas. Pastikan tutup tersegel rapat agar tidak merembes.',
-    rotationMethod: 'FIFO',
-    capacityMax: '500 Liter (Maks. 100 Jerigen 5L)',
-    picName: '',
-    customNote: 'Sedia wadah penampung tetesan jika kran jerigen digunakan.',
-  },
-  {
-    id: 'RAK-KRG-A3',
-    name: 'Rak A3 - Gula, Pemanis & Tepung Olahan',
-    warehouseType: 'GUDANG_KERING',
-    warehouseName: 'Gudang Kering (Dry Storage)',
-    zone: 'Zona Bahan Bubuk & Pemanis Sektor A',
-    temperatureGuide: '20°C - 25°C (Kering & Bebas Semut)',
-    humidityGuide: 'Maks. 55% RH (Sangat Rentan Gumpal)',
-    storageRule: 'Gunakan kontainer tertutup food-grade setelah kemasan dibuka. Pasang kapur/anti semut di sekitar kaki rak.',
-    rotationMethod: 'FEFO',
-    capacityMax: '800 Kg (Ambalan Bertingkat SUS 304)',
-    picName: '',
-    customNote: 'Jaga kebersihan ambalan dari ceceran butir gula atau tepung.',
-  },
-  {
-    id: 'RAK-KRG-A4',
-    name: 'Rak A4 - Garam, Bumbu Kering & Rempah',
-    warehouseType: 'GUDANG_KERING',
-    warehouseName: 'Gudang Kering (Dry Storage)',
-    zone: 'Zona Bumbu & Rempah Sektor A',
-    temperatureGuide: '20°C - 25°C (Suhu Ruang Kering)',
-    humidityGuide: 'Kedap Udara & Tidak Lembap',
-    storageRule: 'Wadah kedap udara agar aroma rempah terjaga dan yodium garam tidak berkurang akibat kelembapan.',
-    rotationMethod: 'FIFO',
-    capacityMax: '400 Kg (Rak Bin Tertutup)',
-    picName: '',
-    customNote: 'Tutup rapat toples/bin bumbu setelah penimbangan porsi masak.',
-  },
-  {
-    id: 'RAK-KRG-N1',
-    name: 'Rak N1 - Non-Food: Sabun & Sanitasi Dapur',
-    warehouseType: 'GUDANG_KERING',
-    warehouseName: 'Gudang Kering & Non-Food',
-    zone: 'Zona Kimia & Sanitasi (Terpisah Fisik)',
-    temperatureGuide: '20°C - 25°C (Berventilasi Baik)',
-    storageRule: 'STANDAR HACCP: Terpisah mutlak dari bahan makanan! Dilarang keras menyimpan bahan pangan di rak ini.',
-    rotationMethod: 'FIFO',
-    capacityMax: '40 Jerigen 5L',
-    picName: 'Staf Sanitasi & Kebersihan',
-    customNote: 'Penyimpanan khusus cairan pembersih, deterjen & disinfektan food contact.',
-  },
-  {
-    id: 'RAK-KRG-N2',
-    name: 'Rak N2 - Non-Food: Plastik, Tissue & Kemasan',
-    warehouseType: 'GUDANG_KERING',
-    warehouseName: 'Gudang Kering & Non-Food',
-    zone: 'Zona Kemasan & Packaging Dapur',
-    temperatureGuide: '20°C - 25°C (Bersih & Bebas Debu)',
-    storageRule: 'Simpan kardus/pack dalam kondisi tertutup plastik pembungkus agar higienis sebelum didistribusikan ke dapur.',
-    rotationMethod: 'FIFO',
-    capacityMax: '30 Dus Kemasan / Kontainer',
-    picName: 'Staf Logistik Non-Food',
-    customNote: 'Penyimpanan kantong sampah, sarung tangan & tissue dapur.',
-  },
-
-  // --- GUDANG BASAH & COLD STORAGE ---
-  {
-    id: 'BIN-CHL-C1',
-    name: 'Chiller C1 - Daging Ayam & Protein Unggas',
-    warehouseType: 'GUDANG_BASAH',
-    warehouseName: 'Gudang Basah & Dingin (Cold Storage)',
-    zone: 'Cold Storage Room - Chiller Protein Unggas',
-    temperatureGuide: '2°C - 4°C (Wajib Cek Termometer 2x Sehari)',
-    humidityGuide: 'Kelembaban Terkontrol Chiller',
-    storageRule: 'Wadah stainless tertutup rapat. Beri label tanggal kedatangan. Konsumsi maksimal 24 - 48 jam.',
-    rotationMethod: 'FEFO',
-    capacityMax: '300 Kg (Rak Bin Stainless Steel SUS 304)',
-    picName: '',
-    customNote: 'Pastikan pintu chiller tertutup rapat setelah pengambilan bahan.',
-  },
-  {
-    id: 'BIN-FRZ-F2',
-    name: 'Freezer F2 - Daging Beku, Ikan Laut & Olahan',
-    warehouseType: 'GUDANG_BASAH',
-    warehouseName: 'Gudang Basah & Dingin (Cold Storage)',
-    zone: 'Deep Freeze Storage Zone (-18°C)',
-    temperatureGuide: '-18°C s/d -20°C (Pembekuan Sempurna)',
-    humidityGuide: 'Cold Chain Beku Tanpa Bunga Es Berlebih',
-    storageRule: 'Jaga rantai dingin (cold chain). Dilarang membekukan ulang bahan yang sudah dicairkan (thawing).',
-    rotationMethod: 'FEFO',
-    capacityMax: '400 Kg (Deep Chest Freezer)',
-    picName: '',
-    customNote: 'Defrost berkala jika bunga es melebihi ketebalan 5 mm.',
-  },
-  {
-    id: 'RAK-BSH-V1',
-    name: 'Rak V1 - Sayuran Segar & Umbi Hijau',
-    warehouseType: 'GUDANG_BASAH',
-    warehouseName: 'Gudang Basah & Dingin (Sayur Segar)',
-    zone: 'Area Sortir Sayur & Ruang Sejuk Dapur',
-    temperatureGuide: '8°C - 12°C (Sejuk Berventilasi)',
-    humidityGuide: 'Sirkulasi Udara Aktif Keranjang Berventilasi',
-    storageRule: 'Gunakan keranjang plastik berlubang agar sayur tidak layu & membusuk. Pisahkan sayuran daun dan umbi.',
-    rotationMethod: 'FEFO',
-    capacityMax: '250 Kg (15 Keranjang Sayur)',
-    picName: 'PIC Penerimaan Bahan Segar',
-    customNote: 'Penyortiran sayur dilakukan segera setelah serah terima supplier.',
-  },
-  {
-    id: 'RAK-BSH-F1',
-    name: 'Rak B1 - Buah Segar Pencuci Mulut',
-    warehouseType: 'GUDANG_BASAH',
-    warehouseName: 'Gudang Basah & Dingin (Buah Segar)',
-    zone: 'Area Buah & Distribusi Menu Sehat',
-    temperatureGuide: '12°C - 16°C (Sejuk Kering)',
-    humidityGuide: 'Cegah Kelembaban Berlebih',
-    storageRule: 'Jangan menumpuk buah lebih dari 2 lapis untuk mencegah memar fisik. Jauhkan dari buah yang terlalu matang.',
-    rotationMethod: 'FEFO',
-    capacityMax: '200 Kg (10 Keranjang Buah)',
-    picName: 'PIC Pemorsian Buah & Distribusi',
-    customNote: 'Periksa kematangan sebelum didistribusikan ke sekolah.',
-  },
-  {
-    id: 'RAK-BSH-T1',
-    name: 'Rak T1 - Telur Ayam Ras Segar',
-    warehouseType: 'GUDANG_BASAH',
-    warehouseName: 'Gudang Basah & Dingin (Protein Harian)',
-    zone: 'Area Persiapan - Rak Khusus Telur',
-    temperatureGuide: '15°C - 20°C (Sejuk & Kering)',
-    humidityGuide: 'Bersih & Kering',
-    storageRule: 'Gunakan egg tray higienis dengan posisi bagian runcing telur di bawah. Bersihkan cangkang retak segera.',
-    rotationMethod: 'FIFO',
-    capacityMax: '150 Kg (10 Peti / Egg Tray)',
-    picName: 'PIC Persiapan Telur & Protein',
-    customNote: 'Uji apung/kualitas acak pada setiap pengiriman baru.',
-  },
-];
 
 // --- NOTA PENGELUARAN SUPPLIER / BUKTI KAS KELUAR (BKK) TYPES & HELPERS ---
 export interface SupplierExpenseLine {
@@ -934,6 +756,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             list.push({
               uniqueKey: `gr-${doc.id}-${lineIdx}-${c}`,
               id: line.itemId || `ITEM-${lineIdx + 1}`,
+              receivingId: doc.id,
               batchLotNo: line.batchNumber || (line as any).batchLotNo || `LOT-${doc.id.replace('GR-', '')}-${String(lineIdx + 1).padStart(2, '0')}`,
               name: line.itemName,
               category: matchedItem?.category || (wet ? 'Bahan Basah' : 'Bahan Kering'),
@@ -1441,92 +1264,6 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
   // Group all items dynamically into Warehouse Racks (Gudang Kering vs Gudang Basah)
   const allWarehouseRacks = useMemo<WarehouseRack[]>(() => {
-    const matchItemToRackId = (loc: string, cat: string, name: string, id: string): string => {
-      const l = (loc || '').toLowerCase();
-      const c = (cat || '').toLowerCase();
-      const n = (name || '').toLowerCase();
-      const upperId = (id || '').toUpperCase();
-
-      // Check explicit rack ID match in location
-      for (const base of BASE_RACKS_CONFIG) {
-        if (l.includes(base.id.toLowerCase())) return base.id;
-      }
-      for (const cr of customRacks) {
-        if (l.includes(cr.id.toLowerCase()) || l.includes(cr.name.toLowerCase())) return cr.id;
-      }
-
-      if (
-        l.includes('palet tengah') ||
-        l.includes('plt-krg-t1') ||
-        (l.includes('palet') && (l.includes('sak') || l.includes('tengah') || l.includes('curah')))
-      ) {
-        return 'PLT-KRG-T1';
-      }
-
-      if (l.includes('rak a1') || upperId.startsWith('ITM-KRG-001') || n.includes('beras')) return 'RAK-KRG-A1';
-      if (l.includes('rak a2') || upperId.startsWith('ITM-KRG-002') || n.includes('minyak')) return 'RAK-KRG-A2';
-      if (l.includes('rak a3') || upperId.startsWith('ITM-KRG-003') || upperId.startsWith('ITM-KRG-004') || n.includes('gula') || n.includes('tepung')) return 'RAK-KRG-A3';
-      if (l.includes('rak a4') || upperId.startsWith('ITM-KRG-005') || n.includes('garam') || c.includes('bumbu')) return 'RAK-KRG-A4';
-      if (l.includes('rak n1') || upperId.startsWith('ITM-NFD-001') || n.includes('sabun') || c.includes('cleaning')) return 'RAK-KRG-N1';
-      if (
-        l.includes('rak n2') ||
-        l.includes('rak n3') ||
-        l.includes('apd') ||
-        upperId.startsWith('ITM-NFD-') ||
-        n.includes('plastik') ||
-        n.includes('tissue') ||
-        n.includes('sarung tangan')
-      )
-        return 'RAK-KRG-N2';
-
-      if (
-        upperId.startsWith('ITM-CHL-') ||
-        l.includes('bin c1') ||
-        l.includes('chiller') ||
-        n.includes('ayam') ||
-        (c.includes('protein') && !n.includes('ikan') && !n.includes('telur'))
-      )
-        return 'BIN-CHL-C1';
-      if (
-        upperId.startsWith('ITM-FRZ-') ||
-        l.includes('bin f2') ||
-        l.includes('freezer') ||
-        n.includes('ikan') ||
-        n.includes('daging sapi')
-      )
-        return 'BIN-FRZ-F2';
-      if (
-        (upperId.startsWith('ITM-BSH-') && (c.includes('sayur') || n.includes('sayur'))) ||
-        l.includes('sortir sayur') ||
-        c.includes('sayur') ||
-        n.includes('bayam') ||
-        n.includes('wortel')
-      )
-        return 'RAK-BSH-V1';
-      if (
-        (upperId.startsWith('ITM-BSH-') && (c.includes('buah') || n.includes('buah'))) ||
-        l.includes('buah') ||
-        c.includes('buah') ||
-        n.includes('pisang')
-      )
-        return 'RAK-BSH-F1';
-      if (
-        (upperId.startsWith('ITM-BSH-') && n.includes('telur')) ||
-        l.includes('telur') ||
-        n.includes('telur')
-      )
-        return 'RAK-BSH-T1';
-
-      if (upperId.startsWith('ITM-KRG-')) {
-        return 'RAK-KRG-A1';
-      }
-      if (upperId.startsWith('ITM-BSH-')) {
-        return 'RAK-BSH-V1';
-      }
-
-      return '';
-    };
-
     const itemsByRackId: Record<string, RackItemDetail[]> = {};
     BASE_RACKS_CONFIG.forEach(r => {
       itemsByRackId[r.id] = [];
@@ -1535,7 +1272,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     const dynamicRacks: Record<string, WarehouseRack> = {};
 
     items.forEach(itm => {
-      const targetRackId = matchItemToRackId(itm.location, itm.category, itm.name, itm.id);
+      const targetRackId = matchItemToRackId(itm.location, itm.category, itm.name, itm.id, customRacks);
       const detail: RackItemDetail = {
         id: itm.id,
         name: itm.name,
@@ -1552,7 +1289,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
         itemsByRackId[targetRackId].push(detail);
       } else {
         const locClean = itm.location || 'Area Gudang Tambahan';
-        const dynId = `RAK-DYN-${locClean.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase().slice(0, 14)}`;
+        const dynId = dynamicRackId(locClean);
         const isWet = /chiller|freezer|basah|dingin|segar|sayur|buah|ikan|daging|telur|protein/i.test(
           locClean + ' ' + itm.category + ' ' + itm.name
         );
@@ -3087,7 +2824,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                             isMini ? 'w-12 h-12' : isCompact ? 'w-14 h-14' : 'w-16 h-16'
                           }`}
                         >
-                          <QrSvg value={tag.id} className={isMini ? 'w-9 h-9' : isCompact ? 'w-10 h-10' : 'w-12 h-12'} />
+                          <QrSvg value={isMini ? tag.id : buildScanUrl(tag.id, tag.receivingId)} className={isMini ? 'w-9 h-9' : isCompact ? 'w-10 h-10' : 'w-12 h-12'} />
                           <span className="text-[6.5px] font-mono font-bold text-slate-800 truncate w-full mt-0.2">
                             {tag.id}
                           </span>
@@ -3277,7 +3014,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                             labelGridCols === '3' ? 'w-16 h-16' : 'w-20 h-20'
                           }`}
                         >
-                          <QrSvg value={label.id} className={labelGridCols === '3' ? 'w-11 h-11' : 'w-14 h-14'} />
+                          <QrSvg value={buildScanUrl(label.id)} className={labelGridCols === '3' ? 'w-11 h-11' : 'w-14 h-14'} />
                           <span className="text-[7px] font-mono font-bold text-slate-800 truncate w-full mt-0.5">
                             {label.id}
                           </span>
@@ -3540,7 +3277,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                             printColorAdjust: 'exact',
                           }}
                         >
-                          <QrSvg value={rack.id} className="w-11 h-11 print:w-10 print:h-10" color={isDry ? '#78350f' : '#075985'} />
+                          <QrSvg value={buildScanUrl(rack.id)} className="w-11 h-11 print:w-10 print:h-10" color={isDry ? '#78350f' : '#075985'} />
                           <span
                             className={`text-[8px] print:text-[7px] font-mono font-bold truncate w-full mt-0.5 ${
                               isDry ? 'text-amber-900' : 'text-sky-900'
