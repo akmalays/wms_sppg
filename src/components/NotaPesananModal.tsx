@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Printer,
   X,
@@ -19,7 +19,8 @@ import {
 } from '../types/warehouse';
 import logoSppgImg from '../assets/logo sppg.png';
 import ttdRizkyImg from '../assets/ttd rizky.png';
-import { COMMON_GOODS_CATALOG } from './ReceivingModule';
+import { buildItemReference } from '../utils/itemReference';
+import { normalizeToStandardCategory } from '../utils/categoryStandards';
 import { syncPoNumberWithDate } from '../utils/poNumberGenerator';
 import { useToast } from '../context/ToastContext';
 import { warehouseDb } from '../db/storage';
@@ -183,6 +184,10 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
     }
   };
 
+  // Nama barang, satuan, dan harga acuan dari Master Barang dan riwayat belanja (bukan katalog di kode).
+  const masterItems = useMemo(() => warehouseDb.getItems().filter(i => i.isActive), []);
+  const getItemReference = useMemo(() => buildItemReference(masterItems, warehouseDb.getNonFoodExpenses()), [masterItems]);
+
   const handleItemChange = (index: number, field: keyof PurchaseOrderItem, value: any) => {
     const updatedItems = [...formData.items];
     const item = { ...updatedItems[index], [field]: value };
@@ -194,15 +199,13 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
     }
 
     if (field === 'name') {
-      const matched = COMMON_GOODS_CATALOG.find(
-        c => c.name.toLowerCase() === String(value).toLowerCase()
-      );
-      if (matched) {
-        item.category = matched.category;
-        item.unit = matched.unit;
-        if (!item.unitPrice || item.unitPrice === 0) {
-          item.unitPrice = matched.price;
-          item.subtotal = (item.quantity || 1) * matched.price;
+      const ref = getItemReference(String(value));
+      if (ref) {
+        item.category = normalizeToStandardCategory(ref.item?.category, String(value));
+        if (ref.unit) item.unit = ref.unit;
+        if ((!item.unitPrice || item.unitPrice === 0) && ref.price) {
+          item.unitPrice = ref.price;
+          item.subtotal = (item.quantity || 1) * ref.price;
         }
       }
     }
@@ -1019,9 +1022,9 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
 
       {/* Datalist for autocomplete */}
       <datalist id="nota-item-catalog">
-        {COMMON_GOODS_CATALOG.map((c, i) => (
-          <option key={i} value={c.name}>
-            {c.category} ({c.unit}) - Rp {c.price.toLocaleString('id-ID')}
+        {masterItems.map(it => (
+          <option key={it.id} value={it.name}>
+            {it.category} ({it.baseUnit})
           </option>
         ))}
       </datalist>

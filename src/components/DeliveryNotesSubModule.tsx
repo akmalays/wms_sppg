@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { Select } from './common/Select';
 import {
   Printer,
   ChevronLeft,
@@ -392,19 +393,17 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
               <ChevronRight className="w-4 h-4" />
             </button>
             {distinctOrderDates.length > 0 && (
-              <select
+              <Select className="w-auto max-w-[260px]"
                 aria-label="Lompat ke tanggal bermenu"
                 value={distinctOrderDates.includes(selectedDate) ? selectedDate : ''}
-                onChange={e => e.target.value && changeDate(e.target.value)}
-                className={`${FIELD_INPUT} w-auto max-w-[260px]`}
-              >
+                onChange={e => e.target.value && changeDate(e.target.value)}>
                 <option value="">Lompat ke tanggal bermenu…</option>
                 {distinctOrderDates.map(d => (
                   <option key={d} value={d}>
                     {formatShortDate(d)} · {orders.find(o => o.date === d)?.menuTitle}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
             {dayOrders.length > 1 && (
               <div role="tablist" aria-label="Sesi makan" className="inline-flex gap-1 p-1 bg-slate-100 rounded-lg text-xs">
@@ -475,17 +474,15 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
         )}
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <select
+          <Select className="w-auto"
             aria-label="Kategori sekolah"
             value={selectedCategory}
-            onChange={e => setSelectedCategory(e.target.value)}
-            className={`${FIELD_INPUT} w-auto`}
-          >
+            onChange={e => setSelectedCategory(e.target.value)}>
             <option value="ALL">Semua kategori ({schoolAllocationsForDate.length})</option>
             {Array.from(new Set(schoolAllocationsForDate.map(x => x.category))).map(c => (
               <option key={c} value={c}>{c}</option>
             ))}
-          </select>
+          </Select>
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
             <input

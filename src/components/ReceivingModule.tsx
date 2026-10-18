@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { Select } from './common/Select';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import {
@@ -54,8 +55,13 @@ import {
   Scale,
   PackageSearch,
   PackageCheck,
+  PackagePlus,
 } from 'lucide-react';
 import { SignaturePad } from './SignaturePad';
+import { SearchPicker, PickerOption } from './common/SearchPicker';
+import { FormDialog, FIELD_INPUT, FIELD_LABEL } from './common/FormDialog';
+import { generateAutoSku, WarehouseSkuType, WAREHOUSE_SKU_DEFINITIONS } from '../utils/skuGenerator';
+import { buildItemReference, describePriceSource } from '../utils/itemReference';
 import { ReceivingDetailModal } from './ReceivingDetailModal';
 import { PhotoUploadCompressor } from './PhotoUploadCompressor';
 import { exportToExcel } from '../lib/excelExport';
@@ -86,84 +92,6 @@ interface ReceivingModuleProps {
   onNavigate?: (tab: string) => void;
 }
 
-// ----------------------------------------------------
-// Master Catalog for Quick Autocomplete & Auto-Pricing
-// ----------------------------------------------------
-export const COMMON_GOODS_CATALOG = [
-  // Bahan Basah
-  { name: 'Daging Ayam Broiler Karkas Bersih', category: 'Bahan Basah', unit: 'Kg', price: 38000 },
-  { name: 'Daging Sapi Segar Rendang', category: 'Bahan Basah', unit: 'Kg', price: 120000 },
-  { name: 'Telur Ayam Ras Segar', category: 'Bahan Basah', unit: 'Kg', price: 28000 },
-  { name: 'Ikan Kembung Segar', category: 'Bahan Basah', unit: 'Kg', price: 35000 },
-  { name: 'Ikan Lele Segar', category: 'Bahan Basah', unit: 'Kg', price: 26000 },
-  { name: 'Sayur Bayam Hijau Segar', category: 'Bahan Basah', unit: 'Ikat', price: 3500 },
-  { name: 'Sayur Kangkung Segar', category: 'Bahan Basah', unit: 'Ikat', price: 3000 },
-  { name: 'Wortel Segar Brastagi', category: 'Bahan Basah', unit: 'Kg', price: 12000 },
-  { name: 'Labu Siam Segar', category: 'Bahan Basah', unit: 'Kg', price: 9000 },
-  { name: 'Kacang Panjang Segar', category: 'Bahan Basah', unit: 'Kg', price: 14000 },
-  { name: 'Buncis Segar', category: 'Bahan Basah', unit: 'Kg', price: 16000 },
-  { name: 'Tahu Putih Segar', category: 'Bahan Basah', unit: 'Pcs', price: 1000 },
-  { name: 'Tempe Segar Kedelai', category: 'Bahan Basah', unit: 'Pcs', price: 4000 },
-  { name: 'Buah Pisang Cavendish / Ambon', category: 'Bahan Basah', unit: 'Kg', price: 16000 },
-  { name: 'Buah Semangka Merah Non Biji', category: 'Bahan Basah', unit: 'Kg', price: 8500 },
-  { name: 'Buah Pepaya California', category: 'Bahan Basah', unit: 'Kg', price: 7500 },
-  { name: 'Buah Melon Segar', category: 'Bahan Basah', unit: 'Kg', price: 14000 },
-
-  // Bahan Kering
-  { name: 'Beras Ramos Premium SPPG', category: 'Bahan Kering', unit: 'Kg', price: 14500 },
-  { name: 'Minyak Goreng Sawit 2L', category: 'Bahan Kering', unit: 'Pouch', price: 36000 },
-  { name: 'Gula Pasir Kristal Putih', category: 'Bahan Kering', unit: 'Kg', price: 17500 },
-  { name: 'Tepung Terigu Segitiga Biru', category: 'Bahan Kering', unit: 'Kg', price: 12000 },
-  { name: 'Tepung Tapioka / Kanji', category: 'Bahan Kering', unit: 'Kg', price: 11000 },
-  { name: 'Garam Dapur Beryodium', category: 'Bahan Kering', unit: 'Bungkus', price: 4000 },
-  { name: 'Kecap Manis Bango 520ml', category: 'Bahan Kering', unit: 'Pouch', price: 24000 },
-  { name: 'Saus Tomat / Sambal 1kg', category: 'Bahan Kering', unit: 'Pouch', price: 18000 },
-  { name: 'Bawang Merah Brebes', category: 'Bahan Kering', unit: 'Kg', price: 38000 },
-  { name: 'Bawang Putih Kating', category: 'Bahan Kering', unit: 'Kg', price: 36000 },
-  { name: 'Bumbu Racik Gule / Opor', category: 'Bahan Kering', unit: 'Sachet', price: 3000 },
-  { name: 'Merica Bubuk Ladaku', category: 'Bahan Kering', unit: 'Sachet', price: 1500 },
-
-  // ATK & Administrasi
-  { name: 'Kertas HVS A4 70/80gr (PaperOne)', category: 'ATK & Administrasi', unit: 'Rim', price: 48000 },
-  { name: 'Kertas HVS F4 70gr', category: 'ATK & Administrasi', unit: 'Rim', price: 54000 },
-  { name: 'Buku Catatan Ekspedisi SPPG', category: 'ATK & Administrasi', unit: 'Buku', price: 18000 },
-  { name: 'Pulpen Gel Hitam / Biru', category: 'ATK & Administrasi', unit: 'Pack', price: 25000 },
-  { name: 'Spidol Boardmarker Whiteboard', category: 'ATK & Administrasi', unit: 'Pcs', price: 9000 },
-  { name: 'Map Ordner Bantex F4', category: 'ATK & Administrasi', unit: 'Pcs', price: 26000 },
-  { name: 'Map Snelhecter Plastik', category: 'ATK & Administrasi', unit: 'Lusin', price: 24000 },
-  { name: 'Tinta Printer Epson Original', category: 'ATK & Administrasi', unit: 'Botol', price: 85000 },
-  { name: 'Isi Staples No. 10 Max', category: 'ATK & Administrasi', unit: 'Kotak', price: 4000 },
-  { name: 'Lakban Bening / Coklat 2 Inch', category: 'ATK & Administrasi', unit: 'Roll', price: 14000 },
-
-  // Alat Kebersihan & Sanitasi
-  { name: 'Sabun Cuci Piring Sunlight Jeruk Nipis 750ml', category: 'Alat Kebersihan', unit: 'Pouch', price: 18500 },
-  { name: 'Karbol Wangi Pembersih Lantai Wipol 750ml', category: 'Alat Kebersihan', unit: 'Pouch', price: 16000 },
-  { name: 'Sabun Cuci Tangan Handsoap 4L Jerigen', category: 'Alat Kebersihan', unit: 'Jerigen', price: 55000 },
-  { name: 'Spons Busa Cuci Piring Scotch-Brite', category: 'Alat Kebersihan', unit: 'Pack', price: 14000 },
-  { name: 'Kain Lap Microfiber Halus', category: 'Alat Kebersihan', unit: 'Pcs', price: 8000 },
-  { name: 'Kain Lap Kanebo Serap Air', category: 'Alat Kebersihan', unit: 'Pcs', price: 15000 },
-  { name: 'Plastik Sampah Hitam Trash Bag 80x100', category: 'Alat Kebersihan', unit: 'Pack', price: 28000 },
-  { name: 'Sapu Lantai Nilon & Pengki Cikrak', category: 'Alat Kebersihan', unit: 'Set', price: 35000 },
-  { name: 'Alat Pel Lantai Putar Mop', category: 'Alat Kebersihan', unit: 'Set', price: 85000 },
-  { name: 'Kapur Barus Kamper Toilet', category: 'Alat Kebersihan', unit: 'Pack', price: 16000 },
-
-  // Perlengkapan Dapur & APD
-  { name: 'Plastik Kresek Putih Bening 24/28', category: 'Perlengkapan & APD', unit: 'Pack', price: 15000 },
-  { name: 'Kotak Makan Mika Bento / Thinwall 650ml', category: 'Perlengkapan & APD', unit: 'Dus', price: 135000 },
-  { name: 'Sarung Tangan Plastik Higienis Disposable', category: 'Perlengkapan & APD', unit: 'Kotak', price: 14000 },
-  { name: 'Masker Medis 3-Ply Earloop', category: 'Perlengkapan & APD', unit: 'Kotak', price: 25000 },
-  { name: 'Nurse Cap Tutup Kepala Dapur SPPG', category: 'Perlengkapan & APD', unit: 'Kotak', price: 32000 },
-  { name: 'Celemek / Apron Masak Waterproof', category: 'Perlengkapan & APD', unit: 'Pcs', price: 22000 },
-  { name: 'Pisau Dapur Stainless Steel Tramontina', category: 'Perlengkapan & APD', unit: 'Pcs', price: 45000 },
-
-  // Operasional & Keperluan Lain
-  { name: 'Refill Tabung Gas Elpiji 12 Kg', category: 'Operasional & Keperluan Lain', unit: 'Tabung', price: 215000 },
-  { name: 'Refill Tabung Gas Elpiji 3 Kg', category: 'Operasional & Keperluan Lain', unit: 'Tabung', price: 21000 },
-  { name: 'Air Minum Galon Aqua / Le Minerale 19L', category: 'Operasional & Keperluan Lain', unit: 'Galon', price: 20000 },
-  { name: 'Es Batu Kristal Higienis 10 Kg', category: 'Operasional & Keperluan Lain', unit: 'Karung', price: 15000 },
-  { name: 'Token Listrik PLN Dapur Operasional', category: 'Operasional & Keperluan Lain', unit: 'Voucher', price: 200000 },
-];
-
 export const INPUT_CATEGORIES = STANDARD_CATEGORIES;
 
 export type InputCategoryType = StandardCategory;
@@ -172,30 +100,6 @@ function autoDetectCategory(itemName: string): InputCategoryType {
   return normalizeToStandardCategory(undefined, itemName);
 }
 
-function getItemCatalogInfo(name: string) {
-  const match = COMMON_GOODS_CATALOG.find(
-    c => c.name.toLowerCase() === name.toLowerCase().trim()
-  );
-  if (match) return match;
-  // Partial match
-  const partial = COMMON_GOODS_CATALOG.find(c =>
-    name.toLowerCase().includes(c.name.toLowerCase().slice(0, 8))
-  );
-  return partial || null;
-}
-
-interface BatchInputRow {
-  id: string;
-  itemName: string;
-  category: InputCategoryType;
-  qty: string;
-  unit: string;
-  unitPrice: number;
-  time: string;
-  supplier: string;
-  volunteer: string;
-  notes: string;
-}
 
 export interface UnifiedRecord {
   id: string;
@@ -330,6 +234,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     () => warehouseDb.getSuppliers().filter(s => s.isActive),
     [dataVersion]
   );
+  // Satuan dan harga acuan hanya dari Master Barang dan riwayat belanja, bukan katalog di kode.
+  const getItemReference = useMemo(() => buildItemReference(items, expenses), [items, expenses]);
   const purchaseOrders = useMemo(() => warehouseDb.getPurchaseOrders(), [dataVersion]);
 
   // Sinkronisasi realtime otomatis saat ada perubahan di database Supabase Cloud
@@ -427,8 +333,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
 
   // Active views & modals
   const [isCreatingDeliveryOrder, setIsCreatingDeliveryOrder] = useState(false);
-  const [isSingleInputModalOpen, setIsSingleInputModalOpen] = useState(false);
-  const [isBatchInputModalOpen, setIsBatchInputModalOpen] = useState(false);
   const [selectedDocForDetail, setSelectedDocForDetail] = useState<ReceivingDocument | null>(null);
 
   // Period & Filter States (Standardized Filter System)
@@ -515,91 +419,22 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     .toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
     .replace(':', '.');
 
-  // ----------------------------------------------------
-  // Single Input Form State
-  // ----------------------------------------------------
-  const [singleDate, setSingleDate] = useState(today);
-  const [singleTime, setSingleTime] = useState(defaultCurrentTime);
-  const [singleCategory, setSingleCategory] = useState<InputCategoryType>('Bahan Basah');
-  const [singleItemName, setSingleItemName] = useState('');
-  const [singleQty, setSingleQty] = useState('1');
-  const [singleUnit, setSingleUnit] = useState('Kg');
-  const [singleUnitPrice, setSingleUnitPrice] = useState<number>(0);
-  const [singleSupplier, setSingleSupplier] = useState('');
-  const [singlePic, setSinglePic] = useState(currentUser.name);
-  const [singleVolunteer, setSingleVolunteer] = useState('');
-  const [singleNotes, setSingleNotes] = useState('');
-  const [singleReceiptRef, setSingleReceiptRef] = useState('');
+  const supplierOptions = useMemo<PickerOption[]>(
+    () =>
+      [...suppliers]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(s => ({ value: s.id, label: s.name, hint: s.contactPerson || undefined })),
+    [suppliers]
+  );
 
-  // Interactive supplier dropdown states for Single & Batch Input Modals
-  const [isSingleSupplierDropdownOpen, setIsSingleSupplierDropdownOpen] = useState(false);
-  const singleSupplierDropdownRef = useRef<HTMLDivElement>(null);
-  const [isBatchSupplierDropdownOpen, setIsBatchSupplierDropdownOpen] = useState(false);
-  const batchSupplierDropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        singleSupplierDropdownRef.current &&
-        !singleSupplierDropdownRef.current.contains(e.target as Node)
-      ) {
-        setIsSingleSupplierDropdownOpen(false);
-      }
-      if (
-        batchSupplierDropdownRef.current &&
-        !batchSupplierDropdownRef.current.contains(e.target as Node)
-      ) {
-        setIsBatchSupplierDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const filteredSingleSuppliers = useMemo(() => {
-    const q = singleSupplier.trim().toLowerCase();
-    if (!q) return suppliers;
-    return suppliers.filter(
-      s =>
-        s.name.toLowerCase().includes(q) ||
-        (s.supplyCategory && s.supplyCategory.toLowerCase().includes(q)) ||
-        (s.address && s.address.toLowerCase().includes(q))
-    );
-  }, [suppliers, singleSupplier]);
-
-  // ----------------------------------------------------
-  // Batch Input Form State
-  // ----------------------------------------------------
-  const [batchDate, setBatchDate] = useState(today);
-  const [batchPic, setBatchPic] = useState(currentUser.name);
-  const [batchInputMode, setBatchInputMode] = useState<'GRID' | 'PASTE'>('GRID');
-  const [batchRawPaste, setBatchRawPaste] = useState('');
-  const [batchRows, setBatchRows] = useState<BatchInputRow[]>([
-    { id: '1', itemName: '', category: 'Bahan Basah', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
-    { id: '2', itemName: '', category: 'Bahan Basah', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
-    { id: '3', itemName: '', category: 'Bahan Kering', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
-    { id: '4', itemName: '', category: 'ATK & Administrasi', qty: '1', unit: 'Pack', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
-    { id: '5', itemName: '', category: 'Alat Kebersihan', qty: '1', unit: 'Pouch', unitPrice: 0, time: defaultCurrentTime, supplier: '', volunteer: '', notes: '' },
-  ]);
-  // Daftar supplier sesi input masal (wajib diisi sebelum input barang)
-  const [batchSuppliers, setBatchSuppliers] = useState<string[]>([]);
-  const [batchSupplierDraft, setBatchSupplierDraft] = useState('');
-  const batchGridRef = useRef<HTMLTableSectionElement>(null);
-  const pendingBatchFocus = useRef<{ row: number; col: number } | null>(null);
-
-  const availableBatchMasterSuppliers = useMemo(() => {
-    const q = batchSupplierDraft.trim().toLowerCase();
-    const remaining = suppliers.filter(
-      s => !batchSuppliers.some(b => b.toLowerCase() === s.name.toLowerCase())
-    );
-    if (!q) return remaining;
-    return remaining.filter(
-      s =>
-        s.name.toLowerCase().includes(q) ||
-        (s.supplyCategory && s.supplyCategory.toLowerCase().includes(q)) ||
-        (s.address && s.address.toLowerCase().includes(q))
-    );
-  }, [suppliers, batchSuppliers, batchSupplierDraft]);
+  // Pilihan barang Terima Barang: hanya barang gudang, dikelompokkan per kategori.
+  const receivingItemOptions = useMemo<PickerOption[]>(
+    () =>
+      [...items]
+        .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name))
+        .map(it => ({ value: it.id, label: it.name, group: it.category, hint: `Stok ${it.currentStock} ${it.baseUnit}` })),
+    [items]
+  );
 
   // ----------------------------------------------------
   // Delivery Order / Surat Jalan Form State
@@ -612,17 +447,9 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
   const [formSupplierSign, setFormSupplierSign] = useState('');
   const [formReceiverSign, setFormReceiverSign] = useState('');
   const [formPhotos, setFormPhotos] = useState<string[]>([]);
-  const [lines, setLines] = useState<Omit<ReceivingLine, 'id'>[]>([
-    {
-      itemId: items[0]?.id || '',
-      itemName: items[0]?.name || '',
-      category: items[0]?.category || 'Sembako',
-      quantity: 0,
-      unit: items[0]?.baseUnit || 'Kg',
-      conditionNote: '',
-      batchNumber: '',
-    },
-  ]);
+  // Baris dimulai kosong agar petugas memilih barangnya sendiri, bukan barang pertama di daftar.
+  const emptyLine = (): Omit<ReceivingLine, 'id'> => ({ itemId: '', itemName: '', category: '', quantity: 0, unit: '', conditionNote: '', batchNumber: '', unitPrice: 0 });
+  const [lines, setLines] = useState<Omit<ReceivingLine, 'id'>[]>(() => [emptyLine()]);
 
   // Reload only this module's data. Calling the app-level refresh remounts the whole page
   // (App keys the content on dataVersion), which wiped the post-save prompt and open modals.
@@ -634,583 +461,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     toast.showToast(msg, type);
     setSuccessMessage(msg);
     setTimeout(() => setSuccessMessage(''), 4500);
-  };
-
-  // ----------------------------------------------------
-  // Handlers for Single Input
-  // ----------------------------------------------------
-  const handleOpenSingleModal = () => {
-    setSingleDate(localDateIso());
-    setSingleTime(
-      new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(':', '.')
-    );
-    setSingleCategory('Bahan Basah');
-    setSingleItemName('');
-    setSingleQty('1');
-    setSingleUnit('Kg');
-    setSingleUnitPrice(0);
-    setSingleSupplier('');
-    setSinglePic(currentUser.name);
-    setSingleVolunteer('');
-    setSingleNotes('');
-    setSingleReceiptRef('');
-    setIsSingleSupplierDropdownOpen(false);
-    setIsSingleInputModalOpen(true);
-  };
-
-  const handleSingleItemChange = (val: string) => {
-    setSingleItemName(val);
-    const cat = autoDetectCategory(val);
-    setSingleCategory(cat);
-
-    const catalog = getItemCatalogInfo(val);
-    if (catalog) {
-      setSingleUnit(catalog.unit);
-    }
-  };
-
-  const handleSaveSingleItem = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!singleItemName.trim()) {
-      toast.error('Nama barang wajib diisi.', 'Gagal Menyimpan');
-      return;
-    }
-
-    const numQty = parseFloat(singleQty);
-    if (!(numQty > 0)) {
-      toast.error('Jumlah harus lebih dari 0.', 'Gagal Menyimpan');
-      return;
-    }
-
-    try {
-      const finalPrice = singleUnitPrice;
-      const totalCost = numQty * finalPrice;
-
-      const matchedSupplier = suppliers.find(
-        s => s.name.trim().toLowerCase() === singleSupplier.trim().toLowerCase()
-      );
-      const finalSupplierName = matchedSupplier ? matchedSupplier.name : singleSupplier.trim();
-
-      const newRecord = warehouseDb.recordNonFoodExpense(
-        {
-          date: singleDate,
-          time: singleTime.trim() || defaultCurrentTime,
-          itemName: singleItemName.trim(),
-          category: singleCategory,
-          quantity: singleQty.trim(),
-          unit: singleUnit.trim() || 'Pcs',
-          unitPrice: finalPrice,
-          totalCost: totalCost,
-          pic: singlePic.trim() || currentUser.name,
-          volunteer: singleVolunteer.trim() || undefined,
-          department: singleCategory.includes('ATK')
-            ? 'Administrasi & Kantor'
-            : singleCategory.includes('Kebersihan')
-            ? 'Area Cuci & Sanitasi'
-            : 'Dapur Pengolahan Utama',
-          notes: `${finalSupplierName ? `[Toko/Supplier: ${finalSupplierName}] ` : ''}${singleNotes.trim()}`.trim() || undefined,
-          receiptRef: singleReceiptRef.trim() || undefined,
-        },
-        currentUser
-      );
-
-      toast.success(
-        `Belanja "${singleItemName.trim()}" (${singleQty} ${singleUnit}) tersimpan.`,
-        'Berhasil Disimpan'
-      );
-      showToast(`Belanja "${singleItemName.trim()}" (${singleQty} ${singleUnit}) tersimpan.`);
-      setIsSingleInputModalOpen(false);
-      refreshAll();
-
-      // Trigger post-input prompt for printing Nota Pesanan
-      const item: PurchaseOrderItem = {
-        id: `POI-${Date.now()}`,
-        name: singleItemName.trim(),
-        category: singleCategory,
-        quantity: numQty,
-        unit: singleUnit.trim() || 'Pcs',
-        unitPrice: finalPrice,
-        subtotal: totalCost,
-        notes: singleNotes.trim() || undefined,
-      };
-      setJustSavedPrompt({
-        title: 'Belanja Tersimpan',
-        subtitle: `"${singleItemName.trim()}" (${singleQty} ${singleUnit}) masuk ke laporan pengeluaran.`,
-        supplierName: finalSupplierName || 'Toko / Pasar Belanja Rutin',
-        items: [item],
-        refId: newRecord.id,
-        refIds: [newRecord.id],
-      });
-    } catch (err: any) {
-      toast.error(err?.message || 'Gagal menyimpan catatan belanja.', 'Gagal Menyimpan');
-    }
-  };
-
-  // ----------------------------------------------------
-  // Handlers for Batch Input
-  // ----------------------------------------------------
-  const handleOpenBatchModal = () => {
-    setBatchDate(localDateIso());
-    setBatchPic(currentUser.name);
-    setBatchInputMode('GRID');
-    setBatchRawPaste('');
-    // Pertahankan supplier yang masih dipakai baris yang belum tersimpan
-    const existing = Array.from(
-      new Set(batchRows.map(r => r.supplier.trim()).filter(Boolean))
-    );
-    setBatchSuppliers(existing);
-    setBatchSupplierDraft('');
-    setIsBatchSupplierDropdownOpen(false);
-    setIsBatchInputModalOpen(true);
-  };
-
-  const handleAddBatchSupplier = (raw?: string) => {
-    const typed = (raw ?? batchSupplierDraft).trim();
-    if (!typed) return;
-    const masterMatch = suppliers.find(s => s.name.trim().toLowerCase() === typed.toLowerCase());
-    const name = masterMatch ? masterMatch.name : typed;
-    setBatchSuppliers(prev => {
-      if (prev.some(s => s.toLowerCase() === name.toLowerCase())) return prev;
-      // Supplier pertama: langsung arahkan kursor ke nama barang baris 1
-      if (prev.length === 0) pendingBatchFocus.current = { row: 0, col: 0 };
-      return [...prev, name];
-    });
-    setBatchSupplierDraft('');
-  };
-
-  const handleRemoveBatchSupplier = (name: string) => {
-    setBatchSuppliers(prev => prev.filter(s => s !== name));
-    setBatchRows(prev => prev.map(r => (r.supplier === name ? { ...r, supplier: '' } : r)));
-  };
-
-  const handleRemoveBatchSupplierWithConfirm = (name: string) => {
-    const isUsedInRows = batchRows.some(r => r.supplier === name && r.itemName.trim() !== '');
-    if (isUsedInRows) {
-      setConfirmDialog({
-        isOpen: true,
-        title: 'Hapus Supplier dari Sesi?',
-        message: `Supplier "${name}" saat ini dipilih pada beberapa baris barang. Jika dihapus, pilihan supplier pada baris tersebut akan dikosongkan.`,
-        confirmText: 'Ya, Hapus Supplier',
-        cancelText: 'Batal',
-        variant: 'warning',
-        onConfirm: () => {
-          handleRemoveBatchSupplier(name);
-          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-          toast.info(`Supplier "${name}" dihapus dari daftar pilihan.`);
-        },
-      });
-    } else {
-      handleRemoveBatchSupplier(name);
-    }
-  };
-
-  const isInSupplierMaster = (name: string) =>
-    suppliers.some(s => s.name.trim().toLowerCase() === name.trim().toLowerCase());
-
-  const handleSaveBatchSupplierToMaster = (name: string) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Daftarkan ke Master Supplier?',
-      message: `Daftarkan "${name}" sebagai mitra supplier resmi ke database master?`,
-      confirmText: 'Daftarkan',
-      cancelText: 'Batal',
-      variant: 'primary',
-      onConfirm: () => {
-        try {
-          const saved = warehouseDb.quickAddSupplier(name, currentUser);
-          setDataVersion(v => v + 1);
-          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-          toast.success(`"${saved.name}" berhasil terdaftar di master supplier!`, 'Mitra Terdaftar');
-        } catch (err: any) {
-          toast.error(err.message || 'Gagal menyimpan supplier.');
-        }
-      },
-    });
-  };
-
-  const handleResetBatchRows = () => {
-    const hasData = batchRows.some(r => r.itemName.trim() !== '' || r.unitPrice > 0);
-    const defaultSupplier = batchSuppliers[0] || '';
-    if (!hasData) {
-      setBatchRows([
-        { id: '1', itemName: '', category: 'Bahan Basah', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
-        { id: '2', itemName: '', category: 'Bahan Basah', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
-        { id: '3', itemName: '', category: 'Bahan Kering', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
-        { id: '4', itemName: '', category: 'ATK & Administrasi', qty: '1', unit: 'Pack', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
-        { id: '5', itemName: '', category: 'Alat Kebersihan', qty: '1', unit: 'Pouch', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
-      ]);
-      toast.info('Tabel input telah dibersihkan.');
-      return;
-    }
-
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Kosongkan Seluruh Tabel?',
-      message: 'Seluruh data baris yang telah Anda ketik akan dibersihkan kembali ke baris kosong.',
-      confirmText: 'Ya, Kosongkan',
-      cancelText: 'Batal',
-      variant: 'danger',
-      onConfirm: () => {
-        setBatchRows([
-          { id: '1', itemName: '', category: 'Bahan Basah', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
-          { id: '2', itemName: '', category: 'Bahan Basah', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
-          { id: '3', itemName: '', category: 'Bahan Kering', qty: '1', unit: 'Kg', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
-          { id: '4', itemName: '', category: 'ATK & Administrasi', qty: '1', unit: 'Pack', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
-          { id: '5', itemName: '', category: 'Alat Kebersihan', qty: '1', unit: 'Pouch', unitPrice: 0, time: defaultCurrentTime, supplier: defaultSupplier, volunteer: '', notes: '' },
-        ]);
-        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-        toast.info('Tabel input masal berhasil dikosongkan.');
-      },
-    });
-  };
-
-  const handleRemoveBatchRowWithConfirm = (row: BatchInputRow) => {
-    if (batchRows.length <= 1) {
-      toast.warning('Tabel harus menyisakan minimal 1 baris.');
-      return;
-    }
-
-    if (row.itemName.trim() !== '') {
-      setConfirmDialog({
-        isOpen: true,
-        title: 'Hapus Baris Barang?',
-        message: `Hapus baris "${row.itemName}" dari tabel input masal?`,
-        confirmText: 'Hapus',
-        cancelText: 'Batal',
-        variant: 'danger',
-        onConfirm: () => {
-          setBatchRows(prev => prev.filter(r => r.id !== row.id));
-          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-          toast.info(`Baris "${row.itemName}" telah dihapus.`);
-        },
-      });
-    } else {
-      setBatchRows(prev => prev.filter(r => r.id !== row.id));
-    }
-  };
-
-  const handleAddBatchRows = (count: number = 1) => {
-    setBatchRows(prev => {
-      // Baris baru mewarisi supplier baris terakhir agar tidak perlu memilih ulang
-      const lastSupplier = prev[prev.length - 1]?.supplier || '';
-      const newRows: BatchInputRow[] = [];
-      for (let i = 0; i < count; i++) {
-        newRows.push({
-          id: String(Date.now() + Math.random()),
-          itemName: '',
-          category: 'Bahan Basah',
-          qty: '1',
-          unit: 'Kg',
-          unitPrice: 0,
-          time: defaultCurrentTime,
-          supplier: lastSupplier,
-          volunteer: '',
-          notes: '',
-        });
-      }
-      return [...prev, ...newRows];
-    });
-  };
-
-  // Navigasi keyboard ala spreadsheet di tabel input masal.
-  // Kolom: 0 nama, 1 kategori, 2 jumlah, 3 satuan, 4 harga, 5 supplier, 6 keterangan
-  const BATCH_LAST_COL = 6;
-
-  const focusBatchCell = (row: number, col: number) => {
-    const el = batchGridRef.current?.querySelector<HTMLElement>(`[data-cell="${row}-${col}"]`);
-    if (!el) return;
-    el.focus();
-    if (el instanceof HTMLInputElement) el.select();
-  };
-
-  useEffect(() => {
-    if (!pendingBatchFocus.current) return;
-    const { row, col } = pendingBatchFocus.current;
-    pendingBatchFocus.current = null;
-    focusBatchCell(row, col);
-  }, [batchRows, batchSuppliers]);
-
-  const handleBatchGridKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
-    row: number,
-    col: number
-  ) => {
-    // Alt/Ctrl/Cmd + panah tetap dipakai untuk membuka dropdown / saran bawaan browser
-    if (e.altKey || e.ctrlKey || e.metaKey) return;
-
-    const el = e.currentTarget;
-    const isText = el instanceof HTMLInputElement;
-    const atStart = !isText || (el.selectionStart ?? 0) === 0;
-    const atEnd = !isText || (el.selectionEnd ?? 0) === el.value.length;
-
-    switch (e.key) {
-      case 'ArrowDown':
-      case 'Enter': {
-        e.preventDefault();
-        if (row >= batchRows.length - 1) {
-          pendingBatchFocus.current = { row: row + 1, col };
-          handleAddBatchRows(1);
-        } else {
-          focusBatchCell(row + 1, col);
-        }
-        break;
-      }
-      case 'ArrowUp': {
-        e.preventDefault();
-        if (row > 0) focusBatchCell(row - 1, col);
-        break;
-      }
-      case 'ArrowLeft': {
-        if (e.shiftKey || !atStart) return;
-        e.preventDefault();
-        if (col > 0) focusBatchCell(row, col - 1);
-        else if (row > 0) focusBatchCell(row - 1, BATCH_LAST_COL);
-        break;
-      }
-      case 'ArrowRight': {
-        if (e.shiftKey || !atEnd) return;
-        e.preventDefault();
-        if (col < BATCH_LAST_COL) focusBatchCell(row, col + 1);
-        else if (row < batchRows.length - 1) focusBatchCell(row + 1, 0);
-        break;
-      }
-    }
-  };
-
-  const handleUpdateBatchRow = (id: string, field: keyof BatchInputRow, value: any) => {
-    setBatchRows(prev =>
-      prev.map(r => {
-        if (r.id !== id) return r;
-        const updated = { ...r, [field]: value };
-        if (field === 'itemName') {
-          updated.category = autoDetectCategory(value);
-          const cat = getItemCatalogInfo(value);
-          if (cat) {
-            updated.unit = cat.unit;
-          }
-        }
-        return updated;
-      })
-    );
-  };
-
-  const handleRemoveBatchRow = (id: string) => {
-    setBatchRows(prev => (prev.length > 1 ? prev.filter(r => r.id !== id) : prev));
-  };
-
-  const handleParsePastedExcel = () => {
-    if (batchSuppliers.length === 0) {
-      toast.warning('Isi daftar supplier terlebih dahulu sebelum menempel data barang.', 'Supplier Belum Diisi');
-      return;
-    }
-    if (!batchRawPaste.trim()) {
-      toast.warning('Tempelkan teks data dari Excel / Google Sheet terlebih dahulu.', 'Data Kosong');
-      return;
-    }
-
-    const lines = batchRawPaste.trim().split(/\r?\n/);
-    const parsedRows: BatchInputRow[] = [];
-
-    lines.forEach((line, idx) => {
-      let cols = line.split('\t');
-      if (cols.length === 1 && line.includes(';')) cols = line.split(';');
-      else if (cols.length === 1 && line.includes(',')) cols = line.split(',');
-
-      const c0 = (cols[0] || '').trim();
-      const c1 = (cols[1] || '').trim();
-      const c2 = (cols[2] || '').trim();
-      const c3 = (cols[3] || '').trim();
-      const c4 = (cols[4] || '').trim();
-      const c5 = (cols[5] || '').trim();
-
-      if (idx === 0 && (c0.toLowerCase().includes('nama') || c0.toLowerCase().includes('tanggal') || c0.toLowerCase().includes('barang'))) {
-        return;
-      }
-
-      let itemName = c0;
-      let qty = '1';
-      let unit = 'Pcs';
-      let price = 0;
-      let supplier = '';
-      let notes = '';
-
-      if (cols.length >= 4) {
-        itemName = c0;
-        qty = c1 || '1';
-        unit = c2 || 'Pcs';
-        price = parseFloat(c3.replace(/[^\d.-]/g, '')) || 0;
-        supplier = c4 || '';
-        notes = c5 || '';
-      } else if (cols.length >= 2) {
-        itemName = c0;
-        qty = c1 || '1';
-      }
-
-      if (itemName) {
-        const cat = autoDetectCategory(itemName);
-        const catalog = getItemCatalogInfo(itemName);
-        if (catalog && (!c2 || unit === 'Pcs')) unit = catalog.unit;
-
-        parsedRows.push({
-          id: String(Date.now() + Math.random() + idx),
-          itemName,
-          category: cat,
-          qty,
-          unit,
-          unitPrice: price,
-          time: defaultCurrentTime,
-          supplier,
-          volunteer: '',
-          notes,
-        });
-      }
-    });
-
-    if (parsedRows.length > 0) {
-      // Supplier dari Excel yang belum ada di daftar ikut ditambahkan
-      const pastedSuppliers = parsedRows.map(r => r.supplier.trim()).filter(Boolean);
-      setBatchSuppliers(prev => {
-        const next = [...prev];
-        pastedSuppliers.forEach(s => {
-          if (!next.some(x => x.toLowerCase() === s.toLowerCase())) next.push(s);
-        });
-        return next;
-      });
-      setBatchRows(parsedRows);
-      setBatchInputMode('GRID');
-      setBatchRawPaste('');
-      toast.success(
-        `Berhasil mengekstrak ${parsedRows.length} baris barang dari Excel! Periksa dan simpan.`,
-        'Ekstrak Excel Berhasil'
-      );
-    } else {
-      toast.warning('Tidak ada baris barang yang terdeteksi dari teks yang ditempel.', 'Data Tidak Ditemukan');
-    }
-  };
-
-  const handleSaveBatchRows = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (batchSuppliers.length === 0) {
-      toast.warning('Isi daftar supplier terlebih dahulu sebelum menyimpan data belanja.');
-      return;
-    }
-    const defaultSupplier = batchSuppliers[0];
-    const validRows = batchRows
-      .filter(r => r.itemName.trim() !== '')
-      .map(r => ({ ...r, supplier: r.supplier.trim() || defaultSupplier }));
-    if (validRows.length === 0) {
-      toast.warning('Isi minimal 1 nama barang pada tabel sebelum menyimpan.');
-      return;
-    }
-    const invalidQtyRows = validRows.filter(r => !(parseFloat(r.qty) > 0));
-    if (invalidQtyRows.length > 0) {
-      toast.error(
-        `Jumlah harus lebih dari 0: ${invalidQtyRows.map(r => r.itemName).join(', ')}.`,
-        'Periksa Jumlah'
-      );
-      return;
-    }
-
-    const totalBatchNominal = validRows.reduce((sum, r) => {
-      return sum + parseFloat(r.qty) * r.unitPrice;
-    }, 0);
-
-    // Standard Confirmation Modal
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Simpan Belanja?',
-      message: `Simpan ${validRows.length} barang belanja senilai Rp ${totalBatchNominal.toLocaleString('id-ID')} ke laporan pengeluaran? Stok gudang tidak berubah.`,
-      confirmText: `Ya, Simpan (${validRows.length} Barang)`,
-      cancelText: 'Periksa Kembali',
-      variant: 'primary',
-      itemsSummary: {
-        count: validRows.length,
-        totalNominal: totalBatchNominal,
-        items: validRows.map(r => {
-          const numQty = parseFloat(r.qty);
-          const price = r.unitPrice;
-          return {
-            name: r.itemName,
-            qty: r.qty,
-            unit: r.unit,
-            subtotal: numQty * price,
-            supplier: r.supplier,
-          };
-        }),
-      },
-      onConfirm: async () => {
-        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-        setActionLoading({
-          isLoading: true,
-          message: 'Menyimpan Barang Belanja...',
-          submessage: `Memproses ${validRows.length} catatan belanja...`,
-        });
-
-        try {
-          await new Promise(r => setTimeout(r, 450));
-
-          const payload = validRows.map(r => {
-            const numQty = parseFloat(r.qty);
-            const price = r.unitPrice;
-            return {
-              date: batchDate,
-              time: r.time.trim() || defaultCurrentTime,
-              itemName: r.itemName.trim(),
-              category: r.category,
-              quantity: r.qty.trim(),
-              unit: r.unit.trim() || 'Pcs',
-              unitPrice: price,
-              totalCost: numQty * price,
-              pic: batchPic.trim() || currentUser.name,
-              volunteer: r.volunteer.trim() || undefined,
-              department: r.category.includes('ATK')
-                ? 'Administrasi & Kantor'
-                : r.category.includes('Kebersihan')
-                ? 'Area Cuci & Sanitasi'
-                : 'Dapur Pengolahan Utama',
-              notes: `${r.supplier ? `[Toko/Supplier: ${r.supplier}] ` : ''}${r.notes.trim()}`.trim() || undefined,
-            };
-          });
-
-          const createdExpenses = warehouseDb.recordNonFoodExpensesBatch(payload, currentUser);
-          toast.success(
-            `Berhasil menyimpan ${validRows.length} barang belanja senilai Rp ${totalBatchNominal.toLocaleString('id-ID')}!`,
-            'Pencatatan Masal Sukses'
-          );
-          setIsBatchInputModalOpen(false);
-          refreshAll();
-
-          // Trigger post-input prompt for printing Nota Pesanan
-          const batchItems: PurchaseOrderItem[] = validRows.map((r, i) => {
-            const numQty = parseFloat(r.qty);
-            const price = r.unitPrice;
-            return {
-              id: `POI-${Date.now()}-${i}`,
-              name: r.itemName.trim(),
-              category: r.category,
-              quantity: numQty,
-              unit: r.unit.trim() || 'Pcs',
-              unitPrice: price,
-              subtotal: numQty * price,
-              notes: r.notes.trim() || undefined,
-            };
-          });
-          const firstSupplier = validRows.find(r => r.supplier?.trim())?.supplier?.trim() || 'Supplier Belanja Bersama';
-          setJustSavedPrompt({
-            title: 'Belanja Tersimpan',
-            subtitle: `${validRows.length} barang belanja masuk ke laporan pengeluaran.`,
-            supplierName: firstSupplier,
-            items: batchItems,
-            refId: createdExpenses[0]?.id,
-            refIds: createdExpenses.map(e => e.id),
-          });
-        } catch (err: any) {
-          toast.error(err.message || 'Gagal menyimpan data barang.', 'Gagal Menyimpan');
-        } finally {
-          setActionLoading({ isLoading: false });
-        }
-      },
-    });
   };
 
   // ----------------------------------------------------
@@ -1227,25 +477,89 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     setFormPhotos([]);
     setErrorMessage('');
 
-    if (items.length > 0) {
-      setLines([
-        {
-          itemId: items[0].id,
-          itemName: items[0].name,
-          category: items[0].category,
-          quantity: 0,
-          unit: items[0].baseUnit,
-          conditionNote: '',
-          batchNumber: '',
-        },
-      ]);
-    }
+    setLines([emptyLine()]);
     setIsCreatingDeliveryOrder(true);
   };
 
-  const handleLineItemChange = (index: number, itemId: string) => {
-    const selectedItem = items.find(i => i.id === itemId);
+  // ----------------------------------------------------
+  // Barang baru: daftar ke Master Barang langsung dari form Terima Barang
+  // ----------------------------------------------------
+  const [quickItem, setQuickItem] = useState<{ lineIndex: number | null; name: string; category: InputCategoryType; unit: string } | null>(null);
+  const [quickItemError, setQuickItemError] = useState('');
+
+  const openQuickItem = (lineIndex: number | null) => {
+    setQuickItemError('');
+    setQuickItem({ lineIndex, name: '', category: 'Bahan Basah', unit: 'Kg' });
+  };
+
+  // Kategori input menentukan gudang (awalan SKU) dan jenis barang, sama dengan aturan di Master Barang.
+  const QUICK_ITEM_WAREHOUSE: Record<string, WarehouseSkuType> = {
+    'Bahan Basah': 'GUDANG_BASAH',
+    'Bahan Kering': 'GUDANG_KERING',
+    'ATK & Administrasi': 'OPERASIONAL_ATK',
+  };
+
+  const handleSaveQuickItem = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickItem) return;
+    const name = quickItem.name.trim();
+    const unit = quickItem.unit.trim();
+    if (!name || !unit) {
+      setQuickItemError('Nama barang dan satuan wajib diisi.');
+      return;
+    }
+    const allItems = warehouseDb.getItems();
+    const dup = allItems.find(i => i.name.trim().toLowerCase() === name.toLowerCase());
+    if (dup) {
+      setQuickItemError(`"${dup.name}" sudah ada di Master Barang. Pilih dari daftar barang.`);
+      return;
+    }
+    const warehouse = QUICK_ITEM_WAREHOUSE[quickItem.category] || 'GUDANG_NONFOOD';
+    const now = new Date().toISOString();
+    const newItem: ItemMaster = {
+      id: generateAutoSku(warehouse, allItems),
+      name,
+      itemType:
+        quickItem.category === 'Bahan Kering'
+          ? 'FOOD_CARRYING_STOCK'
+          : quickItem.category === 'Bahan Basah'
+          ? 'FOOD_DAILY_FLOW'
+          : 'OPERATIONAL_CONSUMABLE',
+      category: quickItem.category,
+      baseUnit: unit,
+      minimumStock: 0,
+      reorderPoint: 0,
+      currentStock: 0,
+      location: WAREHOUSE_SKU_DEFINITIONS[warehouse]?.defaultLocation || 'Gudang Utama',
+      expiryTrackingEnabled: quickItem.category === 'Bahan Basah' || quickItem.category === 'Bahan Kering',
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    try {
+      warehouseDb.saveItem(newItem, currentUser, true);
+    } catch (err: any) {
+      setQuickItemError(err?.message || 'Gagal mendaftarkan barang.');
+      return;
+    }
+    refreshAll();
+    // Langsung dipakai di baris yang kosong (atau baris baru) tanpa menunggu daftar barang dimuat ulang.
+    const fresh = [...items, newItem];
+    const target = quickItem.lineIndex ?? lines.findIndex(l => !l.itemId);
+    if (target >= 0) {
+      handleLineItemChange(target, newItem.id, fresh);
+    } else {
+      setLines(prev => [...prev, emptyLine()]);
+      handleLineItemChange(lines.length, newItem.id, fresh);
+    }
+    toast.success(`"${newItem.name}" terdaftar di Master Barang (${newItem.id}).`, 'Barang Baru');
+    setQuickItem(null);
+  };
+
+  const handleLineItemChange = (index: number, itemId: string, source: ItemMaster[] = items) => {
+    const selectedItem = source.find(i => i.id === itemId);
     if (!selectedItem) return;
+    const ref = getItemReference(selectedItem.name);
 
     setLines(prev => {
       const updated = [...prev];
@@ -1255,9 +569,16 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
         itemName: selectedItem.name,
         category: selectedItem.category,
         unit: selectedItem.baseUnit,
+        // Harga acuan hanya mengisi kolom kosong; harga dari nota tetap yang dipakai.
+        unitPrice: updated[index].unitPrice || selectedItem.estimatedPrice || ref?.price || 0,
       };
       return updated;
     });
+  };
+
+  const handleLinePriceChange = (index: number, raw: string) => {
+    const price = Number(raw.replace(/\D/g, '')) || 0;
+    setLines(prev => prev.map((l, i) => (i === index ? { ...l, unitPrice: price } : l)));
   };
 
   const handleLineQtyChange = (index: number, val: string) => {
@@ -1277,22 +598,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     });
   };
 
-  const addLine = () => {
-    const defaultItem = items[0];
-    if (!defaultItem) return;
-    setLines(prev => [
-      ...prev,
-      {
-        itemId: defaultItem.id,
-        itemName: defaultItem.name,
-        category: defaultItem.category,
-        quantity: 0,
-        unit: defaultItem.baseUnit,
-        conditionNote: '',
-        batchNumber: '',
-      },
-    ]);
-  };
+  const addLine = () => setLines(prev => [...prev, emptyLine()]);
 
   const removeLine = (index: number) => {
     if (lines.length <= 1) {
@@ -1322,6 +628,18 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     }
 
     for (const [idx, line] of lines.entries()) {
+      if (!line.itemId) {
+        const msg = `Baris ${idx + 1}: pilih barangnya dulu.`;
+        setErrorMessage(msg);
+        toast.error(msg, 'Validasi Gagal');
+        return;
+      }
+      if (!((line.unitPrice || 0) > 0)) {
+        const msg = `Baris ${idx + 1} (${line.itemName}): isi harga satuan sesuai nota.`;
+        setErrorMessage(msg);
+        toast.error(msg, 'Validasi Gagal');
+        return;
+      }
       if (line.quantity <= 0) {
         const msg = `Baris ${idx + 1} (${line.itemName}): isi jumlah hasil timbang.`;
         setErrorMessage(msg);
@@ -1350,15 +668,47 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
         currentUser
       );
 
-      toast.success(`Penerimaan barang #${newDoc.id} berhasil diposting ke stok gudang!`, 'Penerimaan Berhasil');
-      showToast(`Penerimaan barang #${newDoc.id} berhasil diposting ke stok gudang!`);
+      // Belanja dari nota ikut tercatat di laporan pengeluaran. Penanda [GR: id] menautkannya ke
+      // dokumen penerimaan ini, jadi riwayat menampilkan satu baris per barang (lihat unifiedRecords).
+      const timeLabel = formTime.replace(':', '.');
+      const grandTotal = lines.reduce((sum, l) => sum + l.quantity * (l.unitPrice || 0), 0);
+      warehouseDb.recordNonFoodExpensesBatch(
+        lines.map(l => {
+          const category = normalizeToStandardCategory(l.category, l.itemName);
+          return {
+            date: formDate,
+            time: timeLabel,
+            itemId: l.itemId,
+            itemName: l.itemName,
+            category,
+            quantity: l.quantity,
+            unit: l.unit,
+            unitPrice: l.unitPrice || 0,
+            totalCost: Math.round(l.quantity * (l.unitPrice || 0)),
+            pic: currentUser.name,
+            recipient: selectedSupplier.name,
+            receiptRef: formDeliveryNote.trim() || newDoc.id,
+            department: category.includes('ATK')
+              ? 'Administrasi & Kantor'
+              : category.includes('Kebersihan')
+              ? 'Area Cuci & Sanitasi'
+              : 'Dapur Pengolahan Utama',
+            notes: `[GR: ${newDoc.id}] [Toko/Supplier: ${selectedSupplier.name}]${l.conditionNote ? ` ${l.conditionNote}` : ''}`,
+          };
+        }),
+        currentUser
+      );
+
+      const savedMsg = `${lines.length} barang dari ${selectedSupplier.name} masuk stok (Rp ${grandTotal.toLocaleString('id-ID')}).`;
+      toast.success(savedMsg, 'Barang Masuk Tersimpan');
+      showToast(savedMsg);
       setIsCreatingDeliveryOrder(false);
       setSelectedDocForDetail(newDoc);
       refreshAll();
 
-      // Trigger post-input prompt for printing Nota Pesanan
+      // Tawarkan cetak nota dengan harga dari nota supplier.
       const doItems: PurchaseOrderItem[] = lines.map((l, i) => {
-        const price = 0;
+        const price = l.unitPrice || 0;
         return {
           id: `POI-${Date.now()}-${i}`,
           name: l.itemName,
@@ -1372,7 +722,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
       });
       setJustSavedPrompt({
         title: 'Barang Masuk Stok',
-        subtitle: `Penerimaan #${formDeliveryNote || newDoc.id} dari ${selectedSupplier.name} telah masuk ke stok gudang.`,
+        subtitle: `Penerimaan #${formDeliveryNote || newDoc.id} dari ${selectedSupplier.name} masuk stok gudang dan laporan pengeluaran.`,
         supplierName: selectedSupplier.name,
         supplierId: selectedSupplier.id,
         items: doItems,
@@ -1710,8 +1060,26 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
   const unifiedRecords = useMemo(() => {
     const list: UnifiedRecord[] = [];
 
-    // Add manual / batch inputs
+    // Belanja yang tercatat dari penerimaan barang tertaut ke dokumennya: lewat penanda [GR: id]
+    // (penerimaan baru) atau nomor PO di catatan dokumen (data lama). Belanja itu tidak ditampilkan
+    // terpisah; harganya dipakai di baris penerimaan, agar satu barang tidak muncul dan terhitung dua kali.
+    const receivingIds = new Set(receivings.map(r => r.id));
+    const linkedByDoc = new Map<string, NonFoodExpense[]>();
+    const linkTarget = (exp: NonFoodExpense): string | undefined => {
+      const tag = exp.notes?.match(/\[GR:\s*([^\]]+)\]/)?.[1]?.trim();
+      if (tag && receivingIds.has(tag)) return tag;
+      if (exp.receiptRef) {
+        return receivings.find(r => r.notes?.includes(`PO ${exp.receiptRef}`))?.id;
+      }
+      return undefined;
+    };
+
     expenses.forEach(exp => {
+      const docId = linkTarget(exp);
+      if (docId) {
+        linkedByDoc.set(docId, [...(linkedByDoc.get(docId) || []), exp]);
+        return;
+      }
       const cat = exp.category;
       const numQty = typeof exp.quantity === 'number' ? exp.quantity : parseFloat(String(exp.quantity)) || 0;
       const price = exp.unitPrice || 0;
@@ -1740,8 +1108,12 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
 
     // Add Delivery Orders
     receivings.forEach(rec => {
+      const linked = [...(linkedByDoc.get(rec.id) || [])];
       rec.lines.forEach((l, idx) => {
         const cat = autoDetectCategory(l.itemName);
+        const matchIdx = linked.findIndex(e => (e.itemId && e.itemId === l.itemId) || e.itemName === l.itemName);
+        const priced = matchIdx >= 0 ? linked.splice(matchIdx, 1)[0] : undefined;
+        const unitPrice = priced?.unitPrice || 0;
 
         list.push({
           id: `${rec.id}-${idx}`,
@@ -1754,13 +1126,34 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
           itemName: l.itemName,
           quantity: l.quantity,
           unit: l.unit,
-          unitPrice: 0,
-          nominal: 0,
+          unitPrice,
+          nominal: priced?.totalCost ?? Math.round(l.quantity * unitPrice),
           supplierOrStore: rec.supplierName,
           picOrUser: rec.receiverName,
           volunteer: undefined,
           notes: rec.deliveryNoteNo ? `SJ: ${rec.deliveryNoteNo}` : rec.notes,
           rawDoc: rec,
+        });
+      });
+      // Belanja tertaut yang tidak cocok dengan baris mana pun tetap ditampilkan agar nominalnya tidak hilang.
+      linked.forEach(exp => {
+        list.push({
+          id: exp.id,
+          source: 'EXPENSE_INPUT',
+          date: exp.date,
+          parsedDate: parseExpenseDate(exp.date),
+          time: exp.time || '12.00',
+          category: exp.category,
+          displayCategory: exp.category,
+          itemName: exp.itemName,
+          quantity: exp.quantity,
+          unit: exp.unit || 'Pcs',
+          unitPrice: exp.unitPrice || 0,
+          nominal: exp.totalCost || 0,
+          supplierOrStore: rec.supplierName,
+          picOrUser: exp.pic || exp.recordedBy || currentUser.name,
+          volunteer: exp.volunteer,
+          notes: exp.notes,
         });
       });
     });
@@ -1955,13 +1348,13 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
         </div>
       )}
 
-      {/* HEADER: two clearly separated entry points, stock vs expense */}
+      {/* HEADER: satu pintu masuk barang */}
       <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight">Barang Datang</h1>
             <p className="text-xs text-slate-600 mt-0.5 max-w-2xl">
-              Terima barang dari supplier ke stok gudang, atau catat belanja yang langsung dipakai.
+              Semua barang yang dibeli masuk stok gudang, dan belanjanya tercatat di laporan pengeluaran.
             </p>
           </div>
 
@@ -1977,37 +1370,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                   Terima Barang
                 </button>
               )}
-              <ActionDropdown
-                splitAction={{
-                  label: 'Catat Belanja',
-                  icon: Receipt,
-                  onClick: handleOpenSingleModal,
-                  title: 'Catat 1 barang belanja ke laporan pengeluaran',
-                  variant: can('RECEIVE_GOODS') ? 'white' : 'emerald',
-                }}
-                header="Catat belanja (stok tidak berubah)"
-                widthClass="w-72"
-                items={[
-                  {
-                    id: 'input-satuan',
-                    label: 'Catat 1 barang',
-                    description: 'Belanja cepat satu jenis barang',
-                    icon: Plus,
-                    iconBgClass: 'bg-slate-100 text-slate-700',
-                    iconColorClass: 'text-slate-600',
-                    onClick: handleOpenSingleModal,
-                  },
-                  {
-                    id: 'input-batch',
-                    label: 'Catat banyak barang',
-                    description: 'Isi tabel atau tempel dari Excel',
-                    icon: TableProperties,
-                    iconBgClass: 'bg-slate-100 text-slate-700',
-                    iconColorClass: 'text-slate-600',
-                    onClick: handleOpenBatchModal,
-                  },
-                ]}
-              />
               <button
                 type="button"
                 onClick={() => setIsBatchPrintModalOpen(true)}
@@ -2035,18 +1397,24 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
           )}
         </div>
 
-        {/* Plain-language difference between the two entry points */}
+        {/* Urutan kerja barang datang, sama untuk barang dari PO maupun tanpa PO. */}
         {!isCreatingDeliveryOrder && (
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-            <div className="flex gap-2 p-2.5 rounded-lg bg-emerald-50">
-              <dt className="font-semibold text-emerald-800 shrink-0">Terima Barang</dt>
-              <dd className="text-emerald-900">Barang dari supplier ditimbang dan <strong>menambah stok gudang</strong>.</dd>
-            </div>
-            <div className="flex gap-2 p-2.5 rounded-lg bg-slate-50">
-              <dt className="font-semibold text-slate-800 shrink-0">Catat Belanja</dt>
-              <dd className="text-slate-700">Masuk laporan pengeluaran saja. <strong>Stok gudang tidak berubah.</strong></dd>
-            </div>
-          </dl>
+          <ol className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-[11px]">
+            {[
+              ['Timbang', 'Timbang atau hitung barang yang datang.'],
+              ['Cocokkan nota', 'Samakan jumlah dan harga dengan nota supplier.'],
+              ['Simpan', 'Stok gudang bertambah, belanja masuk laporan.'],
+              ['Cetak nota', 'Cetak nota pesanan untuk arsip dan tanda tangan.'],
+            ].map(([title, desc], i) => (
+              <li key={title} className="flex gap-2 p-2.5 rounded-lg bg-slate-50">
+                <span className="w-5 h-5 shrink-0 rounded-md bg-emerald-700 text-white font-mono font-semibold flex items-center justify-center">{i + 1}</span>
+                <span>
+                  <span className="block font-semibold text-slate-800">{title}</span>
+                  <span className="text-slate-600">{desc}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
         )}
       </div>
 
@@ -2256,7 +1624,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
               </button>
               <div>
                 <h2 className="text-sm font-semibold text-slate-800">Terima Barang (tanpa PO)</h2>
-                <p className="text-[11px] text-slate-600">Barang yang disimpan di sini langsung menambah stok gudang. Untuk barang dari PO, pakai Timbang & Terima di daftar PO.</p>
+                <p className="text-[11px] text-slate-600">Isi jumlah hasil timbang dan harga sesuai nota. Stok gudang bertambah dan belanja masuk laporan pengeluaran. Barang dari PO diterima lewat daftar PO.</p>
               </div>
             </div>
           </div>
@@ -2276,19 +1644,15 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Supplier / Pemasok <span className="text-rose-500">*</span>
                 </label>
-                <select
+                <SearchPicker
                   value={formSupplierId}
-                  onChange={e => setFormSupplierId(e.target.value)}
-                  className="w-full text-xs rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-800 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer"
-                  required
-                >
-                  <option value="">-- Pilih Supplier --</option>
-                  {suppliers.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.contactPerson})
-                    </option>
-                  ))}
-                </select>
+                  options={supplierOptions}
+                  onSelect={opt => opt && setFormSupplierId(opt.value)}
+                  placeholder="Pilih supplier"
+                  searchPlaceholder="Cari nama supplier..."
+                  ariaLabel="Supplier / Pemasok"
+                  noun="supplier"
+                />
                 {selectedSupplierObj && (
                   <p className="text-[10px] text-slate-500 mt-1 truncate">{selectedSupplierObj.address}</p>
                 )}
@@ -2332,10 +1696,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
 
               {/* No Surat Jalan */}
               <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">No. Surat Jalan dari Supplier</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">No. Nota / Surat Jalan</label>
                 <input
                   type="text"
-                  placeholder="Contoh: SJ-2026/09/8821"
+                  placeholder="Contoh: NT-0812 atau SJ-2026/09/8821"
                   value={formDeliveryNote}
                   onChange={e => setFormDeliveryNote(e.target.value)}
                   className="w-full text-xs rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -2361,25 +1725,38 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                 <h4 className="text-xs font-semibold text-slate-800">
                   Barang Diterima ({lines.length})
                 </h4>
-                <button
-                  type="button"
-                  onClick={addLine}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Tambah Baris Barang
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {can('MANAGE_ITEMS') && (
+                    <button
+                      type="button"
+                      onClick={() => openQuickItem(null)}
+                      className="inline-flex items-center gap-1.5 min-h-[44px] sm:min-h-[32px] px-3 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-300 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                    >
+                      <PackagePlus className="w-3.5 h-3.5" />
+                      Barang baru
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={addLine}
+                    className="inline-flex items-center gap-1.5 min-h-[44px] sm:min-h-[32px] px-3 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Tambah Baris
+                  </button>
+                </div>
               </div>
 
-              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                <table className="w-full text-left text-xs">
+              <div className="border border-slate-200 rounded-xl overflow-x-auto shadow-2xs">
+                <table className="w-full min-w-[820px] text-left text-xs">
                   <thead className="bg-slate-100/90 text-slate-700 font-semibold border-b border-slate-200">
                     <tr>
                       <th className="py-2.5 px-3 w-10 text-center">#</th>
-                      <th className="py-2.5 px-3 min-w-[200px]">Barang <span className="text-rose-500">*</span></th>
-                      <th className="py-2.5 px-3 w-32">Kategori</th>
-                      <th className="py-2.5 px-3 w-28">Jumlah Timbang <span className="text-rose-500">*</span></th>
-                      <th className="py-2.5 px-3 w-20">Satuan</th>
+                      <th className="py-2.5 px-3 min-w-[220px]">Barang <span className="text-rose-500">*</span></th>
+                      <th className="py-2.5 px-3 w-28">Jumlah timbang <span className="text-rose-500">*</span></th>
+                      <th className="py-2.5 px-3 w-16">Satuan</th>
+                      <th className="py-2.5 px-3 w-36">Harga satuan (nota) <span className="text-rose-500">*</span></th>
+                      <th className="py-2.5 px-3 w-32 text-right">Subtotal</th>
                       <th className="py-2.5 px-3 min-w-[150px]">Kondisi & Catatan</th>
                       <th className="py-2.5 px-3 w-10 text-center"></th>
                     </tr>
@@ -2389,22 +1766,19 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                       <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
                         <td className="py-2.5 px-3 font-mono text-slate-500 text-center">{idx + 1}</td>
                         <td className="py-2.5 px-3">
-                          <select
+                          <SearchPicker
                             value={line.itemId}
-                            onChange={e => handleLineItemChange(idx, e.target.value)}
-                            className="w-full text-xs rounded border border-slate-300 bg-white px-2 py-1.5 text-slate-800 font-medium focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-                          >
-                            {items.map(item => (
-                              <option key={item.id} value={item.id}>
-                                {item.name} ({item.category})
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                            {line.category}
-                          </span>
+                            options={receivingItemOptions}
+                            onSelect={opt => opt && handleLineItemChange(idx, opt.value)}
+                            placeholder="Pilih barang gudang"
+                            searchPlaceholder="Cari nama barang..."
+                            ariaLabel={`Barang baris ${idx + 1}`}
+                            noun="barang"
+                            size="sm"
+                          />
+                          {line.category && (
+                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700">{line.category}</span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3">
                           <input
@@ -2417,7 +1791,24 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                             required
                           />
                         </td>
-                        <td className="py-2.5 px-3 font-semibold text-slate-600">{line.unit}</td>
+                        <td className="py-2.5 px-3 font-semibold text-slate-600">{line.unit || '-'}</td>
+                        <td className="py-2.5 px-3">
+                          <div className="relative">
+                            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 font-semibold">Rp</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              aria-label={`Harga satuan baris ${idx + 1}`}
+                              value={line.unitPrice ? line.unitPrice.toLocaleString('id-ID') : ''}
+                              onChange={e => handleLinePriceChange(idx, e.target.value)}
+                              placeholder="0"
+                              className="w-full text-xs rounded border border-slate-300 pl-7 pr-2 py-1.5 font-mono tabular-nums text-slate-900 text-right focus:ring-1 focus:ring-emerald-500"
+                            />
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono tabular-nums font-semibold text-slate-900">
+                          {(line.quantity * (line.unitPrice || 0)).toLocaleString('id-ID')}
+                        </td>
                         <td className="py-2.5 px-3">
                           <input
                             type="text"
@@ -2441,6 +1832,15 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot className="bg-slate-50 border-t border-slate-200">
+                    <tr>
+                      <td colSpan={5} className="py-2.5 px-3 text-right font-semibold text-slate-700">Total nota</td>
+                      <td className="py-2.5 px-3 text-right font-mono tabular-nums font-bold text-slate-900">
+                        Rp {lines.reduce((sum, l) => sum + l.quantity * (l.unitPrice || 0), 0).toLocaleString('id-ID')}
+                      </td>
+                      <td colSpan={2} />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
@@ -2700,24 +2100,19 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                 </div>
 
                 {/* Supplier Filter Dropdown */}
-                <div className="relative">
-                  <select
+                <div className="w-full sm:w-52">
+                  <SearchPicker
                     value={selectedSupplierFilter}
-                    onChange={e => setSelectedSupplierFilter(e.target.value)}
-                    className="h-8 pl-7 pr-6 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-600 cursor-pointer appearance-none shadow-2xs"
-                    title="Filter per rekanan / supplier"
-                  >
-                    <option value="ALL">
-                      Semua Supplier {uniqueSuppliers.length > 0 ? `(${uniqueSuppliers.length})` : ''}
-                    </option>
-                    {uniqueSuppliers.map(s => (
-                      <option key={s.name} value={s.name}>
-                        {s.name} ({s.count})
-                      </option>
-                    ))}
-                  </select>
-                  <Building2 className="w-3.5 h-3.5 text-slate-500 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <ChevronDown className="w-3 h-3 text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    options={[
+                      { value: 'ALL', label: `Semua supplier${uniqueSuppliers.length > 0 ? ` (${uniqueSuppliers.length})` : ''}` },
+                      ...uniqueSuppliers.map(s => ({ value: s.name, label: s.name, hint: `${s.count} catatan` })),
+                    ]}
+                    onSelect={opt => opt && setSelectedSupplierFilter(opt.value)}
+                    searchPlaceholder="Cari supplier..."
+                    ariaLabel="Filter supplier"
+                    noun="supplier"
+                    size="sm"
+                  />
                 </div>
 
                 {/* Search Box */}
@@ -3034,10 +2429,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                   <h4 className="text-xs font-semibold text-slate-800">
                     {searchQuery || selectedCategoryTab !== 'ALL' || selectedSupplierFilter !== 'ALL'
                       ? 'Tidak ada catatan yang cocok dengan filter.'
-                      : 'Belum ada barang masuk atau belanja di periode ini.'}
+                      : 'Belum ada barang masuk di periode ini.'}
                   </h4>
                   <p className="text-[11px] text-slate-600 mt-1">
-                    Ubah periode atau filter, atau catat yang baru.
+                    Ubah periode atau filter, atau terima barang baru.
                   </p>
                   <div className="mt-3 flex flex-wrap justify-center gap-2">
                     {can('RECEIVE_GOODS') && (
@@ -3050,14 +2445,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                         Terima Barang
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={handleOpenSingleModal}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px]"
-                    >
-                      <Receipt className="w-3.5 h-3.5 text-slate-500" />
-                      Catat Belanja
-                    </button>
                   </div>
                 </div>
               ) : (
@@ -3130,8 +2517,9 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                                 {r.quantity} {r.unit}
                               </td>
                               <td className="py-3 px-3 text-right">
-                                {isStock ? (
-                                  <span className="text-slate-600" title="Nilai uangnya tercatat di baris Belanja">-</span>
+                                {/* Penerimaan lama tanpa belanja tertaut tidak punya harga. */}
+                                {r.nominal <= 0 ? (
+                                  <span className="text-slate-600" title="Harga belum tercatat">-</span>
                                 ) : (
                                   <>
                                     <div className="font-mono font-semibold text-slate-900">Rp {r.nominal.toLocaleString('id-ID')}</div>
@@ -3219,7 +2607,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                               </p>
                               <div className="mt-2 flex items-center justify-between gap-2">
                                 <span className="font-mono text-xs font-semibold text-slate-900">
-                                  {isStock ? '' : `Rp ${r.nominal.toLocaleString('id-ID')}`}
+                                  {r.nominal > 0 ? `Rp ${r.nominal.toLocaleString('id-ID')}` : ''}
                                 </span>
                                 <div className="flex items-center gap-1">
                                   {matchingNota && (
@@ -3287,885 +2675,56 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     )}
 
       {/* ========================================================================= */}
-      {/* MODAL: INPUT SATUAN (SINGLE ITEM) */}
-      {/* ========================================================================= */}
-      {isSingleInputModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div>
-                <h2 className="text-base font-bold text-slate-900">Catat Belanja</h2>
-                <p className="text-xs text-slate-600 mt-0.5">
-                  Masuk ke laporan pengeluaran. Stok gudang tidak berubah.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsSingleInputModalOpen(false)}
-                className="p-1 rounded-md text-slate-500 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                title="Tutup dialog"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Form */}
-            <form onSubmit={handleSaveSingleItem} className="p-4 sm:p-6 space-y-4 text-xs">
-              <p className="p-2.5 rounded-lg bg-sky-50 border border-sky-200 text-[11px] text-sky-800">
-                Barang yang disimpan ke gudang dan perlu masuk stok? Tutup form ini dan pakai <strong>Terima Barang</strong>.
-              </p>
-              {/* Kategori */}
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Kategori Barang & Belanja <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <select
-                    value={singleCategory}
-                    onChange={e => setSingleCategory(e.target.value as InputCategoryType)}
-                    className="w-full appearance-none border border-slate-300 rounded-lg pl-3 pr-9 py-2.5 bg-white text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer shadow-2xs"
-                  >
-                    <option value="Bahan Basah">Bahan Basah (Ayam, Daging, Ikan, Telur, Sayur, Buah, Tahu/Tempe)</option>
-                    <option value="Bahan Kering">Bahan Kering (Beras, Minyak, Gula, Tepung, Garam, Bumbu, Saus)</option>
-                    <option value="ATK & Administrasi">ATK & Administrasi (Kertas HVS, Buku, Pulpen, Spidol, Map, Tinta)</option>
-                    <option value="Alat Kebersihan">Alat Kebersihan (Sunlight, Karbol, Spons, Kain Lap, Sapu, Trash Bag)</option>
-                    <option value="Perlengkapan & APD">Perlengkapan & APD (Kresek, Kotak Mika, Sarung Tangan, Masker, Nurse Cap)</option>
-                    <option value="Operasional & Keperluan Lain">Operasional & Keperluan Lain (Gas Elpiji, Air Galon, Es Batu, Listrik)</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                </div>
-              </div>
-
-              {/* Nama Barang */}
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Nama Barang <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  list="common-catalog-datalist"
-                  value={singleItemName}
-                  onChange={e => handleSingleItemChange(e.target.value)}
-                  placeholder="Ketik atau pilih nama barang (contoh: Ayam Karkas, Sunlight, Kertas HVS)..."
-                  required
-                  className="w-full border border-slate-300 rounded-lg p-2.5 text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              {/* Jumlah & Satuan */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Jumlah / Kuantitas <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    min="0.01"
-                    value={singleQty}
-                    onChange={e => setSingleQty(e.target.value)}
-                    placeholder="1"
-                    required
-                    className="w-full border border-slate-300 rounded-lg p-2.5 font-bold text-slate-900 text-right focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Satuan <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      list="unit-datalist"
-                      value={singleUnit}
-                      onChange={e => setSingleUnit(e.target.value)}
-                      placeholder="Kg, Pcs, Pack..."
-                      required
-                      className="w-full border border-slate-300 rounded-lg pl-3 pr-8 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                    <select
-                      onChange={e => {
-                        if (e.target.value) setSingleUnit(e.target.value);
-                      }}
-                      value=""
-                      className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 w-7 h-7 cursor-pointer"
-                      title="Pilih satuan umum"
-                    >
-                      <option value="" disabled>Pilih satuan...</option>
-                      <option value="Kg">Kg</option>
-                      <option value="Liter">Liter</option>
-                      <option value="Pcs">Pcs</option>
-                      <option value="Pack">Pack</option>
-                      <option value="Ikat">Ikat</option>
-                      <option value="Dus">Dus</option>
-                      <option value="Roll">Roll</option>
-                      <option value="Pouch">Pouch</option>
-                      <option value="Gram">Gram</option>
-                      <option value="Botol">Botol</option>
-                      <option value="Bungkus">Bungkus</option>
-                      <option value="Rim">Rim</option>
-                      <option value="Buku">Buku</option>
-                      <option value="Tabung">Tabung</option>
-                      <option value="Galon">Galon</option>
-                      <option value="Karung">Karung</option>
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Harga Satuan & Subtotal */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Harga Satuan
-                  </label>
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500">
-                      Rp
-                    </span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={singleUnitPrice ? singleUnitPrice.toLocaleString('id-ID') : ''}
-                      onChange={e =>
-                        setSingleUnitPrice(Number(e.target.value.replace(/\D/g, '')) || 0)
-                      }
-                      placeholder="0"
-                      className="w-full border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 font-mono tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-                  {(() => {
-                    const ref = getItemCatalogInfo(singleItemName);
-                    if (!ref || singleUnitPrice === ref.price) return null;
-                    return (
-                      <p className="mt-1 text-[11px] text-slate-600">
-                        Harga acuan: Rp {ref.price.toLocaleString('id-ID')}/{ref.unit}.{' '}
-                        <button
-                          type="button"
-                          onClick={() => setSingleUnitPrice(ref.price)}
-                          className="font-semibold text-emerald-700 hover:underline cursor-pointer"
-                        >
-                          Pakai harga ini
-                        </button>
-                      </p>
-                    );
-                  })()}
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Total
-                  </label>
-                  <div className="w-full border border-slate-200 rounded-lg p-2.5 bg-slate-100 font-mono font-bold text-slate-800">
-                    Rp {((parseFloat(singleQty) || 0) * (singleUnitPrice || 0)).toLocaleString('id-ID')}
-                  </div>
-                </div>
-              </div>
-
-              {/* Tempat Belanja / Toko & Tanggal */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="relative" ref={singleSupplierDropdownRef}>
-                  <label htmlFor="single-supplier-input" className="block font-semibold text-slate-700 mb-1">
-                    Toko / Supplier / Pasar
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="single-supplier-input"
-                      type="text"
-                      value={singleSupplier}
-                      onChange={e => {
-                        setSingleSupplier(e.target.value);
-                        setIsSingleSupplierDropdownOpen(true);
-                      }}
-                      onFocus={() => setIsSingleSupplierDropdownOpen(true)}
-                      placeholder="Pilih dari master rekanan atau ketik toko..."
-                      className="w-full border border-slate-300 rounded-lg pl-3 pr-8 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setIsSingleSupplierDropdownOpen(prev => !prev)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-600 cursor-pointer"
-                      title="Buka daftar supplier master"
-                    >
-                      <ChevronDown className={`w-4 h-4 transition-transform ${isSingleSupplierDropdownOpen ? 'rotate-180 text-emerald-600' : ''}`} />
-                    </button>
-                  </div>
-
-                  {/* Dropdown Popover List for Single Supplier */}
-                  {isSingleSupplierDropdownOpen && (
-                    <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 max-h-56 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
-                      <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 border-b border-slate-100 flex items-center justify-between">
-                        <span>Pilih Supplier Master Rekanan</span>
-                        <span className="text-[10px] font-normal text-slate-500">{filteredSingleSuppliers.length} toko</span>
-                      </div>
-                      {filteredSingleSuppliers.map(s => (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => {
-                            setSingleSupplier(s.name);
-                            setIsSingleSupplierDropdownOpen(false);
-                          }}
-                          className="w-full px-3 py-2 text-left text-xs hover:bg-emerald-50/70 flex items-center justify-between gap-2 transition-colors cursor-pointer border-b border-slate-50 last:border-b-0"
-                        >
-                          <div className="min-w-0">
-                            <div className="font-semibold text-slate-900 truncate flex items-center gap-1.5">
-                              <Store className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                              <span>{s.name}</span>
-                            </div>
-                            {s.address && (
-                              <div className="text-[10px] text-slate-500 truncate mt-0.5">{s.address}</div>
-                            )}
-                          </div>
-                          <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                            {s.supplyCategory}
-                          </span>
-                        </button>
-                      ))}
-                      {filteredSingleSuppliers.length === 0 && (
-                        <div className="p-3 text-center text-xs text-slate-500">
-                          Toko <strong>"{singleSupplier}"</strong> belum ada di master. Anda tetap bisa menyimpannya sebagai belanja toko/pasar baru.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Tanggal Pembelian
-                  </label>
-                  <input
-                    type="date"
-                    value={singleDate}
-                    onChange={e => setSingleDate(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                  />
-                </div>
-              </div>
-
-              {/* PIC Gudang & Petugas Belanja */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    PIC Gudang Penerima
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={currentUser.name}
-                    value={singlePic}
-                    onChange={e => setSinglePic(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Relawan / Petugas Belanja
-                  </label>
-                  <input
-                    type="text"
-                    value={singleVolunteer}
-                    onChange={e => setSingleVolunteer(e.target.value)}
-                    placeholder="Nama staf belanja..."
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-
-              {/* Catatan */}
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Catatan
-                </label>
-                <input
-                  type="text"
-                  value={singleNotes}
-                  onChange={e => setSingleNotes(e.target.value)}
-                  placeholder="Contoh: Belanja tambahan untuk menu siang..."
-                  className="w-full border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              {/* Footer */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsSingleInputModalOpen(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-2xs transition-colors cursor-pointer"
-                >
-                  Simpan Belanja
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODAL: INPUT MASAL (BATCH GRID & EXCEL PASTE) */}
-      {/* ========================================================================= */}
-      {isBatchInputModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div>
-                <h2 className="text-base font-bold text-slate-900">
-                  Catat Banyak Belanja
-                </h2>
-                <p className="text-xs text-slate-600 mt-0.5">
-                  Isi tabel atau tempel dari Excel. Masuk ke laporan pengeluaran, stok gudang tidak berubah.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="flex bg-slate-200/80 p-0.5 rounded-lg text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setBatchInputMode('GRID')}
-                    className={`px-3 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
-                      batchInputMode === 'GRID' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
-                    }`}
-                  >
-                    Tabel Cepat
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBatchInputMode('PASTE')}
-                    className={`flex items-center gap-1 px-3 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
-                      batchInputMode === 'PASTE' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-slate-600'
-                    }`}
-                  >
-                    <ClipboardPaste className="w-3.5 h-3.5" />
-                    <span>Tempel dari Excel</span>
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setIsBatchInputModalOpen(false)}
-                  className="p-1 rounded-md text-slate-500 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer ml-2"
-                  title="Tutup dialog"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {/* Batch Date & PIC Header */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Tanggal Belanja / Penerimaan
-                  </label>
-                  <input
-                    type="date"
-                    value={batchDate}
-                    onChange={e => setBatchDate(e.target.value)}
-                    className="w-full text-xs font-semibold border border-slate-300 rounded-lg p-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    PIC Petugas Gudang
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Akmal"
-                    value={batchPic}
-                    onChange={e => setBatchPic(e.target.value)}
-                    className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-
-              {/* Langkah 1: Daftar supplier (wajib sebelum input barang) */}
-              <div
-                className={`p-3.5 rounded-xl border ${
-                  batchSuppliers.length === 0
-                    ? 'bg-amber-50/60 border-amber-200'
-                    : 'bg-white border-slate-200'
-                }`}
-              >
-                <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-                  <div className="flex-1 relative" ref={batchSupplierDropdownRef}>
-                    <label htmlFor="batch-supplier-input" className="block text-xs font-semibold text-slate-700 mb-1">
-                      Daftar supplier <span className="text-rose-500">*</span>
-                    </label>
-                    <p className="text-[11px] text-slate-500 mb-1.5">
-                      {batchSuppliers.length === 0
-                        ? 'Isi minimal satu supplier dulu. Tabel barang terbuka setelah supplier ditambahkan.'
-                        : 'Supplier pertama dipakai sebagai bawaan untuk baris yang belum dipilih.'}
-                    </p>
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <input
-                          id="batch-supplier-input"
-                          type="text"
-                          value={batchSupplierDraft}
-                          onChange={e => {
-                            setBatchSupplierDraft(e.target.value);
-                            setIsBatchSupplierDropdownOpen(true);
-                          }}
-                          onFocus={() => setIsBatchSupplierDropdownOpen(true)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleAddBatchSupplier();
-                              setIsBatchSupplierDropdownOpen(false);
-                            }
-                          }}
-                          placeholder="Pilih dari master rekanan atau ketik toko baru..."
-                          className="w-full text-xs border border-slate-300 rounded-lg pl-3 pr-8 py-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                          autoFocus={batchSuppliers.length === 0}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setIsBatchSupplierDropdownOpen(prev => !prev)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-600 cursor-pointer"
-                          title="Buka daftar supplier master"
-                        >
-                          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isBatchSupplierDropdownOpen ? 'rotate-180 text-emerald-600' : ''}`} />
-                        </button>
-
-                        {/* Dropdown Popover for Master Suppliers */}
-                        {isBatchSupplierDropdownOpen && (
-                          <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 max-h-52 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
-                            <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 border-b border-slate-100 flex items-center justify-between">
-                              <span>Pilih dari Master Rekanan ({availableBatchMasterSuppliers.length})</span>
-                              {batchSupplierDraft.trim() && (
-                                <span className="text-emerald-700 font-medium text-[10px]">Filter aktif</span>
-                              )}
-                            </div>
-                            {availableBatchMasterSuppliers.map(s => (
-                              <button
-                                key={s.id}
-                                type="button"
-                                onClick={() => {
-                                  handleAddBatchSupplier(s.name);
-                                  setIsBatchSupplierDropdownOpen(false);
-                                }}
-                                className="w-full px-3 py-2 text-left text-xs hover:bg-emerald-50/70 flex items-center justify-between gap-2 transition-colors cursor-pointer border-b border-slate-50 last:border-b-0"
-                              >
-                                <div className="min-w-0">
-                                  <div className="font-semibold text-slate-900 truncate flex items-center gap-1.5">
-                                    <Store className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                    <span>{s.name}</span>
-                                  </div>
-                                  {s.address && (
-                                    <div className="text-[10px] text-slate-500 truncate mt-0.5">{s.address}</div>
-                                  )}
-                                </div>
-                                <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                                  {s.supplyCategory}
-                                </span>
-                              </button>
-                            ))}
-                            {availableBatchMasterSuppliers.length === 0 && (
-                              <div className="p-3 text-center text-xs text-slate-500">
-                                {batchSupplierDraft.trim() ? (
-                                  <span>Tekan tombol <strong>"Tambah"</strong> untuk menambahkan "{batchSupplierDraft}" sebagai toko baru.</span>
-                                ) : (
-                                  <span>Semua supplier master sudah masuk ke daftar sesi ini.</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      <button
-                        type="button"
-                        id="batch-supplier-add-btn"
-                        onClick={() => {
-                          handleAddBatchSupplier();
-                          setIsBatchSupplierDropdownOpen(false);
-                        }}
-                        disabled={!batchSupplierDraft.trim()}
-                        className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white disabled:opacity-50 disabled:pointer-events-none transition-colors cursor-pointer shrink-0"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Tambah</span>
-                      </button>
-                    </div>
-
-                    {/* Quick Add Chips from Master Suppliers */}
-                    {availableBatchMasterSuppliers.length > 0 && batchSuppliers.length < 5 && (
-                      <div className="flex items-center gap-1.5 mt-2 flex-wrap text-[11px] text-slate-500">
-                        <span className="font-medium text-slate-500">Pilih cepat:</span>
-                        {availableBatchMasterSuppliers.slice(0, 4).map(s => (
-                          <button
-                            key={s.id}
-                            type="button"
-                            onClick={() => handleAddBatchSupplier(s.name)}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 hover:text-emerald-900 border border-slate-200 transition-colors cursor-pointer"
-                            title={`Tambah ${s.name}`}
-                          >
-                            <Plus className="w-2.5 h-2.5 text-emerald-600" />
-                            <span>{s.name}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {batchSuppliers.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2.5">
-                    {batchSuppliers.map((s, i) => {
-                      const inMaster = isInSupplierMaster(s);
-                      return (
-                        <span
-                          key={s}
-                          className={`inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-md border text-[11px] font-semibold ${
-                            inMaster
-                              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                              : 'bg-amber-50 border-amber-200 text-amber-900'
-                          }`}
-                          title={inMaster ? 'Terdaftar di master supplier' : 'Diketik manual, belum ada di master supplier'}
-                        >
-                          <Store className={`w-3 h-3 ${inMaster ? 'text-emerald-600' : 'text-amber-600'}`} />
-                          {s}
-                          {i === 0 && (
-                            <span className={`text-[10px] font-medium ${inMaster ? 'text-emerald-600' : 'text-amber-700'}`}>
-                              (bawaan)
-                            </span>
-                          )}
-                          {!inMaster && (
-                            <button
-                              type="button"
-                              onClick={() => handleSaveBatchSupplierToMaster(s)}
-                              className="ml-0.5 px-1.5 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-semibold text-amber-800 hover:bg-amber-100 cursor-pointer"
-                            >
-                              Simpan ke master
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveBatchSupplierWithConfirm(s)}
-                            className={`p-0.5 rounded hover:text-rose-600 hover:bg-white cursor-pointer ${
-                              inMaster ? 'text-emerald-500' : 'text-amber-500'
-                            }`}
-                            title={`Hapus ${s}`}
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <fieldset
-                disabled={batchSuppliers.length === 0}
-                className={`min-w-0 transition-opacity ${batchSuppliers.length === 0 ? 'opacity-40 pointer-events-none select-none' : ''}`}
-              >
-              {/* MODE 1: GRID TABLE */}
-              {batchInputMode === 'GRID' && (
-                <div className="space-y-3">
-                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead>
-                          <tr className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
-                            <th className="py-2.5 px-2 text-center w-8">#</th>
-                            <th className="py-2.5 px-2.5 min-w-[190px]">Nama Barang <span className="text-rose-500">*</span></th>
-                            <th className="py-2.5 px-2 w-36">Kategori</th>
-                            <th className="py-2.5 px-2 w-20 text-right">Jumlah</th>
-                            <th className="py-2.5 px-2 w-20">Satuan</th>
-                            <th className="py-2.5 px-2 w-32 text-right">Harga Satuan</th>
-                            <th className="py-2.5 px-2 min-w-[120px]">Toko / Supplier</th>
-                            <th className="py-2.5 px-2 min-w-[110px]">Keterangan</th>
-                            <th className="py-2.5 px-1 text-center w-8"></th>
-                          </tr>
-                        </thead>
-                        <tbody ref={batchGridRef} className="divide-y divide-slate-100 font-medium">
-                          {batchRows.map((row, index) => (
-                            <tr key={row.id} className="hover:bg-slate-50/80 focus-within:bg-emerald-50/40">
-                              <td className="py-1.5 px-2 text-center text-slate-500 text-[11px]">
-                                {index + 1}
-                              </td>
-                              <td className="py-1.5 px-2.5">
-                                <input
-                                  type="text"
-                                  list="common-catalog-datalist"
-                                  data-cell={`${index}-0`}
-                                  onKeyDown={e => handleBatchGridKeyDown(e, index, 0)}
-                                  value={row.itemName}
-                                  onChange={e => handleUpdateBatchRow(row.id, 'itemName', e.target.value)}
-                                  placeholder="Ketik nama barang..."
-                                  className="w-full text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-900"
-                                />
-                              </td>
-                              <td className="py-1.5 px-2">
-                                <div className="relative">
-                                  <select
-                                    data-cell={`${index}-1`}
-                                    onKeyDown={e => handleBatchGridKeyDown(e, index, 1)}
-                                    value={row.category}
-                                    onChange={e => handleUpdateBatchRow(row.id, 'category', e.target.value as InputCategoryType)}
-                                    className="w-full appearance-none text-[11px] border border-slate-200 rounded pl-1.5 pr-5 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                                  >
-                                    {INPUT_CATEGORIES.map(c => (
-                                      <option key={c} value={c}>{c}</option>
-                                    ))}
-                                  </select>
-                                  <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
-                                </div>
-                              </td>
-                              <td className="py-1.5 px-2 text-right">
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  data-cell={`${index}-2`}
-                                  onKeyDown={e => handleBatchGridKeyDown(e, index, 2)}
-                                  value={row.qty}
-                                  onChange={e => handleUpdateBatchRow(row.id, 'qty', e.target.value)}
-                                  placeholder="1"
-                                  className="w-full text-xs border border-slate-200 rounded px-2 py-1 text-right focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-900"
-                                />
-                              </td>
-                              <td className="py-1.5 px-2">
-                                <input
-                                  type="text"
-                                  list="unit-datalist"
-                                  data-cell={`${index}-3`}
-                                  onKeyDown={e => handleBatchGridKeyDown(e, index, 3)}
-                                  value={row.unit}
-                                  onChange={e => handleUpdateBatchRow(row.id, 'unit', e.target.value)}
-                                  placeholder="Kg"
-                                  className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-900"
-                                />
-                              </td>
-                              <td className="py-1.5 px-2 text-right">
-                                <div className="relative">
-                                  <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[11px] font-medium text-slate-500">
-                                    Rp
-                                  </span>
-                                  <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    data-cell={`${index}-4`}
-                                    onKeyDown={e => handleBatchGridKeyDown(e, index, 4)}
-                                    value={row.unitPrice ? row.unitPrice.toLocaleString('id-ID') : ''}
-                                    onChange={e =>
-                                      handleUpdateBatchRow(
-                                        row.id,
-                                        'unitPrice',
-                                        Number(e.target.value.replace(/\D/g, '')) || 0
-                                      )
-                                    }
-                                    placeholder={getItemCatalogInfo(row.itemName)?.price.toLocaleString('id-ID') || '0'}
-                                    title={getItemCatalogInfo(row.itemName) ? 'Angka abu-abu adalah harga acuan, isi harga sesuai nota' : undefined}
-                                    className="w-full text-xs border border-slate-200 rounded pl-7 pr-1.5 py-1 text-right font-mono tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-900"
-                                  />
-                                </div>
-                              </td>
-                              <td className="py-1.5 px-2">
-                                <div className="relative">
-                                  <select
-                                    data-cell={`${index}-5`}
-                                    onKeyDown={e => handleBatchGridKeyDown(e, index, 5)}
-                                    value={row.supplier || batchSuppliers[0] || ''}
-                                    onChange={e => {
-                                      const chosen = e.target.value;
-                                      if (chosen && !batchSuppliers.includes(chosen)) {
-                                        setBatchSuppliers(prev => [...prev, chosen]);
-                                      }
-                                      handleUpdateBatchRow(row.id, 'supplier', chosen);
-                                    }}
-                                    className="w-full appearance-none text-[11px] border border-slate-200 rounded pl-1.5 pr-5 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                                  >
-                                    {batchSuppliers.length === 0 && <option value="">Pilih supplier...</option>}
-                                    {batchSuppliers.length > 0 && (
-                                      <optgroup label="── Supplier Sesi Ini ──">
-                                        {batchSuppliers.map(s => (
-                                          <option key={s} value={s}>{s}</option>
-                                        ))}
-                                      </optgroup>
-                                    )}
-                                    {suppliers.filter(ms => !batchSuppliers.includes(ms.name)).length > 0 && (
-                                      <optgroup label="── Pilih dari Master Rekanan ──">
-                                        {suppliers
-                                          .filter(ms => !batchSuppliers.includes(ms.name))
-                                          .map(ms => (
-                                            <option key={ms.id} value={ms.name}>
-                                              + {ms.name} ({ms.supplyCategory})
-                                            </option>
-                                          ))}
-                                      </optgroup>
-                                    )}
-                                  </select>
-                                  <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
-                                </div>
-                              </td>
-                              <td className="py-1.5 px-2">
-                                <input
-                                  type="text"
-                                  data-cell={`${index}-6`}
-                                  onKeyDown={e => handleBatchGridKeyDown(e, index, 6)}
-                                  value={row.notes}
-                                  onChange={e => handleUpdateBatchRow(row.id, 'notes', e.target.value)}
-                                  placeholder="Catatan..."
-                                  className="w-full text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-900"
-                                />
-                              </td>
-                              <td className="py-1.5 px-1 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveBatchRowWithConfirm(row)}
-                                  disabled={batchRows.length <= 1}
-                                  className="text-slate-500 hover:text-rose-500 disabled:opacity-20 cursor-pointer p-1"
-                                  title="Hapus baris ini"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-slate-500">
-                    Pindah sel pakai tombol panah: <kbd className="px-1 rounded border border-slate-300 bg-slate-50 font-mono">↑</kbd>{' '}
-                    <kbd className="px-1 rounded border border-slate-300 bg-slate-50 font-mono">↓</kbd> antar baris,{' '}
-                    <kbd className="px-1 rounded border border-slate-300 bg-slate-50 font-mono">←</kbd>{' '}
-                    <kbd className="px-1 rounded border border-slate-300 bg-slate-50 font-mono">→</kbd> antar kolom. Tekan{' '}
-                    <kbd className="px-1 rounded border border-slate-300 bg-slate-50 font-mono">↓</kbd> atau{' '}
-                    <kbd className="px-1 rounded border border-slate-300 bg-slate-50 font-mono">Enter</kbd> di baris terakhir untuk menambah baris baru.
-                    Buka pilihan dropdown dengan <kbd className="px-1 rounded border border-slate-300 bg-slate-50 font-mono">Alt + ↓</kbd>.
-                  </p>
-
-                  {/* Add Row Controls & Total Summary */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleAddBatchRows(1)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs transition-colors cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Tambah 1 Baris</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleAddBatchRows(5)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer"
-                      >
-                        <PlusCircle className="w-3.5 h-3.5" />
-                        <span>+5 Baris</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleResetBatchRows}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 transition-colors cursor-pointer ml-1"
-                        title="Kosongkan seluruh baris input masal"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
-                        <span>Kosongkan Tabel</span>
-                      </button>
-                    </div>
-
-                    <div className="text-xs text-slate-600 flex items-center gap-3">
-                      <span>
-                        Total baris terisi: <strong>{batchRows.filter(r => r.itemName.trim() !== '').length}</strong> / {batchRows.length}
-                      </span>
-                      <span className="font-mono font-bold text-emerald-800">
-                        Total: Rp {batchRows
-                          .filter(r => r.itemName.trim() !== '')
-                          .reduce((sum, r) => sum + (parseFloat(r.qty) || 0) * (r.unitPrice || 0), 0)
-                          .toLocaleString('id-ID')}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* MODE 2: PASTE FROM EXCEL */}
-              {batchInputMode === 'PASTE' && (
-                <div className="space-y-3">
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-950 flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-semibold mb-0.5">Panduan Format Salin / Tempel dari Excel:</p>
-                      <p className="text-[11px] text-emerald-900 leading-relaxed">
-                        Salin (Copy - Ctrl+C) tabel dari Excel atau Google Sheet lalu tempel (Ctrl+V) ke kotak teks di bawah. Format kolom yang didukung:
-                        <br />
-                        <code className="bg-emerald-100 px-1 rounded font-mono text-[10px]">
-                          [Nama Barang] [Tab] [Jumlah] [Tab] [Satuan] [Tab] [Harga Satuan] [Tab] [Toko/Supplier]
-                        </code>{' '}
-                        atau{' '}
-                        <code className="bg-emerald-100 px-1 rounded font-mono text-[10px]">
-                          [Nama Barang] [Tab] [Jumlah]
-                        </code>.
-                      </p>
-                    </div>
-                  </div>
-
-                  <textarea
-                    rows={8}
-                    value={batchRawPaste}
-                    onChange={e => setBatchRawPaste(e.target.value)}
-                    placeholder="Tempel data Excel di sini (Ctrl+V)...&#10;Contoh:&#10;Daging Ayam Broiler&#9;25&#9;Kg&#9;38000&#9;Pasar Tumpang&#10;Beras Ramos&#9;50&#9;Kg&#9;14500&#9;Toko Berkah&#10;Kertas HVS A4&#9;2&#9;Rim&#9;48000&#9;Gramedia&#10;Sunlight 750ml&#9;4&#9;Pouch&#9;18500&#9;Superindo"
-                    className="w-full text-xs font-mono border border-slate-300 rounded-xl p-3 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
-                  />
-
-                  <div className="flex items-center justify-end">
-                    <button
-                      type="button"
-                      onClick={handleParsePastedExcel}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                    >
-                      <ClipboardPaste className="w-4 h-4" />
-                      <span>Ekstrak Data ke Tabel</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-              </fieldset>
-            </div>
-
-            {/* Footer */}
-            <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
-              <span className="text-xs text-slate-500">
-                Semua baris masuk ke laporan pengeluaran. Stok gudang tidak berubah.
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsBatchInputModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-lg text-xs font-semibold cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveBatchRows}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-2xs transition-colors cursor-pointer"
-                >
-                  Simpan Semua Belanja
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
       {/* MODAL: POST-INPUT NOTA PESANAN PROMPT (CTA TAMBAHAN)                     */}
       {/* ========================================================================= */}
+      {quickItem && (
+        <FormDialog
+          title="Daftarkan barang baru"
+          description="Barang masuk ke Master Barang lalu langsung dipakai di form ini. Stok awal 0; stok bertambah saat penerimaan disimpan."
+          onClose={() => setQuickItem(null)}
+          onSubmit={handleSaveQuickItem}
+          submitLabel="Daftarkan"
+          error={quickItemError}
+        >
+          <div className="space-y-3">
+            <div>
+              <label htmlFor="qi-name" className={FIELD_LABEL}>Nama barang</label>
+              <input
+                id="qi-name"
+                autoFocus
+                value={quickItem.name}
+                onChange={e => setQuickItem(q => (q ? { ...q, name: e.target.value } : q))}
+                placeholder="Contoh: Tisu Gulung 2 Ply"
+                className={FIELD_INPUT}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="qi-cat" className={FIELD_LABEL}>Kategori</label>
+                <Select
+                  id="qi-cat"
+                  className="w-full"
+                  value={quickItem.category}
+                  onChange={e => setQuickItem(q => (q ? { ...q, category: e.target.value as InputCategoryType } : q))}
+                >
+                  {INPUT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </Select>
+              </div>
+              <div>
+                <label htmlFor="qi-unit" className={FIELD_LABEL}>Satuan</label>
+                <input
+                  id="qi-unit"
+                  value={quickItem.unit}
+                  onChange={e => setQuickItem(q => (q ? { ...q, unit: e.target.value } : q))}
+                  placeholder="Kg, Pcs, Pack, Roll..."
+                  className={FIELD_INPUT}
+                />
+              </div>
+            </div>
+          </div>
+        </FormDialog>
+      )}
+
       {justSavedPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
@@ -4440,34 +2999,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
         submessage={actionLoading.submessage}
       />
 
-      {/* Autocomplete Datalists */}
-      <datalist id="common-catalog-datalist">
-        {COMMON_GOODS_CATALOG.map((c, i) => (
-          <option key={i} value={c.name}>{c.category} - Rp {c.price.toLocaleString('id-ID')}/{c.unit}</option>
-        ))}
-        {items.map(it => (
-          <option key={it.id} value={it.name}>{it.category} (Stok: {it.currentStock} {it.baseUnit})</option>
-        ))}
-      </datalist>
-
-      <datalist id="unit-datalist">
-        <option value="Kg" />
-        <option value="Liter" />
-        <option value="Gram" />
-        <option value="Pcs" />
-        <option value="Pack" />
-        <option value="Ikat" />
-        <option value="Dus" />
-        <option value="Roll" />
-        <option value="Pouch" />
-        <option value="Botol" />
-        <option value="Bungkus" />
-        <option value="Rim" />
-        <option value="Buku" />
-        <option value="Tabung" />
-        <option value="Galon" />
-        <option value="Karung" />
-      </datalist>
     </div>
   );
 };

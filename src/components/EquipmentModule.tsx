@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Select } from './common/Select';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { EquipmentCategory, EquipmentCondition, EquipmentItem, EquipmentStatus } from '../types/warehouse';
@@ -261,19 +262,17 @@ export const EquipmentModule: React.FC<EquipmentModuleProps> = ({ onPrintLabel }
           ))}
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
-          <select
+          <Select className="w-full sm:w-44"
             aria-label="Kategori"
             value={categoryFilter}
-            onChange={e => setCategoryFilter(e.target.value as 'ALL' | EquipmentCategory)}
-            className={`${FIELD_INPUT} sm:w-44`}
-          >
+            onChange={e => setCategoryFilter(e.target.value as 'ALL' | EquipmentCategory)}>
             <option value="ALL">Semua kategori</option>
             {(Object.keys(CATEGORY_LABEL) as EquipmentCategory[]).map(c => (
               <option key={c} value={c}>
                 {CATEGORY_LABEL[c]}
               </option>
             ))}
-          </select>
+          </Select>
           <div className="relative sm:w-64">
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
@@ -395,19 +394,19 @@ export const EquipmentModule: React.FC<EquipmentModuleProps> = ({ onPrintLabel }
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label htmlFor="chk-cond" className={FIELD_LABEL}>Kondisi</label>
-              <select id="chk-cond" value={checkCondition} onChange={e => setCheckCondition(e.target.value as EquipmentCondition)} className={FIELD_INPUT}>
+              <Select className="w-full" id="chk-cond" value={checkCondition} onChange={e => setCheckCondition(e.target.value as EquipmentCondition)}>
                 {(Object.keys(CONDITION_LABEL) as EquipmentCondition[]).map(c => (
                   <option key={c} value={c}>{CONDITION_LABEL[c]}</option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div>
               <label htmlFor="chk-status" className={FIELD_LABEL}>Status</label>
-              <select id="chk-status" value={checkStatus} onChange={e => setCheckStatus(e.target.value as EquipmentStatus)} className={FIELD_INPUT}>
+              <Select className="w-full" id="chk-status" value={checkStatus} onChange={e => setCheckStatus(e.target.value as EquipmentStatus)}>
                 {(Object.keys(STATUS_LABEL) as EquipmentStatus[]).map(s => (
                   <option key={s} value={s}>{STATUS_LABEL[s]}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
           <div>
@@ -445,11 +444,11 @@ export const EquipmentModule: React.FC<EquipmentModuleProps> = ({ onPrintLabel }
             </div>
             <div>
               <label htmlFor="eq-cat" className={FIELD_LABEL}>Kategori</label>
-              <select id="eq-cat" value={form.category} onChange={e => setField('category', e.target.value as EquipmentCategory)} className={FIELD_INPUT}>
+              <Select className="w-full" id="eq-cat" value={form.category} onChange={e => setField('category', e.target.value as EquipmentCategory)}>
                 {(Object.keys(CATEGORY_LABEL) as EquipmentCategory[]).map(c => (
                   <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -472,11 +471,11 @@ export const EquipmentModule: React.FC<EquipmentModuleProps> = ({ onPrintLabel }
           {editing.isNew && (
             <div>
               <label htmlFor="eq-cond" className={FIELD_LABEL}>Kondisi awal</label>
-              <select id="eq-cond" value={form.condition} onChange={e => setField('condition', e.target.value as EquipmentCondition)} className={FIELD_INPUT}>
+              <Select className="w-full" id="eq-cond" value={form.condition} onChange={e => setField('condition', e.target.value as EquipmentCondition)}>
                 {(Object.keys(CONDITION_LABEL) as EquipmentCondition[]).map(c => (
                   <option key={c} value={c}>{CONDITION_LABEL[c]}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
           <div>

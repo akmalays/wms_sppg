@@ -134,6 +134,8 @@ export interface ReceivingLine {
   batchNumber?: string;
   expiryDate?: string;
   photoUrl?: string; // Dokumentasi per barang (timbangan / kemasan)
+  /** Harga satuan dari nota; hanya di form. Yang tersimpan ada di catatan pengeluaran bertanda [GR: id]. */
+  unitPrice?: number;
 }
 
 export type ReceivingStatus = 'DRAFT' | 'VERIFIED_POSTED';

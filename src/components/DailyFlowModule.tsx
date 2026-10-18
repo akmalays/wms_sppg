@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { DailyFlowRecord } from '../types/warehouse';
+import { OperationalIssuePanel } from './OperationalIssuePanel';
 import { localDateIso } from '../utils/localDate';
 import { CheckCircle2, AlertTriangle, Search, X } from 'lucide-react';
 
@@ -49,6 +50,8 @@ export const DailyFlowModule: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [dataVersion, setDataVersion] = useState(0);
   const [scope, setScope] = useState<Scope>('ALL');
+  // Bahan dapur: pemakaian bahan masak harian. Operasional: tisu, sabun, ATK, gas, kemasan.
+  const [section, setSection] = useState<'DAPUR' | 'OPERASIONAL'>('DAPUR');
   const [query, setQuery] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -227,12 +230,34 @@ export const DailyFlowModule: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 bg-white p-4 sm:p-5 rounded-xl border border-slate-200">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Pemakaian Dapur</h1>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Barang Keluar</h1>
           <p className="text-xs text-slate-600 mt-0.5">
-            Catat bahan yang dipakai masak. Saldo akhir = saldo awal + masuk − dipakai ± penyesuaian opname.
+            {section === 'DAPUR'
+              ? 'Catat bahan yang dipakai masak. Saldo akhir = saldo awal + masuk − dipakai ± penyesuaian opname.'
+              : 'Catat barang operasional yang diambil dari gudang, seperti tisu, sabun, ATK, dan gas.'}
           </p>
+          <div role="tablist" aria-label="Jenis barang keluar" className="mt-3 inline-flex p-1 rounded-lg bg-slate-200/70 text-xs">
+            {([
+              ['DAPUR', 'Bahan dapur'],
+              ['OPERASIONAL', 'Operasional'],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={section === id}
+                onClick={() => setSection(id)}
+                className={`px-3.5 min-h-[40px] sm:min-h-[30px] rounded-md font-semibold cursor-pointer transition-colors ${FOCUS} ${
+                  section === id ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-700 hover:text-slate-900'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
+        {section === 'DAPUR' && (
         <div className="flex flex-col sm:flex-row sm:items-end gap-2">
           <div>
             <label htmlFor="flow-date" className="block text-[11px] font-medium text-slate-700 mb-1">
@@ -258,7 +283,13 @@ export const DailyFlowModule: React.FC = () => {
             </button>
           )}
         </div>
+        )}
       </div>
+
+      {section === 'OPERASIONAL' ? (
+        <OperationalIssuePanel />
+      ) : (
+      <>
 
       {!isToday && (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -545,6 +576,8 @@ export const DailyFlowModule: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

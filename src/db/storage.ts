@@ -4098,7 +4098,8 @@ class WarehouseDatabase {
           pic: user.name,
           recipient: po.supplierName,
           receiptRef: po.poNumber,
-          notes: `Belanja bahan PO ${po.poNumber} (${po.supplierName}). ${itemInput.notes || ''}`.trim(),
+          // Penanda [GR: id] menautkan belanja ini ke dokumen penerimaannya agar riwayat tidak dobel.
+          notes: `[GR: ${receivingDoc.id}] Belanja bahan PO ${po.poNumber} (${po.supplierName}). ${itemInput.notes || ''}`.trim(),
           createdAt: nowIso,
         };
         expenseIds.push(expId);
@@ -4467,7 +4468,8 @@ class WarehouseDatabase {
       this.pushCloud('daily_todos', () => supabase.from('daily_todos').upsert(seeded.map(mapTodoToSupabase)));
       return [...seeded];
     }
-    return filtered.length > 0 ? filtered : this.todos;
+    // Tanggal tanpa tugas tetap kosong; dulu mengembalikan seluruh riwayat sehingga progres dan daftar kacau.
+    return filtered;
   }
 
   public getAllTodos(): DailyTodoItem[] {

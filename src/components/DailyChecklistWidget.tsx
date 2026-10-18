@@ -1,112 +1,160 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Select } from './common/Select';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
-import { DailyTodoItem, TodoCategory, TodoPriority, UserRole } from '../types/warehouse';
+import { DailyTodoItem, TodoCategory, TodoPriority } from '../types/warehouse';
+import { localDateIso } from '../utils/localDate';
 import {
   CheckSquare,
   Clock,
   Plus,
   AlertCircle,
+  Check,
   CheckCircle2,
   Users,
   Bell,
-  Volume2,
-  Filter,
+  BellOff,
   ArrowRight,
   Flame,
-  Calendar,
-  ChevronDown,
   X,
 } from 'lucide-react';
 
+const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
+const SOUND_KEY = 'sppg_jobdesk_reminder_sound';
+
+const CATEGORIES: TodoCategory[] = ['Penerimaan & QC', 'Persiapan Dapur', 'Sanitasi & Kebersihan', 'Administrasi & Stok', 'Stock Opname', 'Distribusi'];
+
 /**
- * Suara chime lembut pengingat jam kerja menggunakan Web Audio API murni.
- * Tidak membutuhkan file MP3 eksternal dan aman dari error 404.
+ * Nada pengingat lembut memakai Web Audio API (tanpa file MP3).
+ * Satu AudioContext dipakai ulang: browser hanya mengizinkan suara setelah ada interaksi,
+ * dan context yang sudah diizinkan tetap bisa berbunyi untuk pengingat berikutnya.
  */
+let audioCtx: AudioContext | null = null;
 function playReminderChime() {
   try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-
-    // Nada 1 (D5)
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(587.33, ctx.currentTime);
-    gain1.gain.setValueAtTime(0.12, ctx.currentTime);
-    gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start(ctx.currentTime);
-    osc1.stop(ctx.currentTime + 0.35);
-
-    // Nada 2 (A5)
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(880.00, ctx.currentTime + 0.18);
-    gain2.gain.setValueAtTime(0.12, ctx.currentTime + 0.18);
-    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.7);
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(ctx.currentTime + 0.18);
-    osc2.stop(ctx.currentTime + 0.7);
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    audioCtx = audioCtx ?? new Ctx();
+    const ctx = audioCtx;
+    void ctx.resume();
+    // Dua nada: D5 lalu A5.
+    [
+      { freq: 587.33, start: 0, end: 0.35 },
+      { freq: 880, start: 0.18, end: 0.7 },
+    ].forEach(({ freq, start, end }) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime + start);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + end);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + end);
+    });
   } catch (err) {
-    console.warn('Audio Context belum diaktifkan oleh interaksi pengguna:', err);
+    console.warn('Nada pengingat tidak bisa diputar:', err);
   }
+}
+
+function readSoundPref(): boolean {
+  try {
+    return localStorage.getItem(SOUND_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+const nowHHMM = () => {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+};
+
+// Lewat lebih dari 15 menit dari target jam dan belum selesai.
+function isTaskOverdue(todo: DailyTodoItem, current: string): boolean {
+  if (todo.isCompleted || !todo.targetTime) return false;
+  const [h, m] = todo.targetTime.split(':').map(Number);
+  const [curH, curM] = current.split(':').map(Number);
+  return h * 60 + m < curH * 60 + curM - 15;
 }
 
 interface DailyChecklistWidgetProps {
   onNavigateToProfileTodos?: () => void;
-  onRefreshData?: () => void;
 }
 
-export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
-  onNavigateToProfileTodos,
-  onRefreshData,
-}) => {
+// Tidak memicu onRefreshData dashboard: itu me-mount ulang seluruh dashboard sehingga filter dan
+// pengingat di widget ini ter-reset setiap kali satu tugas dicentang. Bagian lain dashboard tidak memakai data jobdesk.
+export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({ onNavigateToProfileTodos }) => {
   const { currentUser, availableUsers } = useAuth();
-  const todayStr = new Date().toISOString().split('T')[0];
 
-  const [todos, setTodos] = useState<DailyTodoItem[]>(() => warehouseDb.getDailyTodos(todayStr));
+  // Tanggal lokal (WIB). toISOString() memakai UTC sehingga sebelum 07.00 WIB tanggalnya mundur sehari.
+  const [todayStr, setTodayStr] = useState(localDateIso);
+  const [currentTimeStr, setCurrentTimeStr] = useState(nowHHMM);
+  const [todos, setTodos] = useState<DailyTodoItem[]>(() => warehouseDb.getDailyTodos(localDateIso()));
+
   const [selectedStaffFilter, setSelectedStaffFilter] = useState<string>('ALL'); // 'ALL' | 'ME' | userId
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('ALL');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<'ALL' | 'PENDING' | 'DONE'>('ALL');
-  const [currentTimeStr, setCurrentTimeStr] = useState<string>(() => {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  });
+
+  const [soundOn, setSoundOn] = useState(readSoundPref);
+  const [lastReminder, setLastReminder] = useState<{ time: string; titles: string[] } | null>(null);
+  const remindedRef = useRef<Set<string>>(new Set());
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-
-  // Form states for quick add
+  const [addError, setAddError] = useState('');
   const [newTitle, setNewTitle] = useState('');
-  const [newTargetTime, setNewTargetTime] = useState(() => {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, '0')}:00`;
-  });
+  const [newTargetTime, setNewTargetTime] = useState(() => `${nowHHMM().slice(0, 2)}:00`);
   const [newCategory, setNewCategory] = useState<TodoCategory>('Penerimaan & QC');
   const [newPriority, setNewPriority] = useState<TodoPriority>('Tinggi');
   const [newSession, setNewSession] = useState<'Pagi' | 'Siang' | 'Sore' | 'Harian'>('Pagi');
   const [newAssignedUserId, setNewAssignedUserId] = useState<string>('');
   const [newNotes, setNewNotes] = useState('');
 
-  // Update clock every 30 seconds
+  const refreshTodoList = useCallback(() => setTodos(warehouseDb.getDailyTodos(todayStr)), [todayStr]);
+
+  // Jam dan tanggal diperbarui tiap 30 detik, jadi lewat tengah malam ceklis otomatis berganti hari.
   useEffect(() => {
     const timer = setInterval(() => {
-      const now = new Date();
-      const formatted = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      setCurrentTimeStr(formatted);
+      setCurrentTimeStr(nowHHMM());
+      setTodayStr(localDateIso());
     }, 30000);
     return () => clearInterval(timer);
   }, []);
 
-  const refreshTodoList = () => {
-    const refreshed = warehouseDb.getDailyTodos(todayStr);
-    setTodos(refreshed);
-    if (onRefreshData) onRefreshData();
+  useEffect(() => {
+    setTodos(warehouseDb.getDailyTodos(todayStr));
+    remindedRef.current = new Set();
+    setLastReminder(null);
+  }, [todayStr]);
+
+  // Tugas yang dicentang di perangkat lain ikut muncul.
+  useEffect(() => {
+    const onSync = () => setTodos(warehouseDb.getDailyTodos(todayStr));
+    window.addEventListener('sppg_warehouse_sync', onSync);
+    return () => window.removeEventListener('sppg_warehouse_sync', onSync);
+  }, [todayStr]);
+
+  // Pengingat: tepat saat jam target tiba (selama aplikasi terbuka), sekali per tugas.
+  // Tugas yang jamnya sudah lewat saat halaman dibuka tidak dibunyikan serentak.
+  useEffect(() => {
+    const due = todos.filter(t => !t.isCompleted && t.targetTime === currentTimeStr && !remindedRef.current.has(t.id));
+    if (due.length === 0) return;
+    due.forEach(t => remindedRef.current.add(t.id));
+    setLastReminder({ time: currentTimeStr, titles: due.map(t => t.title) });
+    if (soundOn) playReminderChime();
+  }, [currentTimeStr, todos, soundOn]);
+
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundOn(next);
+    try {
+      localStorage.setItem(SOUND_KEY, next ? 'on' : 'off');
+    } catch {
+      /* mode privat: pilihan hanya bertahan selama halaman terbuka */
+    }
+    // Klik ini sekaligus memberi izin suara ke browser, dan memperdengarkan bunyinya.
+    if (next) playReminderChime();
   };
 
   const handleToggle = (todoId: string) => {
@@ -114,73 +162,53 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
     refreshTodoList();
   };
 
-  // Filtered todos based on staff, category, and status
+  // Belum selesai di atas (urut jam), yang sudah selesai di bawah.
   const filteredTodos = useMemo(() => {
-    return todos.filter(t => {
-      // Staff filter
-      if (selectedStaffFilter === 'ME') {
-        const isAssignedToMe = t.assignedUserId === currentUser.id || (!t.assignedUserId && (t.assignedRole === currentUser.role || t.assignedRole === 'ALL'));
-        if (!isAssignedToMe) return false;
-      } else if (selectedStaffFilter !== 'ALL') {
-        if (t.assignedUserId !== selectedStaffFilter) return false;
-      }
-
-      // Category filter
-      if (selectedCategoryFilter !== 'ALL' && t.category !== selectedCategoryFilter) {
-        return false;
-      }
-
-      // Status filter
-      if (selectedStatusFilter === 'PENDING' && t.isCompleted) return false;
-      if (selectedStatusFilter === 'DONE' && !t.isCompleted) return false;
-
-      return true;
-    }).sort((a, b) => {
-      // Sort by target time ascending
-      const timeA = a.targetTime || '99:99';
-      const timeB = b.targetTime || '99:99';
-      return timeA.localeCompare(timeB);
-    });
+    return todos
+      .filter(t => {
+        if (selectedStaffFilter === 'ME') {
+          const isMine = t.assignedUserId === currentUser.id || (!t.assignedUserId && (t.assignedRole === currentUser.role || t.assignedRole === 'ALL'));
+          if (!isMine) return false;
+        } else if (selectedStaffFilter !== 'ALL' && t.assignedUserId !== selectedStaffFilter) {
+          return false;
+        }
+        if (selectedCategoryFilter !== 'ALL' && t.category !== selectedCategoryFilter) return false;
+        if (selectedStatusFilter === 'PENDING' && t.isCompleted) return false;
+        if (selectedStatusFilter === 'DONE' && !t.isCompleted) return false;
+        return true;
+      })
+      .sort((a, b) => Number(a.isCompleted) - Number(b.isCompleted) || (a.targetTime || '99:99').localeCompare(b.targetTime || '99:99'));
   }, [todos, selectedStaffFilter, selectedCategoryFilter, selectedStatusFilter, currentUser]);
 
-  // Overall Statistics for today
   const totalCount = todos.length;
   const completedCount = todos.filter(t => t.isCompleted).length;
   const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-  // Hourly Analysis
   const currentHourNum = parseInt(currentTimeStr.split(':')[0], 10);
+  const currentHourTasks = todos.filter(t => t.targetTime && parseInt(t.targetTime.split(':')[0], 10) === currentHourNum);
+  const overdueCount = todos.filter(t => isTaskOverdue(t, currentTimeStr)).length;
 
-  // Tasks scheduled for the current hour window (e.g. if now 13:45, tasks between 13:00 - 13:59)
-  const currentHourTasks = useMemo(() => {
-    return todos.filter(t => {
-      if (!t.targetTime) return false;
-      const taskHour = parseInt(t.targetTime.split(':')[0], 10);
-      return taskHour === currentHourNum;
-    });
-  }, [todos, currentHourNum]);
+  const closeAddModal = useCallback(() => {
+    setIsAddModalOpen(false);
+    setAddError('');
+  }, []);
 
-  // Overdue tasks: scheduled before current hour and not yet completed
-  const overdueTasks = useMemo(() => {
-    return todos.filter(t => {
-      if (t.isCompleted || !t.targetTime) return false;
-      const [h, m] = t.targetTime.split(':').map(Number);
-      const [curH, curM] = currentTimeStr.split(':').map(Number);
-      if (h < curH) return true;
-      if (h === curH && m < curM - 15) return true; // Lewat lebih dari 15 menit
-      return false;
-    });
-  }, [todos, currentTimeStr]);
+  useEffect(() => {
+    if (!isAddModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeAddModal();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isAddModalOpen, closeAddModal]);
 
   const handleQuickAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) {
-      alert('Judul tugas wajib diisi.');
+      setAddError('Uraian tugas wajib diisi.');
       return;
     }
-
     const assignedUser = availableUsers.find(u => u.id === newAssignedUserId);
-
     warehouseDb.addTodo(
       {
         date: todayStr,
@@ -189,496 +217,395 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({
         priority: newPriority,
         session: newSession,
         targetTime: newTargetTime || undefined,
-        assignedUserId: assignedUser ? assignedUser.id : undefined,
-        assignedUserName: assignedUser ? assignedUser.name : undefined,
+        assignedUserId: assignedUser?.id,
+        assignedUserName: assignedUser?.name,
         assignedRole: assignedUser ? assignedUser.role : 'ALL',
         notes: newNotes.trim() || undefined,
         isCompleted: false,
       },
       currentUser
     );
-
     setNewTitle('');
     setNewNotes('');
-    setIsAddModalOpen(false);
+    closeAddModal();
     refreshTodoList();
-
-    if (soundEnabled) {
-      playReminderChime();
-    }
   };
 
+  const statusPills: { key: typeof selectedStatusFilter; label: string; count: number }[] = [
+    { key: 'ALL', label: 'Semua', count: totalCount },
+    { key: 'PENDING', label: 'Belum', count: totalCount - completedCount },
+    { key: 'DONE', label: 'Selesai', count: completedCount },
+  ];
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      {/* 1. Header Bar: Title, Live Clock & Hourly Alert */}
-      <div className="p-5 border-b border-slate-800 bg-[#0f172a] text-white">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-cyan-300 border border-slate-700">
-                <CheckSquare className="w-3.5 h-3.5" />
-                Ceklis Tugas & Jobdesk Harian
-              </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-mono text-slate-300 bg-slate-800 border border-slate-700">
-                <Clock className="w-3 h-3 text-cyan-400" />
-                {currentTimeStr} WIB
-              </span>
-            </div>
-            <h3 className="font-display text-lg font-bold text-white tracking-tight">
-              Monitoring Jobdesk Operasional SPPG MLG TUMPANG JERU Hari Ini
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      {/* 1. Judul, jam, pengingat */}
+      <div className="p-5 border-b border-slate-200">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+              <CheckSquare className="w-5 h-5 text-emerald-700" />
+              Jobdesk Hari Ini
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Ceklis langsung tugas yang telah selesai dan pantau pengingat target tiap jam untuk masing-masing staf logistik.
+            <p className="text-xs text-slate-600 mt-1 flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5" />
+              <span className="font-mono tabular-nums">{currentTimeStr}</span> WIB · Centang tugas yang sudah selesai.
             </p>
           </div>
-
-          <div className="flex items-center gap-2 self-start md:self-auto">
+          <div className="flex items-center gap-2 self-start">
             <button
               type="button"
-              onClick={() => {
-                playReminderChime();
-                alert(`Pengingat suara diuji. Waktu saat ini: ${currentTimeStr} WIB`);
-              }}
-              title="Uji suara pengingat jam"
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden sm:inline">Uji Suara</span>
+              onClick={toggleSound}
+              aria-pressed={soundOn}
+              className={`inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-lg border text-xs font-semibold cursor-pointer transition-colors ${FOCUS} ${
+                soundOn ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+              }`}>
+              {soundOn ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+              Suara pengingat {soundOn ? 'nyala' : 'mati'}
             </button>
-
             <button
               type="button"
               onClick={() => setIsAddModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-500 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5 text-white" />
+              className={`inline-flex items-center gap-1.5 min-h-[44px] px-4 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold cursor-pointer transition-colors ${FOCUS}`}>
+              <Plus className="w-4 h-4" />
               Tambah Jobdesk
             </button>
           </div>
         </div>
 
-        {/* Hourly Smart Notification Banner */}
-        <div className="mt-4 pt-3 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2.5">
-            <div className={`p-1.5 rounded-lg shrink-0 ${overdueTasks.length > 0 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-slate-800 text-emerald-300 border border-slate-700'}`}>
-              <Bell className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="font-medium text-white">
-                Fokus Jam {String(currentHourNum).padStart(2, '0')}:00 - {String(currentHourNum + 1).padStart(2, '0')}:00 WIB:
-              </span>{' '}
-              {currentHourTasks.length > 0 ? (
-                <span className="text-slate-300">
-                  Ada {currentHourTasks.length} tugas terjadwal (
-                  {currentHourTasks.filter(t => t.isCompleted).length} selesai,{' '}
-                  {currentHourTasks.filter(t => !t.isCompleted).length} belum)
-                </span>
-              ) : (
-                <span className="text-slate-400">
-                  Tidak ada tugas baru dijadwalkan pada jam ini. Tetap pantau alur dapur & gudang.
-                </span>
-              )}
-            </div>
-          </div>
-
-          {overdueTasks.length > 0 && (
-            <div className="flex items-center gap-1.5 bg-rose-500/20 border border-rose-500/40 text-rose-200 px-3 py-1 rounded-lg shrink-0">
-              <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-              <span className="font-medium">{overdueTasks.length} tugas lewat target jam</span>
-            </div>
+        {/* Ringkasan jam ini */}
+        <div aria-live="polite" className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+          <p className="text-slate-700">
+            <span className="font-semibold text-slate-900">
+              Jam {String(currentHourNum).padStart(2, '0')}.00–{String((currentHourNum + 1) % 24).padStart(2, '0')}.00:
+            </span>{' '}
+            {currentHourTasks.length > 0
+              ? `${currentHourTasks.length} tugas terjadwal, ${currentHourTasks.filter(t => !t.isCompleted).length} belum selesai.`
+              : 'Tidak ada tugas terjadwal di jam ini.'}
+          </p>
+          {overdueCount > 0 && (
+            <p className="inline-flex items-center gap-1.5 self-start rounded-md bg-rose-50 border border-rose-200 text-rose-800 px-2.5 py-1 font-semibold">
+              <AlertCircle className="w-3.5 h-3.5" />
+              {overdueCount} tugas lewat target jam
+            </p>
           )}
         </div>
+        {lastReminder && (
+          <div role="status" className="mt-3 flex items-start justify-between gap-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
+            <p>
+              <Bell className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />
+              <span className="font-semibold">Waktunya ({lastReminder.time}):</span> {lastReminder.titles.join('; ')}
+            </p>
+            <button
+              type="button"
+              onClick={() => setLastReminder(null)}
+              aria-label="Tutup pengingat"
+              className={`shrink-0 -m-1 p-1 rounded-md text-amber-900 hover:bg-amber-100 cursor-pointer ${FOCUS}`}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* 2. Progress Bar & Filter Toolbar */}
+      {/* 2. Progres & filter */}
       <div className="p-4 bg-slate-50 border-b border-slate-200 space-y-3">
-        {/* Progress Tracker */}
         <div>
-          <div className="flex items-center justify-between text-xs mb-1.5 font-medium">
-            <span className="text-slate-800 flex items-center gap-1.5 font-medium">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              Progres Ceklis Hari Ini:
-              <strong className="text-emerald-700 font-bold ml-1 font-mono">
-                {completedCount} dari {totalCount} Tugas Selesai ({progressPercent}%)
-              </strong>
-            </span>
-            <span className="text-slate-500 text-[11px] font-mono">
-              {totalCount - completedCount} tugas pending
+          <div className="flex items-center justify-between text-xs mb-1.5">
+            <span className="font-semibold text-slate-800">Progres hari ini</span>
+            <span className="text-slate-700">
+              <span className="font-mono tabular-nums font-semibold text-emerald-800">{completedCount}/{totalCount}</span> selesai
             </span>
           </div>
-          <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-            <div
-              className="bg-emerald-600 h-2 rounded-full transition-all duration-300 ease-out"
-              style={{ width: `${progressPercent}%` }}
-            />
+          <div
+            className="w-full bg-slate-200 rounded-full h-2 overflow-hidden"
+            role="progressbar"
+            aria-label="Progres jobdesk hari ini"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressPercent}>
+            <div className="bg-emerald-600 h-2 rounded-full transition-[width] duration-150" style={{ width: `${progressPercent}%` }} />
           </div>
         </div>
 
-        {/* Custom Staff & Category Filters */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-          {/* Custom Staff Selector */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2 min-w-0">
-            <span className="text-xs font-medium text-slate-600 flex items-center gap-1">
-              <Users className="w-3.5 h-3.5 text-slate-500" />
-              Staf:
-            </span>
-            <select
+            <label htmlFor="jobdesk-staff" className="text-xs font-medium text-slate-700 flex items-center gap-1">
+              <Users className="w-3.5 h-3.5" />
+              Staf
+            </label>
+            <Select
+              id="jobdesk-staff"
               value={selectedStaffFilter}
-              onChange={e => setSelectedStaffFilter(e.target.value)}
-              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer shadow-2xs"
-            >
-              <option value="ALL">Semua Staf (Semua Jobdesk)</option>
-              <option value="ME">⭐ Tugas Saya ({currentUser.name})</option>
+              onChange={e => setSelectedStaffFilter(e.target.value)}>
+              <option value="ALL">Semua staf</option>
+              <option value="ME">Tugas saya ({currentUser.name})</option>
               {availableUsers.map(u => (
                 <option key={u.id} value={u.id}>
                   {u.name} ({u.role})
                 </option>
               ))}
-            </select>
-
-            {/* Category Filter */}
-            <select
+            </Select>
+            <Select
+              aria-label="Kategori"
               value={selectedCategoryFilter}
-              onChange={e => setSelectedCategoryFilter(e.target.value)}
-              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer shadow-2xs"
-            >
-              <option value="ALL">Semua Kategori</option>
-              <option value="Penerimaan & QC">Penerimaan & QC</option>
-              <option value="Persiapan Dapur">Persiapan Dapur</option>
-              <option value="Sanitasi & Kebersihan">Sanitasi & Kebersihan</option>
-              <option value="Administrasi & Stok">Administrasi & Stok</option>
-              <option value="Stock Opname">Stock Opname</option>
-              <option value="Distribusi">Distribusi</option>
-            </select>
+              onChange={e => setSelectedCategoryFilter(e.target.value)}>
+              <option value="ALL">Semua kategori</option>
+              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </Select>
           </div>
 
-          {/* Status Quick Pills */}
-          <div className="flex items-center gap-1 bg-slate-200/80 p-1 rounded-lg text-xs">
-            <button
-              type="button"
-              onClick={() => setSelectedStatusFilter('ALL')}
-              className={`px-2.5 py-1 rounded font-medium transition-colors cursor-pointer ${selectedStatusFilter === 'ALL' ? 'bg-[#0f172a] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              Semua ({todos.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedStatusFilter('PENDING')}
-              className={`px-2.5 py-1 rounded font-medium transition-colors cursor-pointer ${selectedStatusFilter === 'PENDING' ? 'bg-[#0f172a] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              Belum ({totalCount - completedCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedStatusFilter('DONE')}
-              className={`px-2.5 py-1 rounded font-medium transition-colors cursor-pointer ${selectedStatusFilter === 'DONE' ? 'bg-[#0f172a] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              Selesai ({completedCount})
-            </button>
+          <div role="group" aria-label="Status tugas" className="flex items-center gap-1 bg-slate-200/80 p-1 rounded-lg text-xs">
+            {statusPills.map(p => (
+              <button
+                key={p.key}
+                type="button"
+                aria-pressed={selectedStatusFilter === p.key}
+                onClick={() => setSelectedStatusFilter(p.key)}
+                className={`min-h-[36px] px-3 rounded-md font-medium transition-colors cursor-pointer ${FOCUS} ${
+                  selectedStatusFilter === p.key ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-700 hover:text-slate-900'
+                }`}
+              >
+                {p.label} ({p.count})
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* 3. Task List / Checklist Timeline */}
-      <div className="divide-y divide-slate-100 max-h-[460px] overflow-y-auto">
+      {/* 3. Daftar tugas */}
+      <ul className="divide-y divide-slate-100 max-h-[460px] overflow-y-auto">
         {filteredTodos.length === 0 ? (
-          <div className="p-8 text-center text-slate-500 text-xs">
+          <li className="p-8 text-center text-slate-600 text-xs">
             <CheckSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-            Tidak ada tugas yang sesuai dengan filter yang dipilih.
-          </div>
+            {totalCount === 0 ? 'Belum ada jobdesk untuk hari ini.' : 'Tidak ada tugas yang sesuai dengan filter.'}
+          </li>
         ) : (
           filteredTodos.map(todo => {
-            const isOverdue = !todo.isCompleted && todo.targetTime && (() => {
-              const [h, m] = todo.targetTime.split(':').map(Number);
-              const [curH, curM] = currentTimeStr.split(':').map(Number);
-              return h < curH || (h === curH && m < curM - 15);
-            })();
-
-            const isCurrentHour = todo.targetTime && parseInt(todo.targetTime.split(':')[0], 10) === currentHourNum;
+            const isOverdue = isTaskOverdue(todo, currentTimeStr);
+            const isCurrentHour = !!todo.targetTime && parseInt(todo.targetTime.split(':')[0], 10) === currentHourNum;
 
             return (
-              <div
+              <li
                 key={todo.id}
-                className={`p-3.5 sm:px-5 transition-colors flex items-start gap-3.5 hover:bg-slate-50 ${
-                  todo.isCompleted
-                    ? 'bg-slate-50/60'
-                    : isOverdue
-                    ? 'bg-rose-50/40'
-                    : isCurrentHour
-                    ? 'bg-amber-50/40'
-                    : 'bg-white'
+                className={`px-3 py-3 sm:px-5 flex items-start gap-2 ${
+                  todo.isCompleted ? 'bg-slate-50/60' : isOverdue ? 'bg-rose-50/50' : isCurrentHour ? 'bg-amber-50/50' : 'bg-white'
                 }`}
               >
-                {/* Interactive Checkbox */}
+                {/* Area sentuh 44px, kotak centang 24px */}
                 <button
                   type="button"
                   onClick={() => handleToggle(todo.id)}
-                  className={`mt-0.5 shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-all cursor-pointer ${
-                    todo.isCompleted
-                      ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs'
-                      : isOverdue
-                      ? 'border-rose-400 bg-white hover:border-rose-600'
-                      : 'border-slate-300 bg-white hover:border-emerald-600'
-                  }`}
-                  title={todo.isCompleted ? 'Batalkan status selesai' : 'Tandai selesai'}
-                >
-                  {todo.isCompleted && <CheckCircle2 className="w-3.5 h-3.5" />}
+                  aria-pressed={todo.isCompleted}
+                  aria-label={todo.isCompleted ? `Batalkan selesai: ${todo.title}` : `Tandai selesai: ${todo.title}`}
+                  className={`shrink-0 w-11 h-11 -my-1.5 flex items-center justify-center rounded-lg cursor-pointer hover:bg-slate-100 ${FOCUS}`}>
+                  <span
+                    className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors ${
+                      todo.isCompleted ? 'bg-emerald-600 border-emerald-600 text-white' : isOverdue ? 'border-rose-500 bg-white' : 'border-slate-400 bg-white'
+                    }`}
+                  >
+                    {todo.isCompleted && <Check className="w-4 h-4 stroke-[3]" />}
+                  </span>
                 </button>
 
-                {/* Task Details */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    {/* Target Time Badge */}
+                  <div className="flex flex-wrap items-center gap-1.5 mb-1">
                     {todo.targetTime ? (
                       <span
-                        className={`inline-flex items-center gap-1 font-mono text-[11px] font-medium px-2 py-0.5 rounded border ${
+                        className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md border ${
                           todo.isCompleted
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                             : isOverdue
-                            ? 'bg-rose-100 text-rose-800 border-rose-300 animate-pulse'
-                            : isCurrentHour
-                            ? 'bg-amber-100 text-amber-800 border-amber-300'
-                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                              ? 'bg-rose-100 text-rose-800 border-rose-300'
+                              : isCurrentHour
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
                         }`}
                       >
                         <Clock className="w-3 h-3" />
-                        Jam {todo.targetTime}
-                        {isOverdue && ' (Lewat)'}
-                        {isCurrentHour && !todo.isCompleted && ' (Jam Ini)'}
+                        <span className="font-mono tabular-nums">{todo.targetTime}</span>
+                        {isOverdue && ' · lewat'}
+                        {isCurrentHour && !todo.isCompleted && !isOverdue && ' · jam ini'}
                       </span>
                     ) : (
-                      <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                      <span className="text-[11px] font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
                         Shift {todo.session || 'Harian'}
                       </span>
                     )}
-
-                    {/* Assigned Staff Pill */}
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                      <Users className="w-3 h-3 text-slate-500" />
-                      {todo.assignedUserName || (todo.assignedRole ? `Role: ${todo.assignedRole}` : 'Semua Staf')}
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                      <Users className="w-3 h-3" />
+                      {todo.assignedUserName || (todo.assignedRole && todo.assignedRole !== 'ALL' ? todo.assignedRole : 'Semua staf')}
                     </span>
-
-                    {/* Category Pill */}
-                    <span className="text-[10px] font-medium text-slate-600 bg-white border border-slate-200 px-1.5 py-0.5 rounded">
-                      {todo.category}
-                    </span>
-
-                    {/* Priority */}
+                    <span className="text-[11px] font-medium text-slate-700 bg-white border border-slate-200 px-2 py-0.5 rounded-md">{todo.category}</span>
                     {todo.priority === 'Tinggi' && (
-                      <span className="text-[10px] font-medium text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                        <Flame className="w-2.5 h-2.5 text-rose-600" />
-                        Tinggi
+                      <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-rose-800 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
+                        <Flame className="w-3 h-3" />
+                        Prioritas tinggi
                       </span>
                     )}
                   </div>
 
-                  {/* Title */}
-                  <p
-                    className={`text-xs font-medium leading-snug ${
-                      todo.isCompleted
-                        ? 'line-through text-slate-400'
-                        : 'text-slate-900'
-                    }`}
-                  >
-                    {todo.title}
-                  </p>
-
-                  {/* Notes & Completion stamp */}
-                  {todo.notes && (
-                    <p className="text-[11px] text-slate-500 mt-0.5 italic">
-                      {todo.notes}
+                  <p className={`text-sm font-medium leading-snug ${todo.isCompleted ? 'line-through text-slate-500' : 'text-slate-900'}`}>{todo.title}</p>
+                  {todo.notes && <p className="text-xs text-slate-600 mt-0.5">{todo.notes}</p>}
+                  {todo.isCompleted && todo.completedBy && (
+                    <p className="flex items-center gap-1.5 text-[11px] text-emerald-800 mt-1 font-medium">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Selesai pukul {todo.completedAt || '-'} oleh {todo.completedBy}
                     </p>
                   )}
-
-                  {todo.isCompleted && todo.completedBy && (
-                    <div className="flex items-center gap-1.5 text-[10px] text-emerald-700 mt-1 font-medium">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                      <span>Selesai pukul {todo.completedAt || '-'} oleh {todo.completedBy}</span>
-                    </div>
-                  )}
                 </div>
-              </div>
+              </li>
             );
           })
         )}
-      </div>
+      </ul>
 
-      {/* 4. Footer link to Profile & Jobdesk Management */}
+      {/* 4. Tautan ke riwayat & laporan */}
       {onNavigateToProfileTodos && (
-        <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
-          <span>Kelola laporan cetak berita acara & riwayat ceklis harian:</span>
+        <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700">
+          <span>Riwayat ceklis dan berita acara cetak:</span>
           <button
             type="button"
             onClick={onNavigateToProfileTodos}
-            className="font-medium text-emerald-600 hover:text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
-          >
-            Buka Menu Jobdesk & Laporan <ArrowRight className="w-3.5 h-3.5" />
+            className={`min-h-[40px] px-2 rounded-md font-semibold text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer ${FOCUS}`}>
+            Buka Jobdesk & Laporan <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
-      {/* 5. Modal Tambah Jobdesk Baru */}
+      {/* 5. Dialog tambah jobdesk */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-3 sm:p-4 overflow-y-auto" onClick={closeAddModal}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-jobdesk-title"
+            onClick={e => e.stopPropagation()}
+            className="bg-white rounded-xl border border-slate-200 shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
               <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Tambah Jobdesk / Tugas Harian
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Tentukan target jam dan staf penanggung jawab tugas
-                </p>
+                <h3 id="add-jobdesk-title" className="text-base font-bold text-slate-900">Tambah Jobdesk</h3>
+                <p className="text-xs text-slate-600 mt-0.5">Tentukan jam target dan staf penanggung jawab.</p>
               </div>
               <button
                 type="button"
-                onClick={() => setIsAddModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
-                title="Tutup dialog"
-              >
+                onClick={closeAddModal}
+                aria-label="Tutup"
+                className={`w-11 h-11 flex items-center justify-center text-slate-600 rounded-lg hover:bg-slate-200/60 cursor-pointer ${FOCUS}`}>
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleQuickAdd} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <form onSubmit={handleQuickAdd} noValidate className="flex-1 flex flex-col min-h-0 overflow-hidden">
               <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Uraian Butir Tugas <span className="text-rose-500">*</span>
+                  <label htmlFor="jobdesk-title" className="block font-semibold text-slate-700 mb-1">
+                    Uraian tugas <span className="text-rose-700">*</span>
                   </label>
                   <input
+                    id="jobdesk-title"
                     type="text"
-                    required
+                    autoFocus
                     value={newTitle}
-                    onChange={e => setNewTitle(e.target.value)}
-                    placeholder="Contoh: Pengecekan segel beras & uji organoleptik sayur bayam..."
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
+                    onChange={e => {
+                      setNewTitle(e.target.value);
+                      if (addError) setAddError('');
+                    }}
+                    aria-invalid={!!addError}
+                    aria-describedby={addError ? 'jobdesk-title-error' : undefined}
+                    placeholder="Contoh: Pengecekan segel beras dan uji organoleptik bayam"
+                    className={`w-full px-3 py-2 rounded-lg border text-slate-800 ${addError ? 'border-rose-500' : 'border-slate-300'} ${FOCUS}`}
                   />
+                  {addError && <p id="jobdesk-title-error" className="mt-1 text-rose-700 font-medium">{addError}</p>}
                 </div>
 
-                {/* Input Jam & Shift */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                      Target Jam (Jam Pelaksanaan) <span className="text-rose-500">*</span>
-                    </label>
+                    <label htmlFor="jobdesk-time" className="block font-semibold text-slate-700 mb-1">Jam target</label>
                     <input
+                      id="jobdesk-time"
                       type="time"
-                      required
                       value={newTargetTime}
                       onChange={e => setNewTargetTime(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-slate-800 font-semibold"
+                      className={`w-full px-3 py-2 rounded-lg border border-slate-300 font-mono text-slate-800 font-semibold ${FOCUS}`}
                     />
-                    <span className="text-[10px] text-slate-500 font-medium mt-0.5 block">
-                      Pengingat jam akan menyorot tugas pada jam ini
-                    </span>
+                    <span className="text-[11px] text-slate-600 mt-0.5 block">Pengingat berbunyi pada jam ini.</span>
                   </div>
-
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Tugaskan ke Staf Khusus
-                    </label>
-                    <select
+                    <label htmlFor="jobdesk-user" className="block font-semibold text-slate-700 mb-1">Ditugaskan ke</label>
+                    <Select className="w-full"
+                      id="jobdesk-user"
                       value={newAssignedUserId}
-                      onChange={e => setNewAssignedUserId(e.target.value)}
-                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer font-medium"
-                    >
-                      <option value="">Semua Staf (Bisa dikerjakan siapa saja)</option>
+                      onChange={e => setNewAssignedUserId(e.target.value)}>
+                      <option value="">Semua staf</option>
                       {availableUsers.map(u => (
                         <option key={u.id} value={u.id}>
                           {u.name} ({u.role})
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Kategori</label>
-                    <select
+                    <label htmlFor="jobdesk-category" className="block font-semibold text-slate-700 mb-1">Kategori</label>
+                    <Select className="w-full"
+                      id="jobdesk-category"
                       value={newCategory}
-                      onChange={e => setNewCategory(e.target.value as TodoCategory)}
-                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                    >
-                      <option value="Penerimaan & QC">Penerimaan & QC</option>
-                      <option value="Persiapan Dapur">Persiapan Dapur</option>
-                      <option value="Sanitasi & Kebersihan">Sanitasi & Kebersihan</option>
-                      <option value="Administrasi & Stok">Administrasi & Stok</option>
-                      <option value="Stock Opname">Stock Opname</option>
-                      <option value="Distribusi">Distribusi</option>
-                    </select>
+                      onChange={e => setNewCategory(e.target.value as TodoCategory)}>
+                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </Select>
                   </div>
-
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Prioritas</label>
-                    <select
+                    <label htmlFor="jobdesk-priority" className="block font-semibold text-slate-700 mb-1">Prioritas</label>
+                    <Select className="w-full"
+                      id="jobdesk-priority"
                       value={newPriority}
-                      onChange={e => setNewPriority(e.target.value as TodoPriority)}
-                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                    >
-                      <option value="Tinggi">Tinggi (Kritis)</option>
-                      <option value="Sedang">Sedang (Rutin)</option>
+                      onChange={e => setNewPriority(e.target.value as TodoPriority)}>
+                      <option value="Tinggi">Tinggi</option>
+                      <option value="Sedang">Sedang</option>
                       <option value="Rendah">Rendah</option>
-                    </select>
+                    </Select>
                   </div>
-
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Shift / Sesi</label>
-                    <select
+                    <label htmlFor="jobdesk-session" className="block font-semibold text-slate-700 mb-1">Shift</label>
+                    <Select className="w-full"
+                      id="jobdesk-session"
                       value={newSession}
-                      onChange={e => setNewSession(e.target.value as any)}
-                      className="w-full px-2.5 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white text-slate-800 cursor-pointer"
-                    >
-                      <option value="Pagi">Pagi (05:00 - 09:00)</option>
-                      <option value="Siang">Siang (09:00 - 14:00)</option>
-                      <option value="Sore">Sore (14:00 - 18:00)</option>
-                      <option value="Harian">Fleksibel Harian</option>
-                    </select>
+                      onChange={e => setNewSession(e.target.value as typeof newSession)}>
+                      <option value="Pagi">Pagi (05.00–09.00)</option>
+                      <option value="Siang">Siang (09.00–14.00)</option>
+                      <option value="Sore">Sore (14.00–18.00)</option>
+                      <option value="Harian">Fleksibel</option>
+                    </Select>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Catatan SOP / Instruksi Khusus (Opsional)
-                  </label>
+                  <label htmlFor="jobdesk-notes" className="block font-semibold text-slate-700 mb-1">Catatan (opsional)</label>
                   <input
+                    id="jobdesk-notes"
                     type="text"
                     value={newNotes}
                     onChange={e => setNewNotes(e.target.value)}
-                    placeholder="Misal: Catat hasil di buku log dan laporkan ke Ka SPPG..."
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
+                    placeholder="Misal: catat hasil di buku log dan laporkan ke Ka SPPG"
+                    className={`w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 ${FOCUS}`}
                   />
                 </div>
               </div>
 
-              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-2 shrink-0">
-                <label className="flex items-center gap-2 cursor-pointer text-slate-600 text-[11px]">
-                  <input
-                    type="checkbox"
-                    checked={soundEnabled}
-                    onChange={e => setSoundEnabled(e.target.checked)}
-                    className="rounded text-emerald-600 focus:ring-emerald-500"
-                  />
-                  Bunyikan nada konfirmasi
-                </label>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsAddModalOpen(false)}
-                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-200/60 text-xs font-semibold cursor-pointer transition-colors"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer"
-                  >
-                    Simpan Tugas
-                  </button>
-                </div>
+              <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={closeAddModal}
+                  className={`min-h-[44px] px-4 rounded-lg text-slate-700 hover:bg-slate-200/60 text-xs font-semibold cursor-pointer ${FOCUS}`}>
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className={`min-h-[44px] px-5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold cursor-pointer ${FOCUS}`}>
+                  Simpan Tugas
+                </button>
               </div>
             </form>
           </div>

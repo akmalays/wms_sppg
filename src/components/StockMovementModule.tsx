@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Select } from './common/Select';
 import { warehouseDb } from '../db/storage';
 import { InventoryTransaction, ReceivingDocument, TransactionType } from '../types/warehouse';
 import { Search, History, ArrowDownLeft, ArrowUpRight, SlidersHorizontal, ExternalLink, Calendar } from 'lucide-react';
@@ -100,16 +101,14 @@ export const StockMovementModule: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <select
+          <Select size="sm"
             value={filterType}
-            onChange={e => setFilterType(e.target.value)}
-            className="text-xs rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          >
+            onChange={e => setFilterType(e.target.value)}>
             <option value="ALL">Semua Jenis Mutasi</option>
             <option value="RECEIVING">RECEIVING (Penerimaan)</option>
             <option value="ISSUE_CONSUMPTION">ISSUE / CONSUMPTION (Pengeluaran Dapur)</option>
             <option value="STOCK_OPNAME_ADJUSTMENT">STOCK OPNAME ADJUSTMENT</option>
-          </select>
+          </Select>
         </div>
       </div>
 

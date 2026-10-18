@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Select } from './common/Select';
 import { useConfirm } from '../context/ConfirmContext';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
@@ -453,11 +454,9 @@ export const StockOpnameModule: React.FC<StockOpnameModuleProps> = ({ onRefreshD
                   </div>
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Filter Kategori Item</label>
-                    <select
+                    <Select className="w-full"
                       value={formSelectedCategory}
-                      onChange={e => handleCategoryChange(e.target.value)}
-                      className="w-full text-xs rounded border border-slate-300 p-1.5 bg-white font-medium"
-                    >
+                      onChange={e => handleCategoryChange(e.target.value)}>
                       <option value="ALL">Semua Kategori ({items.length} Item)</option>
                       <option value="Sembako">Sembako</option>
                       <option value="Protein">Protein</option>
@@ -467,7 +466,7 @@ export const StockOpnameModule: React.FC<StockOpnameModuleProps> = ({ onRefreshD
                       <option value="Packaging">Packaging</option>
                       <option value="Hygiene/PPE">Hygiene/PPE</option>
                       <option value="General Operational">General Operational</option>
-                    </select>
+                    </Select>
                   </div>
                 </div>
 

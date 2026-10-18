@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Select } from './common/Select';
 import {
   Building2,
   Search,
@@ -322,18 +323,16 @@ export const MasterSupplierModal: React.FC<MasterSupplierModalProps> = ({
                 </div>
 
                 {/* Category Filter */}
-                <select
+                <Select size="sm"
                   value={categoryFilter}
-                  onChange={e => setCategoryFilter(e.target.value)}
-                  className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-                >
+                  onChange={e => setCategoryFilter(e.target.value)}>
                   <option value="ALL">Semua Kategori ({suppliers.length})</option>
                   {availableCategories.map(cat => (
                     <option key={cat} value={cat}>
                       {cat}
                     </option>
                   ))}
-                </select>
+                </Select>
 
                 {/* Status Filter */}
                 <div className="flex items-center bg-white border border-slate-300 rounded-lg p-0.5 text-xs">
@@ -481,17 +480,15 @@ export const MasterSupplierModal: React.FC<MasterSupplierModalProps> = ({
                     <label className="block font-semibold text-slate-700 mb-1">
                       Kategori Pasokan Utama <span className="text-rose-500">*</span>
                     </label>
-                    <select
+                    <Select className="w-full"
                       value={formCategory}
-                      onChange={e => setFormCategory(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-                    >
+                      onChange={e => setFormCategory(e.target.value)}>
                       {COMMON_SUPPLY_CATEGORIES.map(c => (
                         <option key={c} value={c}>
                           {c}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
 
                   {formCategory === 'Lain-lain' && (

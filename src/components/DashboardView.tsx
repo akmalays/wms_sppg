@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { Select } from './common/Select';
 import { warehouseDb } from '../db/storage';
 import {
   ItemMaster,
@@ -589,7 +590,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
           <div className="py-10 px-4 text-center">
             <p className="text-xs font-semibold text-slate-800">Belum ada pesanan bahan untuk hari ini.</p>
             <p className="text-[11px] text-slate-600 mt-1 max-w-md mx-auto">
-              Buat PO di halaman Menu & Penerima Manfaat, atau catat belanja langsung di Input Barang & Belanja.
+              Buat PO di halaman Menu, atau terima barang tanpa PO di Barang Datang.
             </p>
           </div>
         ) : (
@@ -909,12 +910,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
             </p>
           </div>
           <button type="button" onClick={() => onNavigate('daily_flow')} className={BTN_LINK}>
-            Buka Pemakaian Dapur
+            Buka Barang Keluar
           </button>
         </div>
 
         {kgFlow.length === 0 ? (
-          <p className="py-8 px-4 text-center text-xs text-slate-600">Belum ada bahan segar yang dicatat di Pemakaian Dapur.</p>
+          <p className="py-8 px-4 text-center text-xs text-slate-600">Belum ada bahan segar yang dicatat di Barang Keluar.</p>
         ) : (
           <dl className="grid grid-cols-2 md:grid-cols-4 text-xs">
             {[
@@ -943,7 +944,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
       <section>
         <DailyChecklistWidget
           onNavigateToProfileTodos={() => onNavigate('profile')}
-          onRefreshData={onRefreshData}
         />
       </section>
 
@@ -969,16 +969,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
                 className={`w-full sm:w-52 pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 placeholder-slate-500 min-h-[44px] sm:min-h-[36px] ${FOCUS}`}
               />
             </div>
-            <select
+            <Select
               value={stockCategoryFilter}
               onChange={e => setStockCategoryFilter(e.target.value as 'ALL' | 'Bahan Basah' | 'Bahan Kering')}
-              aria-label="Filter kategori"
-              className={`px-2.5 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 min-h-[44px] sm:min-h-[36px] ${FOCUS}`}
-            >
+              aria-label="Filter kategori">
               <option value="ALL">Semua kategori</option>
               <option value="Bahan Basah">Bahan Basah</option>
               <option value="Bahan Kering">Bahan Kering</option>
-            </select>
+            </Select>
           </div>
         </div>
 

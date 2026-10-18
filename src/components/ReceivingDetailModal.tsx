@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
+import { warehouseDb } from '../db/storage';
 import { ReceivingDocument } from '../types/warehouse';
 import { X, Printer, CheckCircle2, Building2, UserCheck, Calendar, Clock, Camera, ZoomIn } from 'lucide-react';
 
@@ -19,6 +20,15 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
     }
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [document, onClose]);
+
+  // Harga tersimpan di catatan belanja bertanda [GR: id] (penerimaan menyimpan jumlah saja).
+  const linked = useMemo(
+    () => (document ? warehouseDb.getNonFoodExpenses().filter(e => e.notes?.includes(`[GR: ${document.id}]`)) : []),
+    [document]
+  );
+  const priceOf = (line: { itemId: string; itemName: string }) =>
+    linked.find(e => (e.itemId && e.itemId === line.itemId) || e.itemName === line.itemName);
+  const linkedTotal = linked.reduce((sum, e) => sum + (e.totalCost || 0), 0);
 
   if (!document) return null;
 
@@ -125,6 +135,8 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
                     <th className="py-2.5 px-3">Kategori</th>
                     <th className="py-2.5 px-3 text-right">Kuantitas</th>
                     <th className="py-2.5 px-3">Satuan</th>
+                    <th className="py-2.5 px-3 text-right">Harga</th>
+                    <th className="py-2.5 px-3 text-right">Subtotal</th>
                     <th className="py-2.5 px-3">Catatan / Batch</th>
                   </tr>
                 </thead>
@@ -142,12 +154,27 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
                         +{line.quantity}
                       </td>
                       <td className="py-2.5 px-3 text-slate-600">{line.unit}</td>
+                      <td className="py-2.5 px-3 text-right font-mono tabular-nums text-slate-700">
+                        {priceOf(line) ? priceOf(line)!.unitPrice!.toLocaleString('id-ID') : '-'}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono tabular-nums font-semibold text-slate-900">
+                        {priceOf(line)?.totalCost ? priceOf(line)!.totalCost!.toLocaleString('id-ID') : '-'}
+                      </td>
                       <td className="py-2.5 px-3 text-slate-500 italic">
                         {line.conditionNote || line.batchNumber || '-'}
                       </td>
                     </tr>
                   ))}
                 </tbody>
+                {linkedTotal > 0 && (
+                  <tfoot className="bg-slate-50 border-t border-slate-200">
+                    <tr>
+                      <td colSpan={6} className="py-2.5 px-3 text-right font-semibold text-slate-700">Total nota</td>
+                      <td className="py-2.5 px-3 text-right font-mono tabular-nums font-bold text-slate-900">Rp {linkedTotal.toLocaleString('id-ID')}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>

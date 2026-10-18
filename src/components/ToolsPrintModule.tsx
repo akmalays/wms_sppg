@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { SearchPicker } from './common/SearchPicker';
+import { Select } from './common/Select';
 import { KopText } from './common/KopText';
 import {
   Printer,
@@ -2114,31 +2116,28 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             <>
               <div>
                 <label htmlFor="exp-supplier" className={LABEL_CLS}>Supplier</label>
-                <select id="exp-supplier" value={expenseSupplierId} onChange={e => handleSupplierChange(e.target.value)} className={INPUT_CLS}>
-                  {suppliers.length === 0 && <option value="">Belum ada supplier</option>}
-                  {suppliers.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.supplyCategory})
-                    </option>
-                  ))}
-                </select>
+                <SearchPicker
+                  id="exp-supplier"
+                  value={expenseSupplierId}
+                  options={suppliers.map(s => ({ value: s.id, label: s.name, hint: s.supplyCategory || undefined }))}
+                  onSelect={opt => opt && handleSupplierChange(opt.value)}
+                  placeholder={suppliers.length === 0 ? 'Belum ada supplier' : 'Pilih supplier'}
+                  searchPlaceholder="Cari supplier..."
+                  noun="supplier"
+                />
               </div>
 
               <div>
                 <label htmlFor="exp-gr" className={LABEL_CLS}>Ambil rincian dari penerimaan</label>
-                <select
+                <SearchPicker
                   id="exp-gr"
                   value={expenseReceivingId}
-                  onChange={e => handleLoadReceivingDocToExpense(e.target.value)}
-                  className={INPUT_CLS}
-                >
-                  <option value="">{supplierReceivings.length === 0 ? 'Belum ada penerimaan dari supplier ini' : 'Pilih dokumen penerimaan'}</option>
-                  {supplierReceivings.map(r => (
-                    <option key={r.id} value={r.id}>
-                      {r.id} ({r.deliveryNoteNo || 'tanpa SJ'}), {formatLongDate(r.date)}
-                    </option>
-                  ))}
-                </select>
+                  options={supplierReceivings.map(r => ({ value: r.id, label: `${r.id} · ${r.deliveryNoteNo || 'tanpa SJ'}`, hint: formatLongDate(r.date) }))}
+                  onSelect={opt => opt && handleLoadReceivingDocToExpense(opt.value)}
+                  placeholder={supplierReceivings.length === 0 ? 'Belum ada penerimaan dari supplier ini' : 'Pilih dokumen penerimaan'}
+                  searchPlaceholder="Cari nomor dokumen atau surat jalan..."
+                  noun="dokumen"
+                />
               </div>
 
               <div>
@@ -2162,12 +2161,12 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
               <div>
                 <label htmlFor="exp-status" className={LABEL_CLS}>Status pembayaran</label>
-                <select id="exp-status" value={expenseStatus} onChange={e => setExpenseStatus(e.target.value as typeof expenseStatus)} className={INPUT_CLS}>
+                <Select className="w-full" id="exp-status" value={expenseStatus} onChange={e => setExpenseStatus(e.target.value as typeof expenseStatus)}>
                   <option value="LUNAS">Lunas</option>
                   <option value="DP">Uang muka (DP)</option>
                   <option value="TEMPO">Tempo</option>
                   <option value="PENDING">Menunggu verifikasi</option>
-                </select>
+                </Select>
               </div>
 
               <div>
@@ -2293,56 +2292,51 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             <>
               <div>
                 <label className={LABEL_CLS}>Gudang / Sumber Label</label>
-                <select
+                <Select className="w-full" size="sm"
                   value={labelWarehouseFilter}
                   onChange={e => {
                     setLabelWarehouseFilter(e.target.value as any);
                     setLabelCategoryFilter('ALL');
                     setHasCustomSelection(false);
-                  }}
-                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                >
+                  }}>
                   <option value="ALL">Semua gudang & aset</option>
                   <option value="GUDANG_KERING">Gudang kering</option>
                   <option value="GUDANG_BASAH">Gudang basah</option>
                   <option value="EQUIPMENT">Aset dapur</option>
-                </select>
+                </Select>
               </div>
 
               <div>
                 <label className={LABEL_CLS}>Kategori</label>
-                <select
+                <Select className="w-full" size="sm"
                   value={labelCategoryFilter}
                   onChange={e => {
                     setLabelCategoryFilter(e.target.value);
                     setHasCustomSelection(false);
-                  }}
-                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                >
+                  }}>
                   <option value="ALL">Semua kategori ({categoryCounts['ALL'] || 0})</option>
                   {availableCategories.map(cat => (
                     <option key={cat} value={cat}>
                       {cat} ({categoryCounts[cat] || 0})
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>
                 <label className={LABEL_CLS}>Supplier</label>
-                <select
+                <SearchPicker
                   value={labelGlobalSupplier}
-                  onChange={e => setLabelGlobalSupplier(e.target.value)}
-                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                >
-                  <option value="AUTO">Dari penerimaan terakhir</option>
-                  {suppliers.map(s => (
-                    <option key={s.id} value={s.name}>
-                      {s.name} ({s.supplyCategory})
-                    </option>
-                  ))}
-                  <option value="BLANK">Kosongkan (diisi tangan)</option>
-                </select>
+                  options={[
+                    { value: 'AUTO', label: 'Dari penerimaan terakhir' },
+                    { value: 'BLANK', label: 'Kosongkan (diisi tangan)' },
+                    ...suppliers.map(s => ({ value: s.name, label: s.name, group: 'Supplier', hint: s.supplyCategory || undefined })),
+                  ]}
+                  onSelect={opt => opt && setLabelGlobalSupplier(opt.value)}
+                  searchPlaceholder="Cari supplier..."
+                  ariaLabel="Supplier"
+                  noun="pilihan"
+                />
               </div>
 
               <div>
@@ -2392,14 +2386,12 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
               <div>
                 <label className={LABEL_CLS}>Ukuran label</label>
-                <select
+                <Select className="w-full" size="sm"
                   value={labelGridCols}
-                  onChange={e => setLabelGridCols(e.target.value as '2' | '3')}
-                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                >
+                  onChange={e => setLabelGridCols(e.target.value as '2' | '3')}>
                   <option value="2">Besar, 2 kolom</option>
                   <option value="3">Kecil, 3 kolom</option>
-                </select>
+                </Select>
               </div>
 
               <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
@@ -2420,25 +2412,28 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             <>
               <div>
                 <label htmlFor="tag-source" className={LABEL_CLS}>Sumber data</label>
-                <select
+                <Select className="w-full"
                   id="tag-source"
                   value={tagSourceType}
-                  onChange={e => setTagSourceType(e.target.value as 'FROM_GR' | 'FROM_ITEMS')}
-                  className={INPUT_CLS}
-                >
+                  onChange={e => setTagSourceType(e.target.value as 'FROM_GR' | 'FROM_ITEMS')}>
                   <option value="FROM_GR" disabled={receivingDocs.length === 0}>Dokumen penerimaan</option>
                   <option value="FROM_ITEMS">Daftar barang (tanpa jumlah)</option>
-                </select>
+                </Select>
               </div>
 
               {tagSourceType === 'FROM_GR' ? (
                 <div>
                   <label htmlFor="tag-gr" className={LABEL_CLS}>Dokumen penerimaan</label>
-                  <select
+                  <SearchPicker
                     id="tag-gr"
                     value={tagSelectedGrId}
-                    onChange={e => {
-                      const grId = e.target.value;
+                    options={receivingDocs.map(d => ({ value: d.id, label: `${d.id} · ${d.supplierName}`, hint: formatLongDate(d.date) }))}
+                    searchPlaceholder="Cari nomor dokumen atau supplier..."
+                    placeholder="Pilih dokumen penerimaan"
+                    noun="dokumen"
+                    onSelect={opt => {
+                      if (!opt) return;
+                      const grId = opt.value;
                       setTagSelectedGrId(grId);
                       const doc = receivingDocs.find(d => d.id === grId);
                       if (doc) {
@@ -2447,42 +2442,31 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         setTagArrivalTime(doc.arrivalTime || '');
                       }
                     }}
-                    className={INPUT_CLS}
-                  >
-                    {receivingDocs.map(d => (
-                      <option key={d.id} value={d.id}>
-                        {d.id}, {d.supplierName} ({formatLongDate(d.date)})
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
               ) : (
                 <div>
                   <label className={LABEL_CLS}>Gudang</label>
-                  <select
+                  <Select className="w-full" size="sm"
                     value={tagWarehouseFilter}
-                    onChange={e => setTagWarehouseFilter(e.target.value as any)}
-                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                  >
+                    onChange={e => setTagWarehouseFilter(e.target.value as any)}>
                     <option value="ALL">Semua gudang</option>
                     <option value="GUDANG_BASAH">Gudang basah (chiller/freezer)</option>
                     <option value="GUDANG_KERING">Gudang kering</option>
-                  </select>
+                  </Select>
                 </div>
               )}
 
               {/* 3. Ukuran Cetak (Muat Banyak per Lembar) */}
               <div>
                 <label className={LABEL_CLS}>Ukuran tag</label>
-                <select
+                <Select className="w-full"
                   value={tagGridCols}
-                  onChange={e => setTagGridCols(e.target.value as any)}
-                  className={INPUT_CLS}
-                >
+                  onChange={e => setTagGridCols(e.target.value as any)}>
                   <option value="4">Kecil, 16 per lembar</option>
                   <option value="3">Sedang, 12 per lembar</option>
                   <option value="2">Besar, 6 per lembar</option>
-                </select>
+                </Select>
               </div>
 
               {/* 4. Supplier */}
@@ -2523,15 +2507,13 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               {/* 7. Mode Estimasi Expired */}
               <div>
                 <label className={LABEL_CLS}>Batas pakai</label>
-                <select
+                <Select className="w-full" size="sm"
                   value={tagExpiryMode}
-                  onChange={e => setTagExpiryMode(e.target.value as any)}
-                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                >
+                  onChange={e => setTagExpiryMode(e.target.value as any)}>
                   <option value="AUTO">Hitung dari masa simpan</option>
                   <option value="CUSTOM_DATE">Tanggal tertentu</option>
                   <option value="BLANK">Kosongkan (diisi tangan)</option>
-                </select>
+                </Select>
               </div>
 
               {/* 8. Tanggal Expired Manual (jika CUSTOM_DATE) atau Salinan Tag */}
@@ -2548,11 +2530,9 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               ) : (
                 <div>
                   <label className={LABEL_CLS}>Tag per barang</label>
-                  <select
+                  <Select className="w-full" size="sm"
                     value={tagCopiesPerItem}
-                    onChange={e => setTagCopiesPerItem(Number(e.target.value))}
-                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-medium"
-                  >
+                    onChange={e => setTagCopiesPerItem(Number(e.target.value))}>
                     <option value={1}>1 tag</option>
                     <option value={2}>2 tag (2 wadah)</option>
                     <option value={3}>3 tag (3 wadah)</option>
@@ -2560,7 +2540,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                     <option value={5}>5 tag (5 wadah)</option>
                     <option value={8}>8 tag (8 wadah)</option>
                     <option value={10}>10 tag (10 wadah)</option>
-                  </select>
+                  </Select>
                 </div>
               )}
 
@@ -2578,15 +2558,13 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               {/* 10. Status Uji QC Mutu */}
               <div>
                 <label className={LABEL_CLS}>Hasil QC</label>
-                <select
+                <Select className="w-full" size="sm"
                   value={tagQcStatus}
-                  onChange={e => setTagQcStatus(e.target.value)}
-                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-medium"
-                >
+                  onChange={e => setTagQcStatus(e.target.value)}>
                   <option value="Lolos QC Organoleptik & Higiene">Lolos QC organoleptik & higiene</option>
                   <option value="Karantina / Uji Organoleptik">Karantina, perlu cek ulang</option>
                   <option value="">Kosongkan (diisi tangan)</option>
-                </select>
+                </Select>
               </div>
 
               {/* 11. Cari Bahan */}
@@ -2609,31 +2587,27 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             <>
               <div>
                 <label className={LABEL_CLS}>Gudang</label>
-                <select
+                <Select className="w-full" size="sm"
                   value={rackWarehouseFilter}
                   onChange={e => {
                     setRackWarehouseFilter(e.target.value as any);
                     setRackSelectedId('ALL');
                     setHasCustomRackSelection(false);
-                  }}
-                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                >
+                  }}>
                   <option value="ALL">Semua gudang</option>
                   <option value="GUDANG_KERING">Gudang kering</option>
                   <option value="GUDANG_BASAH">Gudang basah (chiller/freezer)</option>
-                </select>
+                </Select>
               </div>
 
               <div>
                 <label className={LABEL_CLS}>Rak</label>
-                <select
+                <Select className="w-full" size="sm"
                   value={rackSelectedId}
                   onChange={e => {
                     setRackSelectedId(e.target.value);
                     setHasCustomRackSelection(false);
-                  }}
-                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                >
+                  }}>
                   <option value="ALL">Semua rak ({allWarehouseRacks.length})</option>
                   {allWarehouseRacks
                     .filter(r => rackWarehouseFilter === 'ALL' || r.warehouseType === rackWarehouseFilter)
@@ -2642,19 +2616,17 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         {r.id} • {r.name} ({r.items.length} item)
                       </option>
                     ))}
-                </select>
+                </Select>
               </div>
 
               <div>
                 <label className={LABEL_CLS}>Ukuran plakat</label>
-                <select
+                <Select className="w-full" size="sm"
                   value={rackLayoutMode}
-                  onChange={e => setRackLayoutMode(e.target.value as '1' | '2')}
-                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-medium"
-                >
+                  onChange={e => setRackLayoutMode(e.target.value as '1' | '2')}>
                   <option value="2">2 plakat per A4</option>
                   <option value="1">1 plakat per A4</option>
-                </select>
+                </Select>
               </div>
 
               <div>
@@ -2698,41 +2670,47 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           {activeForm === 'RECEIVING_FORM' && (
             <div className="sm:col-span-2">
               <label htmlFor="rcv-doc" className={LABEL_CLS}>Dokumen penerimaan</label>
-              <select id="rcv-doc" value={selectedReceivingId} onChange={e => setSelectedReceivingId(e.target.value)} className={INPUT_CLS}>
-                <option value="BLANK">Form kosong (diisi tangan)</option>
-                {receivingDocs.map(d => (
-                  <option key={d.id} value={d.id}>
-                    {d.id}, {d.supplierName} ({formatLongDate(d.date)})
-                  </option>
-                ))}
-              </select>
+              <SearchPicker
+                id="rcv-doc"
+                value={selectedReceivingId}
+                options={[
+                  { value: 'BLANK', label: 'Form kosong (diisi tangan)' },
+                  ...receivingDocs.map(d => ({ value: d.id, label: `${d.id} · ${d.supplierName}`, group: 'Dokumen penerimaan', hint: formatLongDate(d.date) })),
+                ]}
+                onSelect={opt => opt && setSelectedReceivingId(opt.value)}
+                searchPlaceholder="Cari nomor dokumen atau supplier..."
+                noun="pilihan"
+              />
             </div>
           )}
 
           {activeForm === 'OPNAME_SHEET' && (
             <div className="sm:col-span-2">
               <label htmlFor="opn-loc" className={LABEL_CLS}>Lokasi</label>
-              <select id="opn-loc" value={opnameLocation} onChange={e => setOpnameLocation(e.target.value)} className={INPUT_CLS}>
+              <Select className="w-full" id="opn-loc" value={opnameLocation} onChange={e => setOpnameLocation(e.target.value)}>
                 <option value="ALL">Semua lokasi</option>
                 <option value="Gudang Kering">Gudang kering</option>
                 <option value="Chiller">Chiller</option>
                 <option value="Freezer">Freezer</option>
                 <option value="Dapur">Dapur</option>
-              </select>
+              </Select>
             </div>
           )}
 
           {activeForm === 'BIN_CARD' && (
             <div className="sm:col-span-2">
               <label htmlFor="bin-item" className={LABEL_CLS}>Barang</label>
-              <select id="bin-item" value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)} className={INPUT_CLS}>
-                {items.length === 0 && <option value="">Belum ada barang terdaftar</option>}
-                {items.map(i => (
-                  <option key={i.id} value={i.id}>
-                    {i.name} ({i.location})
-                  </option>
-                ))}
-              </select>
+              <SearchPicker
+                id="bin-item"
+                value={selectedItemId}
+                options={[...items]
+                  .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name))
+                  .map(i => ({ value: i.id, label: i.name, group: i.category, hint: i.location }))}
+                onSelect={opt => opt && setSelectedItemId(opt.value)}
+                placeholder={items.length === 0 ? 'Belum ada barang terdaftar' : 'Pilih barang'}
+                searchPlaceholder="Cari nama barang..."
+                noun="barang"
+              />
             </div>
           )}
 
@@ -4004,7 +3982,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
                 <div>
                   <label className={LABEL_CLS}>Tipe Gudang</label>
-                  <select
+                  <Select className="w-full" size="sm"
                     value={editingRackData.warehouseType}
                     onChange={e =>
                       setEditingRackData({
@@ -4015,26 +3993,22 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                             ? 'Gudang Basah & Dingin (Cold Storage)'
                             : 'Gudang Kering (Dry Storage)',
                       })
-                    }
-                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-medium focus-visible:ring-2 focus-visible:ring-emerald-600"
-                  >
+                    }>
                     <option value="GUDANG_KERING">Gudang kering</option>
                     <option value="GUDANG_BASAH">Gudang Basah / Dingin (Cold Storage)</option>
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
                   <label className={LABEL_CLS}>Metode Rotasi</label>
-                  <select
+                  <Select className="w-full" size="sm"
                     value={editingRackData.rotationMethod}
                     onChange={e =>
                       setEditingRackData({ ...editingRackData, rotationMethod: e.target.value as any })
-                    }
-                    className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-medium focus-visible:ring-2 focus-visible:ring-emerald-600"
-                  >
+                    }>
                     <option value="FIFO">FIFO (First In First Out)</option>
                     <option value="FEFO">FEFO (First Expired First Out)</option>
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
@@ -4182,11 +4156,9 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                   </div>
 
                   <div className="sm:col-span-6">
-                    <select
+                    <Select className="w-full" size="sm"
                       value={selectedMasterItemId}
-                      onChange={e => setSelectedMasterItemId(e.target.value)}
-                      className="w-full px-2.5 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-900 text-xs font-medium focus-visible:ring-2 focus-visible:ring-emerald-600 truncate"
-                    >
+                      onChange={e => setSelectedMasterItemId(e.target.value)}>
                       <option value="">-- Pilih Bahan / Barang dari Master Stok --</option>
                       {items
                         .filter(i => {
@@ -4203,7 +4175,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                             {itm.id} • {itm.name} ({itm.category} • Satuan: {itm.baseUnit})
                           </option>
                         ))}
-                    </select>
+                    </Select>
                   </div>
 
                   <div className="sm:col-span-2">

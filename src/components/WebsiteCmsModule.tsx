@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Select } from './common/Select';
 import {
   WebsiteConfig,
   HeroVideoItem,
@@ -1046,7 +1047,7 @@ export const WebsiteCmsModule: React.FC = () => {
                       </p>
                     </div>
 
-                    <select
+                    <Select size="sm"
                       value={config.hero.videoIntervalSeconds || 0}
                       onChange={e => setConfig(prev => ({
                         ...prev,
@@ -1054,15 +1055,13 @@ export const WebsiteCmsModule: React.FC = () => {
                           ...prev.hero,
                           videoIntervalSeconds: parseInt(e.target.value, 10)
                         }
-                      }))}
-                      className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                    >
+                      }))}>
                       <option value={0}>Transisi Alami saat Video Berakhir (onEnded)</option>
                       <option value={8}>Otomatis Tiap 8 Detik</option>
                       <option value={12}>Otomatis Tiap 12 Detik</option>
                       <option value={20}>Otomatis Tiap 20 Detik</option>
                       <option value={30}>Otomatis Tiap 30 Detik</option>
-                    </select>
+                    </Select>
                   </div>
 
                   {/* Preset Video Rekomendasi */}
@@ -1182,7 +1181,7 @@ export const WebsiteCmsModule: React.FC = () => {
 
                 <div className="flex items-center gap-2 self-end sm:self-auto">
                   <span className="text-xs text-slate-600 font-medium">Interval:</span>
-                  <select
+                  <Select size="sm"
                     value={config.hero.photoSlideInterval || 4}
                     onChange={e => setConfig(prev => ({
                       ...prev,
@@ -1190,15 +1189,13 @@ export const WebsiteCmsModule: React.FC = () => {
                         ...prev.hero,
                         photoSlideInterval: parseInt(e.target.value, 10)
                       }
-                    }))}
-                    className="px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                  >
+                    }))}>
                     <option value={3}>3 Detik</option>
                     <option value={4}>4 Detik</option>
                     <option value={5}>5 Detik</option>
                     <option value={6}>6 Detik</option>
                     <option value={8}>8 Detik</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
 
@@ -1493,16 +1490,14 @@ export const WebsiteCmsModule: React.FC = () => {
               {selectedOrder && (
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
                   {todayOrders.length > 1 && (
-                    <select
+                    <Select
                       aria-label="Pilih sesi menu"
                       value={selectedOrder.id}
-                      onChange={e => setSelectedOrderId(e.target.value)}
-                      className={`px-2.5 min-h-[44px] sm:min-h-[36px] rounded-lg border border-slate-300 bg-white text-xs text-slate-900 ${FOCUS}`}
-                    >
+                      onChange={e => setSelectedOrderId(e.target.value)}>
                       {todayOrders.map(o => (
                         <option key={o.id} value={o.id}>{o.mealSession}: {o.menuTitle}</option>
                       ))}
-                    </select>
+                    </Select>
                   )}
                   <button type="button" onClick={() => handleFillFromOrder(selectedOrder)} className={BTN_PRIMARY}>
                     <RotateCcw className="w-4 h-4" />
@@ -2703,18 +2698,16 @@ export const WebsiteCmsModule: React.FC = () => {
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Kategori Gizi Bahan</label>
-                  <select
+                  <Select className="w-full"
                     value={editingIngredient.category}
-                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, category: e.target.value as any } : null)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800 cursor-pointer"
-                  >
+                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, category: e.target.value as any } : null)}>
                     <option value="karbohidrat">Karbohidrat (Nasi, Ubi, Kentang)</option>
                     <option value="protein_hewani">Protein Hewani (Ayam, Ikan, Telur, Daging)</option>
                     <option value="protein_nabati">Protein Nabati (Tempe, Tahu, Kacang)</option>
                     <option value="sayuran">Sayuran (Wortel, Buncis, Bayam, Sop)</option>
                     <option value="buah">Buah-buahan (Pisang, Jeruk, Semangka)</option>
                     <option value="pelengkap">Pelengkap (Susu, Biji-bijian)</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
 

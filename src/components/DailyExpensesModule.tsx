@@ -13,13 +13,13 @@ type PeriodType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
 
 // BELANJA: uang keluar dengan harga tercatat.
 // PENGAMBILAN: catatan pengeluaran tanpa harga (biasanya barang diambil relawan dari gudang).
-// DAPUR: stok gudang yang dikeluarkan ke dapur, dicatat di Buku Mutasi.
+// DAPUR: stok gudang yang dikeluarkan (bahan dapur maupun operasional), dicatat di Buku Mutasi.
 type ExpenseKind = 'BELANJA' | 'PENGAMBILAN' | 'DAPUR';
 
 const KIND_LABEL: Record<ExpenseKind, string> = {
   BELANJA: 'Belanja',
   PENGAMBILAN: 'Pengambilan',
-  DAPUR: 'Pemakaian dapur',
+  DAPUR: 'Barang keluar',
 };
 
 const KIND_BADGE: Record<ExpenseKind, string> = {
@@ -289,6 +289,21 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
     return { belanja, belanjaCount, pengambilanCount, dapurCount, byCategory };
   }, [filteredExpenses]);
 
+  // Rekap uang keluar per tanggal untuk laporan mingguan/bulanan.
+  const dailyTotals = useMemo(() => {
+    const map = new Map<string, { date: Date; count: number; total: number }>();
+    filteredExpenses.forEach(e => {
+      if (e.kind !== 'BELANJA' || !e.nominal || !e.parsedDate) return;
+      const d = e.parsedDate;
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      const row = map.get(key) || { date: new Date(d.getFullYear(), d.getMonth(), d.getDate()), count: 0, total: 0 };
+      row.count += 1;
+      row.total += e.nominal;
+      map.set(key, row);
+    });
+    return [...map.values()].sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [filteredExpenses]);
+
   const categoryItems = useMemo(() => {
     const result: Record<MainItemCategory, ItemAgg[]> = { 'Bahan Basah': [], 'Bahan Kering': [], 'Bahan Peralatan': [] };
     const maps: Record<string, Map<string, ItemAgg>> = {};
@@ -486,12 +501,48 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
           </tfoot>
         </table>
         <p className="text-[10px] text-slate-600 mt-1">
-          Total hanya menjumlahkan belanja yang harganya dicatat. Pengambilan barang dan pemakaian dapur dicatat jumlahnya saja.
+          Total hanya menjumlahkan belanja yang harganya dicatat. Pengambilan barang dan barang keluar dicatat jumlahnya saja.
         </p>
       </div>
 
+      {periodType !== 'DAILY' && (
+        <div className="mb-5">
+          <div className="font-bold text-xs text-slate-800 mb-2 border-b border-slate-300 pb-1">B. Rekap per Hari</div>
+          {dailyTotals.length === 0 ? (
+            <p className="text-[11px] text-slate-600">Tidak ada belanja bernilai rupiah pada periode ini.</p>
+          ) : (
+            <table className="w-full text-left text-xs border border-slate-300 border-collapse">
+              <thead>
+                <tr className="bg-slate-100 text-slate-700 font-semibold">
+                  <th className="py-1.5 px-2 border border-slate-300 w-8 text-center">No</th>
+                  <th className="py-1.5 px-2 border border-slate-300">Tanggal</th>
+                  <th className="py-1.5 px-2 border border-slate-300 text-center">Catatan belanja</th>
+                  <th className="py-1.5 px-2 border border-slate-300 text-right">Total belanja</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyTotals.map((d, idx) => (
+                  <tr key={d.date.toISOString()}>
+                    <td className="py-1.5 px-2 border border-slate-300 text-center">{idx + 1}</td>
+                    <td className="py-1.5 px-2 border border-slate-300">{formatDateLong(d.date)}</td>
+                    <td className="py-1.5 px-2 border border-slate-300 text-center">{d.count}</td>
+                    <td className="py-1.5 px-2 border border-slate-300 text-right font-mono">{formatRp(d.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-100 font-bold">
+                  <td colSpan={3} className="py-1.5 px-2 border border-slate-300 text-right">Total periode</td>
+                  <td className="py-1.5 px-2 border border-slate-300 text-right font-mono">{formatRp(totals.belanja)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+      )}
+
       <div className="mb-6 space-y-4">
-        <div className="font-bold text-xs text-slate-800 border-b border-slate-300 pb-1">B. Rincian per Barang</div>
+        <div className="font-bold text-xs text-slate-800 border-b border-slate-300 pb-1">{periodType !== 'DAILY' ? 'C' : 'B'}. Rincian per Barang</div>
         {visibleCategories.map((cat, catIdx) => (
           <div key={cat} className="space-y-1">
             <div className="flex justify-between font-bold text-xs bg-slate-100 px-2 py-1 border border-slate-300">
@@ -591,7 +642,7 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
               >
                 <Plus className="w-4 h-4" />
-                Catat Belanja
+                Terima Barang
               </button>
             )}
             <button
@@ -679,7 +730,7 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
             <div className="text-xs font-medium text-slate-600">Total belanja · {range.label}</div>
             <div className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">{formatRp(totals.belanja)}</div>
             <div className="text-xs text-slate-600 mt-1">
-              {totals.belanjaCount} belanja · {totals.pengambilanCount} pengambilan · {totals.dapurCount} pemakaian dapur
+              {totals.belanjaCount} belanja · {totals.pengambilanCount} pengambilan · {totals.dapurCount} barang keluar
             </div>
           </div>
           {CATEGORIES.map(cat => (

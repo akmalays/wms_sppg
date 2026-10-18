@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { Select } from './common/Select';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { NonFoodExpense, NonFoodCategory, NonFoodDepartment } from '../types/warehouse';
@@ -417,31 +418,27 @@ export const NonFoodExpensesModule: React.FC = () => {
           {/* Category Dropdown */}
           <div className="flex items-center gap-1">
             <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <select
+            <Select size="sm"
               value={selectedCategory}
-              onChange={e => setSelectedCategory(e.target.value)}
-              className="text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-            >
+              onChange={e => setSelectedCategory(e.target.value)}>
               {categories.map(c => (
                 <option key={c} value={c}>
                   {c === 'ALL' ? 'Semua Kategori Non-Food' : c}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {/* Department Dropdown */}
-          <select
+          <Select size="sm"
             value={selectedDepartment}
-            onChange={e => setSelectedDepartment(e.target.value)}
-            className="text-xs font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          >
+            onChange={e => setSelectedDepartment(e.target.value)}>
             {departments.map(d => (
               <option key={d} value={d}>
                 {d === 'ALL' ? 'Semua Unit / Departemen' : d}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {/* Search */}
@@ -562,17 +559,15 @@ export const NonFoodExpensesModule: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Kategori Pengeluaran <span className="text-rose-500">*</span>
                 </label>
-                <select
+                <Select className="w-full"
                   value={formCategory}
-                  onChange={e => setFormCategory(e.target.value as NonFoodCategory)}
-                  className="w-full text-xs border border-slate-300 rounded-lg p-2.5 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
+                  onChange={e => setFormCategory(e.target.value as NonFoodCategory)}>
                   <option value="Peralatan Dapur">Peralatan Dapur (Pisau, Panci, Baskom, dsb)</option>
                   <option value="Bahan Pembersih & Sanitasi">Bahan Pembersih & Sanitasi (Sabun, Karbol, dsb)</option>
                   <option value="ATK & Dokumentasi">ATK & Dokumentasi (Kertas, Binder, Spidol, dsb)</option>
                   <option value="Perlengkapan Kebersihan & APD">Perlengkapan Kebersihan & APD (Apron, Sarung Tangan, dsb)</option>
                   <option value="Pemeliharaan & Utilitas">Pemeliharaan & Utilitas (Regulator, Selang, Lampu, dsb)</option>
-                </select>
+                </Select>
               </div>
 
               <div>
@@ -646,17 +641,15 @@ export const NonFoodExpensesModule: React.FC = () => {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Unit Pemohon / Departemen
                   </label>
-                  <select
+                  <Select className="w-full"
                     value={formDepartment}
-                    onChange={e => setFormDepartment(e.target.value as NonFoodDepartment)}
-                    className="w-full text-xs border border-slate-300 rounded-lg p-2.5 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  >
+                    onChange={e => setFormDepartment(e.target.value as NonFoodDepartment)}>
                     <option value="Dapur Pengolahan Utama">Dapur Pengolahan Utama</option>
                     <option value="Area Cuci & Sanitasi">Area Cuci & Sanitasi</option>
                     <option value="Administrasi & Kantor">Administrasi & Kantor</option>
                     <option value="Gudang Kering & Basah">Gudang Kering & Basah</option>
                     <option value="Distribusi & Kemasan">Distribusi & Kemasan</option>
-                  </select>
+                  </Select>
                 </div>
 
                 <div>

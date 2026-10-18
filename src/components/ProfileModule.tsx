@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { Select } from './common/Select';
 import { useConfirm } from '../context/ConfirmContext';
 import { useToast } from '../context/ToastContext';
 import { KopText } from './common/KopText';
@@ -511,27 +512,23 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <select
+              <Select className="w-auto"
                 aria-label="Filter status"
                 value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
-                className={`${FIELD_INPUT} w-auto`}
-              >
+                onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}>
                 <option value="ALL">Semua status</option>
                 <option value="PENDING">Belum selesai</option>
                 <option value="COMPLETED">Sudah selesai</option>
-              </select>
-              <select
+              </Select>
+              <Select className="w-auto"
                 aria-label="Filter kategori"
                 value={categoryFilter}
-                onChange={e => setCategoryFilter(e.target.value)}
-                className={`${FIELD_INPUT} w-auto`}
-              >
+                onChange={e => setCategoryFilter(e.target.value)}>
                 <option value="ALL">Semua kategori</option>
                 {categoryOptions.map(c => (
                   <option key={c} value={c}>{c}</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div className="pt-3 border-t border-slate-200">
@@ -772,19 +769,19 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="td-cat" className={FIELD_LABEL}>Kategori</label>
-              <select id="td-cat" value={newCategory} onChange={e => setNewCategory(e.target.value as TodoCategory)} className={FIELD_INPUT}>
+              <Select className="w-full" id="td-cat" value={newCategory} onChange={e => setNewCategory(e.target.value as TodoCategory)}>
                 {TODO_CATEGORIES.map(c => (
                   <option key={c} value={c}>{c}</option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div>
               <label htmlFor="td-prio" className={FIELD_LABEL}>Prioritas</label>
-              <select id="td-prio" value={newPriority} onChange={e => setNewPriority(e.target.value as TodoPriority)} className={FIELD_INPUT}>
+              <Select className="w-full" id="td-prio" value={newPriority} onChange={e => setNewPriority(e.target.value as TodoPriority)}>
                 <option value="Tinggi">Tinggi</option>
                 <option value="Sedang">Sedang</option>
                 <option value="Rendah">Rendah</option>
-              </select>
+              </Select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -794,40 +791,38 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
             </div>
             <div>
               <label htmlFor="td-session" className={FIELD_LABEL}>Sesi</label>
-              <select id="td-session" value={newSession} onChange={e => setNewSession(e.target.value as typeof newSession)} className={FIELD_INPUT}>
+              <Select className="w-full" id="td-session" value={newSession} onChange={e => setNewSession(e.target.value as typeof newSession)}>
                 <option value="Pagi">Pagi (05.00–09.00)</option>
                 <option value="Siang">Siang (09.00–14.00)</option>
                 <option value="Sore">Sore (14.00–18.00)</option>
                 <option value="Harian">Kapan saja</option>
-              </select>
+              </Select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="td-user" className={FIELD_LABEL}>Tugaskan ke orang</label>
-              <select id="td-user" value={newAssignedUserId} onChange={e => setNewAssignedUserId(e.target.value)} className={FIELD_INPUT}>
+              <Select className="w-full" id="td-user" value={newAssignedUserId} onChange={e => setNewAssignedUserId(e.target.value)}>
                 <option value="">Tidak spesifik</option>
                 {availableUsers?.map(u => (
                   <option key={u.id} value={u.id}>
                     {u.name} ({roleLabel(u.role)})
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div>
               <label htmlFor="td-role" className={FIELD_LABEL}>Atau ke peran</label>
-              <select
+              <Select className="w-full"
                 id="td-role"
                 value={newAssignedRole}
                 disabled={Boolean(newAssignedUserId)}
-                onChange={e => setNewAssignedRole(e.target.value as UserRole | 'ALL')}
-                className={FIELD_INPUT}
-              >
+                onChange={e => setNewAssignedRole(e.target.value as UserRole | 'ALL')}>
                 <option value="ALL">Semua petugas</option>
                 {(Object.keys(ROLE_INFO) as UserRole[]).map(r => (
                   <option key={r} value={r}>{ROLE_INFO[r].label}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
           <div>

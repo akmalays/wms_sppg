@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { SearchPicker } from './common/SearchPicker';
 import {
   Printer,
   X,
@@ -575,18 +576,18 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
           {availableToAdd.length > 0 && (
             <div className="flex items-center gap-2">
               <span className="text-slate-600 text-[11px] font-medium">Tambah nota lain:</span>
-              <select
-                value={selectedToAdd}
-                onChange={e => setSelectedToAdd(e.target.value)}
-                className="text-[11px] bg-white border border-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-emerald-500/60 cursor-pointer max-w-[240px]"
-              >
-                <option value="">-- Pilih Nota Tambahan --</option>
-                {availableToAdd.map(n => (
-                  <option key={n.id} value={n.id}>
-                    {n.poNumber} ({n.supplierName} - Rp {n.grandTotal.toLocaleString('id-ID')})
-                  </option>
-                ))}
-              </select>
+              <div className="w-64">
+                <SearchPicker
+                  value={selectedToAdd}
+                  options={availableToAdd.map(n => ({ value: n.id, label: `${n.poNumber} · ${n.supplierName}`, hint: `Rp ${n.grandTotal.toLocaleString('id-ID')}` }))}
+                  onSelect={opt => opt && setSelectedToAdd(opt.value)}
+                  placeholder="Pilih nota tambahan"
+                  searchPlaceholder="Cari nomor nota atau supplier..."
+                  ariaLabel="Tambah nota lain"
+                  noun="nota"
+                  size="sm"
+                />
+              </div>
               <button
                 type="button"
                 onClick={handleAddSelected}

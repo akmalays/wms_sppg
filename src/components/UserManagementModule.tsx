@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Select } from './common/Select';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { Employee, User, UserRole } from '../types/warehouse';
@@ -15,8 +16,8 @@ import {
 export const ROLE_INFO: Record<UserRole, { label: string; desc: string }> = {
   SUPERADMIN: { label: 'Superadmin', desc: 'Semua fitur, termasuk kelola akun dan riwayat aktivitas.' },
   KA_SPPG: { label: 'Kepala SPPG', desc: 'Semua fitur operasional, setujui opname, kelola akun.' },
-  ADMIN: { label: 'Admin Gudang', desc: 'Barang, supplier, penerimaan, stok, dan pemakaian dapur.' },
-  ASLAP: { label: 'Asisten Lapangan', desc: 'Penerimaan barang, opname, aset dapur, pemakaian dapur.' },
+  ADMIN: { label: 'Admin Gudang', desc: 'Barang, supplier, barang datang, stok, dan barang keluar.' },
+  ASLAP: { label: 'Asisten Lapangan', desc: 'Barang datang, opname, aset dapur, barang keluar.' },
   AKUNTAN: { label: 'Akuntan', desc: 'Penerimaan, setujui opname, supplier, dan laporan.' },
 };
 
@@ -231,19 +232,17 @@ export const UserAccountsPanel: React.FC = () => {
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div className="flex flex-col sm:flex-row gap-2">
-          <select
+          <Select className="w-full sm:w-44"
             aria-label="Peran"
             value={roleFilter}
-            onChange={e => setRoleFilter(e.target.value as 'ALL' | UserRole)}
-            className={`${FIELD_INPUT} sm:w-44`}
-          >
+            onChange={e => setRoleFilter(e.target.value as 'ALL' | UserRole)}>
             <option value="ALL">Semua peran ({users.length})</option>
             {ROLES.map(r => (
               <option key={r} value={r}>
                 {ROLE_INFO[r].label} ({users.filter(u => u.role === r).length})
               </option>
             ))}
-          </select>
+          </Select>
           <div className="relative sm:w-64">
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
@@ -363,14 +362,14 @@ export const UserAccountsPanel: React.FC = () => {
         >
           <div>
             <label htmlFor="acc-emp" className={FIELD_LABEL}>Data karyawan</label>
-            <select id="acc-emp" value={form.employeeId} onChange={e => pickEmployee(e.target.value)} className={FIELD_INPUT}>
+            <Select className="w-full" id="acc-emp" value={form.employeeId} onChange={e => pickEmployee(e.target.value)}>
               <option value="">Tidak ditautkan</option>
               {employeeOptions(originalLink || form.employeeId).map(e => (
                 <option key={e.id} value={e.id}>
                   {e.name} ({e.position})
                 </option>
               ))}
-            </select>
+            </Select>
             {dialog.mode === 'edit' && !originalLink && form.employeeId && (
               <p className="text-[11px] text-slate-600 mt-1">Disarankan karena namanya sama. Ganti jika keliru.</p>
             )}
@@ -390,19 +389,17 @@ export const UserAccountsPanel: React.FC = () => {
 
           <div>
             <label htmlFor="acc-role" className={FIELD_LABEL}>Peran</label>
-            <select
+            <Select className="w-full"
               id="acc-role"
               value={form.role}
               disabled={editingSelf}
-              onChange={e => setField('role', e.target.value as UserRole)}
-              className={FIELD_INPUT}
-            >
+              onChange={e => setField('role', e.target.value as UserRole)}>
               {ROLES.map(r => (
                 <option key={r} value={r}>
                   {ROLE_INFO[r].label}
                 </option>
               ))}
-            </select>
+            </Select>
             <p className="text-[11px] text-slate-600 mt-1">
               {editingSelf ? 'Peran akun sendiri tidak bisa diubah, agar tidak kehilangan akses.' : ROLE_INFO[form.role].desc}
             </p>

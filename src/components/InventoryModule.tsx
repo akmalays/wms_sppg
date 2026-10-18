@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { Select } from './common/Select';
 import { useConfirm } from '../context/ConfirmContext';
 import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
@@ -1858,15 +1859,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
 
               {/* Status and Search Filter */}
               <div className="flex items-center gap-2">
-                <select
+                <Select
                   value={masterStatusFilter}
-                  onChange={e => setMasterStatusFilter(e.target.value as 'ALL' | 'ACTIVE' | 'INACTIVE')}
-                  className="text-xs border border-slate-300 rounded-lg p-1.5 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-                >
+                  onChange={e => setMasterStatusFilter(e.target.value as 'ALL' | 'ACTIVE' | 'INACTIVE')}>
                   <option value="ALL">Semua Status</option>
                   <option value="ACTIVE">Aktif Saja</option>
                   <option value="INACTIVE">Nonaktif Saja</option>
-                </select>
+                </Select>
 
                 <div className="relative w-64">
                   <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
@@ -2136,15 +2135,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
             <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-800">Riwayat Opname</span>
-                <select
+                <Select
                   value={opnameStatusFilter}
-                  onChange={e => setOpnameStatusFilter(e.target.value as any)}
-                  className="text-xs border border-slate-300 rounded-lg p-1 bg-white text-slate-800 font-medium focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-                >
+                  onChange={e => setOpnameStatusFilter(e.target.value as any)}>
                   <option value="ALL">Semua Status</option>
                   <option value="PENDING_APPROVAL">Menunggu Otorisasi (Pending)</option>
                   <option value="APPROVED">Telah Disetujui (Approved)</option>
-                </select>
+                </Select>
               </div>
 
               <div className="relative w-64">
@@ -2298,16 +2295,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
                   <div>
                     <label htmlFor="opname-category" className="block font-semibold text-slate-700 mb-1">Kategori yang dihitung</label>
-                    <select
+                    <Select className="w-full"
                       id="opname-category"
                       value={opnameCategoryFilter}
-                      onChange={e => handleOpnameCategoryChange(e.target.value as SppgCategory)}
-                      className="w-full text-xs border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                    >
+                      onChange={e => handleOpnameCategoryChange(e.target.value as SppgCategory)}>
                       {SPPG_STOCK_CATEGORIES.map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <p className="text-[11px] text-slate-600 sm:pb-2">
                     Pemeriksa: <strong className="text-slate-800">{currentUser.name}</strong> · {opnameFormDate}
@@ -2975,17 +2970,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label htmlFor="item-category" className="block font-semibold text-slate-700 mb-1">Kategori</label>
-                  <select
+                  <Select className="w-full"
                     id="item-category"
                     value={formCategory}
-                    onChange={e => setFormCategory(e.target.value as SppgCategory)}
-                    className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                  >
+                    onChange={e => setFormCategory(e.target.value as SppgCategory)}>
                     {SPPG_STOCK_CATEGORIES.filter(c => c !== 'Semua Kategori').map(c => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                     <option value="Kategori Kustom">Kategori lain...</option>
-                  </select>
+                  </Select>
                   {formCategory === 'Kategori Kustom' && (
                     <input
                       type="text"
@@ -2999,17 +2992,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                 </div>
                 <div>
                   <label htmlFor="item-unit" className="block font-semibold text-slate-700 mb-1">Satuan</label>
-                  <select
+                  <Select className="w-full"
                     id="item-unit"
                     value={formBaseUnit}
-                    onChange={e => setFormBaseUnit(e.target.value as BaseUnit)}
-                    className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                  >
+                    onChange={e => setFormBaseUnit(e.target.value as BaseUnit)}>
                     {['Kg', 'Gram', 'Liter', 'Pcs', 'Pack', 'Dus', 'Ikat', 'Butir', 'Roll', 'Botol', 'Jerigen', 'Pouch', 'Rim'].map(u => (
                       <option key={u} value={u}>{u}</option>
                     ))}
                     <option value="Satuan Kustom">Satuan lain...</option>
-                  </select>
+                  </Select>
                   {formBaseUnit === 'Satuan Kustom' && (
                     <input
                       type="text"
@@ -3078,16 +3069,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label htmlFor="item-area" className="block font-semibold text-slate-700 mb-1">Area gudang</label>
-                    <select
+                    <Select className="w-full"
                       id="item-area"
                       value={formWarehouse}
-                      onChange={e => handleWarehouseChange(e.target.value as WarehouseSkuType)}
-                      className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                    >
+                      onChange={e => handleWarehouseChange(e.target.value as WarehouseSkuType)}>
                       {Object.values(WAREHOUSE_SKU_DEFINITIONS).map(wh => (
                         <option key={wh.key} value={wh.key}>{wh.label}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label htmlFor="item-sku" className="block font-semibold text-slate-700 mb-1">SKU</label>
@@ -3118,12 +3107,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
 
                 <div>
                   <label htmlFor="item-location" className="block font-semibold text-slate-700 mb-1">Rak / lokasi simpan</label>
-                  <select
+                  <Select className="w-full"
                     id="item-location"
                     value={ALL_STANDARD_LOCATIONS.includes(formLocation) ? formLocation : 'LOKASI_KUSTOM'}
-                    onChange={e => setFormLocation(e.target.value === 'LOKASI_KUSTOM' ? '' : e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg px-2.5 py-2 bg-white text-slate-900 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                  >
+                    onChange={e => setFormLocation(e.target.value === 'LOKASI_KUSTOM' ? '' : e.target.value)}>
                     <optgroup label={`Disarankan untuk ${WAREHOUSE_SKU_DEFINITIONS[formWarehouse]?.label || 'area ini'}`}>
                       {(WAREHOUSE_SKU_DEFINITIONS[formWarehouse]?.suggestedLocations || []).map(loc => (
                         <option key={loc} value={loc}>{loc}</option>
@@ -3137,7 +3124,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                       ))}
                     </optgroup>
                     <option value="LOKASI_KUSTOM">Lokasi lain (ketik sendiri)...</option>
-                  </select>
+                  </Select>
                   {!ALL_STANDARD_LOCATIONS.includes(formLocation) && (
                     <input
                       type="text"
@@ -3295,15 +3282,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                               />
                             </td>
                             <td className="py-1.5 px-2">
-                              <select
+                              <Select className="w-full" size="sm"
                                 value={row.category}
-                                onChange={e => handleUpdateBatchRow(row.id, 'category', e.target.value as SppgCategory)}
-                                className="w-full text-[11px] border border-slate-200 rounded px-1 py-1 bg-white text-slate-800"
-                              >
+                                onChange={e => handleUpdateBatchRow(row.id, 'category', e.target.value as SppgCategory)}>
                                 {SPPG_STOCK_CATEGORIES.filter(c => c !== 'Semua Kategori').map(c => (
                                   <option key={c} value={c}>{c}</option>
                                 ))}
-                              </select>
+                              </Select>
                             </td>
                             <td className="py-1.5 px-2">
                               <input

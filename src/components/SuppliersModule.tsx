@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Select } from './common/Select';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { Supplier } from '../types/warehouse';
@@ -328,10 +329,10 @@ export const SuppliersModule: React.FC<SuppliersModuleProps> = ({ onNavigateToEx
             </div>
             <div>
               <label htmlFor="sup-status" className={FIELD_LABEL}>Status</label>
-              <select id="sup-status" value={form.isActive ? '1' : '0'} onChange={e => setField('isActive', e.target.value === '1')} className={FIELD_INPUT}>
+              <Select className="w-full" id="sup-status" value={form.isActive ? '1' : '0'} onChange={e => setField('isActive', e.target.value === '1')}>
                 <option value="1">Aktif</option>
                 <option value="0">Nonaktif</option>
-              </select>
+              </Select>
             </div>
           </div>
           <div>

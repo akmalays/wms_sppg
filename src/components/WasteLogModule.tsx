@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { Select } from './common/Select';
 import { useConfirm } from '../context/ConfirmContext';
 import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
@@ -1329,11 +1330,11 @@ export const WasteLogModule: React.FC = () => {
                         </label>
                         <label>
                           <span className="block text-slate-600 mb-1">Pola menu</span>
-                          <select value={splitPatternIdx} onChange={e => setSplitPatternIdx(Number(e.target.value))} className={inputClass}>
+                          <Select className="w-full" value={splitPatternIdx} onChange={e => setSplitPatternIdx(Number(e.target.value))}>
                             {SPLIT_PATTERNS.map((p, idx) => (
                               <option key={p.name} value={idx}>{p.name}</option>
                             ))}
-                          </select>
+                          </Select>
                         </label>
                       </div>
                       <p className="text-slate-600">
@@ -1354,12 +1355,12 @@ export const WasteLogModule: React.FC = () => {
 
                 <label className="block">
                   <span className="block font-semibold text-slate-700 mb-1">Penanganan</span>
-                  <select value={dailyDisposal} onChange={e => setDailyDisposal(e.target.value)} className={inputClass}>
+                  <Select className="w-full" value={dailyDisposal} onChange={e => setDailyDisposal(e.target.value)}>
                     {DISPOSAL_OPTIONS.map(opt => (
                       <option key={opt} value={opt}>{opt}</option>
                     ))}
                     {!DISPOSAL_OPTIONS.includes(dailyDisposal) && <option value={dailyDisposal}>{dailyDisposal}</option>}
-                  </select>
+                  </Select>
                 </label>
 
                 <label className="block">
@@ -1436,11 +1437,11 @@ export const WasteLogModule: React.FC = () => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <label>
                           <span className="block text-slate-600 mb-1">Jenis</span>
-                          <select value={row.category} onChange={e => updateOtherRow(idx, { category: e.target.value })} className={inputClass}>
+                          <Select className="w-full" value={row.category} onChange={e => updateOtherRow(idx, { category: e.target.value })}>
                             {OTHER_CATEGORIES.map(c => (
                               <option key={c.value} value={c.value}>{c.label}</option>
                             ))}
-                          </select>
+                          </Select>
                         </label>
                         <label>
                           <span className="block text-slate-600 mb-1">Uraian</span>
@@ -1467,21 +1468,21 @@ export const WasteLogModule: React.FC = () => {
                           </label>
                           <label>
                             <span className="block text-slate-600 mb-1">Satuan</span>
-                            <select value={row.unit} onChange={e => updateOtherRow(idx, { unit: e.target.value })} className={inputClass}>
+                            <Select className="w-full" value={row.unit} onChange={e => updateOtherRow(idx, { unit: e.target.value })}>
                               <option value="Kg">Kg</option>
                               <option value="Gram">Gram</option>
                               <option value="Liter">Liter</option>
                               <option value="Pcs">Pcs</option>
-                            </select>
+                            </Select>
                           </label>
                         </div>
                         <label>
                           <span className="block text-slate-600 mb-1">Penanganan</span>
-                          <select value={row.disposalMethod} onChange={e => updateOtherRow(idx, { disposalMethod: e.target.value })} className={inputClass}>
+                          <Select className="w-full" value={row.disposalMethod} onChange={e => updateOtherRow(idx, { disposalMethod: e.target.value })}>
                             {DISPOSAL_OPTIONS.map(opt => (
                               <option key={opt} value={opt}>{opt}</option>
                             ))}
-                          </select>
+                          </Select>
                         </label>
                         <label className="sm:col-span-2">
                           <span className="block text-slate-600 mb-1">Catatan (opsional)</span>

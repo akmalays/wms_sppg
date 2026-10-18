@@ -1,4 +1,5 @@
 import React, {useState, useMemo} from "react";
+import {SearchPicker} from "./common/SearchPicker";
 import {useAuth} from "../context/AuthContext";
 import {warehouseDb} from "../db/storage";
 import {MenuOrder} from "../types/warehouse";
@@ -1250,23 +1251,22 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
 
           <div>
             <label className="block text-[11px] font-semibold text-slate-600 mb-1">Pilih dari Order Tersimpan:</label>
-            <select
+            <SearchPicker
               value={existingOrderForDate?.id || ""}
-              onChange={(e) => {
-                const found = menuOrders.find((o) => o.id === e.target.value);
+              options={menuOrders.map((ord) => ({ value: ord.id, label: ord.menuTitle, hint: ord.date }))}
+              onSelect={(opt) => {
+                const found = opt && menuOrders.find((o) => o.id === opt.value);
                 if (found) {
                   setSelectedDate(found.date);
                   handleAutoFillFromOrder(found);
                 }
               }}
-              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800">
-              <option value="">-- Muat Dari Order Menu --</option>
-              {menuOrders.map((ord) => (
-                <option key={ord.id} value={ord.id}>
-                  {ord.date} - {ord.menuTitle.slice(0, 28)}...
-                </option>
-              ))}
-            </select>
+              placeholder="Muat dari order menu"
+              searchPlaceholder="Cari menu atau tanggal..."
+              ariaLabel="Pilih dari order tersimpan"
+              noun="order"
+              size="sm"
+            />
           </div>
         </div>
 

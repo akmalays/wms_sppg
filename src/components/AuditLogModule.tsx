@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Select } from './common/Select';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
 import { AuditLog } from '../types/warehouse';
@@ -30,7 +31,7 @@ const ACTION_LABEL: Record<string, string> = {
   PO_DELETED: 'PO dihapus',
   PO_DELETED_BY_MENU: 'PO dihapus (dari menu)',
   PO_RECEIVED_COMPLETED: 'PO selesai diterima',
-  STOCK_CONSUMED: 'Pemakaian dapur',
+  STOCK_CONSUMED: 'Barang keluar',
   STOCK_ADJUSTED: 'Stok disesuaikan',
   STOCK_OPNAME_CREATED: 'Opname dibuat',
   STOCK_OPNAME_APPROVED: 'Opname disetujui',
@@ -180,21 +181,21 @@ export const AuditLogModule: React.FC = () => {
         </div>
         <div>
           <label htmlFor="aud-area" className={FIELD_LABEL}>Bagian</label>
-          <select id="aud-area" value={area} onChange={e => setArea(e.target.value)} className={FIELD_INPUT}>
+          <Select className="w-full" id="aud-area" value={area} onChange={e => setArea(e.target.value)}>
             <option value="ALL">Semua bagian</option>
             {areas.map(a => (
               <option key={a} value={a}>{AREA_LABEL[a] || a}</option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label htmlFor="aud-person" className={FIELD_LABEL}>Petugas</label>
-          <select id="aud-person" value={person} onChange={e => setPerson(e.target.value)} className={FIELD_INPUT}>
+          <Select className="w-full" id="aud-person" value={person} onChange={e => setPerson(e.target.value)}>
             <option value="ALL">Semua petugas</option>
             {people.map(p => (
               <option key={p} value={p}>{p}</option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>

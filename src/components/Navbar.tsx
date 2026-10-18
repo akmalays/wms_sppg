@@ -43,7 +43,7 @@ const DAILY_ITEMS: NavItem[] = [
   { id: 'receiving', label: 'Barang Datang' },
   { id: 'menu_orders', label: 'Menu' },
   { id: 'inventory', label: 'Stok' },
-  { id: 'daily_flow', label: 'Pemakaian Dapur' },
+  { id: 'daily_flow', label: 'Barang Keluar' },
 ];
 
 const NAV_GROUPS: { id: 'laporan' | 'lainnya'; label: string; items: NavItem[] }[] = [

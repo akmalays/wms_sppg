@@ -1,4 +1,6 @@
 import React, {useState, useMemo, useEffect, useRef} from "react";
+import {Select} from "./common/Select";
+import {SearchPicker} from "./common/SearchPicker";
 import { useConfirm } from '../context/ConfirmContext';
 import {useAuth} from "../context/AuthContext";
 import {useToast} from "../context/ToastContext";
@@ -2018,16 +2020,15 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
           {/* Search & Filter Controls */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-3">
             <div className="flex flex-wrap items-center gap-2">
-              <select
+              <Select size="sm"
                 value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="px-2.5 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg text-slate-700 bg-white">
+                onChange={(e) => setSelectedStatus(e.target.value)}>
                 <option value="ALL">Semua Status</option>
                 <option value="PLANNED">Direncanakan</option>
                 <option value="PREPPING">Persiapan Bahan</option>
                 <option value="COOKING">Sedang Dimasak</option>
                 <option value="DISTRIBUTED">Terdistribusi Selesai</option>
-              </select>
+              </Select>
             </div>
 
             <div className="relative">
@@ -2092,18 +2093,18 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
                             <span className="text-xs px-2 py-0.5 rounded-md bg-white text-slate-700 border border-slate-200">PO {formatShortDate(order.poDate)}</span>
                           )}
                           <div className="relative inline-flex items-center">
-                            <select
+                            <Select size="sm"
+                              tone={statusMeta.class}
                               value={order.status}
                               onChange={(e) => handleQuickStatusChange(order.id, e.target.value as MenuOrderStatus)}
                               aria-label={`Status menu ${formatIndonesianDate(order.date)}`}
-                              className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border cursor-pointer focus:outline-none appearance-none pr-5 transition-colors ${statusMeta.class}`}
                               title="Klik untuk ubah status pengerjaan menu">
                               <option value="PLANNED">Direncanakan</option>
                               <option value="PREPPING">Persiapan Bahan</option>
                               <option value="COOKING">Sedang Dimasak</option>
                               <option value="DISTRIBUTED">Terdistribusi Selesai</option>
                               <option value="CANCELLED">Dibatalkan</option>
-                            </select>
+                            </Select>
                             <ChevronDown className="w-3 h-3 absolute right-1.5 pointer-events-none opacity-60" />
                           </div>
                         </div>
@@ -2351,19 +2352,18 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
               <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
                   <div className="flex flex-wrap items-center gap-2">
-                    <select
+                    <Select size="sm"
                       aria-label="Periode rekap"
                       value={beneficiaryPeriodPreset}
                       onChange={(e) => {
                         const val = e.target.value as any;
                         setBeneficiaryPeriodPreset(val);
-                      }}
-                      className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white">
+                      }}>
                       <option value="ALL_ORDERS">Semua tanggal bermenu ({new Set(orders.map((o) => o.date)).size} hari)</option>
                       <option value="LAST_7_DAYS">7 hari terakhir</option>
                       <option value="THIS_MONTH">Bulan ini</option>
                       <option value="CUSTOM">Pilih rentang…</option>
-                    </select>
+                    </Select>
 
                     {beneficiaryPeriodPreset === "CUSTOM" && (
                       <div className="flex items-center gap-1.5 text-xs">
@@ -2391,15 +2391,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <select
+                    <Select size="sm"
                       value={selectedBeneficiaryCategory}
-                      onChange={(e) => setSelectedBeneficiaryCategory(e.target.value)}
-                      className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white">
+                      onChange={(e) => setSelectedBeneficiaryCategory(e.target.value)}>
                       <option value="ALL">Semua kategori</option>
                       {categoryOptions.map((c) => (
                         <option key={c} value={c}>{c}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
 
                   <div className="relative">
@@ -2587,18 +2586,17 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
                           </button>
                         )}
                         {distinctDatesWithOrders.length > 0 && (
-                          <select
+                          <Select className="w-auto max-w-[260px]"
                             aria-label="Lompat ke tanggal bermenu"
                             value={distinctDatesWithOrders.includes(beneficiarySelectedDate) ? beneficiarySelectedDate : ""}
-                            onChange={(e) => e.target.value && changeBeneficiaryDate(e.target.value)}
-                            className={`${FIELD_INPUT} w-auto max-w-[260px]`}>
+                            onChange={(e) => e.target.value && changeBeneficiaryDate(e.target.value)}>
                             <option value="">Lompat ke tanggal bermenu…</option>
                             {distinctDatesWithOrders.map((d) => (
                               <option key={d} value={d}>
                                 {formatShortDate(d)} · {orders.find((o) => o.date === d)?.menuTitle}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         )}
                         {dayOrders.length > 1 && (
                           <div role="tablist" aria-label="Sesi makan" className="inline-flex gap-1 p-1 bg-slate-100 rounded-lg text-xs">
@@ -2667,15 +2665,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
                   <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                     <div className="p-3 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <select
+                        <Select size="sm"
                           value={selectedBeneficiaryCategory}
-                          onChange={(e) => setSelectedBeneficiaryCategory(e.target.value)}
-                          className="px-2.5 py-1 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white">
+                          onChange={(e) => setSelectedBeneficiaryCategory(e.target.value)}>
                           <option value="ALL">Semua kategori ({masterSchools.length})</option>
                           {categoryOptions.map((c) => (
                             <option key={c} value={c}>{c}</option>
                           ))}
-                        </select>
+                        </Select>
                       </div>
 
                       <div className="relative">
@@ -2770,17 +2767,17 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
                                           ? "bg-sky-50 text-sky-800 border-sky-300"
                                           : "bg-slate-100 text-slate-700 border-slate-300";
                                   return (
-                                    <select
+                                    <Select size="sm"
+                                      tone={tone}
                                       aria-label={`Status kirim ${s.schoolName}`}
                                       value={dayStatus}
                                       disabled={!currentOrder}
-                                      onChange={(e) => handleUpdateDailyStatus(s, e.target.value as NonNullable<SchoolBeneficiaryAllocation["status"]>)}
-                                      className={`text-[11px] font-semibold px-2 min-h-[36px] sm:min-h-[28px] rounded-md border cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING} ${tone}`}>
+                                      onChange={(e) => handleUpdateDailyStatus(s, e.target.value as NonNullable<SchoolBeneficiaryAllocation["status"]>)}>
                                       <option value="DIJADWALKAN">Dijadwalkan</option>
                                       <option value="SIAP_KIRIM">Siap kirim</option>
                                       <option value="DALAM_PERJALANAN">Dalam perjalanan</option>
                                       <option value="TERKIRIM">Terkirim</option>
-                                    </select>
+                                    </Select>
                                   );
                                 })()}
                               </td>
@@ -2868,15 +2865,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
             {/* Filter and Search */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
               <div className="flex items-center gap-2">
-                <select
+                <Select size="sm"
                   value={masterCategoryFilter}
-                  onChange={(e) => setMasterCategoryFilter(e.target.value)}
-                  className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg text-slate-800 bg-white">
+                  onChange={(e) => setMasterCategoryFilter(e.target.value)}>
                   <option value="ALL">Semua kategori</option>
                   {categoryOptions.map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div className="relative">
@@ -3070,15 +3066,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Status Pengerjaan</label>
-                    <select
+                    <Select className="w-full" size="sm"
                       value={menuFormStatus}
-                      onChange={(e) => setMenuFormStatus(e.target.value as any)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800">
+                      onChange={(e) => setMenuFormStatus(e.target.value as any)}>
                       <option value="PLANNED">Direncanakan</option>
                       <option value="PREPPING">Persiapan Bahan</option>
                       <option value="COOKING">Sedang Dimasak</option>
                       <option value="DISTRIBUTED">Terdistribusi Selesai</option>
-                    </select>
+                    </Select>
                   </div>
 
                   <div>
@@ -3151,10 +3146,15 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
                 <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs shrink-0">
                   <div className="sm:col-span-2">
                     <label className="block font-medium text-slate-700 mb-1">Menu Tujuan untuk PO:</label>
-                    <select
+                    <SearchPicker
                       value={selectedPoOrderId}
-                      onChange={(e) => {
-                        const newId = e.target.value;
+                      options={orders.map((ord) => ({ value: ord.id, label: ord.menuTitle, hint: `${ord.date} · ${ord.targetPortions} porsi` }))}
+                      searchPlaceholder="Cari menu atau tanggal..."
+                      ariaLabel="Menu tujuan untuk PO"
+                      noun="menu"
+                      onSelect={(opt) => {
+                        if (!opt) return;
+                        const newId = opt.value;
                         setSelectedPoOrderId(newId);
                         const found = orders.find((o) => o.id === newId);
                         if (found && found.poArrivalItems && found.poArrivalItems.length > 0) {
@@ -3172,13 +3172,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
                           );
                         }
                       }}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 font-medium text-slate-800 bg-white focus:outline-none focus:border-slate-400">
-                      {orders.map((ord) => (
-                        <option key={ord.id} value={ord.id}>
-                          {ord.date} - {ord.menuTitle.slice(0, 45)}... ({ord.targetPortions} porsi)
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </div>
 
                   <div>
@@ -3220,7 +3214,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
                           <tr key={rIdx} className="hover:bg-slate-50/70 transition-colors">
                             <td className="py-2 px-3 text-center text-slate-500 font-mono text-xs">{rIdx + 1}</td>
                             <td className="py-2 px-3">
-                              <select
+                              <Select className="w-full" size="sm"
                                 value={row.category}
                                 onChange={(e) => {
                                   const newCat = e.target.value;
@@ -3233,8 +3227,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
                                     }
                                   }
                                   setPoFormRows(updated);
-                                }}
-                                className="w-full px-2 py-1.5 rounded-md border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:border-slate-400">
+                                }}>
                                 <option value="Protein">Protein</option>
                                 <option value="Sembako">Sembako</option>
                                 <option value="Sayur dan Buah">Sayur dan Buah</option>
@@ -3243,7 +3236,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
                                 <option value="Bumbu">Bumbu</option>
                                 <option value="Bahan Olahan">Bahan Olahan</option>
                                 <option value="Lain-lain">Lain-lain</option>
-                              </select>
+                              </Select>
                             </td>
                             <td className="py-2 px-3">
                               <input
@@ -3447,16 +3440,15 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Kategori Sasaran <span className="text-rose-500">*</span>
                     </label>
-                    <select
+                    <Select className="w-full"
                       value={beneficiaryFormCategory}
-                      onChange={(e) => setBeneficiaryFormCategory(e.target.value)}
-                      className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                      onChange={(e) => setBeneficiaryFormCategory(e.target.value)}>
                       <option value="SD / MI">Sekolah Dasar (SD / MI)</option>
                       <option value="SMP / MTs">Sekolah Menengah (SMP / MTs)</option>
                       <option value="PAUD / TK">PAUD / TK</option>
                       <option value="Ibu Hamil & Balita (B3)">Balita 3T & Ibu Hamil (B3)</option>
                       <option value="Lembaga Sasaran Lainnya">Lembaga Sasaran Lainnya</option>
-                    </select>
+                    </Select>
                   </div>
 
                   <div>
@@ -3521,15 +3513,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Status Operasional Distribusi</label>
-                    <select
+                    <Select className="w-full"
                       value={beneficiaryFormStatus}
-                      onChange={(e) => setBeneficiaryFormStatus(e.target.value as any)}
-                      className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                      onChange={(e) => setBeneficiaryFormStatus(e.target.value as any)}>
                       <option value="DIJADWALKAN">Dijadwalkan</option>
                       <option value="SIAP_KIRIM">Siap Kirim di Dapur</option>
                       <option value="DALAM_PERJALANAN">Dalam Perjalanan Kurir</option>
                       <option value="TERKIRIM">Telah Terkirim & Diterima</option>
-                    </select>
+                    </Select>
                   </div>
                 </div>
 
