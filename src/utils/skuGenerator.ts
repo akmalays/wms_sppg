@@ -48,42 +48,39 @@ export const WAREHOUSE_SKU_DEFINITIONS: Record<WarehouseSkuType, WarehouseSkuDef
   },
   GUDANG_BASAH: {
     key: 'GUDANG_BASAH',
-    label: 'Gudang Basah & Segar (Fresh Storage)',
+    label: 'Gudang Basah (Buah, Sayur & Telur)',
     prefix: 'ITM-BSH',
-    shortDesc: 'Sayuran Segar, Buah Pencuci Mulut, Telur & Bahan Pangan Segar',
-    temperature: '8°C - 15°C (Sejuk Berventilasi)',
-    defaultLocation: 'Gudang Basah - Rak V1 (Sayuran Segar & Umbi Hijau)',
+    shortDesc: 'Buah, sayur & telur; disimpan di Chiller',
+    temperature: '1°C - 5°C (Chiller)',
+    defaultLocation: 'Gudang Basah - Chiller (Buah, Sayur & Telur)',
     suggestedLocations: [
-      'Gudang Basah - Rak V1 (Sayuran Segar & Umbi Hijau)',
-      'Gudang Basah - Rak B1 (Buah Segar Pencuci Mulut)',
-      'Area Persiapan - Rak Telur (Telur Ayam Ras Segar)',
-      'Area Sortir Sayur (Penerimaan Bahan Segar)',
+      'Gudang Basah - Chiller (Buah, Sayur & Telur)',
+      'Gudang Basah - Palet Sisa (Sisa Bahan Kering dari Dapur)',
+      'Gudang Basah - Freezer 1 (Stok Ayam & Protein Beku)',
     ],
   },
   CHILLER: {
     key: 'CHILLER',
-    label: 'Chiller Dapur (Cold Storage 2°C - 4°C)',
+    label: 'Chiller (1°C - 5°C)',
     prefix: 'ITM-CHL',
-    shortDesc: 'Daging Ayam Karkas, Unggas Segar & Bahan Olahan Dingin Harian',
-    temperature: '2°C - 4°C (Cold Chain Terjaga)',
-    defaultLocation: 'Chiller Dapur - Bin C1 (Daging Ayam & Protein Unggas)',
+    shortDesc: 'Buah, sayur, telur & ayam yang sedang dicairkan',
+    temperature: '1°C - 5°C',
+    defaultLocation: 'Gudang Basah - Chiller (Buah, Sayur & Telur)',
     suggestedLocations: [
-      'Chiller Dapur - Bin C1 (Daging Ayam & Protein Unggas)',
-      'Chiller Dapur 1 (Sayur & Buah Dingin)',
-      'Chiller Dapur 2 (Olahan & Masak)',
+      'Gudang Basah - Chiller (Buah, Sayur & Telur)',
     ],
   },
   FREEZER: {
     key: 'FREEZER',
-    label: 'Freezer Dapur (Frozen Storage ≤ -18°C)',
+    label: 'Freezer (-18°C)',
     prefix: 'ITM-FRZ',
-    shortDesc: 'Daging Beku, Ikan Kembung Segar/Beku, Seafood & Olahan Beku',
-    temperature: '-18°C s/d -20°C (Pembekuan Sempurna)',
-    defaultLocation: 'Freezer Dapur - Bin F2 (Daging Beku, Ikan Laut & Olahan)',
+    shortDesc: 'Ayam, daging, ikan & olahan beku',
+    temperature: '-18°C atau lebih dingin',
+    defaultLocation: 'Gudang Basah - Freezer 1 (Stok Ayam & Protein Beku)',
     suggestedLocations: [
-      'Freezer Dapur - Bin F2 (Daging Beku, Ikan Laut & Olahan)',
-      'Deep Chest Freezer 1 (Stok Cadangan Beku)',
-      'Deep Chest Freezer 2 (Ikan & Seafood)',
+      'Gudang Basah - Freezer 1 (Stok Ayam & Protein Beku)',
+      'Dapur - Freezer 2 (Ayam Siap Masak)',
+      'Dapur - Freezer 3 (Protein & Olahan Beku Lain)',
     ],
   },
   GUDANG_NONFOOD: {
@@ -337,85 +334,85 @@ export const STANDARD_STORAGE_RACKS: Record<string, StorageRackSpecification> = 
     rotationMethod: 'FIFO',
     picDefault: 'Staf Logistik Non-Food'
   },
-  'BIN-CHL-C1': {
-    id: 'BIN-CHL-C1',
-    shortName: 'Chiller Dapur - Bin C1',
-    rackCode: 'Chiller C1',
-    commodityDetail: 'Daging Ayam & Protein Unggas',
-    fullDisplay: 'Chiller Dapur - Bin C1 (Daging Ayam & Protein Unggas)',
-    warehouseType: 'CHILLER',
-    zone: 'Cold Storage Room - Chiller Protein Unggas',
-    temperature: '2°C - 4°C (Wajib Cek Termometer 2x Sehari)',
-    humidity: 'Kelembaban Terkontrol Chiller',
-    capacityMax: '300 Kg (Rak Bin Stainless Steel SUS 304)',
-    storageRule: 'Wadah stainless tertutup rapat. Beri label tanggal kedatangan. Konsumsi maksimal 24 - 48 jam.',
-    description: 'Penyimpanan daging ayam broiler karkas bersih, paha fillet, dan potongan unggas segar harian sebelum diolah subuh hari.',
-    rotationMethod: 'FEFO',
-    picDefault: 'Chef Rahmat / PIC Chiller Dapur'
-  },
   'BIN-FRZ-F2': {
     id: 'BIN-FRZ-F2',
-    shortName: 'Freezer Dapur - Bin F2',
-    rackCode: 'Freezer F2',
-    commodityDetail: 'Daging Beku, Ikan Laut & Olahan',
-    fullDisplay: 'Freezer Dapur - Bin F2 (Daging Beku, Ikan Laut & Olahan)',
+    shortName: 'Gudang Basah - Freezer 1',
+    rackCode: 'Freezer 1',
+    commodityDetail: 'Stok Ayam & Protein Beku',
+    fullDisplay: 'Gudang Basah - Freezer 1 (Stok Ayam & Protein Beku)',
     warehouseType: 'FREEZER',
-    zone: 'Deep Freeze Storage Zone (-18°C)',
-    temperature: '-18°C s/d -20°C (Pembekuan Sempurna)',
-    humidity: 'Cold Chain Beku Tanpa Bunga Es Berlebih',
-    capacityMax: '400 Kg (Deep Chest Freezer)',
-    storageRule: 'Jaga rantai dingin (cold chain). Dilarang membekukan ulang bahan yang sudah dicairkan (thawing).',
-    description: 'Penyimpanan daging sapi beku berstandar halal, ikan laut kembung/tongkol segar beku, dan protein cadangan beku.',
-    rotationMethod: 'FEFO',
-    picDefault: 'Chef Rahmat / PIC Cold Storage'
-  },
-  'RAK-BSH-V1': {
-    id: 'RAK-BSH-V1',
-    shortName: 'Gudang Basah - Rak V1',
-    rackCode: 'Rak V1',
-    commodityDetail: 'Sayuran Segar & Umbi Hijau',
-    fullDisplay: 'Gudang Basah - Rak V1 (Sayuran Segar & Umbi Hijau)',
-    warehouseType: 'GUDANG_BASAH',
-    zone: 'Area Sortir Sayur & Ruang Sejuk Dapur',
-    temperature: '8°C - 12°C (Sejuk Berventilasi)',
-    humidity: 'Sirkulasi Udara Aktif Keranjang Berventilasi',
-    capacityMax: '250 Kg (15 Keranjang Sayur)',
-    storageRule: 'Gunakan keranjang plastik berlubang agar sayur tidak layu & membusuk. Pisahkan sayuran daun dan umbi.',
-    description: 'Penyimpanan sayur sop harian, wortel brastagi/lokal, buncis, bayam, labu siam, dan kentang segar panenan petani Jeru & Poncokusumo.',
-    rotationMethod: 'FEFO',
-    picDefault: 'PIC Penerimaan Bahan Segar'
-  },
-  'RAK-BSH-F1': {
-    id: 'RAK-BSH-F1',
-    shortName: 'Gudang Basah - Rak B1',
-    rackCode: 'Rak B1',
-    commodityDetail: 'Buah Segar Pencuci Mulut',
-    fullDisplay: 'Gudang Basah - Rak B1 (Buah Segar Pencuci Mulut)',
-    warehouseType: 'GUDANG_BASAH',
-    zone: 'Area Buah & Distribusi Menu Sehat',
-    temperature: '12°C - 16°C (Sejuk Kering)',
-    humidity: 'Cegah Kelembaban Berlebih',
-    capacityMax: '200 Kg (10 Keranjang Buah)',
-    storageRule: 'Jangan menumpuk buah lebih dari 2 lapis untuk mencegah memar fisik. Jauhkan dari buah yang terlalu matang.',
-    description: 'Penyimpanan buah pisang mas lokal Malang, jeruk manis, semangka potong, dan melon segar pencuci mulut siswa.',
-    rotationMethod: 'FEFO',
-    picDefault: 'PIC Pemorsian Buah & Distribusi'
-  },
-  'RAK-BSH-T1': {
-    id: 'RAK-BSH-T1',
-    shortName: 'Area Persiapan - Rak Telur',
-    rackCode: 'Rak T1',
-    commodityDetail: 'Telur Ayam Ras Segar',
-    fullDisplay: 'Area Persiapan - Rak Telur (Telur Ayam Ras Segar)',
-    warehouseType: 'GUDANG_BASAH',
-    zone: 'Area Persiapan - Rak Khusus Telur',
-    temperature: '15°C - 20°C (Sejuk & Kering)',
-    humidity: 'Bersih & Kering',
-    capacityMax: '150 Kg (10 Peti / Egg Tray)',
-    storageRule: 'Gunakan egg tray higienis dengan posisi bagian runcing telur di bawah. Bersihkan cangkang retak segera.',
-    description: 'Penyimpanan telur ayam ras segar grade A, cangkang utuh cokelat bersih rata-rata 16 butir per kilogram.',
+    zone: 'Gudang Basah - Freezer 1',
+    temperature: '-18°C atau lebih dingin (cek pagi & sore)',
+    humidity: 'Bunga es maks. 5 mm, defrost berkala',
+    capacityMax: 'Sesuai kapasitas',
+    storageRule: 'Stok utama dari supplier. Beri label tanggal datang, yang lama di depan/atas. Pindahkan ke Freezer 2 (Dapur) sesuai kebutuhan masak besok.',
+    description: 'Ayam (karkas, fillet, potongan) yang baru datang, serta daging/ikan beku bila ada.',
     rotationMethod: 'FIFO',
-    picDefault: 'PIC Persiapan Telur & Protein'
+    picDefault: 'PIC Gudang Basah & Dapur'
+  },
+  'BIN-FRZ-D1': {
+    id: 'BIN-FRZ-D1',
+    shortName: 'Dapur - Freezer 2',
+    rackCode: 'Freezer 2',
+    commodityDetail: 'Ayam Siap Masak',
+    fullDisplay: 'Dapur - Freezer 2 (Ayam Siap Masak)',
+    warehouseType: 'FREEZER',
+    zone: 'Dapur - Freezer 2',
+    temperature: '-18°C atau lebih dingin',
+    humidity: 'Tutup rapat, jangan sering dibuka',
+    capacityMax: 'Sesuai kapasitas',
+    storageRule: 'Hanya ayam yang sudah dibagi per kantong sesuai menu besok (H-1). Label: menu + tanggal. Cairkan di Chiller, bukan di suhu ruang. Ayam yang sudah cair tidak boleh dibekukan lagi.',
+    description: 'Ayam yang sudah dibagi per kebutuhan masak, diisi dari Freezer 1 sesuai rencana menu.',
+    rotationMethod: 'FIFO',
+    picDefault: 'PIC Gudang Basah & Dapur'
+  },
+  'BIN-FRZ-D2': {
+    id: 'BIN-FRZ-D2',
+    shortName: 'Dapur - Freezer 3',
+    rackCode: 'Freezer 3',
+    commodityDetail: 'Protein & Olahan Beku Lain',
+    fullDisplay: 'Dapur - Freezer 3 (Protein & Olahan Beku Lain)',
+    warehouseType: 'FREEZER',
+    zone: 'Dapur - Freezer 3',
+    temperature: '-18°C atau lebih dingin',
+    humidity: 'Tutup rapat, jangan sering dibuka',
+    capacityMax: 'Sesuai kapasitas',
+    storageRule: 'Pisahkan dari ayam. Simpan per jenis dalam wadah/kantong tertutup berlabel nama + tanggal.',
+    description: 'Ikan, daging sapi, dan olahan beku (nugget, sosis, bakso, dll).',
+    rotationMethod: 'FIFO',
+    picDefault: 'PIC Gudang Basah & Dapur'
+  },
+  'BIN-CHL-C1': {
+    id: 'BIN-CHL-C1',
+    shortName: 'Gudang Basah - Chiller',
+    rackCode: 'Chiller',
+    commodityDetail: 'Buah, Sayur & Telur',
+    fullDisplay: 'Gudang Basah - Chiller (Buah, Sayur & Telur)',
+    warehouseType: 'CHILLER',
+    zone: 'Gudang Basah - Chiller',
+    temperature: '1°C - 5°C (cek pagi & sore)',
+    humidity: 'Jangan terlalu penuh agar udara dingin mengalir',
+    capacityMax: 'Sesuai kapasitas',
+    storageRule: 'Atas: telur & bahan siap pakai. Tengah: buah & sayur. Bawah: ayam yang sedang dicairkan dalam wadah tertutup agar tidak menetes.',
+    description: 'Sisa buah & sayur, telur, dan ayam yang dicairkan untuk dimasak besok.',
+    rotationMethod: 'FEFO',
+    picDefault: 'PIC Gudang Basah & Dapur'
+  },
+  'PLT-BSH-S1': {
+    id: 'PLT-BSH-S1',
+    shortName: 'Gudang Basah - Palet Sisa',
+    rackCode: 'Palet Sisa',
+    commodityDetail: 'Sisa Bahan Kering dari Dapur',
+    fullDisplay: 'Gudang Basah - Palet Sisa (Sisa Bahan Kering dari Dapur)',
+    warehouseType: 'GUDANG_BASAH',
+    zone: 'Gudang Basah - Palet Sisa',
+    temperature: 'Suhu ruang, kering',
+    humidity: 'Jauh dari lantai basah & cipratan air',
+    capacityMax: 'Sesuai kapasitas',
+    storageRule: 'Semua sisa masuk kontainer/box tertutup di atas palet, tidak langsung di lantai. Label tiap kemasan: nama + tanggal buka. Pakai sisa di sini lebih dulu sebelum mengambil kemasan baru dari Gudang Kering.',
+    description: 'Sisa royco, saus, kecap, tepung, gula, dan bumbu bubuk yang sudah dibuka dari dapur.',
+    rotationMethod: 'FIFO',
+    picDefault: 'PIC Gudang Basah & Dapur'
   },
   'RUANG_KANTOR_ATK': {
     id: 'RUANG_KANTOR_ATK',
@@ -440,7 +437,10 @@ export const STANDARD_STORAGE_RACKS: Record<string, StorageRackSpecification> = 
 export function getStorageLocationDetails(rawLocation: string): StorageRackSpecification {
   const l = (rawLocation || '').toLowerCase().trim();
 
-  // 1. Cek Palet Tengah Gudang Kering
+  // 1. Palet Sisa (gudang basah) dulu, lalu Palet Tengah Gudang Kering
+  if (l.includes('palet sisa')) {
+    return STANDARD_STORAGE_RACKS['PLT-BSH-S1'];
+  }
   if (
     l.includes('palet tengah') ||
     l.includes('plt-krg-t1') ||
@@ -463,23 +463,14 @@ export function getStorageLocationDetails(rawLocation: string): StorageRackSpeci
     return STANDARD_STORAGE_RACKS['RAK-KRG-N2'];
   }
 
-  // 4. Cek Chiller & Freezer
-  if (l.includes('bin c1') || l.includes('chiller c1') || (l.includes('chiller') && l.includes('ayam'))) {
-    return STANDARD_STORAGE_RACKS['BIN-CHL-C1'];
-  }
-  if (l.includes('bin f2') || l.includes('freezer f2') || (l.includes('freezer') && (l.includes('ikan') || l.includes('daging')))) {
+  // 4. Gudang basah & dapur: 3 freezer, chiller, palet sisa bahan
+  if (l.includes('freezer 2')) return STANDARD_STORAGE_RACKS['BIN-FRZ-D1'];
+  if (l.includes('freezer 3')) return STANDARD_STORAGE_RACKS['BIN-FRZ-D2'];
+  if (l.includes('freezer') || l.includes('bin f2') || l.includes('beku')) {
     return STANDARD_STORAGE_RACKS['BIN-FRZ-F2'];
   }
-
-  // 5. Cek Gudang Basah
-  if (l.includes('rak v1') || l.includes('sortir sayur') || l.includes('sayur')) {
-    return STANDARD_STORAGE_RACKS['RAK-BSH-V1'];
-  }
-  if (l.includes('rak b1') || l.includes('buah')) {
-    return STANDARD_STORAGE_RACKS['RAK-BSH-F1'];
-  }
-  if (l.includes('rak telur') || l.includes('telur')) {
-    return STANDARD_STORAGE_RACKS['RAK-BSH-T1'];
+  if (l.includes('chiller') || l.includes('bin c1') || l.includes('sayur') || l.includes('buah') || l.includes('telur')) {
+    return STANDARD_STORAGE_RACKS['BIN-CHL-C1'];
   }
 
   // 6. Cek Operasional & ATK

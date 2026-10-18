@@ -4,6 +4,7 @@ import { BASE_RACKS_CONFIG, RackConfig, matchItemToRackId, dynamicRackId } from 
 import { SearchPicker } from './common/SearchPicker';
 import { Select } from './common/Select';
 import { KopText } from './common/KopText';
+import { SopGudangDoc, SopPlace, SOP_PLACE_OPTIONS } from './print/SopGudangDoc';
 import {
   Printer,
   FileText,
@@ -50,7 +51,7 @@ import { SppgLogo } from './SppgLogo';
 import QRCode from 'qrcode';
 import { localDateIso } from '../utils/localDate';
 
-export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'SUPPLIER_EXPENSE_NOTE';
+export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE';
 
 export interface ItemTagData {
   uniqueKey: string;
@@ -126,6 +127,7 @@ const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
   { id: 'EQUIPMENT_LABEL', label: 'Label Barang & Aset', hint: 'Stiker berkode QR untuk barang gudang dan aset dapur.' },
   { id: 'RACK_LABEL', label: 'Plakat Rak', hint: 'Plakat rak berisi daftar barang dan aturan penyimpanan.' },
   { id: 'SUPPLIER_EXPENSE_NOTE', label: 'Nota Kas Keluar', hint: 'Bukti pembayaran ke supplier dengan tanda tangan.' },
+  { id: 'SOP_STORAGE', label: 'SOP Gudang', hint: 'SOP penanganan bahan di gudang kering, gudang basah, chiller, freezer, dan sisa bahan dari dapur.' },
 ];
 
 const INPUT_CLS =
@@ -491,6 +493,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     initialSupplierId ? 'SUPPLIER_EXPENSE_NOTE' : (initialForm || 'RECEIVING_FORM')
   );
   const [printDate, setPrintDate] = useState<string>(localDateIso());
+  const [sopPlace, setSopPlace] = useState<SopPlace | 'ALL'>('ALL');
 
   // Data sources
   const [receivingDocs, setReceivingDocs] = useState<ReceivingDocument[]>(() => warehouseDb.getReceivings());
@@ -1763,6 +1766,15 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           .page-break {
             page-break-after: always;
           }
+          /* SOP: bagian dan baris tabel tidak terpotong di pergantian halaman */
+          .sop-section tr, .sop-section li, .sop-avoid {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .sop-section h3 {
+            break-after: avoid;
+            page-break-after: avoid;
+          }
           .table-print th, .table-print td {
             border: 1px solid #333333 !important;
             padding: 6px 8px !important;
@@ -1846,7 +1858,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
         <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 text-xs">
           {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' && activeForm !== 'ITEM_TAG_LABEL' ? (
             <div>
-              <label htmlFor="print-date" className={LABEL_CLS}>Tanggal dokumen</label>
+              <label htmlFor="print-date" className={LABEL_CLS}>{activeForm === 'SOP_STORAGE' ? 'Tanggal berlaku' : 'Tanggal dokumen'}</label>
               <input id="print-date" type="date" value={printDate} onChange={e => setPrintDate(e.target.value || localDateIso())} className={INPUT_CLS} />
             </div>
           ) : activeForm === 'SUPPLIER_EXPENSE_NOTE' ? (
@@ -2434,6 +2446,17 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             </div>
           )}
 
+          {activeForm === 'SOP_STORAGE' && (
+            <div className="sm:col-span-2">
+              <label htmlFor="sop-place" className={LABEL_CLS}>Tempat</label>
+              <Select className="w-full" id="sop-place" value={sopPlace} onChange={e => setSopPlace(e.target.value as SopPlace | 'ALL')}>
+                {SOP_PLACE_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            </div>
+          )}
+
           {activeForm === 'BIN_CARD' && (
             <div className="sm:col-span-2">
               <label htmlFor="bin-item" className={LABEL_CLS}>Barang</label>
@@ -2477,8 +2500,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' || activeForm === 'ITEM_TAG_LABEL' ? 'p-4 sm:p-6' : 'p-5 sm:p-10'
         }`}
       >
-        {/* Kop dokumen, sama dengan Laporan Pengeluaran. Label dan plakat dicetak tanpa kop. */}
-        {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'ITEM_TAG_LABEL' && (
+        {/* Kop dokumen, sama dengan Laporan Pengeluaran. Label dan plakat dicetak tanpa kop; SOP memasang kop di tiap lembarnya. */}
+        {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'SOP_STORAGE' && (
           <div className="border-b-2 border-slate-900 pb-3 mb-5 flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
               <SppgLogo size="lg" variant="color" showText={false} />
@@ -2719,6 +2742,16 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               <SignBox role="Mengetahui (Kepala SPPG)" name={headOfficeName || undefined} />
             </div>
           </div>
+        )}
+
+        {activeForm === 'SOP_STORAGE' && (
+          <SopGudangDoc
+            items={items}
+            place={sopPlace}
+            effectiveDate={formatLongDate(printDate)}
+            printedDate={formatLongDate(localDateIso())}
+            printedBy={currentUser?.name || BLANK}
+          />
         )}
 
         {/* Tag bahan datang: tanpa kop agar satu A4 muat hingga 16 tag */}
