@@ -37,13 +37,15 @@ interface NavItem {
   permission?: PermissionAction;
 }
 
-// Daily work stays one click away; reports and admin modules sit in two dropdowns.
+// Urutan mengikuti alur kerja harian: rencana menu (H-1) → barang masuk → stok → barang keluar.
+// Cetak Form berdiri sendiri karena dipakai setiap pagi; dropdown hanya untuk laporan dan data induk.
 const DAILY_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'Ringkasan' },
-  { id: 'receiving', label: 'Barang Datang' },
   { id: 'menu_orders', label: 'Menu' },
+  { id: 'receiving', label: 'Barang Masuk' },
   { id: 'inventory', label: 'Stok' },
   { id: 'daily_flow', label: 'Barang Keluar' },
+  { id: 'tools_forms', label: 'Cetak Form' },
 ];
 
 const NAV_GROUPS: { id: 'laporan' | 'lainnya'; label: string; items: NavItem[] }[] = [
@@ -53,18 +55,17 @@ const NAV_GROUPS: { id: 'laporan' | 'lainnya'; label: string; items: NavItem[] }
     items: [
       { id: 'daily_expenses', label: 'Pengeluaran' },
       { id: 'waste_logs', label: 'Rekap Limbah' },
-      { id: 'tools_forms', label: 'Cetak Form' },
+      { id: 'audit', label: 'Riwayat Aktivitas', permission: 'VIEW_AUDIT' },
     ],
   },
   {
     id: 'lainnya',
-    label: 'Lainnya',
+    label: 'Data',
     items: [
+      { id: 'suppliers', label: 'Supplier' },
       { id: 'employees', label: 'Karyawan' },
       { id: 'equipment', label: 'Aset Dapur' },
-      { id: 'suppliers', label: 'Supplier' },
       { id: 'website_cms', label: 'Atur Website' },
-      { id: 'audit', label: 'Riwayat Aktivitas', permission: 'VIEW_AUDIT' },
     ],
   },
 ];
@@ -209,7 +210,8 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onViewLa
               <span className="w-8 h-8 rounded-md bg-emerald-700 text-white flex items-center justify-center font-bold text-xs shrink-0">
                 {currentUser.name.charAt(0)}
               </span>
-              <span className="hidden md:block text-left leading-tight">
+              {/* 1024–1279px: avatar saja agar enam menu langsung muat; nama tampil lagi di xl. */}
+              <span className="hidden md:block lg:hidden xl:block text-left leading-tight">
                 <span className="block text-xs font-semibold text-slate-900 truncate max-w-[120px]">{currentUser.name}</span>
                 <span className="block text-[11px] text-slate-600">{roleInfo?.shortLabel || currentUser.role}</span>
               </span>

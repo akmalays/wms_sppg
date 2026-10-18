@@ -322,7 +322,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button type="button" onClick={() => onNavigate('receiving')} className={BTN_PRIMARY}>
               <Plus className="w-4 h-4" />
-              Catat Barang Datang
+              Catat Barang Masuk
             </button>
             <button type="button" onClick={() => onNavigate('menu_orders')} className={BTN_SECONDARY}>
               <ChefHat className="w-4 h-4 text-slate-500" />
@@ -590,7 +590,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
           <div className="py-10 px-4 text-center">
             <p className="text-xs font-semibold text-slate-800">Belum ada pesanan bahan untuk hari ini.</p>
             <p className="text-[11px] text-slate-600 mt-1 max-w-md mx-auto">
-              Buat PO di halaman Menu, atau terima barang tanpa PO di Barang Datang.
+              Buat PO di halaman Menu, atau terima barang tanpa PO di Barang Masuk.
             </p>
           </div>
         ) : (
@@ -864,7 +864,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
                 </p>
                 <button type="button" onClick={() => onNavigate('receiving')} className={`${BTN_PRIMARY} mt-4`}>
                   <Plus className="w-3.5 h-3.5" />
-                  Catat Barang Datang
+                  Catat Barang Masuk
                 </button>
               </div>
             ) : (

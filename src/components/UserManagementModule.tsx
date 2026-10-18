@@ -16,8 +16,8 @@ import {
 export const ROLE_INFO: Record<UserRole, { label: string; desc: string }> = {
   SUPERADMIN: { label: 'Superadmin', desc: 'Semua fitur, termasuk kelola akun dan riwayat aktivitas.' },
   KA_SPPG: { label: 'Kepala SPPG', desc: 'Semua fitur operasional, setujui opname, kelola akun.' },
-  ADMIN: { label: 'Admin Gudang', desc: 'Barang, supplier, barang datang, stok, dan barang keluar.' },
-  ASLAP: { label: 'Asisten Lapangan', desc: 'Barang datang, opname, aset dapur, barang keluar.' },
+  ADMIN: { label: 'Admin Gudang', desc: 'Barang, supplier, barang masuk, stok, dan barang keluar.' },
+  ASLAP: { label: 'Asisten Lapangan', desc: 'Barang masuk, opname, aset dapur, barang keluar.' },
   AKUNTAN: { label: 'Akuntan', desc: 'Penerimaan, setujui opname, supplier, dan laporan.' },
 };
 

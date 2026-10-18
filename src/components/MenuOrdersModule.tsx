@@ -1511,7 +1511,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
       setIsPoModalOpen(false);
 
       const supplierNames = Array.from(itemsBySupplier.keys()).join(", ");
-      toast.success(`${generatedPos.length} PO terbit untuk ${supplierNames}. PO muncul di Barang Datang untuk diterima.`);
+      toast.success(`${generatedPos.length} PO terbit untuk ${supplierNames}. PO muncul di Barang Masuk untuk diterima.`);
     } catch (err: any) {
       toast.error(err.message || "Gagal generate Draft PO.", "Gagal Generate PO");
     }
@@ -1530,7 +1530,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
 
     const confirmDelete = await askConfirm({
       title: `Batalkan semua PO untuk "${orderTitle}"?`,
-      message: 'PO dihapus dari sistem, termasuk dari Barang Datang dan Ringkasan.',
+      message: 'PO dihapus dari sistem, termasuk dari Barang Masuk dan Ringkasan.',
       confirmText: 'Batalkan PO',
       variant: 'danger',
     });
@@ -3373,7 +3373,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate}) 
                     type="button"
                     onClick={handleSaveAndGenerateOfficialPo}
                     className={BTN_PRIMARY}
-                    title="Terbitkan PO resmi per supplier, muncul di Barang Datang">
+                    title="Terbitkan PO resmi per supplier, muncul di Barang Masuk">
                     <ArrowRight className="w-3.5 h-3.5" />
                     Terbitkan PO
                   </button>

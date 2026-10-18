@@ -1352,7 +1352,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
       <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Barang Datang</h1>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Barang Masuk</h1>
             <p className="text-xs text-slate-600 mt-0.5 max-w-2xl">
               Semua barang yang dibeli masuk stok gudang, dan belanjanya tercatat di laporan pengeluaran.
             </p>
@@ -1397,7 +1397,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
           )}
         </div>
 
-        {/* Urutan kerja barang datang, sama untuk barang dari PO maupun tanpa PO. */}
+        {/* Urutan kerja barang masuk, sama untuk barang dari PO maupun tanpa PO. */}
         {!isCreatingDeliveryOrder && (
           <ol className="grid grid-cols-2 lg:grid-cols-4 gap-2 text-[11px]">
             {[

@@ -74,7 +74,7 @@ export const OperationalIssuePanel: React.FC = () => {
     if (!selected) return setError('Pilih barangnya dulu.');
     if (!(amount > 0)) return setError('Jumlah harus lebih dari 0.');
     if (amount > selected.currentStock) {
-      return setError(`Stok ${selected.name} tinggal ${fmt(selected.currentStock)} ${selected.baseUnit}. Periksa jumlahnya atau catat barang datang dulu.`);
+      return setError(`Stok ${selected.name} tinggal ${fmt(selected.currentStock)} ${selected.baseUnit}. Periksa jumlahnya atau catat barang masuk dulu.`);
     }
     if (!usedFor.trim()) return setError('Isi barang ini dipakai untuk apa atau oleh siapa.');
     try {
