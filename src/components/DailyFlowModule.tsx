@@ -67,6 +67,7 @@ export const DailyFlowModule: React.FC = () => {
     setScanNote('');
     setScope('ALL');
     setQuery('');
+    setModalQuery('');
     setTimeout(() => {
       const el = document.getElementById(`use-${row.itemId}`) as HTMLInputElement | null;
       el?.scrollIntoView({ block: 'center' });
@@ -80,7 +81,9 @@ export const DailyFlowModule: React.FC = () => {
   // Isian modal: total pemakaian hari ini per barang (string agar kolom bisa kosong).
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [menuFilled, setMenuFilled] = useState(0);
-  const firstInputRef = useRef<HTMLInputElement>(null);
+  // Pencarian khusus di modal; isian tetap tersimpan per barang walau barisnya tersembunyi
+  const [modalQuery, setModalQuery] = useState('');
+  const modalSearchRef = useRef<HTMLInputElement>(null);
 
   // Pemakaian selalu tercatat dengan jam sekarang, jadi pencatatan hanya untuk hari ini.
   const isToday = selectedDate === today;
@@ -159,6 +162,7 @@ export const DailyFlowModule: React.FC = () => {
     });
     setInputs(initial);
     setMenuFilled(0);
+    setModalQuery('');
     setFeedback(null);
     setIsModalOpen(true);
   };
@@ -167,7 +171,7 @@ export const DailyFlowModule: React.FC = () => {
 
   useEffect(() => {
     if (!isModalOpen) return;
-    firstInputRef.current?.focus();
+    modalSearchRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closeModal();
     };
@@ -245,7 +249,21 @@ export const DailyFlowModule: React.FC = () => {
     setDataVersion(v => v + 1);
   };
 
-  const modalRows = isModalOpen ? visibleRows : [];
+  const modalRows = useMemo(() => {
+    if (!isModalOpen) return [];
+    const q = modalQuery.trim().toLowerCase();
+    if (!q) return visibleRows;
+    return visibleRows.filter(r => r.itemName.toLowerCase().includes(q) || r.location.toLowerCase().includes(q));
+  }, [isModalOpen, visibleRows, modalQuery]);
+
+  // Enter di kolom cari: lompat ke isian bahan pertama yang cocok (tidak menyimpan form)
+  const focusFirstMatch = () => {
+    const first = modalRows[0];
+    if (!first) return;
+    const el = document.getElementById(`use-${first.itemId}`) as HTMLInputElement | null;
+    el?.focus();
+    el?.select();
+  };
 
   return (
     <div className="space-y-4">
@@ -502,6 +520,32 @@ export const DailyFlowModule: React.FC = () => {
                 <span className="text-slate-500 sm:ml-auto">Tampil: {SCOPE_TABS.find(t => t.id === scope)?.label.toLowerCase()}</span>
               </div>
 
+              <div className="px-4 sm:px-5 py-2.5 border-b border-slate-100">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    ref={modalSearchRef}
+                    type="search"
+                    aria-label="Cari bahan di daftar pemakaian"
+                    placeholder="Cari bahan, lalu tekan Enter untuk langsung mengisi"
+                    value={modalQuery}
+                    onChange={e => setModalQuery(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        focusFirstMatch();
+                      }
+                    }}
+                    className={`${INPUT_CLS} pl-8`}
+                  />
+                </div>
+                {modalQuery.trim() && (
+                  <p className="mt-1 text-[11px] text-slate-600">
+                    {modalRows.length} bahan cocok. Angka yang sudah diisi di bahan lain tetap tersimpan.
+                  </p>
+                )}
+              </div>
+
               <div className="overflow-y-auto flex-1">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 text-slate-700 sticky top-0">
@@ -512,7 +556,7 @@ export const DailyFlowModule: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {modalRows.map((r, idx) => {
+                    {modalRows.map(r => {
                       const change = changes.find(c => c.row.itemId === r.itemId);
                       const available = r.closingBalance + r.consumedToday;
                       return (
@@ -542,7 +586,6 @@ export const DailyFlowModule: React.FC = () => {
                           </td>
                           <td className="py-2 px-4 sm:px-5">
                             <input
-                              ref={idx === 0 ? firstInputRef : undefined}
                               id={`use-${r.itemId}`}
                               type="number"
                               inputMode="decimal"
@@ -563,7 +606,9 @@ export const DailyFlowModule: React.FC = () => {
                     {modalRows.length === 0 && (
                       <tr>
                         <td colSpan={3} className="py-8 text-center text-slate-600">
-                          Tidak ada bahan pada filter ini. Tutup lalu ubah filter atau pencarian.
+                          {modalQuery.trim()
+                            ? `Tidak ada bahan dengan nama "${modalQuery.trim()}".`
+                            : 'Tidak ada bahan pada filter ini. Tutup lalu ubah filter atau pencarian.'}
                         </td>
                       </tr>
                     )}

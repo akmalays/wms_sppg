@@ -1,9 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Select } from './common/Select';
+import { DateStepper } from './common/DateStepper';
 import {
   Printer,
-  ChevronLeft,
-  ChevronRight,
   Search,
   Clock,
   Phone,
@@ -22,7 +21,12 @@ import { useConfirm } from '../context/ConfirmContext';
 import { BTN_PRIMARY, BTN_SECONDARY, FIELD_INPUT, FOCUS_RING } from './common/FormDialog';
 import { warehouseDb, APP_SETTINGS_CHANGED_EVENT } from '../db/storage';
 import { useAuth } from '../context/AuthContext';
-import { SPPG_EMAIL, SPPG_PHONE } from './common/KopText';
+import { SPPG_ADDRESS } from './common/KopText';
+import { getBeneficiaryRecap, SKIP_REASON_LABEL, SkipReason } from '../utils/beneficiaryRecap';
+import { SuratJalanSheetLegacy, BeritaAcaraSheetLegacy, UjiHedonikSheetLegacy, DeliveryClassRow } from './print/DeliveryDocSheets';
+import { SuratJalanSheetStandard, BeritaAcaraSheetStandard, UjiHedonikSheetStandard } from './print/DeliveryDocSheetsStandard';
+import { getRomanMonth } from '../utils/poNumberGenerator';
+import { SignaturePad } from './SignaturePad';
 
 export interface ClassBreakdownItem {
   id: string;
@@ -33,19 +37,27 @@ export interface ClassBreakdownItem {
 
 export interface DeliveryOfficerSettings {
   nutritionistName: string;
-  nutritionistTitle: string;
   fieldAssistantName: string;
-  vehicleNumber: string;
-  pickupTimeRange: string;
+  headName: string;
+  /** Kosong = dicetak bergaris untuk ditulis tangan (driver bisa berganti tiap hari). */
+  driverName: string;
+  /** Jam batas makan di Berita Acara Penerimaan, mis. "11:00". */
+  consumeBefore: string;
+  /** Tanda tangan Kepala SPPG (data URL gambar), dicetak di kotak Mengetahui. */
+  headSignature?: string;
+  // Field lama, tidak lagi dicetak
+  nutritionistTitle?: string;
+  vehicleNumber?: string;
+  pickupTimeRange?: string;
 }
 
-// Kosong sampai diisi: nama contoh akan ikut tercetak di surat jalan resmi.
+// Nama sesuai dokumen pengiriman SPPG Malang Tumpang Jeru; bisa diubah lewat tombol Petugas.
 const DEFAULT_OFFICERS: DeliveryOfficerSettings = {
-  nutritionistName: '',
-  nutritionistTitle: 'Pemeriksa Ahli Gizi SPPG',
-  fieldAssistantName: '',
-  vehicleNumber: '',
-  pickupTimeRange: ''
+  nutritionistName: 'Eno Shafira Ramadanti, A.md.Gz',
+  fieldAssistantName: 'Mukhammad Ali Akbar Fathoni, S.Pd',
+  headName: 'Rizky Iman Ramadhan, S.Pd.',
+  driverName: '',
+  consumeBefore: '11:00',
 };
 
 // Isian kosong di dokumen cetak dibiarkan bertitik agar diisi tangan, bukan diganti tebakan.
@@ -54,6 +66,8 @@ const BLANK = '....................';
 // Disimpan di tabel app_settings (lihat warehouseDb.saveAppSetting) agar sama di semua perangkat.
 const SETTING_CLASSES = 'delivery_class_breakdowns';
 const SETTING_OFFICERS = 'delivery_officers';
+const SETTING_DOC_FORMAT = 'delivery_doc_format';
+type DocFormat = 'STANDARD' | 'LEGACY';
 
 // Isian petugas yang kosong diisi dari jabatan karyawan aktif.
 const loadOfficers = (): DeliveryOfficerSettings => {
@@ -61,30 +75,34 @@ const loadOfficers = (): DeliveryOfficerSettings => {
   return {
     ...DEFAULT_OFFICERS,
     ...saved,
-    nutritionistName: saved.nutritionistName || warehouseDb.getSignerName('AHLI_GIZI'),
-    fieldAssistantName: saved.fieldAssistantName || warehouseDb.getSignerName('ASLAP'),
+    nutritionistName: saved.nutritionistName || DEFAULT_OFFICERS.nutritionistName,
+    fieldAssistantName: saved.fieldAssistantName || DEFAULT_OFFICERS.fieldAssistantName,
+    headName: saved.headName || DEFAULT_OFFICERS.headName,
+    consumeBefore: saved.consumeBefore || DEFAULT_OFFICERS.consumeBefore,
   };
 };
 
+// Baris kelas bawaan di surat jalan, mengikuti format kertas SPPG (Kelompok A/B, Guru dan Tendik, PIC).
+export function defaultClassNames(category: string, schoolName: string): string[] {
+  if (category === 'PAUD / TK') return ['Kelompok A', 'Kelompok B', 'Guru dan Tendik', 'PIC'];
+  if (category === 'SMP / MTs') return ['Kelas 7', 'Kelas 8', 'Kelas 9', 'Guru dan Tendik', 'PIC'];
+  if (category === 'SMA / MA') return ['Kelas 10', 'Kelas 11', 'Kelas 12', 'Guru dan Tendik', 'PIC'];
+  if (category === 'Ibu Hamil & Balita (B3)') return [schoolName, 'PIC'];
+  return ['Kelas 1', 'Kelas 2', 'Kelas 3', 'Kelas 4', 'Kelas 5', 'Kelas 6', 'Guru dan Tendik', 'PIC'];
+}
+
 export function getDefaultClassesForSchool(
   category: string,
-  totalPortions: number
+  totalPortions: number,
+  schoolName = ''
 ): ClassBreakdownItem[] {
-  let baseNames: string[] = [];
-
-  if (category === 'SMP / MTs') {
-    baseNames = ['Kelas 7A', 'Kelas 7B', 'Kelas 8A', 'Kelas 8B', 'Kelas 9A', 'Kelas 9B', 'Guru & Tenaga Pendidik'];
-  } else if (category === 'PAUD / TK') {
-    baseNames = ['Kelompok Bermain (KB)', 'TK A', 'TK B', 'Guru Pembimbing'];
-  } else if (category === 'Ibu Hamil & Balita (B3)') {
-    baseNames = ['Balita 0 - 23 Bulan', 'Balita 24 - 59 Bulan', 'Ibu Hamil (Bumil)', 'Kader Posyandu'];
-  } else {
-    // Default SD / MI
-    baseNames = ['Kelas 1', 'Kelas 2', 'Kelas 3', 'Kelas 4', 'Kelas 5', 'Kelas 6', 'Guru & Tenaga Pendidik'];
-  }
+  // PIC tidak dihitung porsi bawaan; sisanya dibagi rata ke kelas, guru mendapat bagian kecil.
+  const baseNames = defaultClassNames(category, schoolName).filter(n => n !== 'PIC');
 
   const numUnits = baseNames.length;
   if (numUnits === 0) return [];
+  // Kelompok 3B (Balita/Busui/Bumil) hanya satu baris: seluruh porsi
+  if (numUnits === 1) return [{ id: 'cls-1', className: baseNames[0], portions: totalPortions, notes: '' }];
 
   // Porsi per rombel secara proporsional
   const lastIndex = numUnits - 1;
@@ -113,6 +131,20 @@ export function getDefaultClassesForSchool(
     };
   });
 }
+
+// Kop surat ketiga lembar pengiriman. Alamat diambil dari KopText agar sama dengan dokumen lain.
+const DeliveryKop: React.FC = () => (
+  <div className="flex items-center gap-3.5 pb-2 border-b-2 border-black">
+    <img src={logoSppgImg} alt="Logo SPPG" className="w-14 h-14 object-contain shrink-0" />
+    <div className="flex-1 text-center pr-14">
+      <div className="text-[11px] font-bold text-slate-900 leading-tight">BADAN GIZI NASIONAL</div>
+      <h1 className="text-sm font-bold text-slate-950 leading-tight">
+        SATUAN PELAYANAN PEMENUHAN GIZI (SPPG) MLG TUMPANG JERU
+      </h1>
+      <p className="text-[9.5px] text-slate-700 leading-tight mt-0.5">{SPPG_ADDRESS}</p>
+    </div>
+  </div>
+);
 
 function formatIndonesianDate(dateStr?: string): string {
   if (!dateStr) return '-';
@@ -154,6 +186,19 @@ function formatShortDate(dateStr: string): string {
   return dateStr;
 }
 
+const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+function dayNameOf(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return DAY_NAMES[new Date(y, m - 1, d).getDay()] || '';
+}
+
+// Format tanggal pendek seperti di dokumen kertas: 28-9-26
+function shortDocDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return `${d}-${m}-${String(y).slice(2)}`;
+}
+
 interface DeliveryNotesSubModuleProps {
   orders: MenuOrder[];
   masterSchools: SchoolBeneficiaryAllocation[];
@@ -178,9 +223,9 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
   const [isOfficerModalOpen, setIsOfficerModalOpen] = useState(false);
   const [officerDraft, setOfficerDraft] = useState<DeliveryOfficerSettings>(officerSettings);
   const missingOfficerFields = [
-    !officerSettings.nutritionistName.trim() && 'pemeriksa ahli gizi',
+    !officerSettings.nutritionistName.trim() && 'ahli gizi',
     !officerSettings.fieldAssistantName.trim() && 'asisten lapangan',
-    !officerSettings.vehicleNumber.trim() && 'kendaraan',
+    !officerSettings.headName.trim() && 'kepala SPPG',
   ].filter(Boolean) as string[];
 
   // Kustomisasi Rincian Kelas per sekolah (Key: schoolId_date atau schoolId)
@@ -191,12 +236,16 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
   // Data dari cloud atau perangkat lain tiba setelah tab dibuka.
   useEffect(() => {
     const reload = () => {
+      setRecapVersion(v => v + 1);
       setOfficerSettings(loadOfficers());
       setCustomClassBreakdowns(warehouseDb.getAppSetting<Record<string, ClassBreakdownItem[]>>(SETTING_CLASSES, {}));
     };
     window.addEventListener(APP_SETTINGS_CHANGED_EVENT, reload);
     return () => window.removeEventListener(APP_SETTINGS_CHANGED_EVENT, reload);
   }, []);
+
+  // Naik saat app_settings berubah, agar rekap penerima manfaat terbaru ikut terbaca
+  const [recapVersion, setRecapVersion] = useState(0);
 
   // Modal Atur Kelas
   const [editingSchoolForClass, setEditingSchoolForClass] = useState<SchoolBeneficiaryAllocation | null>(null);
@@ -206,6 +255,12 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [printSchoolsQueue, setPrintSchoolsQueue] = useState<SchoolBeneficiaryAllocation[]>([]);
   const [printSheetTab, setPrintSheetTab] = useState<'ALL' | 'SHEET_1' | 'SHEET_2' | 'SHEET_3'>('ALL');
+  // Format standar (wording rapi) atau format kertas lama; pilihan disimpan untuk semua perangkat
+  const [docFormat, setDocFormat] = useState<DocFormat>(() => warehouseDb.getAppSetting<DocFormat>(SETTING_DOC_FORMAT, 'STANDARD'));
+  const changeDocFormat = (f: DocFormat) => {
+    setDocFormat(f);
+    warehouseDb.saveAppSetting(SETTING_DOC_FORMAT, f, currentUser || undefined);
+  };
 
   // Sync date from parent
   useEffect(() => {
@@ -218,13 +273,6 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
     setSelectedOrderId('');
     setSelectedDate(iso);
     if (onSelectDate) onSelectDate(iso);
-  };
-
-  const shiftDate = (days: number) => {
-    const [y, m, dd] = selectedDate.split('-').map(Number);
-    const d = new Date(y, m - 1, dd);
-    d.setDate(d.getDate() + days);
-    changeDate(localDateIso(d));
   };
 
   useEffect(() => {
@@ -259,10 +307,15 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
   }, [orders]);
 
   // Alokasi porsi tiap sekolah pada tanggal terpilih
+  // Urutan sumber angka: rekap harian tersimpan → alokasi di menu → porsi standar sekolah
   const schoolAllocationsForDate = useMemo(() => {
+    const recap = getBeneficiaryRecap(selectedDate);
     return masterSchools.map(school => {
       let portion = school.portionCount;
-      if (currentOrder?.beneficiaryAllocations) {
+      const recapEntry = recap?.entries.find(e => e.schoolId === school.id);
+      if (recap) {
+        portion = recapEntry ? recapEntry.count : 0;
+      } else if (currentOrder?.beneficiaryAllocations) {
         const found = currentOrder.beneficiaryAllocations.find(b => b.id === school.id);
         if (found && typeof found.portionCount === 'number') {
           portion = found.portionCount;
@@ -270,10 +323,12 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
       }
       return {
         ...school,
-        dailyPortion: portion
+        dailyPortion: portion,
+        skipReason: recapEntry?.skipReason as SkipReason | undefined,
       };
     });
-  }, [masterSchools, currentOrder]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [masterSchools, currentOrder, selectedDate, recapVersion]);
 
   // Filter sekolah
   const filteredSchools = useMemo(() => {
@@ -293,7 +348,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
   }, [schoolAllocationsForDate]);
 
   // Helper untuk mendapatkan breakdown kelas per sekolah
-  const getSchoolClassBreakdown = (schoolId: string, category: string, totalPortion: number): ClassBreakdownItem[] => {
+  const getSchoolClassBreakdown = (schoolId: string, category: string, totalPortion: number, schoolName = ''): ClassBreakdownItem[] => {
     const keyWithDate = `${schoolId}_${selectedDate}`;
     if (customClassBreakdowns[keyWithDate]) {
       return customClassBreakdowns[keyWithDate];
@@ -301,13 +356,13 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
     if (customClassBreakdowns[schoolId]) {
       return customClassBreakdowns[schoolId];
     }
-    return getDefaultClassesForSchool(category, totalPortion);
+    return getDefaultClassesForSchool(category, totalPortion, schoolName);
   };
 
   // Buka editor kelas
   const handleOpenClassEditor = (school: SchoolBeneficiaryAllocation & { dailyPortion: number }) => {
     setEditingSchoolForClass(school);
-    const existing = getSchoolClassBreakdown(school.id, school.category, school.dailyPortion);
+    const existing = getSchoolClassBreakdown(school.id, school.category, school.dailyPortion, school.schoolName);
     setTempClassItems(JSON.parse(JSON.stringify(existing)));
   };
 
@@ -336,9 +391,48 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
   const handleResetClassToDefault = () => {
     if (!editingSchoolForClass) return;
     const dailyP = (editingSchoolForClass as any).dailyPortion || editingSchoolForClass.portionCount;
-    const def = getDefaultClassesForSchool(editingSchoolForClass.category, dailyP);
+    const def = getDefaultClassesForSchool(editingSchoolForClass.category, dailyP, editingSchoolForClass.schoolName);
     setTempClassItems(def);
   };
+
+  // Baris kelas di surat jalan: rincian yang diatur lewat "Atur kelas" beserta porsinya,
+  // atau baris bawaan dengan porsi kosong untuk diisi tangan (seperti dokumen kertas).
+  const printClassRows = (school: SchoolBeneficiaryAllocation, _dailyP: number): DeliveryClassRow[] => {
+    const custom = customClassBreakdowns[`${school.id}_${selectedDate}`] || customClassBreakdowns[school.id];
+    if (custom && custom.length > 0) return custom.map(c => ({ className: c.className, portions: Number(c.portions) || 0 }));
+    return defaultClassNames(school.category, school.schoolName).map(className => ({ className }));
+  };
+
+  // Nomor dokumen tetap per sekolah: urutan sekolah berporsi pada tanggal itu (bukan urutan antrean cetak),
+  // jadi cetak satu sekolah atau cetak semua menghasilkan nomor yang sama. Sesi ditambahkan bila sehari ada >1 sesi.
+  const docSeqBySchool = useMemo(() => {
+    const map: Record<string, string> = {};
+    schoolAllocationsForDate
+      .filter(s => s.dailyPortion > 0)
+      .forEach((s, i) => {
+        map[s.id] = String(i + 1).padStart(2, '0');
+      });
+    return map;
+  }, [schoolAllocationsForDate]);
+  const sessionCode =
+    dayOrders.length > 1 && currentOrder ? `-${currentOrder.mealSession.slice(0, 2).toUpperCase()}` : '';
+
+  // Sekolah di antrean cetak yang rincian kelasnya tidak sama dengan porsi hari itu
+  const printMismatches = useMemo(
+    () =>
+      printSchoolsQueue
+        .map(school => {
+          const dailyP = (school as SchoolBeneficiaryAllocation & { dailyPortion?: number }).dailyPortion || school.portionCount;
+          const custom = customClassBreakdowns[`${school.id}_${selectedDate}`] || customClassBreakdowns[school.id];
+          const classTotal = (custom || []).reduce((sum, c) => sum + (Number(c.portions) || 0), 0);
+          return { school, dailyP, classTotal, hasCustom: Boolean(custom && custom.length > 0) };
+        })
+        .filter(m => m.hasCustom && m.classTotal !== m.dailyP),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [printSchoolsQueue, customClassBreakdowns, selectedDate]
+  );
+  const sheetsPerSchool = printSheetTab === 'ALL' ? 3 : 1;
+  const printPageCount = printSchoolsQueue.length * sheetsPerSchool;
 
   // Buka modal cetak untuk 1 sekolah
   const handlePrintSingleSchool = (school: SchoolBeneficiaryAllocation) => {
@@ -379,19 +473,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
       <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => shiftDate(-1)} className={`${BTN_SECONDARY} px-2`} aria-label="Tanggal sebelumnya" title="Tanggal sebelumnya">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <input
-              type="date"
-              aria-label="Tanggal distribusi"
-              value={selectedDate}
-              onChange={e => e.target.value && changeDate(e.target.value)}
-              className={`${FIELD_INPUT} w-auto font-semibold`}
-            />
-            <button type="button" onClick={() => shiftDate(1)} className={`${BTN_SECONDARY} px-2`} aria-label="Tanggal berikutnya" title="Tanggal berikutnya">
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            <DateStepper ariaLabel="Tanggal distribusi" value={selectedDate} onChange={changeDate} />
             {distinctOrderDates.length > 0 && (
               <Select className="w-auto max-w-[260px]"
                 aria-label="Lompat ke tanggal bermenu"
@@ -515,7 +597,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredSchools.map((s, idx) => {
-                const breakdown = getSchoolClassBreakdown(s.id, s.category, s.dailyPortion);
+                const breakdown = getSchoolClassBreakdown(s.id, s.category, s.dailyPortion, s.schoolName);
                 const classCount = breakdown.length;
                 const hasCustom = Boolean(
                   customClassBreakdowns[`${s.id}_${selectedDate}`] || customClassBreakdowns[s.id]
@@ -536,10 +618,18 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                       </span>
                     </td>
                     <td className="py-3 px-3 text-right">
-                      <span className="font-mono font-bold text-emerald-800 text-sm tabular-nums">
-                        {s.dailyPortion.toLocaleString('id-ID')}
-                      </span>
-                      <span className="text-[11px] text-slate-500 ml-1">porsi</span>
+                      {s.skipReason ? (
+                        <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-medium">
+                          Tidak kirim · {SKIP_REASON_LABEL[s.skipReason]}
+                        </span>
+                      ) : (
+                        <>
+                          <span className="font-mono font-bold text-emerald-800 text-sm tabular-nums">
+                            {s.dailyPortion.toLocaleString('id-ID')}
+                          </span>
+                          <span className="text-[11px] text-slate-500 ml-1">porsi</span>
+                        </>
+                      )}
                     </td>
                     <td className="py-3 px-3 text-slate-600 font-mono text-[11px]">
                       <div className="flex items-center gap-1">
@@ -611,11 +701,11 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
       {/* ========================================================================= */}
       {isOfficerModalOpen && (
         <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
-          <div className="bg-white rounded-xl border border-slate-200 max-w-md w-full p-5 space-y-4">
+          <div className="bg-white rounded-xl border border-slate-200 max-w-md w-full p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                <h3 className="font-bold text-slate-900 text-sm">Pengaturan Petugas Pengiriman</h3>
+                <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                <h3 className="font-bold text-slate-900 text-sm">Petugas di dokumen pengiriman</h3>
               </div>
               <button
                 type="button"
@@ -629,68 +719,111 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Pemeriksa Ahli SPPG (Ahli Gizi / QA)
-                </label>
+                <label htmlFor="officer-nutritionistName" className="block font-semibold text-slate-700 mb-1">Ahli Gizi SPPG</label>
                 <input
+                  id="officer-nutritionistName"
                   type="text"
-                  value={officerDraft.nutritionistName}
+                  value={officerDraft.nutritionistName || ''}
                   onChange={e => setOfficerDraft(prev => ({ ...prev, nutritionistName: e.target.value }))}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-600"
-                  placeholder="Nama Lengkap & Gelar Ahli Gizi..."
+                  className={FIELD_INPUT}
+                  placeholder="Nama lengkap & gelar"
                 />
+                <p className="mt-0.5 text-[11px] text-slate-500">Tanda tangan "Diperiksa oleh" di surat jalan.</p>
               </div>
-
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Jabatan / Unit
-                </label>
+                <label htmlFor="officer-fieldAssistantName" className="block font-semibold text-slate-700 mb-1">Asisten Lapangan</label>
                 <input
+                  id="officer-fieldAssistantName"
                   type="text"
-                  value={officerDraft.nutritionistTitle}
-                  onChange={e => setOfficerDraft(prev => ({ ...prev, nutritionistTitle: e.target.value }))}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-600"
-                  placeholder="Jabatan..."
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Asisten Lapangan (Driver / Petugas Distribusi)
-                </label>
-                <input
-                  type="text"
-                  value={officerDraft.fieldAssistantName}
+                  value={officerDraft.fieldAssistantName || ''}
                   onChange={e => setOfficerDraft(prev => ({ ...prev, fieldAssistantName: e.target.value }))}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-600"
-                  placeholder="Nama Petugas Lapangan..."
+                  className={FIELD_INPUT}
+                  placeholder="Nama lengkap & gelar"
                 />
+                <p className="mt-0.5 text-[11px] text-slate-500">Tanda tangan "Diperiksa oleh" di surat jalan.</p>
+              </div>
+              <div>
+                <label htmlFor="officer-headName" className="block font-semibold text-slate-700 mb-1">Kepala SPPG</label>
+                <input
+                  id="officer-headName"
+                  type="text"
+                  value={officerDraft.headName || ''}
+                  onChange={e => setOfficerDraft(prev => ({ ...prev, headName: e.target.value }))}
+                  className={FIELD_INPUT}
+                  placeholder="Nama lengkap & gelar"
+                />
+                <p className="mt-0.5 text-[11px] text-slate-500">Kotak "Mengetahui" di berita acara.</p>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Identitas Kendaraan Operasional
-                </label>
-                <input
-                  type="text"
-                  value={officerDraft.vehicleNumber}
-                  onChange={e => setOfficerDraft(prev => ({ ...prev, vehicleNumber: e.target.value }))}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-600"
-                  placeholder="Nomor Polisi / Jenis Kendaraan..."
+              {/* Tanda tangan Kepala SPPG: digambar langsung atau unggah foto/scan tanda tangan */}
+              <div className="space-y-2">
+                <SignaturePad
+                  label="Tanda tangan Kepala SPPG"
+                  signatoryName={officerDraft.headName || 'Kepala SPPG'}
+                  initialValue={officerDraft.headSignature}
+                  onSave={data => setOfficerDraft(prev => ({ ...prev, headSignature: data.startsWith('data:image') ? data : '' }))}
                 />
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className={`${BTN_SECONDARY} cursor-pointer`}>
+                    Unggah gambar tanda tangan
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="sr-only"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!file) return;
+                        if (file.size > 500 * 1024) {
+                          window.alert('Gambar terlalu besar (maks. 500 KB). Potong atau kecilkan dulu.');
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = () => setOfficerDraft(prev => ({ ...prev, headSignature: String(reader.result || '') }));
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </label>
+                  {officerDraft.headSignature?.startsWith('data:image') && (
+                    <>
+                      <img src={officerDraft.headSignature} alt="Pratinjau tanda tangan" className="h-10 object-contain border border-slate-200 rounded bg-white px-1" />
+                      <button
+                        type="button"
+                        onClick={() => setOfficerDraft(prev => ({ ...prev, headSignature: '' }))}
+                        className="text-[11px] font-semibold text-rose-700 hover:underline cursor-pointer"
+                      >
+                        Hapus tanda tangan
+                      </button>
+                    </>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Paling rapi memakai foto tanda tangan di kertas putih (PNG latar transparan lebih baik). Dicetak di kotak Mengetahui.
+                </p>
               </div>
-
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Estimasi Jadwal Penjemputan Alat Kembali
-                </label>
+                <label htmlFor="officer-driverName" className="block font-semibold text-slate-700 mb-1">Driver</label>
                 <input
+                  id="officer-driverName"
                   type="text"
-                  value={officerDraft.pickupTimeRange}
-                  onChange={e => setOfficerDraft(prev => ({ ...prev, pickupTimeRange: e.target.value }))}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-600"
-                  placeholder="12:30 - 13:30 WIB"
+                  value={officerDraft.driverName || ''}
+                  onChange={e => setOfficerDraft(prev => ({ ...prev, driverName: e.target.value }))}
+                  className={FIELD_INPUT}
+                  placeholder="Kosongkan bila driver berganti-ganti"
                 />
+                <p className="mt-0.5 text-[11px] text-slate-500">Kosong = dicetak bergaris untuk ditulis tangan.</p>
+              </div>
+              <div>
+                <label htmlFor="officer-consumeBefore" className="block font-semibold text-slate-700 mb-1">Baik dimakan sebelum pukul</label>
+                <input
+                  id="officer-consumeBefore"
+                  type="text"
+                  value={officerDraft.consumeBefore || ''}
+                  onChange={e => setOfficerDraft(prev => ({ ...prev, consumeBefore: e.target.value }))}
+                  className={FIELD_INPUT}
+                  placeholder="11:00"
+                />
+                <p className="mt-0.5 text-[11px] text-slate-500">Tulisan merah di Berita Acara Penerimaan.</p>
               </div>
             </div>
 
@@ -881,7 +1014,12 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
       {/* ========================================================================= */}
       {isPrintModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-2 sm:p-4">
-          <div className="bg-white rounded-xl border border-slate-200 w-full max-w-5xl h-[94vh] flex flex-col overflow-hidden">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delivery-print-title"
+            className="bg-white rounded-xl border border-slate-200 w-full max-w-5xl h-[94vh] flex flex-col overflow-hidden"
+          >
             {/* Modal Header Controls (Non-Printable) */}
             <style>{`
               @media print {
@@ -913,91 +1051,112 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                   box-shadow: none !important;
                   padding: 0 !important;
                 }
+                /* Lembar terakhir tidak memaksa halaman baru agar tidak ada halaman kosong di akhir */
+                #delivery-printable-area > div > div:last-child > .print-page-break:last-child {
+                  page-break-after: auto !important;
+                  break-after: auto !important;
+                }
                 .no-print {
                   display: none !important;
                 }
               }
             `}</style>
-            <div className="no-print p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-indigo-100 text-indigo-700">
-                  <Printer className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm">
-                    Pratinjau Cetak Dokumen Pengiriman SPPG
+            <div className="no-print border-b border-slate-200 shrink-0">
+              <div className="px-4 sm:px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 id="delivery-print-title" className="text-sm font-semibold text-slate-900">
+                    Cetak dokumen pengiriman
                   </h3>
-                  <p className="text-xs text-slate-500">
-                    Mencetak <strong>{printSchoolsQueue.length}</strong> sekolah • 3 lembar resmi per sekolah (Format Kertas A4)
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    {formatIndonesianDate(selectedDate)}
+                    {currentOrder ? ` · ${currentOrder.mealSession}` : ''} · {printSchoolsQueue.length} sekolah ·{' '}
+                    <span className="font-semibold text-slate-800">{printPageCount} halaman A4</span>
                   </p>
                 </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleTriggerPrint}
+                    disabled={printSchoolsQueue.length === 0}
+                    className={BTN_PRIMARY}
+                  >
+                    <Printer className="w-4 h-4" />
+                    Cetak / Simpan PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPrintModalOpen(false)}
+                    aria-label="Tutup pratinjau"
+                    className={`p-2 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer ${FOCUS_RING}`}
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
-              {/* Sheet Switcher */}
-              <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => setPrintSheetTab('ALL')}
-                  className={`px-3 py-1 rounded transition-colors cursor-pointer ${
-                    printSheetTab === 'ALL'
-                      ? 'bg-slate-900 text-white font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Semua Lembar (3 Hal)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPrintSheetTab('SHEET_1')}
-                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
-                    printSheetTab === 'SHEET_1'
-                      ? 'bg-indigo-700 text-white font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Lembar 1: Surat Jalan
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPrintSheetTab('SHEET_2')}
-                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
-                    printSheetTab === 'SHEET_2'
-                      ? 'bg-indigo-700 text-white font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Lembar 2: Berita Acara Alat
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPrintSheetTab('SHEET_3')}
-                  className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
-                    printSheetTab === 'SHEET_3'
-                      ? 'bg-indigo-700 text-white font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Lembar 3: Uji Organoleptik
-                </button>
+              {/* Pilih lembar yang dicetak */}
+              <div className="px-4 sm:px-5 pb-3 flex flex-wrap items-center gap-2">
+                <div role="tablist" aria-label="Lembar yang dicetak" className="inline-flex flex-wrap gap-1 p-1 bg-slate-100 rounded-lg text-xs">
+                  {([
+                    ['ALL', 'Semua lembar'],
+                    ['SHEET_1', '1 · Surat jalan'],
+                    ['SHEET_2', '2 · Berita acara'],
+                    ['SHEET_3', '3 · Uji hedonik'],
+                  ] as const).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={printSheetTab === id}
+                      onClick={() => setPrintSheetTab(id)}
+                      className={`px-3 rounded-md whitespace-nowrap cursor-pointer min-h-[44px] sm:min-h-[30px] ${FOCUS_RING} ${
+                        printSheetTab === id
+                          ? 'bg-white text-slate-900 font-semibold shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900 font-medium'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div role="radiogroup" aria-label="Format dokumen" className="inline-flex gap-1 p-1 bg-slate-100 rounded-lg text-xs">
+                  {([
+                    ['STANDARD', 'Format standar'],
+                    ['LEGACY', 'Format lama'],
+                  ] as const).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="radio"
+                      aria-checked={docFormat === id}
+                      onClick={() => changeDocFormat(id)}
+                      className={`px-3 rounded-md whitespace-nowrap cursor-pointer min-h-[44px] sm:min-h-[30px] ${FOCUS_RING} ${
+                        docFormat === id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-[11px] text-slate-600">
+                  {printSheetTab === 'ALL' ? '3 lembar per sekolah, masing-masing di halaman baru.' : '1 lembar per sekolah.'}
+                </span>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleTriggerPrint}
-                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold transition-colors cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Cetak / Simpan PDF</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsPrintModalOpen(false)}
-                  className="p-1.5 text-slate-500 hover:text-slate-600 rounded-lg cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+              {(printMismatches.length > 0 || missingOfficerFields.length > 0 || !currentOrder) && (
+                <div role="note" className="mx-4 sm:mx-5 mb-3 p-2.5 rounded-lg border border-amber-200 bg-amber-50 text-[11px] text-amber-900 space-y-0.5">
+                  {!currentOrder && <div>Belum ada menu untuk tanggal ini, kolom menu akan tercetak kosong.</div>}
+                  {missingOfficerFields.length > 0 && (
+                    <div>Data petugas belum lengkap ({missingOfficerFields.join(', ')}), bagian itu tercetak kosong untuk diisi tangan.</div>
+                  )}
+                  {printMismatches.map(m => (
+                    <div key={m.school.id}>
+                      <b>{m.school.schoolName}</b>: rincian kelas {m.classTotal.toLocaleString('id-ID')} porsi, porsi hari ini{' '}
+                      {m.dailyP.toLocaleString('id-ID')}. Perbaiki lewat tombol Atur kelas agar porsi per kelas di surat jalan benar.
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Printable Document Viewport */}
@@ -1005,716 +1164,50 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
               <div className="max-w-[210mm] mx-auto space-y-6">
                 {printSchoolsQueue.map((school, sIdx) => {
                   const dailyP = (school as any).dailyPortion || school.portionCount;
-                  const classes = getSchoolClassBreakdown(school.id, school.category, dailyP);
-                  const totalClassPortion = classes.reduce((sum, c) => sum + (Number(c.portions) || 0), 0);
-                  const dateCode = selectedDate.replace(/-/g, '');
-                  const docNumSuffix = String(sIdx + 1).padStart(2, '0');
+                  // Nomor: urut sekolah/BAST/SPPG/tanggal/bulan romawi/tahun, mis. 05/BAST/SPPG/28/IX/2026
+                  const [yy, mm, dd] = selectedDate.split('-');
+                  const docNo = `${docSeqBySchool[school.id] || String(sIdx + 1).padStart(2, '0')}${sessionCode}/BAST/SPPG/${dd}/${getRomanMonth(Number(mm))}/${yy}`;
 
                   return (
                     <div key={school.id} className="space-y-6">
                       {/* ========================================================= */}
                       {/* LEMBAR 1: SURAT JALAN & DETAIL KELAS                      */}
                       {/* ========================================================= */}
-                      {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_1') && (
-                        <div className="bg-white p-7 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-xs">
-                          {/* Kop Surat */}
-                          <div className="flex items-center gap-3.5 pb-2 border-b-2 border-black">
-                            <img
-                              src={logoSppgImg}
-                              alt="Logo SPPG"
-                              className="w-14 h-14 object-contain shrink-0"
-                            />
-                            <div className="flex-1 text-center pr-10">
-                              <div className="text-[11px] font-bold text-slate-900 tracking-normal leading-tight">
-                                BADAN GIZI NASIONAL
-                              </div>
-                              <h1 className="text-sm font-bold text-slate-950 tracking-normal leading-tight">
-                                SATUAN PELAYANAN PEMENUHAN GIZI (SPPG) MLG TUMPANG JERU
-                              </h1>
-                              <p className="text-[9.5px] text-slate-700 leading-tight mt-0.5">
-                                Jl. Raya Jeru No. 136, RT.01/RW.02, Kec. Tumpang, Kab. Malang, Jawa Timur 65156
-                              </p>
-                              <p className="text-[9.5px] text-slate-700 leading-tight">
-                                Email: {SPPG_EMAIL} • Hotline / WA: {SPPG_PHONE}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Judul Dokumen */}
-                          <div className="text-center my-3">
-                            <h2 className="text-sm font-bold text-slate-950 tracking-normal">
-                              Surat Jalan Pengiriman Makanan Bergizi
-                            </h2>
-                            <div className="text-[10px] font-mono text-slate-600 mt-0.5">
-                              No. Surat Jalan: <span className="font-bold text-slate-900">SJ/SPPG-JT/{dateCode}/{docNumSuffix}</span>
-                            </div>
-                          </div>
-
-                          {/* Metadata Grid */}
-                          <div className="grid grid-cols-2 gap-4 p-2.5 bg-slate-50 border border-slate-300 rounded mb-3 text-[11px]">
-                            <div className="space-y-1">
-                              <div className="flex">
-                                <span className="w-28 font-semibold text-slate-600">Penerima Manfaat</span>
-                                <span className="w-2">:</span>
-                                <span className="font-bold text-slate-900">{school.schoolName}</span>
-                              </div>
-                              <div className="flex">
-                                <span className="w-28 font-semibold text-slate-600">Kategori Sasaran</span>
-                                <span className="w-2">:</span>
-                                <span className="text-slate-800">{school.category}</span>
-                              </div>
-                              <div className="flex">
-                                <span className="w-28 font-semibold text-slate-600">PIC / Kontak</span>
-                                <span className="w-2">:</span>
-                                <span className="text-slate-800">{school.contactPerson || '-'} ({school.phone || '-'})</span>
-                              </div>
-                              <div className="flex">
-                                <span className="w-28 font-semibold text-slate-600">Catatan Lokasi</span>
-                                <span className="w-2">:</span>
-                                <span className="text-slate-700 truncate">{school.notes || 'Wilayah Tumpang Jeru'}</span>
-                              </div>
-                            </div>
-
-                            <div className="space-y-1">
-                              <div className="flex">
-                                <span className="w-28 font-semibold text-slate-600">Hari & Tanggal</span>
-                                <span className="w-2">:</span>
-                                <span className="font-semibold text-slate-900">{formatIndonesianDate(selectedDate)}</span>
-                              </div>
-                              <div className="flex">
-                                <span className="w-28 font-semibold text-slate-600">Waktu Kirim</span>
-                                <span className="w-2">:</span>
-                                <span className="font-mono text-slate-800">{school.deliveryTime ? `${school.deliveryTime.replace(/\s*WIB\s*$/i, '')} WIB` : BLANK}</span>
-                              </div>
-                              <div className="flex">
-                                <span className="w-28 font-semibold text-slate-600">Petugas Driver</span>
-                                <span className="w-2">:</span>
-                                <span className="text-slate-800">{officerSettings.fieldAssistantName || BLANK}</span>
-                              </div>
-                              <div className="flex">
-                                <span className="w-28 font-semibold text-slate-600">Armada / Nopol</span>
-                                <span className="w-2">:</span>
-                                <span className="font-mono text-slate-800">{officerSettings.vehicleNumber || BLANK}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Menu Masakan Hari Ini */}
-                          <div className="p-2 border border-slate-300 rounded mb-3 bg-white text-[11px]">
-                            <div className="flex items-start">
-                              <span className="w-28 font-semibold text-slate-700 shrink-0">Menu Masakan Hari Ini:</span>
-                              <span className="font-bold text-slate-900 leading-snug">
-                                {currentOrder?.menuTitle || BLANK}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Tabel Detail Rincian Kelas & Jumlah Siswa */}
-                          <div className="mb-3">
-                            <div className="text-[11px] font-bold text-slate-800 mb-1">
-                              Rincian Distribusi per Kelas / Kelompok Sasaran:
-                            </div>
-                            <table className="w-full text-left text-[11px] border-collapse border border-slate-800">
-                              <thead>
-                                <tr className="bg-slate-100 text-slate-900 font-bold border-b border-slate-800">
-                                  <th className="py-1.5 px-2 border border-slate-800 w-8 text-center">No</th>
-                                  <th className="py-1.5 px-3 border border-slate-800">Nama Kelas / Rombel</th>
-                                  <th className="py-1.5 px-3 border border-slate-800 w-32 text-right">Jumlah Penerima</th>
-                                  <th className="py-1.5 px-3 border border-slate-800 w-28 text-center">Wadah / Tray</th>
-                                  <th className="py-1.5 px-3 border border-slate-800">Keterangan Khusus</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {classes.map((cls, cIdx) => (
-                                  <tr key={cls.id || cIdx} className="border-b border-slate-300">
-                                    <td className="py-1.5 px-2 border border-slate-800 text-center font-mono text-[10px]">{cIdx + 1}</td>
-                                    <td className="py-1.5 px-3 border border-slate-800 font-semibold">{cls.className}</td>
-                                    <td className="py-1.5 px-3 border border-slate-800 text-right font-mono font-bold tabular-nums">
-                                      {cls.portions.toLocaleString('id-ID')} <span className="font-normal text-[10px]">porsi</span>
-                                    </td>
-                                    <td className="py-1.5 px-3 border border-slate-800 text-center font-mono">
-                                      {cls.portions} Tray
-                                    </td>
-                                    <td className="py-1.5 px-3 border border-slate-800 text-[10.5px] text-slate-600">
-                                      {cls.notes || 'Porsi Reguler'}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                              <tfoot>
-                                <tr className="bg-slate-100 font-bold border-t-2 border-slate-800">
-                                  <td colSpan={2} className="py-2 px-3 border border-slate-800 text-right">
-                                    Total Porsi yang Diserahkan:
-                                  </td>
-                                  <td className="py-2 px-3 border border-slate-800 text-right font-mono font-bold text-sm text-slate-900 tabular-nums">
-                                    {totalClassPortion.toLocaleString('id-ID')} <span className="text-xs font-normal">porsi</span>
-                                  </td>
-                                  <td className="py-2 px-3 border border-slate-800 text-center font-mono font-bold">
-                                    {totalClassPortion} Tray
-                                  </td>
-                                  <td className="py-2 px-3 border border-slate-800 text-[10px] text-slate-600 font-normal">
-                                    Lengkap & Disertai Peralatan
-                                  </td>
-                                </tr>
-                              </tfoot>
-                            </table>
-                          </div>
-
-                          {/* Catatan Standar */}
-                          <div className="p-2 border border-dashed border-slate-400 rounded text-[9.5px] text-slate-600 space-y-0.5 mb-4">
-                            <div>• Makanan telah melalui pengecekan suhu & higienitas dapur SPPG MLG TUMPANG JERU sebelum dikirim.</div>
-                            <div>• Dianjurkan makanan segera dikonsumsi maksimal dalam waktu 2 jam setelah diterima di sekolah.</div>
-                            <div>• Segala bentuk masukan atau komplain rasa/porsi dapat dicantumkan pada Lembar 3 (Form Uji Organoleptik).</div>
-                          </div>
-
-                          {/* Tanda Tangan 3 Pihak Sesuai Request */}
-                          <div className="pt-2">
-                            <div className="text-[10px] font-semibold text-slate-700 text-center mb-2">
-                              Lembar Pengesahan Serah Terima Distribusi Makanan Bergizi:
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-center text-[10.5px]">
-                              {/* 1. Pemeriksa Ahli SPPG */}
-                              <div className="p-2 flex flex-col justify-between min-h-[90px]">
-                                <div>
-                                  <div className="font-semibold text-slate-600">Pemeriksa Ahli SPPG</div>
-                                  <div className="text-[9.5px] text-slate-500">Ahli Gizi & Mutu</div>
-                                </div>
-                                <div className="mt-10 border-t border-slate-800 pt-1">
-                                  <div className="font-bold text-slate-900 underline">
-                                    {officerSettings.nutritionistName || BLANK}
-                                  </div>
-                                  <div className="text-[9.5px] text-slate-500">{officerSettings.nutritionistTitle}</div>
-                                </div>
-                              </div>
-
-                              {/* 2. Asisten Lapangan */}
-                              <div className="p-2 flex flex-col justify-between min-h-[90px]">
-                                <div>
-                                  <div className="font-semibold text-slate-600">Asisten Lapangan</div>
-                                  <div className="text-[9.5px] text-slate-500">Petugas Distribusi / Driver</div>
-                                </div>
-                                <div className="mt-10 border-t border-slate-800 pt-1">
-                                  <div className="font-bold text-slate-900 underline">
-                                    {officerSettings.fieldAssistantName || BLANK}
-                                  </div>
-                                  <div className="text-[9.5px] text-slate-500">SPPG MLG TUMPANG JERU</div>
-                                </div>
-                              </div>
-
-                              {/* 3. Diterima PIC Sekolah */}
-                              <div className="p-2 flex flex-col justify-between min-h-[90px]">
-                                <div>
-                                  <div className="font-semibold text-slate-600">Diterima oleh PIC Sekolah</div>
-                                  <div className="text-[9.5px] text-slate-500">{school.schoolName}</div>
-                                </div>
-                                <div className="mt-10 border-t border-slate-800 pt-1">
-                                  <div className="font-bold text-slate-900 underline">
-                                    ( {school.contactPerson || '...........................................'} )
-                                  </div>
-                                  <div className="text-[9.5px] text-slate-500">Kepala Sekolah / Guru Penerima</div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="text-right text-[8.5px] text-slate-400 mt-2 font-mono">
-                            Lembar 1 dari 3 • Dokumen Resmi SPPG MLG TUMPANG JERU
-                          </div>
-                        </div>
-                      )}
-
-                      {/* ========================================================= */}
-                      {/* LEMBAR 2: BERITA ACARA PENYERAHAN ALAT                    */}
-                      {/* ========================================================= */}
-                      {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_2') && (
-                        <div className="bg-white p-7 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-xs">
-                          {/* Kop Surat */}
-                          <div className="flex items-center gap-3.5 pb-2 border-b-2 border-black">
-                            <img
-                              src={logoSppgImg}
-                              alt="Logo SPPG"
-                              className="w-14 h-14 object-contain shrink-0"
-                            />
-                            <div className="flex-1 text-center pr-10">
-                              <div className="text-[11px] font-bold text-slate-900 tracking-normal leading-tight">
-                                BADAN GIZI NASIONAL
-                              </div>
-                              <h1 className="text-sm font-bold text-slate-950 tracking-normal leading-tight">
-                                SATUAN PELAYANAN PEMENUHAN GIZI (SPPG) MLG TUMPANG JERU
-                              </h1>
-                              <p className="text-[9.5px] text-slate-700 leading-tight mt-0.5">
-                                Jl. Raya Jeru No. 136, RT.01/RW.02, Kec. Tumpang, Kab. Malang, Jawa Timur 65156
-                              </p>
-                              <p className="text-[9.5px] text-slate-700 leading-tight">
-                                Email: {SPPG_EMAIL} • Hotline / WA: {SPPG_PHONE}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Judul Dokumen */}
-                          <div className="text-center my-3">
-                            <h2 className="text-sm font-bold text-slate-950 tracking-normal">
-                              Berita Acara Penyerahan & Peminjaman Peralatan Distribusi
-                            </h2>
-                            <div className="text-[10px] font-mono text-slate-600 mt-0.5">
-                              No. Berita Acara: <span className="font-bold text-slate-900">BA-ALAT/SPPG-JT/{dateCode}/{docNumSuffix}</span>
-                            </div>
-                          </div>
-
-                          {/* Klausul Pengantar */}
-                          <div className="p-2.5 bg-slate-50 border border-slate-300 rounded mb-3 text-[10.5px] leading-relaxed text-slate-700">
-                            Pada hari ini <strong className="text-slate-900">{formatIndonesianDate(selectedDate)}</strong>, bertempat di <strong className="text-slate-900">{school.schoolName}</strong>, telah dilakukan serah terima peralatan pendukung makan bergizi antara <strong>Pihak Pertama (SPPG MLG TUMPANG JERU)</strong> kepada <strong>Pihak Kedua ({school.schoolName})</strong> dengan rincian peralatan sebagai berikut:
-                          </div>
-
-                          {/* Tabel Peralatan yang Dipinjamkan */}
-                          <div className="mb-3">
-                            <table className="w-full text-left text-[11px] border-collapse border border-slate-800">
-                              <thead>
-                                <tr className="bg-slate-100 text-slate-900 font-bold border-b border-slate-800">
-                                  <th className="py-1.5 px-2 border border-slate-800 w-8 text-center">No</th>
-                                  <th className="py-1.5 px-3 border border-slate-800">Nama Peralatan Program</th>
-                                  <th className="py-1.5 px-3 border border-slate-800">Spesifikasi Standar</th>
-                                  <th className="py-1.5 px-2.5 border border-slate-800 w-24 text-center">Jumlah Diserahkan</th>
-                                  <th className="py-1.5 px-2.5 border border-slate-800 w-24 text-center">Kondisi Serah</th>
-                                  <th className="py-1.5 px-2.5 border border-slate-800 w-24 text-center">Kondisi Kembali</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono">1</td>
-                                  <td className="py-1.5 px-3 border border-slate-800 font-semibold">
-                                    Stainless Steel Food Tray 5 Sekat
-                                  </td>
-                                  <td className="py-1.5 px-3 border border-slate-800 text-[10px] text-slate-600">
-                                    SUS 304 Food Grade + Tutup Rapat
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center font-mono font-bold">
-                                    {dailyP} Unit
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center text-[10px] font-semibold text-emerald-800 bg-emerald-50/50">
-                                    Baik & Bersih
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center text-[10px] text-slate-400">
-                                    [  ] Lengkap
-                                  </td>
-                                </tr>
-                                <tr>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono">2</td>
-                                  <td className="py-1.5 px-3 border border-slate-800 font-semibold">
-                                    Thermal Box Insulasi Penjaga Suhu
-                                  </td>
-                                  <td className="py-1.5 px-3 border border-slate-800 text-[10px] text-slate-600">
-                                    EPP Foam Heavy Duty Warmer Box
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center font-mono font-bold">
-                                    {Math.max(1, Math.ceil(dailyP / 80))} Unit
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center text-[10px] font-semibold text-emerald-800 bg-emerald-50/50">
-                                    Baik & Bersih
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center text-[10px] text-slate-400">
-                                    [  ] Utuh
-                                  </td>
-                                </tr>
-                                <tr>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono">3</td>
-                                  <td className="py-1.5 px-3 border border-slate-800 font-semibold">
-                                    Sendok Makan Stainless Steel
-                                  </td>
-                                  <td className="py-1.5 px-3 border border-slate-800 text-[10px] text-slate-600">
-                                    SUS 304 Tebal, Higienis Terbungkus
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center font-mono font-bold">
-                                    {dailyP} Pcs
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center text-[10px] font-semibold text-emerald-800 bg-emerald-50/50">
-                                    Baik & Bersih
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center text-[10px] text-slate-400">
-                                    [  ] Lengkap
-                                  </td>
-                                </tr>
-                                <tr>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono">4</td>
-                                  <td className="py-1.5 px-3 border border-slate-800 font-semibold">
-                                    Container / Keranjang Distribusi
-                                  </td>
-                                  <td className="py-1.5 px-3 border border-slate-800 text-[10px] text-slate-600">
-                                    Box Plastik Industri Penampung Tray
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center font-mono font-bold">
-                                    {Math.max(1, Math.ceil(dailyP / 60))} Unit
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center text-[10px] font-semibold text-emerald-800 bg-emerald-50/50">
-                                    Baik & Bersih
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center text-[10px] text-slate-400">
-                                    [  ] Utuh
-                                  </td>
-                                </tr>
-                                <tr>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono">5</td>
-                                  <td className="py-1.5 px-3 border border-slate-800 font-semibold">
-                                    Wadah Sayur Kuah Stainless Berinsulasi
-                                  </td>
-                                  <td className="py-1.5 px-3 border border-slate-800 text-[10px] text-slate-600">
-                                    Thermos Sayur / Panci Seal Stainless
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center font-mono font-bold">
-                                    {school.category === 'SD / MI' || school.category === 'SMP / MTs' ? '1 - 2 Unit' : '-'}
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center text-[10px] font-semibold text-emerald-800 bg-emerald-50/50">
-                                    Sesuai Kebutuhan
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-center text-[10px] text-slate-400">
-                                    [  ] Bersih
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-
-                          {/* Ketentuan Tanggung Jawab & Penjemputan */}
-                          <div className="p-3 border border-slate-300 rounded mb-4 bg-slate-50/60 text-[10px] text-slate-700 space-y-1">
-                            <div className="font-bold text-slate-900 text-[10.5px] mb-1">
-                              Ketentuan Perawatan & Penjemputan Kembali Peralatan:
-                            </div>
-                            <div>
-                              1. Seluruh peralatan adalah aset program Badan Gizi Nasional yang dipinjamkan sementara untuk sesi makan hari ini.
-                            </div>
-                            <div>
-                              2. Pihak sekolah memastikan sisa makanan padat telah dibuang ke kantong sampah sebelum tray ditumpuk ke kontainer.
-                            </div>
-                            <div>
-                              3. Seluruh peralatan akan dijemput kembali oleh Asisten Lapangan SPPG pada pukul <strong>{officerSettings.pickupTimeRange || BLANK}</strong>.
-                            </div>
-                            <div>
-                              4. Penghitungan ulang jumlah unit dilakukan bersama saat penjemputan oleh Asisten Lapangan dan PIC Sekolah.
-                            </div>
-                          </div>
-
-                          {/* Tanda Tangan Serah Terima */}
-                          <div className="pt-2">
-                            <div className="grid grid-cols-3 gap-2 text-center text-[10.5px]">
-                              {/* Yang Menyerahkan */}
-                              <div className="p-2 flex flex-col justify-between min-h-[90px]">
-                                <div>
-                                  <div className="font-semibold text-slate-600">Yang Menyerahkan</div>
-                                  <div className="text-[9.5px] text-slate-500">Asisten Lapangan SPPG</div>
-                                </div>
-                                <div className="mt-12 border-t border-slate-800 pt-1">
-                                  <div className="font-bold text-slate-900 underline">
-                                    {officerSettings.fieldAssistantName || BLANK}
-                                  </div>
-                                  <div className="text-[9.5px] text-slate-500">Petugas Distribusi SPPG</div>
-                                </div>
-                              </div>
-
-                              {/* Yang Menerima */}
-                              <div className="p-2 flex flex-col justify-between min-h-[90px]">
-                                <div>
-                                  <div className="font-semibold text-slate-600">Yang Menerima</div>
-                                  <div className="text-[9.5px] text-slate-500">Pihak Sekolah / Lembaga</div>
-                                </div>
-                                <div className="mt-12 border-t border-slate-800 pt-1">
-                                  <div className="font-bold text-slate-900 underline">
-                                    ( {school.contactPerson || '...........................................'} )
-                                  </div>
-                                  <div className="text-[9.5px] text-slate-500">PIC / Penanggung Jawab</div>
-                                </div>
-                              </div>
-
-                              {/* Mengetahui */}
-                              <div className="p-2 flex flex-col justify-between min-h-[90px]">
-                                <div>
-                                  <div className="font-semibold text-slate-600">Mengetahui</div>
-                                  <div className="text-[9.5px] text-slate-500">Penanggung Jawab Distribusi SPPG</div>
-                                </div>
-                                <div className="mt-12 border-t border-slate-800 pt-1">
-                                  <div className="font-bold text-slate-900 underline">
-                                    {officerSettings.nutritionistName || BLANK}
-                                  </div>
-                                  <div className="text-[9.5px] text-slate-500">{officerSettings.nutritionistTitle}</div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="text-right text-[8.5px] text-slate-400 mt-3 font-mono">
-                            Lembar 2 dari 3 • Dokumen Resmi SPPG MLG TUMPANG JERU
-                          </div>
-                        </div>
-                      )}
-
-                      {/* ========================================================= */}
-                      {/* LEMBAR 3: UJI ORGANOLEPTIK DENGAN SKORING, KRITIK & SARAN */}
-                      {/* ========================================================= */}
-                      {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_3') && (
-                        <div className="bg-white p-7 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-xs">
-                          {/* Kop Surat */}
-                          <div className="flex items-center gap-3.5 pb-2 border-b-2 border-black">
-                            <img
-                              src={logoSppgImg}
-                              alt="Logo SPPG"
-                              className="w-14 h-14 object-contain shrink-0"
-                            />
-                            <div className="flex-1 text-center pr-10">
-                              <div className="text-[11px] font-bold text-slate-900 tracking-normal leading-tight">
-                                BADAN GIZI NASIONAL
-                              </div>
-                              <h1 className="text-sm font-bold text-slate-950 tracking-normal leading-tight">
-                                SATUAN PELAYANAN PEMENUHAN GIZI (SPPG) MLG TUMPANG JERU
-                              </h1>
-                              <p className="text-[9.5px] text-slate-700 leading-tight mt-0.5">
-                                Jl. Raya Jeru No. 136, RT.01/RW.02, Kec. Tumpang, Kab. Malang, Jawa Timur 65156
-                              </p>
-                              <p className="text-[9.5px] text-slate-700 leading-tight">
-                                Email: {SPPG_EMAIL} • Hotline / WA: {SPPG_PHONE}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Judul Dokumen */}
-                          <div className="text-center my-3">
-                            <h2 className="text-sm font-bold text-slate-950 tracking-normal">
-                              Formulir Uji Organoleptik & Penilaian Sensorik Makanan
-                            </h2>
-                            <div className="text-[10px] font-mono text-slate-600 mt-0.5">
-                              No. Pengujian: <span className="font-bold text-slate-900">UO-SPPG/{dateCode}/{docNumSuffix}</span>
-                            </div>
-                          </div>
-
-                          {/* Data Uji Sampling */}
-                          <div className="grid grid-cols-2 gap-3 p-2 bg-slate-50 border border-slate-300 rounded mb-3 text-[10.5px]">
-                            <div className="space-y-1">
-                              <div className="flex">
-                                <span className="w-24 font-semibold text-slate-600">Sekolah / Titik Uji</span>
-                                <span className="w-2">:</span>
-                                <span className="font-bold text-slate-900">{school.schoolName}</span>
-                              </div>
-                              <div className="flex">
-                                <span className="w-24 font-semibold text-slate-600">Tanggal Uji</span>
-                                <span className="w-2">:</span>
-                                <span className="text-slate-800">{formatIndonesianDate(selectedDate)}</span>
-                              </div>
-                              <div className="flex">
-                                <span className="w-24 font-semibold text-slate-600">Menu Diuji</span>
-                                <span className="w-2">:</span>
-                                <span className="font-semibold text-slate-900 truncate">
-                                  {currentOrder?.menuTitle || BLANK}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="space-y-1">
-                              <div className="flex">
-                                <span className="w-28 font-semibold text-slate-600">Jam Tiba Makanan</span>
-                                <span className="w-2">:</span>
-                                <span className="font-mono text-slate-800">[ ........ : ........ WIB ]</span>
-                              </div>
-                              <div className="flex">
-                                <span className="w-28 font-semibold text-slate-600">Suhu Saat Tiba</span>
-                                <span className="w-2">:</span>
-                                <span className="font-mono text-slate-800">[ ............ °C ] (Standar &gt;60°C)</span>
-                              </div>
-                              <div className="flex">
-                                <span className="w-28 font-semibold text-slate-600">Jam Mulai Makan</span>
-                                <span className="w-2">:</span>
-                                <span className="font-mono text-slate-800">[ ........ : ........ WIB ]</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Skala Penilaian */}
-                          <div className="p-2 border border-slate-300 rounded mb-2.5 bg-white text-[10px] flex items-center justify-between text-slate-700">
-                            <span className="font-bold text-slate-900">Skala Penilaian Skoring:</span>
-                            <span><strong>5</strong> = Sangat Baik</span>
-                            <span><strong>4</strong> = Baik (Standar)</span>
-                            <span><strong>3</strong> = Cukup</span>
-                            <span><strong>2</strong> = Kurang</span>
-                            <span><strong>1</strong> = Buruk / Tidak Layak</span>
-                          </div>
-
-                          {/* Tabel Parameter Uji Organoleptik */}
-                          <div className="mb-3">
-                            <table className="w-full text-left text-[11px] border-collapse border border-slate-800">
-                              <thead>
-                                <tr className="bg-slate-100 text-slate-900 font-bold border-b border-slate-800">
-                                  <th className="py-1.5 px-2 border border-slate-800 w-8 text-center">No</th>
-                                  <th className="py-1.5 px-2.5 border border-slate-800 w-36">Parameter Uji</th>
-                                  <th className="py-1.5 px-3 border border-slate-800">Kriteria Standar Mutu Sensorik</th>
-                                  <th className="py-1.5 px-2 border border-slate-800 w-20 text-center">Skor (1-5)</th>
-                                  <th className="py-1.5 px-2.5 border border-slate-800 w-44">Catatan Evaluator</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono">1</td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 font-semibold">Aroma & Bau</td>
-                                  <td className="py-1.5 px-3 border border-slate-800 text-[10px] text-slate-700">
-                                    Aroma segar sedap khas masakan alami, tidak berbau asam, basi, apek, atau tengik.
-                                  </td>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono font-bold text-slate-400">
-                                    [ &nbsp;&nbsp;&nbsp;&nbsp; ]
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-[10px] text-slate-400">
-                                    ..................................................
-                                  </td>
-                                </tr>
-                                <tr>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono">2</td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 font-semibold">Rasa & Kelezatan</td>
-                                  <td className="py-1.5 px-3 border border-slate-800 text-[10px] text-slate-700">
-                                    Tingkat gurih dan keasinan pas, bumbu meresap merata, tidak hambar dan disukai siswa.
-                                  </td>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono font-bold text-slate-400">
-                                    [ &nbsp;&nbsp;&nbsp;&nbsp; ]
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-[10px] text-slate-400">
-                                    ..................................................
-                                  </td>
-                                </tr>
-                                <tr>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono">3</td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 font-semibold">Tekstur & Keempukan</td>
-                                  <td className="py-1.5 px-3 border border-slate-800 text-[10px] text-slate-700">
-                                    Nasi matang pulen empuk, lauk matang sempurna, sayur segar renyah (tidak lembek/overcooked).
-                                  </td>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono font-bold text-slate-400">
-                                    [ &nbsp;&nbsp;&nbsp;&nbsp; ]
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-[10px] text-slate-400">
-                                    ..................................................
-                                  </td>
-                                </tr>
-                                <tr>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono">4</td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 font-semibold">Warna & Penampilan</td>
-                                  <td className="py-1.5 px-3 border border-slate-800 text-[10px] text-slate-700">
-                                    Warna sayur cerah alami menggugah selera, penataan sekat tray rapi, bersih, tidak tercampur.
-                                  </td>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono font-bold text-slate-400">
-                                    [ &nbsp;&nbsp;&nbsp;&nbsp; ]
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-[10px] text-slate-400">
-                                    ..................................................
-                                  </td>
-                                </tr>
-                                <tr>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono">5</td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 font-semibold">Suhu Saat Disajikan</td>
-                                  <td className="py-1.5 px-3 border border-slate-800 text-[10px] text-slate-700">
-                                    Makanan masih hangat aman saat disajikan kepada siswa (standar rantai suhu aman).
-                                  </td>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono font-bold text-slate-400">
-                                    [ &nbsp;&nbsp;&nbsp;&nbsp; ]
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-[10px] text-slate-400">
-                                    ..................................................
-                                  </td>
-                                </tr>
-                                <tr>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono">6</td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 font-semibold">Kebersihan Kemasan</td>
-                                  <td className="py-1.5 px-3 border border-slate-800 text-[10px] text-slate-700">
-                                    Tray dan tutup steril, tertutup rapat tanpa celah, bebas dari debu atau benda asing.
-                                  </td>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono font-bold text-slate-400">
-                                    [ &nbsp;&nbsp;&nbsp;&nbsp; ]
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-[10px] text-slate-400">
-                                    ..................................................
-                                  </td>
-                                </tr>
-                              </tbody>
-                              <tfoot>
-                                <tr className="bg-slate-100 font-bold border-t-2 border-slate-800 text-[11px]">
-                                  <td colSpan={3} className="py-1.5 px-3 border border-slate-800 text-right">
-                                    Total Skor / Rata-rata Skor Sensorik:
-                                  </td>
-                                  <td className="py-1.5 px-2 border border-slate-800 text-center font-mono text-slate-400">
-                                    [ &nbsp;&nbsp;&nbsp; / 30 ]
-                                  </td>
-                                  <td className="py-1.5 px-2.5 border border-slate-800 text-[10px] text-slate-700">
-                                    Rata-rata: [ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; / 5 ]
-                                  </td>
-                                </tr>
-                              </tfoot>
-                            </table>
-                          </div>
-
-                          {/* Kesimpulan Kelayakan */}
-                          <div className="flex items-center gap-6 p-2 border border-slate-300 rounded mb-3 bg-slate-50 text-[10.5px]">
-                            <span className="font-bold text-slate-900">Kesimpulan Kelayakan:</span>
-                            <label className="flex items-center gap-1.5 cursor-pointer">
-                              <span className="w-3.5 h-3.5 border border-slate-800 inline-block"></span>
-                              <span>Layak Dikonsumsi</span>
-                            </label>
-                            <label className="flex items-center gap-1.5 cursor-pointer">
-                              <span className="w-3.5 h-3.5 border border-slate-800 inline-block"></span>
-                              <span>Layak dengan Catatan Perbaikan</span>
-                            </label>
-                            <label className="flex items-center gap-1.5 cursor-pointer">
-                              <span className="w-3.5 h-3.5 border border-slate-800 inline-block"></span>
-                              <span>Tidak Layak Dikonsumsi</span>
-                            </label>
-                          </div>
-
-                          {/* Kotak Kritik & Saran dari Pihak Sekolah */}
-                          <div className="mb-4">
-                            <div className="text-[11px] font-bold text-slate-900 mb-1">
-                              Kritik & Saran dari Pihak Sekolah / Komite / Guru:
-                            </div>
-                            <div className="border border-slate-400 rounded p-2.5 min-h-[75px] text-[10px] text-slate-400 space-y-3 bg-white">
-                              <div className="border-b border-dashed border-slate-300 pb-1">
-                                Masukan rasa / porsi / variasi menu: ........................................................................................................................................
-                              </div>
-                              <div className="border-b border-dashed border-slate-300 pb-1">
-                                Catatan respon dan kepuasan siswa: ........................................................................................................................................
-                              </div>
-                              <div className="border-b border-dashed border-slate-300 pb-1">
-                                Masukan waktu pengiriman / peralatan: ........................................................................................................................................
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Tanda Tangan Evaluasi Organoleptik */}
-                          <div className="pt-1">
-                            <div className="grid grid-cols-2 gap-10 text-center text-[10.5px]">
-                              {/* Penguji Organoleptik Sekolah */}
-                              <div className="p-2 flex flex-col justify-between min-h-[85px]">
-                                <div>
-                                  <div className="font-semibold text-slate-700">Petugas Penguji Organoleptik Sekolah</div>
-                                  <div className="text-[9.5px] text-slate-500">Guru / Tim Pengawas Mutu {school.schoolName}</div>
-                                </div>
-                                <div className="mt-12 border-t border-slate-800 pt-1">
-                                  <div className="font-bold text-slate-900 underline">
-                                    ( {school.contactPerson || '...........................................'} )
-                                  </div>
-                                  <div className="text-[9.5px] text-slate-500">NIP / Jabatan: .......................................</div>
-                                </div>
-                              </div>
-
-                              {/* Saksi Asisten Lapangan */}
-                              <div className="p-2 flex flex-col justify-between min-h-[85px]">
-                                <div>
-                                  <div className="font-semibold text-slate-700">Saksi Asisten Lapangan SPPG</div>
-                                  <div className="text-[9.5px] text-slate-500">Petugas Pengantar SPPG MLG TUMPANG JERU</div>
-                                </div>
-                                <div className="mt-12 border-t border-slate-800 pt-1">
-                                  <div className="font-bold text-slate-900 underline">
-                                    {officerSettings.fieldAssistantName || BLANK}
-                                  </div>
-                                  <div className="text-[9.5px] text-slate-500">Asisten Lapangan Distribusi</div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="text-right text-[8.5px] text-slate-400 mt-2 font-mono">
-                            Lembar 3 dari 3 • Dokumen Resmi SPPG MLG TUMPANG JERU
-                          </div>
-                        </div>
-                      )}
+                      {(() => {
+                        const sheetProps = {
+                          school,
+                          dayName: dayNameOf(selectedDate),
+                          shortDate: shortDocDate(selectedDate),
+                          longDate: formatIndonesianDate(selectedDate),
+                          totalPortions: dailyP,
+                          officers: officerSettings,
+                          kop: <DeliveryKop />,
+                        };
+                        const isStd = docFormat === 'STANDARD';
+                        const classes = printClassRows(school, dailyP);
+                        return (
+                          <>
+                            {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_1') &&
+                              (isStd ? (
+                                <SuratJalanSheetStandard {...sheetProps} footer={`Lembar 1 dari 3 · ${school.schoolName}`} docNo={docNo} deliveryTime={school.deliveryTime} classes={classes} />
+                              ) : (
+                                <SuratJalanSheetLegacy {...sheetProps} footer={`Lembar 1 dari 3 · ${school.schoolName}`} docNo={docNo} deliveryTime={school.deliveryTime} classes={classes} />
+                              ))}
+                            {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_2') &&
+                              (isStd ? (
+                                <BeritaAcaraSheetStandard {...sheetProps} footer={`Lembar 2 dari 3 · ${school.schoolName}`} docNo={docNo} />
+                              ) : (
+                                <BeritaAcaraSheetLegacy {...sheetProps} footer={`Lembar 2 dari 3 · ${school.schoolName}`} />
+                              ))}
+                            {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_3') &&
+                              (isStd ? (
+                                <UjiHedonikSheetStandard {...sheetProps} footer={`Lembar 3 dari 3 · ${school.schoolName}`} />
+                              ) : (
+                                <UjiHedonikSheetLegacy {...sheetProps} footer={`Lembar 3 dari 3 · ${school.schoolName}`} />
+                              ))}
+                          </>
+                        );
+                      })()}
                     </div>
                   );
                 })}

@@ -106,7 +106,7 @@ export const ActionDropdown: React.FC<ActionDropdownProps> = ({
     switch (variant) {
       case 'primary':
       case 'emerald':
-        return 'bg-emerald-600 hover:bg-emerald-700 text-white';
+        return 'bg-emerald-700 hover:bg-emerald-800 text-white';
       case 'slate':
         return 'bg-slate-800 hover:bg-slate-900 text-white';
       case 'rose':
@@ -116,7 +116,7 @@ export const ActionDropdown: React.FC<ActionDropdownProps> = ({
       case 'white':
         return 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300';
       default:
-        return 'bg-emerald-600 hover:bg-emerald-700 text-white';
+        return 'bg-emerald-700 hover:bg-emerald-800 text-white';
     }
   };
 
@@ -125,7 +125,7 @@ export const ActionDropdown: React.FC<ActionDropdownProps> = ({
     switch (variant) {
       case 'primary':
       case 'emerald':
-        return 'bg-emerald-700 hover:bg-emerald-800 text-white border-l border-emerald-500/40';
+        return 'bg-emerald-700 hover:bg-emerald-800 text-white border-l border-emerald-600';
       case 'slate':
         return 'bg-slate-900 hover:bg-slate-950 text-white border-l border-slate-700';
       case 'rose':
@@ -135,7 +135,7 @@ export const ActionDropdown: React.FC<ActionDropdownProps> = ({
       case 'white':
         return 'bg-white hover:bg-slate-50 text-slate-600 border border-l-0 border-slate-300';
       default:
-        return 'bg-emerald-700 hover:bg-emerald-800 text-white border-l border-emerald-500/40';
+        return 'bg-emerald-700 hover:bg-emerald-800 text-white border-l border-emerald-600';
     }
   };
 
@@ -143,16 +143,16 @@ export const ActionDropdown: React.FC<ActionDropdownProps> = ({
   const getSingleTriggerStyles = (variant: ActionDropdownProps['triggerVariant'] = 'white') => {
     switch (variant) {
       case 'emerald':
-        return 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs';
+        return 'bg-emerald-700 hover:bg-emerald-800 text-white';
       case 'slate':
-        return 'bg-slate-800 hover:bg-slate-900 text-white shadow-2xs';
+        return 'bg-slate-800 hover:bg-slate-900 text-white';
       case 'outline':
-        return 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs';
+        return 'bg-white border border-slate-300 text-slate-800 hover:bg-slate-50';
       case 'ghost':
         return 'bg-transparent hover:bg-slate-100 text-slate-700';
       case 'white':
       default:
-        return 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs';
+        return 'bg-white border border-slate-300 text-slate-800 hover:bg-slate-50';
     }
   };
 
@@ -160,12 +160,12 @@ export const ActionDropdown: React.FC<ActionDropdownProps> = ({
     <div className={`relative inline-flex ${className}`} ref={containerRef}>
       {splitAction ? (
         /* MODE 1: SPLIT BUTTON (Main Action Button + Caret Toggle) */
-        <div className="relative inline-flex rounded-xl shadow-2xs">
+        <div className="relative inline-flex rounded-lg">
           <button
             type="button"
             onClick={splitAction.onClick}
             disabled={disabled || splitAction.disabled}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-l-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${getSplitMainStyles(
+            className={`inline-flex items-center gap-1.5 px-4 min-h-[44px] sm:min-h-[34px] text-xs font-semibold rounded-l-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${getSplitMainStyles(
               splitAction.variant
             )}`}
             title={splitAction.title || splitAction.label}
@@ -180,7 +180,8 @@ export const ActionDropdown: React.FC<ActionDropdownProps> = ({
             disabled={disabled}
             aria-expanded={isOpen}
             aria-haspopup="menu"
-            className={`inline-flex items-center px-2.5 py-2 text-xs font-bold rounded-r-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${getSplitToggleStyles(
+            aria-label={title || 'Pilihan lainnya'}
+            className={`inline-flex items-center justify-center px-2.5 min-w-[44px] sm:min-w-0 min-h-[44px] sm:min-h-[34px] text-xs font-semibold rounded-r-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${getSplitToggleStyles(
               splitAction.variant
             )}`}
             title={title || 'Pilihan opsi lainnya'}
@@ -200,7 +201,7 @@ export const ActionDropdown: React.FC<ActionDropdownProps> = ({
           disabled={disabled}
           aria-expanded={isOpen}
           aria-haspopup="menu"
-          className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${getSingleTriggerStyles(
+          className={`inline-flex items-center gap-1.5 px-3 min-h-[44px] sm:min-h-[34px] text-xs font-medium rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${getSingleTriggerStyles(
             triggerVariant
           )}`}
           title={title || triggerLabel}
@@ -221,7 +222,7 @@ export const ActionDropdown: React.FC<ActionDropdownProps> = ({
           role="menu"
           className={`absolute top-full mt-2 ${
             align === 'left' ? 'left-0' : 'right-0'
-          } ${widthClass} bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden`}
+          } ${widthClass} bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden`}
         >
           {header && (
             <div className="px-3.5 py-2 text-[11px] font-semibold text-slate-500 border-b border-slate-100">
@@ -252,7 +253,7 @@ export const ActionDropdown: React.FC<ActionDropdownProps> = ({
                 {/* Rounded Icon Box */}
                 {item.icon && (
                   <div
-                    className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                       item.iconBgClass ||
                       (item.variant === 'danger'
                         ? 'bg-rose-100 text-rose-700'

@@ -218,8 +218,11 @@ const MainLayout: React.FC = () => {
             <NonFoodExpensesModule />
           )}
 
-          {activeTab === 'menu_orders' && (
-            <MenuOrdersModule onNavigate={setActiveTab} />
+          {(activeTab === 'menu_orders' || activeTab === 'menu_portions') && (
+            <MenuOrdersModule
+              onNavigate={setActiveTab}
+              initialView={activeTab === 'menu_portions' ? 'PORSI_HARI_INI' : undefined}
+            />
           )}
 
           {activeTab === 'waste_logs' && (

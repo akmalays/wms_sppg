@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Select } from './common/Select';
-import { warehouseDb } from '../db/storage';
+import { warehouseDb, APP_SETTINGS_CHANGED_EVENT } from '../db/storage';
+import { getBeneficiaryRecap } from '../utils/beneficiaryRecap';
 import {
   ItemMaster,
   ReceivingDocument,
@@ -69,6 +70,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
   const [triageFilter, setTriageFilter] = useState<TriageFilter>('ALL');
 
   const today = localDateIso();
+
+  // Rekap porsi hari ini; dibaca ulang saat data pengaturan tersinkron dari perangkat lain
+  const [recapVersion, setRecapVersion] = useState(0);
+  useEffect(() => {
+    const onChange = () => setRecapVersion(v => v + 1);
+    window.addEventListener(APP_SETTINGS_CHANGED_EVENT, onChange);
+    return () => window.removeEventListener(APP_SETTINGS_CHANGED_EVENT, onChange);
+  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const todayRecap = useMemo(() => getBeneficiaryRecap(today), [today, recapVersion]);
 
   // Today's arrivals
   const todaysReceivings = useMemo(() => {
@@ -338,6 +349,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
             </button>
           </div>
         </div>
+
+        {/* Pengingat porsi harian: rekap penerima manfaat per sekolah belum dicatat (Minggu dilewati) */}
+        {!todayRecap && new Date().getDay() !== 0 && (
+          <div role="note" className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-900">
+            <span>
+              <b>Porsi hari ini belum dicatat.</b> Isi jumlah penerima manfaat tiap sekolah dan tandai sekolah yang tidak dikirim.
+            </span>
+            <button type="button" onClick={() => onNavigate('menu_portions')} className={`${BTN_PRIMARY} shrink-0`}>
+              Catat porsi hari ini
+            </button>
+          </div>
+        )}
 
         {/* Key numbers: each tile answers one morning question, colored only when it needs attention */}
         <dl className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mt-5">

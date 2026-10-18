@@ -3,6 +3,7 @@ import { Select } from './common/Select';
 import { useConfirm } from '../context/ConfirmContext';
 import { useToast } from '../context/ToastContext';
 import { KopText } from './common/KopText';
+import { DateStepper } from './common/DateStepper';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb, signerName } from '../db/storage';
 import { DailyTodoItem, TodoCategory, TodoPriority, UserRole } from '../types/warehouse';
@@ -279,13 +280,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
 
   const dateControl = (
     <div className="flex flex-wrap items-center gap-2">
-      <input
-        type="date"
-        aria-label="Tanggal tugas"
-        value={selectedDate}
-        onChange={e => handleDateChange(e.target.value)}
-        className={`${FIELD_INPUT} w-auto font-semibold`}
-      />
+      <DateStepper ariaLabel="Tanggal tugas" value={selectedDate} onChange={handleDateChange} />
       {!isToday && (
         <button type="button" onClick={() => handleDateChange(todayStr)} className={BTN_SECONDARY}>
           Hari ini
