@@ -59,7 +59,7 @@ import {
 } from 'lucide-react';
 import { SignaturePad } from './SignaturePad';
 import { SearchPicker, PickerOption } from './common/SearchPicker';
-import { FormDialog, FIELD_INPUT, FIELD_LABEL } from './common/FormDialog';
+import { FormDialog, FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY } from './common/FormDialog';
 import { generateAutoSku, WarehouseSkuType, WAREHOUSE_SKU_DEFINITIONS } from '../utils/skuGenerator';
 import { buildItemReference, describePriceSource } from '../utils/itemReference';
 import { ReceivingDetailModal } from './ReceivingDetailModal';
@@ -1602,29 +1602,30 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                               <button
                                 type="button"
                                 onClick={() => handleOpenWeighModal(po)}
-                                className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                                className={`${BTN_PRIMARY} flex-1`}
                               >
-                                <Scale className="w-3.5 h-3.5" />
-                                Timbang & Terima
+                                <Scale className="w-4 h-4" />
+                                Timbang & terima
                               </button>
                             )}
                             <button
                               type="button"
                               onClick={() => handleOpenExistingNota(po)}
-                              className={`${isFinished ? 'flex-1' : ''} inline-flex items-center justify-center gap-1 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600`}
+                              className={`${BTN_SECONDARY} ${isFinished ? 'flex-1' : ''}`}
                             >
-                              <FileText className="w-3.5 h-3.5 text-slate-500" />
-                              Lihat Nota
+                              <FileText className="w-4 h-4 text-slate-500" />
+                              Lihat nota
                             </button>
+                            {/* Hapus dibuat ikon saja agar tidak bersaing dengan aksi utama; label tetap ada untuk pembaca layar */}
                             {!isFinished && (
                               <button
                                 type="button"
                                 onClick={() => handleDeleteNota(po)}
-                                className="inline-flex items-center justify-center gap-1 px-2.5 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600"
+                                aria-label={`Hapus PO ${po.poNumber}`}
                                 title="Batalkan dan hapus PO ini"
+                                className={`${BTN_SECONDARY} border-transparent bg-transparent hover:bg-rose-50 text-rose-700 px-2.5 min-w-[44px] sm:min-w-[34px]`}
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                Hapus
+                                <Trash2 className="w-4 h-4" />
                               </button>
                             )}
                           </div>

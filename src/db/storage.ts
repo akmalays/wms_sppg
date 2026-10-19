@@ -1839,6 +1839,13 @@ export function mapSupabaseToEmployee(r: any): Employee {
   };
 }
 
+/** Kolom absensi yang dimuat saat sinkron; photo_url sengaja tidak ikut (bisa puluhan KB per baris). */
+export const ATTENDANCE_COLUMNS =
+  'id,date,employee_id,employee_name,department,position,shift,check_in_time,check_out_time,status,late_minutes,notes,recorded_by,verified,created_at';
+
+/** Foto absen dihapus otomatis setelah sekian hari; jam masuk/pulang dan status tetap disimpan. */
+export const ATTENDANCE_PHOTO_RETENTION_DAYS = 60;
+
 export function mapAttendanceToSupabase(a: EmployeeAttendance) {
   return {
     id: a.id,
@@ -1852,7 +1859,9 @@ export function mapAttendanceToSupabase(a: EmployeeAttendance) {
     check_out_time: a.checkOutTime || null,
     status: a.status,
     late_minutes: a.lateMinutes || 0,
-    photo_url: a.photoUrl || null,
+    // Foto tidak ikut dimuat saat sinkron (lihat ATTENDANCE_COLUMNS), jadi hanya dikirim bila memang ada di
+    // catatan ini. Tanpa ini, menyimpan ulang catatan (mis. absen pulang) akan menghapus foto di database.
+    ...(a.photoUrl !== undefined ? { photo_url: a.photoUrl || null } : {}),
     notes: a.notes || null,
     recorded_by: a.recordedBy,
     verified: !!a.verified,
@@ -2441,9 +2450,18 @@ class WarehouseDatabase {
       seed,
     });
 
+    // Absensi: tanpa kolom foto dan hanya 120 hari terakhir, karena dimuat ulang setiap ada yang absen
+    // (realtime). Foto diambil saat dibuka (getAttendancePhoto); data lama tetap tersimpan di database.
+    const attendanceSince = localDateIso(new Date(Date.now() - 120 * 86400000));
     await this.loadOrSeed<EmployeeAttendance>({
       table: 'attendance_logs',
-      fetch: () => supabase.from('attendance_logs').select('*').order('date', { ascending: false }).limit(5000),
+      fetch: () =>
+        supabase
+          .from('attendance_logs')
+          .select(ATTENDANCE_COLUMNS)
+          .gte('date', attendanceSince)
+          .order('date', { ascending: false })
+          .limit(6000),
       fromRow: mapSupabaseToAttendance,
       toRows: list => list.map(mapAttendanceToSupabase),
       getLocal: () => this.attendanceLogs,
@@ -2453,6 +2471,8 @@ class WarehouseDatabase {
       },
       seed,
     });
+
+    this.purgeOldAttendancePhotos();
 
     await this.loadOrSeed<SchoolBeneficiaryAllocation>({
       table: 'school_beneficiaries',
@@ -4707,6 +4727,44 @@ class WarehouseDatabase {
       results.push(res);
     }
     return results;
+  }
+
+  /** Foto absen diambil saat dibuka, karena kolom foto tidak ikut dimuat saat sinkron. */
+  public async getAttendancePhoto(id: string): Promise<string | undefined> {
+    const local = this.attendanceLogs.find(a => a.id === id)?.photoUrl;
+    if (local) return local;
+    if (!isSupabaseConfigured()) return undefined;
+    const { data, error } = await supabase.from('attendance_logs').select('photo_url').eq('id', id).maybeSingle();
+    if (error) throw new Error(error.message);
+    return (data as { photo_url?: string | null } | null)?.photo_url || undefined;
+  }
+
+  /**
+   * Menghapus foto absen yang lebih tua dari masa simpan, sekali sehari per perangkat.
+   * Jam masuk/pulang, status, dan catatan tidak disentuh.
+   */
+  public purgeOldAttendancePhotos(): void {
+    const today = localDateIso();
+    const KEY = 'sppg_attendance_photo_purge_date';
+    try {
+      if (localStorage.getItem(KEY) === today) return;
+      localStorage.setItem(KEY, today);
+    } catch {
+      /* localStorage tidak tersedia: tetap jalankan */
+    }
+    const cutoff = localDateIso(new Date(Date.now() - ATTENDANCE_PHOTO_RETENTION_DAYS * 86400000));
+    let changed = false;
+    this.attendanceLogs = this.attendanceLogs.map(a => {
+      if (a.date < cutoff && a.photoUrl) {
+        changed = true;
+        return { ...a, photoUrl: undefined };
+      }
+      return a;
+    });
+    if (changed) setStored(STORAGE_KEYS.ATTENDANCE, this.attendanceLogs);
+    this.pushCloud('attendance_logs (hapus foto lama)', () =>
+      supabase.from('attendance_logs').update({ photo_url: null }).lt('date', cutoff).not('photo_url', 'is', null)
+    );
   }
 
   public deleteAttendance(id: string, user: User): void {

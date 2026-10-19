@@ -30,7 +30,6 @@ import {
   Trash2,
   Filter,
   PackagePlus,
-  ArrowRight,
   Phone,
   MoreHorizontal,
   Save,
@@ -41,7 +40,7 @@ import {exportMultiSheetExcel, exportToExcel} from "../lib/excelExport";
 import {localDateIso} from "../utils/localDate";
 import {normalizeQtyForUnit} from "../utils/unitConversion";
 import {SPPG_ADDRESS} from "./common/KopText";
-import {FormDialog, FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY, FOCUS_RING} from "./common/FormDialog";
+import {FormDialog, DialogShell, FIELD_INPUT, FIELD_LABEL, TABLE_INPUT, BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST, FOCUS_RING} from "./common/FormDialog";
 import {ActionDropdown} from "./common/ActionDropdown";
 import {DateStepper} from "./common/DateStepper";
 import {SppgLogo} from "./SppgLogo";
@@ -3298,29 +3297,43 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
       {/* MODAL 2: INPUT & BUAT PO HARI INI                                         */}
       {/* ========================================================================= */}
       {isPoModalOpen && (
-        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-end sm:items-center justify-center sm:p-4">
-          <div className="bg-white rounded-t-xl sm:rounded-xl border border-slate-200 sm:max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="px-4 sm:px-5 py-3 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900">PO bahan</h2>
-                <p className="text-[11px] text-slate-600 mt-0.5">Pencatatan daftar kebutuhan bahan baku (H-1) untuk menu harian</p>
-              </div>
+        <DialogShell
+          size="xl"
+          title="PO bahan"
+          description="Daftar bahan yang dipesan ke supplier H-1 untuk menu terpilih."
+          onClose={() => setIsPoModalOpen(false)}
+          onSubmit={handleSavePoForm}
+          footer={
+            <>
+              {/* Batalkan PO dipisah ke kiri: aksi merusak, jauh dari tombol terbitkan */}
+              {selectedPoOrderId && (
+                <button
+                  type="button"
+                  onClick={() => handleDeletePoForOrder(selectedPoOrderId)}
+                  className={`${BTN_SECONDARY} border-transparent bg-transparent hover:bg-rose-50 text-rose-700 mr-auto`}
+                  title="Batalkan dan hapus PO resmi untuk menu ini">
+                  <Trash2 className="w-4 h-4" />
+                  Batalkan PO
+                </button>
+              )}
+              <button type="button" onClick={() => setIsPoModalOpen(false)} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
+                Batal
+              </button>
+              <button type="submit" className={BTN_SECONDARY} title="Simpan daftar bahan tanpa menerbitkan PO ke supplier">
+                Simpan draf
+              </button>
               <button
                 type="button"
-                onClick={() => setIsPoModalOpen(false)}
-                aria-label="Tutup"
-                className={`p-2 -m-1 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer ${FOCUS_RING}`}>
-                <X className="w-5 h-5" />
+                onClick={handleSaveAndGenerateOfficialPo}
+                className={BTN_PRIMARY}
+                title="Terbitkan PO resmi per supplier, muncul di Barang Masuk">
+                Terbitkan PO
               </button>
-            </div>
-
-            <form onSubmit={handleSavePoForm} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
-                {/* Pilihan Order Menu & Tanggal PO */}
-                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs shrink-0">
+            </>
+          }>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block font-medium text-slate-700 mb-1">Menu Tujuan untuk PO:</label>
+                    <label className={FIELD_LABEL}>Menu</label>
                     <SearchPicker
                       value={selectedPoOrderId}
                       options={orders.map((ord) => ({ value: ord.id, label: ord.menuTitle, hint: `${ord.date} · ${ord.targetPortions} porsi` }))}
@@ -3351,43 +3364,48 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
                   </div>
 
                   <div>
-                    <label className="block font-medium text-slate-700 mb-1">Tanggal PO (H-1):</label>
+                    <label htmlFor="po-date" className={FIELD_LABEL}>Tanggal PO</label>
                     <input
-                      type="text"
-                      placeholder="Contoh: 2026-09-19"
+                      id="po-date"
+                      type={/^\d{4}-\d{2}-\d{2}$/.test(poFormDate) || !poFormDate ? "date" : "text"}
                       value={poFormDate}
                       onChange={(e) => setPoFormDate(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-800 bg-white font-mono focus:outline-none focus:border-slate-400"
+                      className={FIELD_INPUT}
                     />
                   </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-slate-700 text-xs">Daftar Bahan PO ({poFormRows.length} item bahan):</span>
+
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-800">Bahan ({poFormRows.length})</h3>
+                    <p className="text-[11px] text-slate-600">Supplier terisi otomatis dari nama dan kategori bahan bila dikenali.</p>
+                  </div>
                   <button
                     type="button"
                     onClick={handleApplyPoTemplate}
-                    className="text-xs font-medium text-slate-600 hover:text-slate-900 underline underline-offset-2 cursor-pointer transition-colors">
-                    Gunakan Template Standar SPPG (Ayam, Beras, Tahu, Sayur, Buah)
+                    className={`${BTN_SECONDARY} self-start sm:self-auto`}
+                    title="Isi daftar dengan bahan standar SPPG: ayam, beras, tahu, sayur, buah">
+                    Pakai daftar bahan standar
                   </button>
                 </div>
 
-                <div className="border border-slate-200 rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
-                  <div className="overflow-y-auto flex-1">
-                    <table className="w-full text-left border-collapse">
-                      <thead className="bg-slate-50 text-slate-600 font-medium border-b border-slate-200 sticky top-0 z-10 text-xs">
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
                         <tr>
-                          <th className="py-2.5 px-3 w-10 text-center font-medium text-slate-500">No</th>
-                          <th className="py-2.5 px-3 w-36 font-medium text-slate-700">Kategori</th>
-                          <th className="py-2.5 px-3 font-medium text-slate-700">Nama Barang</th>
-                          <th className="py-2.5 px-3 w-48 font-medium text-slate-700">Supplier / Rekanan</th>
-                          <th className="py-2.5 px-3 w-32 font-medium text-slate-700">Qty PO</th>
-                          <th className="py-2.5 px-2 w-10 text-center"></th>
+                          <th className="py-2 px-3 w-9 font-semibold text-center">No</th>
+                          <th className="py-2 px-3 w-40 font-semibold">Kategori</th>
+                          <th className="py-2 px-3 font-semibold min-w-[180px]">Nama bahan</th>
+                          <th className="py-2 px-3 w-48 font-semibold">Supplier</th>
+                          <th className="py-2 px-3 w-32 font-semibold">Jumlah</th>
+                          <th className="py-2 px-2 w-12"><span className="sr-only">Hapus</span></th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 bg-white">
+                      <tbody className="divide-y divide-slate-100">
                         {poFormRows.map((row, rIdx) => (
-                          <tr key={rIdx} className="hover:bg-slate-50/70 transition-colors">
-                            <td className="py-2 px-3 text-center text-slate-500 font-mono text-xs">{rIdx + 1}</td>
+                          <tr key={rIdx}>
+                            <td className="py-2 px-3 text-center text-slate-600 font-mono">{rIdx + 1}</td>
                             <td className="py-2 px-3">
                               <Select className="w-full" size="sm"
                                 value={row.category}
@@ -3431,35 +3449,38 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
                                   }
                                   setPoFormRows(updated);
                                 }}
-                                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 font-medium"
+                                aria-label={`Nama bahan baris ${rIdx + 1}`}
+                                className={TABLE_INPUT}
                               />
                             </td>
                             <td className="py-2 px-3">
                               <input
                                 type="text"
                                 list="po-supplier-options"
-                                placeholder="Pilih / ketik supplier..."
+                                placeholder="Pilih atau ketik"
                                 value={row.supplier}
                                 onChange={(e) => {
                                   const updated = [...poFormRows];
                                   updated[rIdx].supplier = e.target.value;
                                   setPoFormRows(updated);
                                 }}
-                                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 font-medium bg-white"
+                                aria-label={`Supplier baris ${rIdx + 1}`}
+                                className={TABLE_INPUT}
                               />
                             </td>
                             <td className="py-2 px-3">
                               <input
                                 type="text"
                                 required
-                                placeholder="Misal: 260 kg / 7 sak"
+                                placeholder="Mis. 26 kg"
                                 value={row.qtyOrder}
                                 onChange={(e) => {
                                   const updated = [...poFormRows];
                                   updated[rIdx].qtyOrder = e.target.value;
                                   setPoFormRows(updated);
                                 }}
-                                className="w-full px-2.5 py-1.5 rounded-md border border-slate-200 text-xs text-slate-800 font-mono placeholder-slate-400 focus:outline-none focus:border-slate-400"
+                                aria-label={`Jumlah baris ${rIdx + 1}`}
+                                className={`${TABLE_INPUT} font-mono`}
                               />
                             </td>
                             <td className="py-2 px-2 text-center">
@@ -3470,9 +3491,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
                                   const updated = poFormRows.filter((_, idx) => idx !== rIdx);
                                   setPoFormRows(updated);
                                 }}
-                                className="text-slate-500 hover:text-rose-600 disabled:opacity-20 cursor-pointer p-1 rounded hover:bg-slate-100 transition-colors"
-                                title="Hapus baris">
-                                <Trash2 className="w-3.5 h-3.5" />
+                                aria-label={`Hapus baris ${rIdx + 1}`}
+                                title="Hapus baris"
+                                className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[30px] sm:min-h-[30px] rounded-md text-slate-500 hover:text-rose-700 hover:bg-rose-50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer ${FOCUS_RING}`}>
+                                <Trash2 className="w-4 h-4" />
                               </button>
                             </td>
                           </tr>
@@ -3488,7 +3510,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
                     </datalist>
                   </div>
 
-                  <div className="p-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+                  <div className="px-3 py-2 border-t border-slate-200">
                     <button
                       type="button"
                       onClick={() =>
@@ -3506,57 +3528,13 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
                           },
                         ])
                       }
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 cursor-pointer transition-colors">
-                      <Plus className="w-3.5 h-3.5 text-slate-600" />
-                      <span>Tambah Baris Bahan</span>
+                      className={BTN_SECONDARY}>
+                      <Plus className="w-4 h-4 text-slate-500" />
+                      Tambah bahan
                     </button>
-
-                    <span className="text-xs text-slate-500">Total {poFormRows.length} item bahan</span>
                   </div>
                 </div>
-              </div>
-
-              {/* Action Buttons Sticky Footer */}
-              <div className="px-4 sm:px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-2 shrink-0">
-                <div>
-                  {selectedPoOrderId && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeletePoForOrder(selectedPoOrderId)}
-                      className={`${BTN_SECONDARY} border-transparent bg-transparent hover:bg-rose-50 text-rose-800`}
-                      title="Batalkan & hapus PO resmi untuk menu ini">
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Batalkan PO
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsPoModalOpen(false)}
-                    className={`${BTN_SECONDARY} border-transparent bg-transparent hover:bg-slate-200/70`}>
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    className={BTN_SECONDARY}
-                    title="Simpan daftar bahan tanpa menerbitkan PO ke supplier">
-                    Simpan draf
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveAndGenerateOfficialPo}
-                    className={BTN_PRIMARY}
-                    title="Terbitkan PO resmi per supplier, muncul di Barang Masuk">
-                    <ArrowRight className="w-3.5 h-3.5" />
-                    Terbitkan PO
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
+        </DialogShell>
       )}
       {/* ========================================================================= */}
       {/* MODAL 3: INPUT & EDIT DATA PENERIMA MANFAAT                                */}

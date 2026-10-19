@@ -61,31 +61,31 @@ const SOPS: Record<SopPlace, SopDefinition> = {
     layoutTitle: 'Tata letak: simpan menurut bentuk barang',
     layout: [
       {
-        place: 'Palet Tengah — Sembako Berat',
+        place: 'Palet Tengah:Sembako Berat',
         rackId: 'PLT-KRG-T1',
         fallback: 'Beras sak, tepung sak, gula sak, minyak goreng',
         rules: 'Masih dalam sak/karung atau dus/jerigen besar. Susun bersilangan, maks. 8 tumpuk.',
       },
       {
-        place: 'Rak 1 — Garam, Rempah & Bumbu Dasar',
+        place: 'Rak 1:Garam, Rempah & Bumbu Dasar',
         rackId: 'RAK-KRG-A1',
         fallback: 'Garam, kemiri, cengkeh, terasi, petis',
         rules: 'Bentuk utuh/padat. Kemasan terbuka masuk toples tertutup berlabel.',
       },
       {
-        place: 'Rak 2 — Tepung, Gula & Bumbu Bubuk',
+        place: 'Rak 2:Tepung, Gula & Bumbu Bubuk',
         rackId: 'RAK-KRG-A2',
         fallback: 'Tepung kemasan kecil, gula, royco, lada bubuk',
         rules: 'Bentuk bubuk/butiran. Mudah menggumpal & mengundang semut, kemasan harus rapat.',
       },
       {
-        place: 'Rak 3 — Saus, Kecap & Mentega',
+        place: 'Rak 3:Saus, Kecap & Mentega',
         rackId: 'RAK-KRG-A3',
         fallback: 'Kecap, saus, cuka, minyak wijen, mayones, mentega',
         rules: 'Bentuk cair/kental. Botol berdiri, tutup rapat, botol besar di ambalan bawah.',
       },
       {
-        place: 'Rak 4 — Stok Cadangan Dus',
+        place: 'Rak 4:Stok Cadangan Dus',
         fallback: 'Dus tertutup cadangan untuk Rak 1–3',
         rules: 'Hanya dus yang belum dibuka. Tulis nama + tanggal datang di sisi dus.',
       },
@@ -142,7 +142,7 @@ const SOPS: Record<SopPlace, SopDefinition> = {
   CHILLER: {
     docNo: 'SOP/GDG/02',
     title: 'Penyimpanan Bahan di Chiller',
-    location: 'Gudang Basah — Chiller',
+    location: 'Gudang Basah:Chiller',
     standard: 'Suhu 1–5°C, dicek dan dicatat pagi & sore',
     purpose: 'Menjaga buah, sayur, telur, dan ayam yang dicairkan tetap segar dan aman, tanpa saling mencemari.',
     layoutTitle: 'Tata letak: dari atas ke bawah',
@@ -221,19 +221,19 @@ const SOPS: Record<SopPlace, SopDefinition> = {
     layoutTitle: 'Pembagian freezer',
     layout: [
       {
-        place: 'Freezer 1 (Gudang Basah) — Stok Ayam',
+        place: 'Freezer 1 (Gudang Basah):Stok Ayam',
         rackId: 'BIN-FRZ-F2',
         fallback: 'Ayam yang baru datang dari supplier',
         rules: 'Stok utama. Jarang dibuka; diambil untuk mengisi Freezer 2 sesuai menu.',
       },
       {
-        place: 'Freezer 2 (Dapur) — Ayam Siap Masak',
+        place: 'Freezer 2 (Dapur):Ayam Siap Masak',
         rackId: 'BIN-FRZ-D1',
         fallback: 'Ayam yang sudah dibagi per kebutuhan menu besok',
         rules: 'Per kantong sesuai menu (H-1), label menu + tanggal.',
       },
       {
-        place: 'Freezer 3 (Dapur) — Protein & Olahan Beku',
+        place: 'Freezer 3 (Dapur):Protein & Olahan Beku',
         rackId: 'BIN-FRZ-D2',
         fallback: 'Ikan, daging sapi, nugget, sosis, bakso',
         rules: 'Terpisah dari ayam, per jenis dalam kantong/wadah tertutup.',
@@ -288,23 +288,23 @@ const SOPS: Record<SopPlace, SopDefinition> = {
   LEFTOVER: {
     docNo: 'SOP/GDG/04',
     title: 'Penanganan Sisa Bahan Terbuka dari Dapur',
-    location: 'Gudang Basah — Palet Sisa Bahan',
+    location: 'Gudang Basah:Palet Sisa Bahan',
     standard: 'Suhu ruang, kering, semua sisa di dalam box tertutup di atas palet',
     purpose: 'Sisa bahan yang sudah dibuka tetap layak pakai, mudah ditemukan, dan dipakai lebih dulu sebelum membuka kemasan baru.',
     layoutTitle: 'Pembagian box di palet',
     layout: [
       {
-        place: 'Box 1 — Tepung & Gula',
+        place: 'Box 1:Tepung & Gula',
         fallback: 'Sisa tepung terigu/beras/kanji/panir, gula pasir, gula merah',
         rules: 'Kemasan dilipat dan dijepit/diikat rapat, atau dipindah ke wadah tertutup.',
       },
       {
-        place: 'Box 2 — Royco & Bumbu Bubuk',
+        place: 'Box 2:Royco & Bumbu Bubuk',
         fallback: 'Sisa royco/kaldu, lada bubuk, ketumbar bubuk, pala bubuk, baking soda',
         rules: 'Wajib kedap udara agar tidak menggumpal.',
       },
       {
-        place: 'Box 3 — Saus, Kecap & Minyak',
+        place: 'Box 3:Saus, Kecap & Minyak',
         fallback: 'Sisa kecap, saus, cuka, minyak wijen, minyak goreng',
         rules: 'Botol berdiri, tutup rapat, mulut botol dilap bersih.',
       },

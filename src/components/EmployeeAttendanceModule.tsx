@@ -6,7 +6,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import { localDateIso } from '../utils/localDate';
 import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
-import { warehouseDb, signerName } from '../db/storage';
+import { warehouseDb, signerName, ATTENDANCE_PHOTO_RETENTION_DAYS } from '../db/storage';
 import {
   Employee,
   EmployeeAttendance,
@@ -42,26 +42,23 @@ import {
   Layers,
   ArrowRight,
   FileText,
+  ScanLine,
+  QrCode,
 } from 'lucide-react';
 import { exportToExcel } from '../lib/excelExport';
 import { PhotoUploadCompressor } from './PhotoUploadCompressor';
 import { SppgLogo } from './SppgLogo';
 import { UserAccountsPanel, ROLE_INFO } from './UserManagementModule';
+import { AttendanceKiosk } from './AttendanceKiosk';
+import { EmployeeQrDialog } from './EmployeeQrDialog';
+import { AttendanceLocationDialog } from './AttendanceLocationDialog';
+import { AttendancePosterDialog, AttendancePosterSheet, useAttendanceQr } from './AttendancePoster';
+import { AttendanceGeofence, GEOFENCE_SETTING_KEY, isValidGeofence } from '../utils/attendanceAction';
+import { BTN_PRIMARY, BTN_SECONDARY, FIELD_INPUT } from './common/FormDialog';
+import { WORK_SECTIONS, FLEXIBLE_SCHEDULE, parseSchedule, formatSchedule } from '../utils/attendanceSchedule';
 
-const DEPARTMENTS: EmployeeDepartment[] = [
-  'Dapur & Masak',
-  'Gudang & Logistik',
-  'Distribusi & Transport',
-  'Sanitasi & Kebersihan',
-  'Manajemen & Administrasi',
-  'Gizi & Mutu',
-];
-
-const SHIFTS: EmployeeShift[] = [
-  'Pagi (05:00 - 13:00)',
-  'Siang (10:00 - 18:00)',
-  'Full Day (05:00 - 17:00)',
-];
+// Bagian kerja SPPG. Data lama dengan departemen lain tetap tampil apa adanya.
+const DEPARTMENTS: EmployeeDepartment[] = [...WORK_SECTIONS];
 
 const EMPLOYMENT_TYPES: EmploymentType[] = [
   'Tetap',
@@ -331,7 +328,8 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
         position: emp.position,
         shift: emp.shift,
         status: existing ? existing.status : 'HADIR',
-        checkInTime: existing ? existing.checkInTime : '05:00',
+        // Jam masuk tidak ditebak: kosong sampai diisi, atau jam asli dari Mode absen
+        checkInTime: existing ? existing.checkInTime : '',
         lateMinutes: existing ? (existing.lateMinutes || 0) : 0,
         notes: existing ? (existing.notes || '') : '',
       };
@@ -345,7 +343,6 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
       prev.map(row => ({
         ...row,
         status: 'HADIR',
-        checkInTime: '05:00',
         lateMinutes: 0,
       }))
     );
@@ -384,6 +381,25 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
   const [singleAttLateMinutes, setSingleAttLateMinutes] = useState<number>(0);
   const [singleAttNotes, setSingleAttNotes] = useState('');
   const [singleAttPhotos, setSingleAttPhotos] = useState<string[]>([]);
+  // Foto hanya dikirim ulang bila diubah di form; selain itu foto di database dibiarkan
+  const [singleAttPhotoTouched, setSingleAttPhotoTouched] = useState(false);
+
+  // Foto absen tidak ikut dimuat saat sinkron; diambil dari database saat dibuka
+  const [loadingPhotoId, setLoadingPhotoId] = useState<string | null>(null);
+  const photoCutoff = localDateIso(new Date(Date.now() - ATTENDANCE_PHOTO_RETENTION_DAYS * 86400000));
+  const attendanceMayHavePhoto = (a: EmployeeAttendance) => Boolean(a.photoUrl) || (a.date >= photoCutoff && Boolean(a.checkInTime));
+  const handleViewPhoto = async (a: EmployeeAttendance) => {
+    setLoadingPhotoId(a.id);
+    try {
+      const url = await warehouseDb.getAttendancePhoto(a.id);
+      if (url) setPhotoPreviewUrl(url);
+      else showToast(`Tidak ada foto absen untuk ${a.employeeName} di tanggal ini.`);
+    } catch {
+      showToast('Foto gagal dimuat. Periksa koneksi lalu coba lagi.');
+    } finally {
+      setLoadingPhotoId(null);
+    }
+  };
 
   const handleOpenSingleAtt = (emp?: Employee, existingAtt?: EmployeeAttendance) => {
     const targetEmp = emp || activeEmployees[0];
@@ -394,16 +410,23 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
 
     setSingleAttEmpId(targetEmp.id);
     setSingleAttDate(selectedDate);
+    setSingleAttPhotoTouched(false);
 
     if (existingAtt) {
-      setSingleAttCheckIn(existingAtt.checkInTime || '05:00');
+      setSingleAttCheckIn(existingAtt.checkInTime || '');
       setSingleAttCheckOut(existingAtt.checkOutTime || '');
       setSingleAttStatus(existingAtt.status);
       setSingleAttLateMinutes(existingAtt.lateMinutes || 0);
       setSingleAttNotes(existingAtt.notes || '');
       setSingleAttPhotos(existingAtt.photoUrl ? [existingAtt.photoUrl] : []);
+      if (!existingAtt.photoUrl && attendanceMayHavePhoto(existingAtt)) {
+        warehouseDb
+          .getAttendancePhoto(existingAtt.id)
+          .then(url => url && setSingleAttPhotos(prev => (prev.length ? prev : [url])))
+          .catch(() => undefined);
+      }
     } else {
-      setSingleAttCheckIn('05:00');
+      setSingleAttCheckIn('');
       setSingleAttCheckOut('');
       setSingleAttStatus('HADIR');
       setSingleAttLateMinutes(0);
@@ -431,7 +454,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
         checkOutTime: singleAttCheckOut,
         status: singleAttStatus,
         lateMinutes: singleAttStatus === 'TERLAMBAT' ? Number(singleAttLateMinutes || 0) : 0,
-        photoUrl: singleAttPhotos[0] || '',
+        photoUrl: singleAttPhotoTouched ? singleAttPhotos[0] || '' : undefined,
         notes: singleAttNotes,
         recordedBy: currentUser.name,
         verified: true,
@@ -444,6 +467,21 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
     showToast(`Presensi staf ${targetEmp.name} berhasil disimpan.`);
   };
 
+  // Absen mandiri dari HP: poster QR lobby dan lokasi absen (geofence).
+  // Mode pindai QR karyawan dan QR pribadi tetap ada sebagai cadangan.
+  const [isKioskOpen, setIsKioskOpen] = useState(false);
+  const [qrEmployee, setQrEmployee] = useState<Employee | null>(null);
+  const [isPosterOpen, setIsPosterOpen] = useState(false);
+  const [isLocationOpen, setIsLocationOpen] = useState(false);
+  const [geofenceVersion, setGeofenceVersion] = useState(0);
+  const posterQr = useAttendanceQr();
+  const geofence = useMemo(
+    () => warehouseDb.getAppSetting<AttendanceGeofence | null>(GEOFENCE_SETTING_KEY, null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [geofenceVersion, dataVersion]
+  );
+  const hasGeofence = isValidGeofence(geofence);
+
   // 3. Employee Master Modal (Add or Edit Employee)
   const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
@@ -452,10 +490,12 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
   const [empNip, setEmpNip] = useState('');
   const [empGender, setEmpGender] = useState<'L' | 'P'>('L');
   const [empPhone, setEmpPhone] = useState('');
-  const [empDept, setEmpDept] = useState<EmployeeDepartment>('Dapur & Masak');
+  const [empDept, setEmpDept] = useState<EmployeeDepartment>('Pengolahan');
   const [empPosition, setEmpPosition] = useState('');
   const [empEmploymentType, setEmpEmploymentType] = useState<EmploymentType>('Kontrak');
-  const [empShift, setEmpShift] = useState<EmployeeShift>('Pagi (05:00 - 13:00)');
+  // Jam kerja: "HH:MM - HH:MM" atau "Fleksibel" (lihat utils/attendanceSchedule)
+  const [empShift, setEmpShift] = useState<EmployeeShift>('05:00 - 13:00');
+  const empSchedule = parseSchedule(empShift);
   const [empJoinDate, setEmpJoinDate] = useState(todayStr);
   const [empStatus, setEmpStatus] = useState<'AKTIF' | 'CUTI' | 'NONAKTIF'>('AKTIF');
   const [empAddress, setEmpAddress] = useState('');
@@ -470,10 +510,10 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
     setEmpNip(nextNip);
     setEmpGender('L');
     setEmpPhone('');
-    setEmpDept('Dapur & Masak');
+    setEmpDept('Pengolahan');
     setEmpPosition('');
     setEmpEmploymentType('Kontrak');
-    setEmpShift('Pagi (05:00 - 13:00)');
+    setEmpShift('05:00 - 13:00');
     setEmpJoinDate(todayStr);
     setEmpStatus('AKTIF');
     setEmpAddress('Kec. Tumpang, Kab. Malang');
@@ -492,7 +532,8 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
     setEmpDept(emp.department);
     setEmpPosition(emp.position);
     setEmpEmploymentType(emp.employmentType);
-    setEmpShift(emp.shift);
+    // Format lama ("Pagi (05:00 - 13:00)") dibaca lalu disimpan ulang dalam format baru
+    setEmpShift(formatSchedule(parseSchedule(emp.shift)));
     setEmpJoinDate(emp.joinDate);
     setEmpStatus(emp.status);
     setEmpAddress(emp.address);
@@ -1527,18 +1568,20 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
       <style>{`
         @media print {
           @page {
-            size: ${attPrintMode === 'RANGE' ? 'A4 landscape' : 'A4 portrait'};
-            margin: ${attPrintMode === 'RANGE' ? '5mm 6mm' : '8mm 10mm'};
+            size: ${!isPosterOpen && attPrintMode === 'RANGE' ? 'A4 landscape' : 'A4 portrait'};
+            margin: ${!isPosterOpen && attPrintMode === 'RANGE' ? '5mm 6mm' : '8mm 10mm'};
           }
           body * {
             visibility: hidden;
           }
           #print-attendance-sheet, #print-attendance-sheet *,
-          #print-employees-sheet, #print-employees-sheet * {
+          #print-employees-sheet, #print-employees-sheet *,
+          #print-attendance-poster, #print-attendance-poster * {
             visibility: visible;
           }
           #print-attendance-sheet,
-          #print-employees-sheet {
+          #print-employees-sheet,
+          #print-attendance-poster {
             position: absolute;
             left: 0;
             top: 0;
@@ -1604,6 +1647,17 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
       ========================================================================= */}
       {activeTab === 'ATTENDANCE' && (
         <div className="space-y-4">
+          {/* Absen dari HP tidak bisa dipakai sebelum lokasi SPPG diatur */}
+          {!hasGeofence && (
+            <div role="note" className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-900">
+              <span>
+                <b>Lokasi absen belum diatur.</b> Karyawan belum bisa absen dari HP. Atur titik SPPG sambil berdiri di lobby, lalu cetak QR lobby.
+              </span>
+              <button type="button" onClick={() => setIsLocationOpen(true)} className={`${BTN_PRIMARY} shrink-0`}>
+                Atur lokasi absen
+              </button>
+            </div>
+          )}
           {/* KPI Kehadiran Harian (Sederhana & Rapi 4 Metrik) */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4 grid grid-cols-2 sm:grid-cols-4 gap-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
             <div className="pt-2 sm:pt-0 sm:px-3 first:px-0">
@@ -1711,15 +1765,25 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                 />
               </div>
 
-              {/* Tombol Utama: Presensi Cepat */}
+              {/* Isi manual untuk pengecualian (izin, sakit, lupa bawa HP); absen harian lewat Mode absen */}
               <button
                 type="button"
                 onClick={handleOpenQuickAttendance}
-                className="h-8 inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg bg-emerald-800 hover:bg-emerald-900 text-white shadow-2xs transition-colors cursor-pointer shrink-0"
-                title="Presensi serentak seluruh staf hari ini (1-Klik)"
+                className={`${BTN_SECONDARY} shrink-0`}
+                title="Isi status beberapa karyawan sekaligus: izin, sakit, alpa, atau yang lupa membawa QR"
               >
-                <UserCheck className="w-3.5 h-3.5" />
-                <span>Presensi Cepat</span>
+                <UserCheck className="w-4 h-4 text-slate-500" />
+                Isi manual
+              </button>
+
+              {/* Absen harian dari HP karyawan lewat QR lobby; di sini hanya pengaturannya */}
+              <button type="button" onClick={() => setIsPosterOpen(true)} className={`${BTN_SECONDARY} shrink-0`}>
+                <QrCode className="w-4 h-4 text-slate-500" />
+                QR lobby
+              </button>
+              <button type="button" onClick={() => setIsLocationOpen(true)} className={`${BTN_SECONDARY} shrink-0`}>
+                <MapPin className="w-4 h-4 text-slate-500" />
+                Lokasi absen
               </button>
 
               {/* Menu Opsi & Laporan (Cetak, Excel, Manual) */}
@@ -1740,6 +1804,13 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                   },
                   { id: 'att-excel', label: 'Ekspor ke Excel (.xlsx)', icon: FileSpreadsheet, onClick: handleExportAttendanceExcel },
                   { id: 'att-manual', label: 'Catat Absensi Manual', icon: Plus, onClick: handleOpenSingleAtt, dividerAbove: true },
+                  {
+                    id: 'att-kiosk',
+                    label: 'Mode pindai QR karyawan',
+                    description: 'Cadangan: perangkat di pintu memindai QR pribadi karyawan',
+                    icon: ScanLine,
+                    onClick: () => setIsKioskOpen(true),
+                  },
                   { id: 'att-add-emp', label: 'Tambah Karyawan Baru', icon: Users, onClick: handleOpenAddEmployee },
                 ]}
               />
@@ -1840,17 +1911,18 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                           )}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          {row.attendance?.photoUrl ? (
+                          {row.attendance && attendanceMayHavePhoto(row.attendance) ? (
                             <button
                               type="button"
-                              onClick={() => setPhotoPreviewUrl(row.attendance!.photoUrl!)}
-                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 px-2 py-1 rounded border border-emerald-200 transition-colors cursor-pointer"
+                              onClick={() => handleViewPhoto(row.attendance!)}
+                              disabled={loadingPhotoId === row.attendance.id}
+                              className="inline-flex items-center gap-1 min-h-[44px] sm:min-h-[28px] text-[11px] font-medium text-slate-700 px-2 rounded-md border border-slate-300 hover:bg-slate-50 cursor-pointer disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                             >
-                              <Camera className="w-3 h-3 text-emerald-600" />
-                              Lihat Foto
+                              <Camera className="w-3.5 h-3.5 text-slate-500" />
+                              {loadingPhotoId === row.attendance.id ? 'Memuat…' : 'Lihat foto'}
                             </button>
                           ) : (
-                            <span className="text-[11px] text-slate-300">-</span>
+                            <span className="text-[11px] text-slate-500">-</span>
                           )}
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -2080,6 +2152,16 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                         </td>
                         <td className="py-3 px-4 text-center">
                           <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setQrEmployee(emp)}
+                              aria-label={`QR absen ${emp.name}`}
+                              className="inline-flex items-center gap-1 px-2 min-h-[44px] sm:min-h-[28px] text-[11px] font-medium text-slate-700 border border-slate-300 hover:bg-slate-50 rounded-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                              title="Lihat, unduh, atau bagikan QR absen"
+                            >
+                              <QrCode className="w-3.5 h-3.5 text-slate-500" />
+                              QR absen
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleOpenEditEmployee(emp)}
@@ -2422,7 +2504,10 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                   </label>
                   <PhotoUploadCompressor
                     photos={singleAttPhotos}
-                    onChange={setSingleAttPhotos}
+                    onChange={photos => {
+                      setSingleAttPhotos(photos);
+                      setSingleAttPhotoTouched(true);
+                    }}
                     maxPhotos={1}
                     folder="profile"
                     label="Unggah Foto Kehadiran / Surat Sakit"
@@ -2541,7 +2626,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Departemen / Divisi *
+                      Bagian *
                     </label>
                     <Select className="w-full"
                       value={empDept}
@@ -2569,8 +2654,55 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                   </div>
                 </div>
 
-                {/* Hubungan Kerja, Shift, Status */}
-                <div className="grid grid-cols-3 gap-3">
+                {/* Jam kerja: jam tetap dipakai menghitung terlambat; fleksibel hanya mencatat jam masuk & pulang */}
+                <div>
+                  <span className="block text-xs font-semibold text-slate-700 mb-1">Jam kerja</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Select
+                      className="w-36"
+                      aria-label="Jenis jam kerja"
+                      value={empSchedule.flexible ? 'FLEX' : 'FIXED'}
+                      onChange={e =>
+                        setEmpShift(
+                          e.target.value === 'FLEX'
+                            ? FLEXIBLE_SCHEDULE
+                            : formatSchedule({ flexible: false, start: '05:00', end: '13:00', overnight: false })
+                        )
+                      }>
+                      <option value="FIXED">Jam tetap</option>
+                      <option value="FLEX">Fleksibel</option>
+                    </Select>
+                    {!empSchedule.flexible && (
+                      <>
+                        <input
+                          type="time"
+                          aria-label="Jam mulai"
+                          value={empSchedule.start || ''}
+                          onChange={e => setEmpShift(formatSchedule({ ...empSchedule, start: e.target.value }))}
+                          className={`${FIELD_INPUT} w-32`}
+                        />
+                        <span className="text-xs text-slate-600">sampai</span>
+                        <input
+                          type="time"
+                          aria-label="Jam selesai"
+                          value={empSchedule.end || ''}
+                          onChange={e => setEmpShift(formatSchedule({ ...empSchedule, end: e.target.value }))}
+                          className={`${FIELD_INPUT} w-32`}
+                        />
+                      </>
+                    )}
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-600">
+                    {empSchedule.flexible
+                      ? 'Tidak dihitung terlambat. Jam masuk, pulang, dan lama kerja tetap tercatat.'
+                      : empSchedule.overnight
+                        ? 'Shift lewat tengah malam: absen pulang dicatat ke hari masuk.'
+                        : 'Terlambat dihitung bila masuk lebih dari 10 menit setelah jam mulai.'}
+                  </p>
+                </div>
+
+                {/* Hubungan Kerja & Status */}
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Status Kerja
@@ -2581,21 +2713,6 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                       {EMPLOYMENT_TYPES.map(t => (
                         <option key={t} value={t}>
                           {t}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Shift Kerja
-                    </label>
-                    <Select className="w-full"
-                      value={empShift}
-                      onChange={e => setEmpShift(e.target.value as EmployeeShift)}>
-                      {SHIFTS.map(s => (
-                        <option key={s} value={s}>
-                          {s}
                         </option>
                       ))}
                     </Select>
@@ -2887,6 +3004,18 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                     >
                       30 Hari
                     </button>
+                    {/* Rekap honor dicetak setelah bulan berakhir */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        setAttPrintStartDate(localDateIso(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
+                        setAttPrintEndDate(localDateIso(new Date(now.getFullYear(), now.getMonth(), 0)));
+                      }}
+                      className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                    >
+                      Bulan Lalu
+                    </button>
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded text-[11px] font-semibold">
                       Otomatis Landscape A4 ({printRangeDaysCount} hari muat 100%)
                     </span>
@@ -3099,10 +3228,37 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
           CONTAINER CETAK TERSEMBUNYI (DITAMPILKAN KETIKA WINDOW.PRINT() DIPANGGIL)
       ========================================================================= */}
       <div className="hidden print:block">
-        {isPrintEmployeesOpen || (!isPrintAttendanceOpen && activeTab === 'EMPLOYEES')
-          ? renderPrintableEmployeesSheet()
-          : renderPrintableAttendanceSheet()}
+        {isPosterOpen ? (
+          <div id="print-attendance-poster">
+            <AttendancePosterSheet qrDataUrl={posterQr} />
+          </div>
+        ) : isPrintEmployeesOpen || (!isPrintAttendanceOpen && activeTab === 'EMPLOYEES') ? (
+          renderPrintableEmployeesSheet()
+        ) : (
+          renderPrintableAttendanceSheet()
+        )}
       </div>
+
+      {isKioskOpen && (
+        <AttendanceKiosk
+          onClose={() => {
+            setIsKioskOpen(false);
+            refreshData();
+          }}
+        />
+      )}
+      {qrEmployee && <EmployeeQrDialog employee={qrEmployee} onClose={() => setQrEmployee(null)} />}
+      {isLocationOpen && (
+        <AttendanceLocationDialog
+          onClose={() => setIsLocationOpen(false)}
+          onSaved={() => {
+            setIsLocationOpen(false);
+            setGeofenceVersion(v => v + 1);
+            showToast('Lokasi absen tersimpan. Karyawan sudah bisa absen dari HP di area SPPG.');
+          }}
+        />
+      )}
+      {isPosterOpen && <AttendancePosterDialog onClose={() => setIsPosterOpen(false)} onPrint={() => window.print()} />}
     </div>
   );
 };

@@ -7,17 +7,9 @@ import {
 } from '../types/warehouse';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
-import {
-  X,
-  Calendar,
-  Clock,
-  Truck,
-  Building2,
-  CheckCircle2,
-  RotateCcw,
-  PackageCheck,
-} from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { DialogShell, FIELD_INPUT, FIELD_LABEL, TABLE_INPUT, BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './common/FormDialog';
 import { localDateIso } from '../utils/localDate';
 import { convertQty, isCountableUnit, normalizeQtyForUnit, unitKey } from '../utils/unitConversion';
 
@@ -27,6 +19,8 @@ interface PoReceivingWeighingModalProps {
   po: PurchaseOrderNota | null;
   onSuccess: (updatedPo: PurchaseOrderNota) => void;
 }
+
+const MENU_NOTE_PREFIX = 'PO dibuat otomatis dari Perencanaan Menu:';
 
 export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> = ({
   isOpen,
@@ -58,7 +52,8 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
       const now = new Date();
       const currentHours = String(now.getHours()).padStart(2, '0');
       const currentMinutes = String(now.getMinutes()).padStart(2, '0');
-      setArrivalTime(`${currentHours}.${currentMinutes}`);
+      // Disimpan "HH:MM" untuk input jam; dikirim sebagai "HH.MM" seperti format jam di bagian lain aplikasi
+      setArrivalTime(`${currentHours}:${currentMinutes}`);
       setReceiveDate(localDateIso(now));
       // Nomor surat jalan, hasil timbang, dan kondisi diisi petugas dari barang yang benar-benar datang
       setDeliveryNoteNo('');
@@ -89,15 +84,6 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
       setQtyDrafts({});
     }
   }, [po, isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isSubmitting) onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, isSubmitting, onClose]);
 
   // Satuan stok tiap bahan di Master Barang, untuk konversi (mis. Gram -> Kg) saat stok bertambah
   const stockUnitByIndex = useMemo(() => {
@@ -243,7 +229,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
         supplierId: po.supplierId,
         supplierName: po.supplierName,
         deliveryNoteNo: deliveryNoteNo.trim() || undefined,
-        arrivalTime: arrivalTime.trim() || undefined,
+        arrivalTime: arrivalTime.trim().replace(':', '.') || undefined,
         date: receiveDate,
         notes: generalNotes.trim() || undefined,
         autoUpdateStock,
@@ -284,377 +270,256 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
     }
   };
 
+  const menuName = po.notes?.startsWith(MENU_NOTE_PREFIX) ? po.notes.replace(MENU_NOTE_PREFIX, '').trim() : '';
+  const rupiah = (n: number) => `Rp ${n.toLocaleString('id-ID')}`;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
-      <div className="bg-white rounded-xl border border-slate-200 shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden my-auto">
-        {/* MODAL HEADER */}
-        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/90 flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h2 className="text-base font-bold text-slate-900">
-                Penerimaan Bahan PO
-              </h2>
-              <span className="px-2 py-0.5 rounded-md text-xs font-mono font-medium text-slate-600 bg-white border border-slate-200">
-                {po.poNumber}
-              </span>
-              <span
-                className={`px-2 py-0.5 rounded-md text-[11px] font-medium border ${
-                  po.status === 'SELESAI'
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80'
-                    : 'bg-amber-50 text-amber-800 border-amber-200/80'
-                }`}
-              >
-                {po.status === 'SELESAI' ? 'Sudah Diterima' : 'Menunggu Kedatangan'}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1 font-medium text-slate-700">
-                <Building2 className="w-3.5 h-3.5 text-slate-500" />
-                {po.supplierName}
-              </span>
-              {po.notes?.startsWith('PO dibuat otomatis dari Perencanaan Menu:') && (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span>Menu: {po.notes.replace('PO dibuat otomatis dari Perencanaan Menu:', '').trim()}</span>
-                </>
-              )}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 text-slate-500 hover:text-slate-600 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
-            title="Tutup"
+    <DialogShell
+      size="2xl"
+      title="Terima bahan PO"
+      badges={
+        <>
+          <span className="px-1.5 py-0.5 rounded-md border border-slate-200 bg-slate-50 font-mono text-[11px] text-slate-700">
+            {po.poNumber}
+          </span>
+          <span
+            className={`px-1.5 py-0.5 rounded-md text-[11px] font-medium ${
+              isAlreadyReceived ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'
+            }`}
           >
-            <X className="w-5 h-5" />
+            {isAlreadyReceived ? 'Sudah diterima' : 'Menunggu kedatangan'}
+          </span>
+        </>
+      }
+      description={
+        <>
+          {po.supplierName}
+          {menuName && <> · Menu: {menuName}</>}
+        </>
+      }
+      // Dialog tidak ditutup saat sedang menyimpan
+      onClose={() => !isSubmitting && onClose()}
+      onSubmit={handleSubmit}
+      footer={
+        <>
+          {/* Ringkasan di kiri footer agar terlihat saat tabel digulir; aksi simpan tetap satu-satunya fokus */}
+          <div className="mr-auto text-xs text-slate-700">
+            <span className="font-mono font-semibold text-slate-900 tabular-nums">{rupiah(calculations.totalActualCost)}</span>
+            {calculations.totalTargetCost > 0 && (
+              <span className="text-slate-600"> dari {rupiah(calculations.totalTargetCost)}</span>
+            )}
+            <span className="text-slate-600"> · {calculations.weighedCount} dari {items.length} bahan ditimbang</span>
+          </div>
+          <button type="button" onClick={onClose} disabled={isSubmitting} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
+            Batal
           </button>
-        </div>
+          <button type="submit" disabled={isSubmitting || isAlreadyReceived} className={BTN_PRIMARY}>
+            {isSubmitting ? 'Menyimpan…' : 'Simpan penerimaan'}
+          </button>
+        </>
+      }
+    >
+      {/* Enter di kolom isian tidak langsung menyimpan seluruh penerimaan */}
+      <div
+        className="space-y-5"
+        onKeyDown={e => {
+          if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault();
+        }}
+      >
+        {isAlreadyReceived && (
+          <p className="px-3 py-2 rounded-lg bg-sky-50 border border-sky-200 text-sky-800">
+            PO ini sudah diterima dan stoknya sudah masuk. Data hanya bisa dilihat.
+          </p>
+        )}
 
-        {/* MODAL BODY */}
-        <form
-          onSubmit={handleSubmit}
-          onKeyDown={e => {
-            // Enter di kolom timbang jangan langsung menyimpan seluruh penerimaan
-            if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault();
-          }}
-          className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6"
-        >
-          {isAlreadyReceived && (
-            <div className="p-3 rounded-lg bg-sky-50 border border-sky-200 text-xs text-sky-800">
-              PO ini sudah diterima dan stoknya sudah masuk. Halaman ini hanya untuk dilihat, penerimaan tidak bisa disimpan lagi.
-            </div>
-          )}
-          <fieldset disabled={isAlreadyReceived || isSubmitting} className="space-y-6 min-w-0">
-          {/* SECTION 1: METADATA PENGIRIMAN & FISIK */}
-          <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
-            <h3 className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
-              <Truck className="w-3.5 h-3.5 text-slate-500" />
-              Informasi Kedatangan & Surat Jalan
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+        <fieldset disabled={isAlreadyReceived || isSubmitting} className="space-y-5 min-w-0">
+          {/* Kedatangan */}
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-800">Kedatangan</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Tanggal Tiba</label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    value={receiveDate}
-                    onChange={e => setReceiveDate(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                    required
-                  />
-                  <Calendar className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
-                </div>
+                <label htmlFor="rcv-date" className={FIELD_LABEL}>Tanggal tiba</label>
+                <input id="rcv-date" type="date" required value={receiveDate} onChange={e => setReceiveDate(e.target.value)} className={FIELD_INPUT} />
               </div>
-
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Jam Tiba Fisik</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Contoh: 13.30"
-                    value={arrivalTime}
-                    onChange={e => setArrivalTime(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                  <Clock className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
-                </div>
+                <label htmlFor="rcv-time" className={FIELD_LABEL}>Jam tiba</label>
+                <input id="rcv-time" type="time" value={arrivalTime} onChange={e => setArrivalTime(e.target.value)} className={FIELD_INPUT} />
               </div>
-
               <div>
-                <label className="block text-slate-600 font-medium mb-1">No. Surat Jalan / Pengantar</label>
+                <label htmlFor="rcv-sj" className={FIELD_LABEL}>No. surat jalan supplier</label>
                 <input
+                  id="rcv-sj"
                   type="text"
-                  placeholder="Contoh: SJ-2026/09/88"
+                  placeholder="Kosongkan bila tidak ada"
                   value={deliveryNoteNo}
                   onChange={e => setDeliveryNoteNo(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  className={FIELD_INPUT}
                 />
               </div>
-
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Petugas Penerima (Gudang)</label>
-                <div className="px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-700 font-semibold truncate">
-                  {currentUser.name}
-                </div>
+                <span className={FIELD_LABEL}>Diterima oleh</span>
+                <p className="min-h-[44px] sm:min-h-[34px] flex items-center text-xs font-semibold text-slate-900">{currentUser.name}</p>
               </div>
-
-              <div className="sm:col-span-2 md:col-span-4">
-                <label className="block text-slate-600 font-medium mb-1">Catatan Tambahan Pengiriman</label>
+              <div className="sm:col-span-2 lg:col-span-4">
+                <label htmlFor="rcv-notes" className={FIELD_LABEL}>Catatan pengiriman</label>
                 <input
+                  id="rcv-notes"
                   type="text"
-                  placeholder="Contoh: Sayur diterima dalam coolbox bersih, daging ayam dingin 4°C..."
+                  placeholder="Mis. ayam datang dingin 4°C, sayur dalam keranjang bersih"
                   value={generalNotes}
                   onChange={e => setGeneralNotes(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  className={FIELD_INPUT}
                 />
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* SECTION 2: TABLE OF WEIGHED ITEMS */}
-          <div className="space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          {/* Hasil timbang */}
+          <section className="space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
               <div>
-                <h3 className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
-                  <PackageCheck className="w-3.5 h-3.5 text-slate-500" />
-                  Daftar Bahan & Hasil Pemeriksaan Fisik ({items.length} Item)
-                </h3>
-                <p className="text-[11px] text-slate-500">
-                  Isi jumlah sesuai hasil timbangan. Bahan yang tidak datang biarkan kosong.
-                </p>
+                <h3 className="text-sm font-semibold text-slate-800">Hasil timbang ({items.length} bahan)</h3>
+                <p className="text-[11px] text-slate-600">Isi jumlah sesuai timbangan. Bahan yang tidak datang biarkan kosong.</p>
               </div>
-
-              <button
-                type="button"
-                onClick={handleCopyTargetToActual}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors cursor-pointer shrink-0 shadow-2xs self-start sm:self-auto"
-              >
-                <RotateCcw className="w-3 h-3 text-slate-500" />
-                <span>Samakan dengan PO</span>
+              <button type="button" onClick={handleCopyTargetToActual} className={`${BTN_SECONDARY} self-start sm:self-auto`}>
+                <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                Samakan dengan PO
               </button>
             </div>
 
-            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-100/90 text-slate-700 font-semibold border-b border-slate-200">
-                    <tr>
-                      <th className="py-2.5 px-3 w-10 text-center">#</th>
-                      <th className="py-2.5 px-3 min-w-[180px]">Nama Bahan</th>
-                      <th className="py-2.5 px-3 w-28 text-right">Target PO</th>
-                      <th className="py-2.5 px-3 w-36 text-right">
-                        Kuantitas Diterima <span className="text-rose-500">*</span>
-                      </th>
-                      <th className="py-2.5 px-3 w-24 text-center">Selisih</th>
-                      <th className="py-2.5 px-3 w-32 text-right">Harga Satuan</th>
-                      <th className="py-2.5 px-3 w-32 text-right">Subtotal</th>
-                      <th className="py-2.5 px-3 min-w-[180px]">Kondisi Fisik / Catatan</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {items.map((it, idx) => {
-                      const diff = Math.round((it.actualQty - it.targetQty) * 100) / 100;
-                      const stockUnit = stockUnitByIndex[idx];
-                      const needsConversion = !!stockUnit && unitKey(stockUnit) !== unitKey(it.unit);
-                      const convertedQty = needsConversion ? convertQty(it.actualQty, it.unit, stockUnit!) : null;
-                      return (
-                        <tr key={it.poiId || idx} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-2 px-3 font-mono text-slate-500 text-center">{idx + 1}</td>
-                          <td className="py-2 px-3">
-                            <div className="font-semibold text-slate-900">{it.name}</div>
-                            <div className="text-[10px] text-slate-500">{it.category}</div>
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono font-medium text-slate-600">
-                            {it.targetQty} <span className="text-slate-500">{it.unit}</span>
-                          </td>
-                          <td className="py-2 px-3">
-                            <div className="flex items-center gap-1 justify-end">
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                value={qtyDrafts[idx] ?? (it.actualQty ? String(it.actualQty) : '')}
-                                onChange={e => handleQtyChange(idx, e.target.value)}
-                                onBlur={() => handleQtyBlur(idx)}
-                                placeholder="0"
-                                aria-label={`Jumlah diterima ${it.name}`}
-                                className="w-20 px-2 py-1 text-right font-mono font-semibold text-slate-900 bg-white border border-slate-300 rounded focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600 focus:outline-none"
-                              />
-                              <span className="text-slate-500 font-medium text-xs min-w-[2rem] whitespace-nowrap">{it.unit}</span>
-                            </div>
-                            {needsConversion && autoUpdateStock && (
-                              convertedQty === null ? (
-                                <div className="mt-1 text-[10px] text-amber-700 text-right">
-                                  Stok dalam {stockUnit}, tidak bisa dikonversi
-                                </div>
-                              ) : it.actualQty > 0 ? (
-                                <div className="mt-1 text-[10px] text-slate-500 text-right font-mono">
-                                  = {convertedQty.toLocaleString('id-ID')} {stockUnit} di stok
-                                </div>
-                              ) : null
-                            )}
-                          </td>
-                          <td className="py-2 px-3 text-center">
-                            {it.actualQty <= 0 ? (
-                              <span className="text-[11px] text-slate-500">Belum ditimbang</span>
-                            ) : diff === 0 ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                                Sesuai
-                              </span>
-                            ) : diff > 0 ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-sky-50 text-sky-700 border border-sky-200">
-                                +{diff} {it.unit}
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                                {diff} {it.unit}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2 px-3">
-                            <div className="relative inline-flex items-center justify-end">
-                              <span className="absolute left-2 text-[10px] text-slate-500 font-medium select-none pointer-events-none">Rp</span>
-                              <input
-                                type="number"
-                                min="0"
-                                step="100"
-                                value={it.unitPrice || ''}
-                                onChange={e => handlePriceChange(idx, parseFloat(e.target.value) || 0)}
-                                aria-label={`Harga satuan ${it.name}`}
-                                className={`w-28 pl-7 pr-2 py-1 text-right font-mono text-slate-800 bg-white border rounded focus:border-slate-500 focus:outline-none ${
-                                  it.unitPrice <= 0 ? 'border-amber-400' : 'border-slate-300'
-                                }`}
-                              />
-                            </div>
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono font-semibold text-slate-900 tabular-nums">
-                            Rp {(it.subtotal || 0).toLocaleString('id-ID')}
-                          </td>
-                          <td className="py-2 px-3">
+            <div className="border border-slate-200 rounded-xl overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
+                  <tr>
+                    <th className="py-2 px-3 font-semibold min-w-[180px]">Bahan</th>
+                    <th className="py-2 px-3 font-semibold text-right w-24">Dipesan</th>
+                    <th className="py-2 px-3 font-semibold w-36">Diterima</th>
+                    <th className="py-2 px-3 font-semibold w-24">Selisih</th>
+                    <th className="py-2 px-3 font-semibold w-32">Harga satuan</th>
+                    <th className="py-2 px-3 font-semibold text-right w-28">Subtotal</th>
+                    <th className="py-2 px-3 font-semibold min-w-[170px]">Kondisi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {items.map((it, idx) => {
+                    const diff = Math.round((it.actualQty - it.targetQty) * 100) / 100;
+                    const stockUnit = stockUnitByIndex[idx];
+                    const needsConversion = !!stockUnit && unitKey(stockUnit) !== unitKey(it.unit);
+                    const convertedQty = needsConversion ? convertQty(it.actualQty, it.unit, stockUnit!) : null;
+                    return (
+                      <tr key={it.poiId || idx} className="align-top">
+                        <td className="py-2 px-3">
+                          <div className="font-semibold text-slate-900">{it.name}</div>
+                          <div className="text-[11px] text-slate-600">{it.category}</div>
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-slate-700 whitespace-nowrap pt-3">
+                          {it.targetQty.toLocaleString('id-ID')} {it.unit}
+                        </td>
+                        <td className="py-2 px-3">
+                          <div className="flex items-center gap-1.5">
                             <input
                               type="text"
-                              placeholder="Contoh: segar, 2 ikat layu dikembalikan"
-                              value={it.conditionNote || ''}
-                              onChange={e => handleConditionChange(idx, e.target.value)}
-                              aria-label={`Kondisi ${it.name}`}
-                              className="w-full px-2.5 py-1 text-xs text-slate-700 bg-white border border-slate-200 rounded focus:border-slate-400 focus:outline-none"
+                              inputMode="decimal"
+                              value={qtyDrafts[idx] ?? (it.actualQty ? String(it.actualQty) : '')}
+                              onChange={e => handleQtyChange(idx, e.target.value)}
+                              onBlur={() => handleQtyBlur(idx)}
+                              placeholder="0"
+                              aria-label={`Jumlah diterima ${it.name}`}
+                              className={`${TABLE_INPUT} w-20 text-right font-mono`}
                             />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                            <span className="text-slate-600 whitespace-nowrap">{it.unit}</span>
+                          </div>
+                          {needsConversion && autoUpdateStock && (
+                            convertedQty === null ? (
+                              <div className="mt-1 text-[11px] text-amber-800">Stok dalam {stockUnit}, tidak bisa dikonversi</div>
+                            ) : it.actualQty > 0 ? (
+                              <div className="mt-1 text-[11px] text-slate-600 font-mono">= {convertedQty.toLocaleString('id-ID')} {stockUnit} di stok</div>
+                            ) : null
+                          )}
+                        </td>
+                        <td className="py-2 px-3 pt-3 whitespace-nowrap">
+                          {it.actualQty <= 0 ? (
+                            <span className="text-slate-500">-</span>
+                          ) : diff === 0 ? (
+                            <span className="text-slate-700">Sesuai</span>
+                          ) : (
+                            <span className={`font-mono font-semibold ${diff > 0 ? 'text-sky-700' : 'text-amber-800'}`}>
+                              {diff > 0 ? '+' : ''}
+                              {diff.toLocaleString('id-ID')} {it.unit}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3">
+                          <div className="relative">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-slate-500 pointer-events-none">Rp</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="100"
+                              value={it.unitPrice || ''}
+                              onChange={e => handlePriceChange(idx, parseFloat(e.target.value) || 0)}
+                              aria-label={`Harga satuan ${it.name}`}
+                              aria-invalid={it.unitPrice <= 0 || undefined}
+                              className={`${TABLE_INPUT} pl-7 text-right font-mono ${it.unitPrice <= 0 ? 'border-amber-400' : ''}`}
+                            />
+                          </div>
+                          {it.unitPrice <= 0 && <div className="mt-1 text-[11px] text-amber-800">Harga belum diisi</div>}
+                        </td>
+                        <td className="py-2 px-3 pt-3 text-right font-mono font-semibold text-slate-900 tabular-nums whitespace-nowrap">
+                          {rupiah(it.subtotal || 0)}
+                        </td>
+                        <td className="py-2 px-3">
+                          <input
+                            type="text"
+                            placeholder="Mis. segar, 2 ikat layu"
+                            value={it.conditionNote || ''}
+                            onChange={e => handleConditionChange(idx, e.target.value)}
+                            aria-label={`Kondisi ${it.name}`}
+                            className={TABLE_INPUT}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          </div>
+            {calculations.weighedCount > 0 && calculations.diffCost !== 0 && calculations.totalTargetCost > 0 && (
+              <p className={`text-[11px] ${calculations.diffCost > 0 ? 'text-amber-800' : 'text-slate-700'}`}>
+                Nilai diterima {calculations.diffCost > 0 ? 'lebih' : 'kurang'} {rupiah(Math.abs(calculations.diffCost))} dari nilai PO.
+              </p>
+            )}
+          </section>
 
-          {/* SECTION 3: SYSTEM INTEGRATION OPTIONS */}
-          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <span className="font-semibold text-slate-700 flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              Integrasi Pembaruan Sistem
-            </span>
-            <div className="flex flex-wrap items-center gap-4">
-              <label className="inline-flex items-center gap-2 cursor-pointer text-slate-700 font-medium">
+          {/* Setelah disimpan */}
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-800">Setelah disimpan</h3>
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-x-6 gap-y-2">
+              <label className="inline-flex items-center gap-2 min-h-[44px] sm:min-h-0 cursor-pointer text-slate-800">
                 <input
                   type="checkbox"
                   checked={autoUpdateStock}
                   onChange={e => setAutoUpdateStock(e.target.checked)}
-                  className="w-4 h-4 rounded text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                  className="w-4 h-4 rounded text-emerald-700 border-slate-300 focus-visible:ring-2 focus-visible:ring-emerald-600 cursor-pointer"
                 />
-                <span>Perbarui Stok Gudang</span>
+                Tambahkan ke stok gudang
               </label>
-              <label className="inline-flex items-center gap-2 cursor-pointer text-slate-700 font-medium">
+              <label className="inline-flex items-center gap-2 min-h-[44px] sm:min-h-0 cursor-pointer text-slate-800">
                 <input
                   type="checkbox"
                   checked={autoRecordExpense}
                   onChange={e => setAutoRecordExpense(e.target.checked)}
-                  className="w-4 h-4 rounded text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                  className="w-4 h-4 rounded text-emerald-700 border-slate-300 focus-visible:ring-2 focus-visible:ring-emerald-600 cursor-pointer"
                 />
-                <span>Catat ke Laporan Pengeluaran</span>
+                Catat ke laporan pengeluaran
               </label>
-              {po.relatedExpenseIds && po.relatedExpenseIds.length > 0 && (
-                <span className="text-[11px] text-slate-600 basis-full">
-                  Belanja untuk nota ini sudah tercatat, jadi tidak dicatat lagi.
-                </span>
-              )}
             </div>
-          </div>
-
-          {/* SECTION 4: RECAP & COMPARISON */}
-          <div className="bg-emerald-50/70 border border-emerald-200/90 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
-            <div className="space-y-1">
-              <div className="text-[11px] text-slate-600 font-medium">Ringkasan Nilai Realisasi Belanja:</div>
-              <div className="flex items-baseline gap-3 flex-wrap">
-                <span className="text-xl font-bold font-mono text-emerald-700 tabular-nums">
-                  Rp {calculations.totalActualCost.toLocaleString('id-ID')}
-                </span>
-                <span className="text-xs font-mono text-slate-500">
-                  Target PO: Rp {calculations.totalTargetCost.toLocaleString('id-ID')}
-                </span>
-                {calculations.weighedCount > 0 && calculations.diffCost !== 0 && (
-                  <span
-                    className={`text-xs font-mono font-semibold px-2 py-0.5 rounded-md border ${
-                      calculations.diffCost > 0
-                        ? 'bg-amber-50 text-amber-800 border-amber-200'
-                        : 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                    }`}
-                  >
-                    {calculations.diffCost > 0 ? '+' : ''}
-                    Rp {calculations.diffCost.toLocaleString('id-ID')}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="sm:text-right text-xs text-slate-600 space-y-1">
-              <div>
-                Bahan ditimbang:{' '}
-                <strong className="text-slate-900 font-mono">
-                  {calculations.weighedCount} dari {items.length}
-                </strong>
-              </div>
-              <div className="text-[11px] text-slate-500">
-                Status setelah disimpan: <span className="font-semibold text-emerald-700">Selesai Diterima</span>
-              </div>
-            </div>
-          </div>
-          </fieldset>
-        </form>
-
-        {/* MODAL FOOTER */}
-        <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors cursor-pointer"
-          >
-            Batal
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleSubmit()}
-            disabled={isSubmitting || isAlreadyReceived}
-            className="inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed rounded-lg shadow-xs transition-colors cursor-pointer"
-          >
-            {isSubmitting ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Menyimpan & Memperbarui Sistem...</span>
-              </>
-            ) : (
-              <>
-                <PackageCheck className="w-4 h-4 text-emerald-100" />
-                <span>Simpan Penerimaan PO</span>
-              </>
+            {po.relatedExpenseIds && po.relatedExpenseIds.length > 0 && (
+              <p className="text-[11px] text-slate-600">Belanja untuk nota ini sudah tercatat, jadi tidak dicatat lagi.</p>
             )}
-          </button>
-        </div>
+          </section>
+        </fieldset>
       </div>
-    </div>
+    </DialogShell>
   );
 };

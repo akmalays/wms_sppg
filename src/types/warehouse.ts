@@ -430,14 +430,18 @@ export type EmployeeDepartment =
   | 'Distribusi & Transport'
   | 'Sanitasi & Kebersihan'
   | 'Manajemen & Administrasi'
-  | 'Gizi & Mutu';
+  | 'Gizi & Mutu'
+  // Bagian kerja SPPG (lihat utils/attendanceSchedule WORK_SECTIONS)
+  | string;
 
 export type EmploymentType = 'Tetap' | 'Kontrak' | 'Relawan / Mitra Harian';
 
 export type EmployeeShift =
   | 'Pagi (05:00 - 13:00)'
   | 'Siang (10:00 - 18:00)'
-  | 'Full Day (05:00 - 17:00)';
+  | 'Full Day (05:00 - 17:00)'
+  // Jam kerja bebas: "HH:MM - HH:MM" atau "Fleksibel" (lihat utils/attendanceSchedule)
+  | string;
 
 export type AttendanceStatus = 'HADIR' | 'TERLAMBAT' | 'IZIN' | 'SAKIT' | 'ALPA';
 
