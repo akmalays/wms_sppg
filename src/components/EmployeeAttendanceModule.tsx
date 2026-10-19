@@ -54,8 +54,8 @@ import { EmployeeQrDialog } from './EmployeeQrDialog';
 import { AttendanceLocationDialog } from './AttendanceLocationDialog';
 import { AttendancePosterDialog, AttendancePosterSheet, useAttendanceQr } from './AttendancePoster';
 import { AttendanceGeofence, GEOFENCE_SETTING_KEY, isValidGeofence } from '../utils/attendanceAction';
-import { BTN_PRIMARY, BTN_SECONDARY, FIELD_INPUT } from './common/FormDialog';
-import { WORK_SECTIONS, FLEXIBLE_SCHEDULE, parseSchedule, formatSchedule } from '../utils/attendanceSchedule';
+import { BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST, FIELD_INPUT, FIELD_LABEL, TABLE_INPUT, DialogShell, FormDialog } from './common/FormDialog';
+import { WORK_SECTIONS, FLEXIBLE_SCHEDULE, parseSchedule, formatSchedule, lateMinutesFor, formatDuration } from '../utils/attendanceSchedule';
 
 // Bagian kerja SPPG. Data lama dengan departemen lain tetap tampil apa adanya.
 const DEPARTMENTS: EmployeeDepartment[] = [...WORK_SECTIONS];
@@ -205,6 +205,13 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
   );
   const allAttendances = useMemo(() => warehouseDb.getAttendanceLogs(), [dataVersion]);
 
+  // Bagian kerja baru + departemen lama yang masih dipakai karyawan, agar data lama tetap muncul
+  // di filter dan laporan (bukan hilang karena tidak cocok dengan daftar bagian baru).
+  const departmentOptions = useMemo<EmployeeDepartment[]>(() => {
+    const extra = Array.from(new Set(employees.map(e => e.department))).filter(d => d && !DEPARTMENTS.includes(d));
+    return [...DEPARTMENTS, ...extra.sort()];
+  }, [employees]);
+
   // Attendance for the selected date
   const attendancesForDate = useMemo(() => {
     return allAttendances.filter(a => a.date === selectedDate);
@@ -311,13 +318,18 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
       department: EmployeeDepartment;
       position: string;
       shift: EmployeeShift;
-      status: AttendanceStatus;
+      /** BELUM = belum absen dan tidak disimpan. */
+      status: AttendanceStatus | 'BELUM';
       checkInTime: string;
       lateMinutes: number;
       notes: string;
+      /** Diubah di form ini; hanya baris yang diubah yang disimpan. */
+      dirty: boolean;
     }>
   >([]);
 
+  // Isi manual untuk pengecualian. Karyawan yang belum absen dibiarkan "Belum absen" (tidak dianggap hadir),
+  // dan hanya baris yang diubah yang disimpan, agar absen dari HP tidak tertimpa.
   const handleOpenQuickAttendance = () => {
     const rows = activeEmployees.map(emp => {
       const existing = attendancesForDate.find(a => a.employeeId === emp.id);
@@ -327,30 +339,30 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
         department: emp.department,
         position: emp.position,
         shift: emp.shift,
-        status: existing ? existing.status : 'HADIR',
-        // Jam masuk tidak ditebak: kosong sampai diisi, atau jam asli dari Mode absen
+        status: existing ? existing.status : ('BELUM' as const),
         checkInTime: existing ? existing.checkInTime : '',
         lateMinutes: existing ? (existing.lateMinutes || 0) : 0,
         notes: existing ? (existing.notes || '') : '',
+        dirty: false,
       };
     });
     setQuickRows(rows);
     setIsQuickModalOpen(true);
   };
 
-  const handleSetAllPresent = () => {
-    setQuickRows(prev =>
-      prev.map(row => ({
-        ...row,
-        status: 'HADIR',
-        lateMinutes: 0,
-      }))
-    );
-  };
+  const updateQuickRow = (idx: number, patch: Partial<(typeof quickRows)[number]>) =>
+    setQuickRows(prev => prev.map((r, i) => (i === idx ? { ...r, ...patch, dirty: true } : r)));
+
+  const quickDirtyCount = quickRows.filter(r => r.dirty && r.status !== 'BELUM').length;
 
   const handleSaveQuickAttendance = (e: React.FormEvent) => {
     e.preventDefault();
-    const entries = quickRows.map(row => ({
+    const changed = quickRows.filter(r => r.dirty && r.status !== 'BELUM');
+    if (changed.length === 0) {
+      setIsQuickModalOpen(false);
+      return;
+    }
+    const entries = changed.map(row => ({
       date: selectedDate,
       employeeId: row.employeeId,
       employeeName: row.name,
@@ -358,7 +370,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
       position: row.position,
       shift: row.shift,
       checkInTime: row.status === 'IZIN' || row.status === 'SAKIT' || row.status === 'ALPA' ? '' : row.checkInTime,
-      status: row.status,
+      status: row.status as AttendanceStatus,
       lateMinutes: row.status === 'TERLAMBAT' ? Number(row.lateMinutes || 0) : 0,
       notes: row.notes,
       recordedBy: currentUser.name,
@@ -368,7 +380,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
     warehouseDb.recordBatchAttendance(entries, currentUser);
     refreshData();
     setIsQuickModalOpen(false);
-    showToast(`Presensi harian ${entries.length} staf berhasil dicatat untuk tanggal ${selectedDate}.`);
+    showToast(`Presensi ${entries.length} karyawan tersimpan untuk tanggal ${selectedDate}.`);
   };
 
   // 2. Single Attendance Modal (Add or Edit individual attendance)
@@ -378,7 +390,6 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
   const [singleAttCheckIn, setSingleAttCheckIn] = useState('05:00');
   const [singleAttCheckOut, setSingleAttCheckOut] = useState('');
   const [singleAttStatus, setSingleAttStatus] = useState<AttendanceStatus>('HADIR');
-  const [singleAttLateMinutes, setSingleAttLateMinutes] = useState<number>(0);
   const [singleAttNotes, setSingleAttNotes] = useState('');
   const [singleAttPhotos, setSingleAttPhotos] = useState<string[]>([]);
   // Foto hanya dikirim ulang bila diubah di form; selain itu foto di database dibiarkan
@@ -416,7 +427,6 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
       setSingleAttCheckIn(existingAtt.checkInTime || '');
       setSingleAttCheckOut(existingAtt.checkOutTime || '');
       setSingleAttStatus(existingAtt.status);
-      setSingleAttLateMinutes(existingAtt.lateMinutes || 0);
       setSingleAttNotes(existingAtt.notes || '');
       setSingleAttPhotos(existingAtt.photoUrl ? [existingAtt.photoUrl] : []);
       if (!existingAtt.photoUrl && attendanceMayHavePhoto(existingAtt)) {
@@ -429,7 +439,6 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
       setSingleAttCheckIn('');
       setSingleAttCheckOut('');
       setSingleAttStatus('HADIR');
-      setSingleAttLateMinutes(0);
       setSingleAttNotes('');
       setSingleAttPhotos([]);
     }
@@ -437,10 +446,15 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
     setIsSingleAttModalOpen(true);
   };
 
+  // Terlambat dihitung dari jam kerja karyawan terpilih (bukan diketik), sama seperti absen dari HP
+  const singleAttSchedule = parseSchedule(employees.find(e => e.id === singleAttEmpId)?.shift);
+  const singleAttLate = singleAttCheckIn ? lateMinutesFor(singleAttCheckIn, singleAttSchedule) : 0;
+
   const handleSaveSingleAtt = (e: React.FormEvent) => {
     e.preventDefault();
     const targetEmp = employees.find(e => e.id === singleAttEmpId);
     if (!targetEmp) return;
+    const present = singleAttStatus === 'HADIR' || singleAttStatus === 'TERLAMBAT';
 
     warehouseDb.recordAttendance(
       {
@@ -450,10 +464,10 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
         department: targetEmp.department,
         position: targetEmp.position,
         shift: targetEmp.shift,
-        checkInTime: singleAttStatus === 'IZIN' || singleAttStatus === 'SAKIT' || singleAttStatus === 'ALPA' ? '' : singleAttCheckIn,
-        checkOutTime: singleAttCheckOut,
-        status: singleAttStatus,
-        lateMinutes: singleAttStatus === 'TERLAMBAT' ? Number(singleAttLateMinutes || 0) : 0,
+        checkInTime: present ? singleAttCheckIn : '',
+        checkOutTime: present ? singleAttCheckOut : '',
+        status: present ? (singleAttLate > 0 ? 'TERLAMBAT' : 'HADIR') : singleAttStatus,
+        lateMinutes: present ? singleAttLate : 0,
         photoUrl: singleAttPhotoTouched ? singleAttPhotos[0] || '' : undefined,
         notes: singleAttNotes,
         recordedBy: currentUser.name,
@@ -624,7 +638,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
       'Tanggal': selectedDate,
       'NIP': row.employee.nip,
       'Nama Karyawan': row.employee.name,
-      'Departemen / Divisi': row.employee.department,
+      'Bagian': row.employee.department,
       'Jabatan': row.employee.position,
       'Shift Kerja': row.employee.shift,
       'Status Kehadiran': row.status,
@@ -651,7 +665,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
       'NIK KTP': emp.nik,
       'Nama Lengkap': emp.name,
       'L/P': emp.gender,
-      'Departemen / Divisi': emp.department,
+      'Bagian': emp.department,
       'Jabatan': emp.position,
       'Status Hubungan Kerja': emp.employmentType,
       'Shift Kerja': emp.shift,
@@ -739,7 +753,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
     // Departments to display
     const departmentsToRender =
       attPrintDept === 'ALL'
-        ? DEPARTMENTS.filter(d => targetEmployees.some(e => e.department === d))
+        ? departmentOptions.filter(d => targetEmployees.some(e => e.department === d))
         : [attPrintDept as EmployeeDepartment];
 
     // Data computation depending on DAILY vs RANGE
@@ -875,7 +889,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
             ) : (
               <span>Periode: {formatIndonesianDate(startDate)} s/d {formatIndonesianDate(endDate)} ({datesToDisplay.length} hari)</span>
             )}
-            <span>• Divisi: {attPrintDept === 'ALL' ? 'Semua Divisi' : attPrintDept}</span>
+            <span>• Bagian: {attPrintDept === 'ALL' ? 'Semua bagian' : attPrintDept}</span>
             {attPrintStatus !== 'ALL' && <span>• Status: {attPrintStatus}</span>}
             {searchQuery.trim() && <span>• Cari: &ldquo;{searchQuery}&rdquo;</span>}
           </div>
@@ -884,7 +898,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
         {/* Bagian A: Ringkasan Rekapitulasi Presensi per Divisi */}
         <div className="mb-6">
           <div className="font-bold text-xs text-slate-800 mb-2 flex items-center justify-between border-b border-slate-200 pb-1">
-            <span>A. Rekapitulasi Presensi Berdasarkan Divisi / Departemen</span>
+            <span>A. Rekapitulasi Presensi per Bagian</span>
             <span className="text-[11px] font-normal text-slate-500">
               {isDaily ? 'Status kehadiran hari ini' : 'Akumulasi log kehadiran dalam periode'}
             </span>
@@ -894,7 +908,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
             <thead>
               <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-semibold">
                 <th className="py-2 px-2.5 border-r border-slate-300 text-center w-10">No</th>
-                <th className="py-2 px-3 border-r border-slate-300">Departemen / Divisi</th>
+                <th className="py-2 px-3 border-r border-slate-300">Bagian</th>
                 <th className="py-2 px-3 border-r border-slate-300 text-center w-24">Total Staf</th>
                 <th className="py-2 px-3 border-r border-slate-300 text-center w-20">Hadir</th>
                 <th className="py-2 px-3 border-r border-slate-300 text-center w-24">Terlambat</th>
@@ -956,7 +970,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
               })}
               <tr className="bg-slate-100 font-bold border-t-2 border-slate-300 text-slate-900">
                 <td colSpan={2} className="py-2 px-3 border-r border-slate-300 text-right">
-                  Total Seluruh Divisi:
+                  Total semua bagian:
                 </td>
                 <td className="py-2 px-3 border-r border-slate-300 text-center font-mono">
                   {isDaily ? dailyTotal : targetEmployees.length}
@@ -989,8 +1003,8 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
           <div className="font-bold text-xs text-slate-800 border-b border-slate-200 pb-1 flex items-center justify-between">
             <span>
               {isDaily
-                ? 'B. Rincian Presensi Karyawan per Divisi Kerja'
-                : 'B. Matriks Presensi & Kehadiran Harian Karyawan per Divisi'}
+                ? 'B. Rincian Presensi Karyawan per Bagian'
+                : 'B. Kehadiran Harian Karyawan per Bagian'}
             </span>
             <span className="text-[11px] font-normal text-slate-500">
               {isDaily
@@ -1008,7 +1022,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                 <div key={dept} className="space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold bg-slate-100 px-3 py-1.5 rounded border border-slate-200">
                     <span className="text-slate-800">
-                      {deptIdx + 1}. Divisi {dept} ({deptRows.length} Karyawan)
+                      {deptIdx + 1}. {dept} ({deptRows.length} karyawan)
                     </span>
                     <span className="text-slate-600 text-[11px] font-medium">
                       Hadir: {deptRows.filter(r => r.status === 'HADIR' || r.status === 'TERLAMBAT').length} •
@@ -1099,7 +1113,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                 <div key={dept} className="space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold bg-slate-100 px-3 py-1.5 rounded border border-slate-200">
                     <span className="text-slate-800">
-                      {deptIdx + 1}. Divisi {dept} ({deptEmps.length} Personil)
+                      {deptIdx + 1}. {dept} ({deptEmps.length} karyawan)
                     </span>
                     <span className="text-slate-600 text-[11px] font-medium">
                       Periode: {formatIndonesianDate(startDate)} s/d {formatIndonesianDate(endDate)} ({datesToDisplay.length} hari) • Rata-rata Kehadiran: <strong className="text-emerald-800">{deptRate}%</strong>
@@ -1371,7 +1385,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
     // Departments to display
     const departmentsToRender =
       empPrintDept === 'ALL'
-        ? DEPARTMENTS.filter(d => targetEmployees.some(e => e.department === d))
+        ? departmentOptions.filter(d => targetEmployees.some(e => e.department === d))
         : [empPrintDept as EmployeeDepartment];
 
     return (
@@ -1400,7 +1414,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
           </h2>
           <div className="inline-flex flex-wrap items-center justify-center gap-2 mt-2 px-3 py-1 bg-slate-100 rounded-lg text-xs font-semibold text-slate-700 border border-slate-200">
             <span>Per Tanggal: {printDate}</span>
-            <span>• Filter Divisi: {empPrintDept === 'ALL' ? 'Semua Divisi' : empPrintDept}</span>
+            <span>• Bagian: {empPrintDept === 'ALL' ? 'Semua bagian' : empPrintDept}</span>
             <span>• Status: {empPrintStatus === 'ALL' ? 'Semua Status' : empPrintStatus}</span>
             {empPrintSearch.trim() && <span>• Cari: &ldquo;{empPrintSearch}&rdquo;</span>}
           </div>
@@ -1409,7 +1423,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
         {/* Bagian A: Ringkasan Distribusi Karyawan per Divisi */}
         <div className="mb-6">
           <div className="font-bold text-xs text-slate-800 mb-2 flex items-center justify-between border-b border-slate-200 pb-1">
-            <span>A. Rekapitulasi Komposisi Personil per Divisi / Departemen</span>
+            <span>A. Jumlah Karyawan per Bagian</span>
             <span className="text-[11px] font-normal text-slate-500">
               Distribusi status kepegawaian
             </span>
@@ -1419,7 +1433,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
             <thead>
               <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-semibold">
                 <th className="py-2 px-2.5 border-r border-slate-300 text-center w-10">No</th>
-                <th className="py-2 px-3 border-r border-slate-300">Departemen / Divisi</th>
+                <th className="py-2 px-3 border-r border-slate-300">Bagian</th>
                 <th className="py-2 px-3 border-r border-slate-300 text-center w-24">Staf Tetap</th>
                 <th className="py-2 px-3 border-r border-slate-300 text-center w-24">Staf Kontrak</th>
                 <th className="py-2 px-3 border-r border-slate-300 text-center w-28">Mitra / Relawan</th>
@@ -1465,7 +1479,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
         {/* Bagian B: Rincian Data Karyawan per Divisi (Dipisahkan per Divisi) */}
         <div className="space-y-6">
           <div className="font-bold text-xs text-slate-800 border-b border-slate-200 pb-1">
-            <span>B. Rincian Personil Berdasarkan Divisi Kerja</span>
+            <span>B. Rincian Karyawan per Bagian</span>
           </div>
 
           {departmentsToRender.map((dept, deptIdx) => {
@@ -1476,7 +1490,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
               <div key={dept} className="space-y-2">
                 <div className="flex items-center justify-between text-xs font-bold bg-slate-100 px-3 py-1.5 rounded border border-slate-200">
                   <span className="text-slate-800">
-                    {deptIdx + 1}. Divisi {dept} ({deptEmps.length} Personil)
+                    {deptIdx + 1}. {dept} ({deptEmps.length} karyawan)
                   </span>
                   <span className="text-slate-600 text-[11px] font-medium">
                     Tetap: {deptEmps.filter(e => e.employmentType === 'Tetap').length} •
@@ -1731,7 +1745,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                 value={selectedDept}
                 onChange={e => setSelectedDept(e.target.value)}>
                 <option value="ALL">Semua Dept</option>
-                {DEPARTMENTS.map(d => (
+                {departmentOptions.map(d => (
                   <option key={d} value={d}>
                     {d}
                   </option>
@@ -1952,7 +1966,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
         <div className="space-y-5">
           {/* Sebaran Staf Per Departemen */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {DEPARTMENTS.map(dept => {
+            {departmentOptions.map(dept => {
               const count = employees.filter(e => e.department === dept && e.status === 'AKTIF').length;
               return (
                 <div key={dept} className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
@@ -1983,7 +1997,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                 value={selectedDept}
                 onChange={e => setSelectedDept(e.target.value)}>
                 <option value="ALL">Semua Dept</option>
-                {DEPARTMENTS.map(d => (
+                {departmentOptions.map(d => (
                   <option key={d} value={d}>
                     {d}
                   </option>
@@ -2197,204 +2211,108 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
           MODAL 1: QUICK BATCH DAILY ATTENDANCE (1-CLICK CHECKLIST)
       ========================================================================= */}
       {isQuickModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto no-print">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Presensi cepat
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Tanggal Operasional: <strong className="text-slate-700 font-semibold">{selectedDate}</strong> • Total {quickRows.length} staf aktif
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleSetAllPresent}
-                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer"
-                  title="Otomatis tandai semua staf hadir tepat waktu pukul 05:00"
-                >
-                  Set Semua Hadir (05:00)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsQuickModalOpen(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Body / Table */}
-            <form onSubmit={handleSaveQuickAttendance} className="flex-1 flex flex-col overflow-hidden">
-              <div className="flex-1 overflow-y-auto p-6 space-y-3">
-                <div className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center gap-2">
-                  <Info className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>
-                    Secara default seluruh staf disetel Hadir. Sesuaikan status staf yang Terlambat, Izin, Sakit, atau Alpa beserta jam dan keterangannya jika ada.
-                  </span>
-                </div>
-
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
-                      <tr>
-                        <th className="py-2.5 px-3 w-10 text-center">No</th>
-                        <th className="py-2.5 px-3">Nama Karyawan & Jabatan</th>
-                        <th className="py-2.5 px-3 w-36">Status Kehadiran</th>
-                        <th className="py-2.5 px-3 w-28 text-center">Jam Masuk</th>
-                        <th className="py-2.5 px-3">Catatan / Alasan</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {quickRows.map((row, idx) => (
-                        <tr key={row.employeeId} className="hover:bg-slate-50/75">
-                          <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
-                            {idx + 1}
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <div className="font-semibold text-slate-900">{row.name}</div>
-                            <div className="text-[10px] text-slate-500">{row.position} • {row.department}</div>
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <Select className="w-full" size="sm"
-                              tone={
-                                row.status === 'HADIR'
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                  : row.status === 'TERLAMBAT'
-                                  ? 'bg-amber-50 text-amber-800 border-amber-300'
-                                  : row.status === 'IZIN'
-                                  ? 'bg-sky-50 text-sky-800 border-sky-300'
-                                  : row.status === 'SAKIT'
-                                  ? 'bg-purple-50 text-purple-800 border-purple-300'
-                                  : 'bg-rose-50 text-rose-800 border-rose-300'
-                              }
-                              value={row.status}
-                              onChange={e => {
-                                const newStatus = e.target.value as AttendanceStatus;
-                                setQuickRows(prev =>
-                                  prev.map((r, i) =>
-                                    i === idx
-                                      ? {
-                                          ...r,
-                                          status: newStatus,
-                                          checkInTime: newStatus === 'IZIN' || newStatus === 'SAKIT' || newStatus === 'ALPA' ? '' : r.checkInTime || '05:00',
-                                        }
-                                      : r
-                                  )
-                                );
-                              }}>
-                              <option value="HADIR">Hadir</option>
-                              <option value="TERLAMBAT">Terlambat</option>
-                              <option value="IZIN">Izin</option>
-                              <option value="SAKIT">Sakit</option>
-                              <option value="ALPA">Alpa</option>
-                            </Select>
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
-                            {row.status === 'HADIR' || row.status === 'TERLAMBAT' ? (
-                              <input
-                                type="time"
-                                value={row.checkInTime}
-                                onChange={e => {
-                                  const val = e.target.value;
-                                  setQuickRows(prev =>
-                                    prev.map((r, i) =>
-                                      i === idx ? { ...r, checkInTime: val } : r
-                                    )
-                                  );
-                                }}
-                                className="w-24 text-center font-mono text-xs bg-slate-50 border border-slate-200 rounded px-1.5 py-1 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                              />
-                            ) : (
-                              <span className="text-slate-300 italic">-</span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <input
-                              type="text"
-                              placeholder="Keterangan singkat..."
-                              value={row.notes}
-                              onChange={e => {
-                                const val = e.target.value;
-                                setQuickRows(prev =>
-                                  prev.map((r, i) =>
-                                    i === idx ? { ...r, notes: val } : r
-                                  )
-                                );
-                              }}
-                              className="w-full text-xs bg-slate-50 border border-slate-200 rounded px-2.5 py-1 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Modal Footer */}
-              <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-                <span className="text-xs text-slate-500 font-medium">
-                  Dicatat atas nama: <strong className="text-slate-700">{currentUser.name}</strong> ({currentUser.role})
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsQuickModalOpen(false)}
-                    className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    Simpan Presensi Harian
-                  </button>
-                </div>
-              </div>
-            </form>
+        <DialogShell
+          size="xl"
+          title="Isi presensi manual"
+          description={`${formatIndonesianDate(selectedDate)}. Untuk izin, sakit, alpa, atau yang tidak bisa absen dari HP. Hanya baris yang diubah yang disimpan.`}
+          onClose={() => setIsQuickModalOpen(false)}
+          onSubmit={handleSaveQuickAttendance}
+          footer={
+            <>
+              <span className="mr-auto text-xs text-slate-600">
+                {quickDirtyCount > 0 ? `${quickDirtyCount} karyawan akan disimpan` : 'Belum ada perubahan'}
+              </span>
+              <button type="button" onClick={() => setIsQuickModalOpen(false)} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
+                Batal
+              </button>
+              <button type="submit" disabled={quickDirtyCount === 0} className={BTN_PRIMARY}>
+                Simpan presensi
+              </button>
+            </>
+          }
+        >
+          <div className="border border-slate-200 rounded-xl overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
+                <tr>
+                  <th className="py-2 px-3 font-semibold min-w-[180px]">Karyawan</th>
+                  <th className="py-2 px-3 font-semibold w-40">Status</th>
+                  <th className="py-2 px-3 font-semibold w-32">Jam masuk</th>
+                  <th className="py-2 px-3 font-semibold min-w-[180px]">Catatan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {quickRows.map((row, idx) => (
+                  <tr key={row.employeeId} className={row.dirty ? 'bg-emerald-50/40' : undefined}>
+                    <td className="py-2 px-3">
+                      <div className="font-semibold text-slate-900">{row.name}</div>
+                      <div className="text-[11px] text-slate-600">{row.department}</div>
+                    </td>
+                    <td className="py-2 px-3">
+                      <Select
+                        className="w-full"
+                        size="sm"
+                        aria-label={`Status ${row.name}`}
+                        value={row.status}
+                        onChange={e => {
+                          const status = e.target.value as AttendanceStatus | 'BELUM';
+                          updateQuickRow(idx, {
+                            status,
+                            checkInTime: status === 'IZIN' || status === 'SAKIT' || status === 'ALPA' || status === 'BELUM' ? '' : row.checkInTime,
+                          });
+                        }}>
+                        <option value="BELUM">Belum absen</option>
+                        <option value="HADIR">Hadir</option>
+                        <option value="TERLAMBAT">Terlambat</option>
+                        <option value="IZIN">Izin</option>
+                        <option value="SAKIT">Sakit</option>
+                        <option value="ALPA">Alpa</option>
+                      </Select>
+                    </td>
+                    <td className="py-2 px-3">
+                      {row.status === 'HADIR' || row.status === 'TERLAMBAT' ? (
+                        <input
+                          type="time"
+                          aria-label={`Jam masuk ${row.name}`}
+                          value={row.checkInTime}
+                          onChange={e => updateQuickRow(idx, { checkInTime: e.target.value })}
+                          className={`${TABLE_INPUT} font-mono`}
+                        />
+                      ) : (
+                        <span className="text-slate-500">-</span>
+                      )}
+                    </td>
+                    <td className="py-2 px-3">
+                      <input
+                        type="text"
+                        aria-label={`Catatan ${row.name}`}
+                        placeholder="Mis. izin acara keluarga"
+                        value={row.notes}
+                        onChange={e => updateQuickRow(idx, { notes: e.target.value })}
+                        className={TABLE_INPUT}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
+        </DialogShell>
       )}
 
       {/* =========================================================================
           MODAL 2: SINGLE ATTENDANCE FORM (INDIVIDUAL & FOTO BUKTI WEBP)
       ========================================================================= */}
       {isSingleAttModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto no-print">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Presensi karyawan
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Catat atau ubah status kehadiran individual beserta jam kerja & bukti foto WebP.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsSingleAttModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveSingleAtt} className="flex-1 flex flex-col overflow-hidden">
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                {/* Employee Selection */}
+        <FormDialog
+          title="Presensi karyawan"
+          description="Catat atau ubah kehadiran satu karyawan."
+          onClose={() => setIsSingleAttModalOpen(false)}
+          onSubmit={handleSaveSingleAtt}
+          submitLabel="Simpan presensi"
+        >
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Pilih Karyawan
-                  </label>
+                  <span className={FIELD_LABEL}>Karyawan</span>
                   <SearchPicker
                     value={singleAttEmpId}
                     options={[...activeEmployees]
@@ -2408,165 +2326,103 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                   />
                 </div>
 
-                {/* Date & Shift */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Tanggal Presensi
-                    </label>
-                    <input
-                      type="date"
-                      value={singleAttDate}
-                      onChange={e => setSingleAttDate(e.target.value)}
-                      className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-slate-50 text-slate-800 font-medium"
-                      required
-                    />
+                    <label htmlFor="sa-date" className={FIELD_LABEL}>Tanggal</label>
+                    <input id="sa-date" type="date" required value={singleAttDate} onChange={e => setSingleAttDate(e.target.value)} className={FIELD_INPUT} />
                   </div>
-
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Status Kehadiran
-                    </label>
-                    <Select className="w-full"
-                      value={singleAttStatus}
+                    <label htmlFor="sa-status" className={FIELD_LABEL}>Status</label>
+                    <Select
+                      id="sa-status"
+                      className="w-full"
+                      value={singleAttStatus === 'TERLAMBAT' ? 'HADIR' : singleAttStatus}
                       onChange={e => setSingleAttStatus(e.target.value as AttendanceStatus)}>
-                      <option value="HADIR">Hadir (Tepat Waktu)</option>
-                      <option value="TERLAMBAT">Terlambat</option>
+                      <option value="HADIR">Hadir</option>
                       <option value="IZIN">Izin</option>
                       <option value="SAKIT">Sakit</option>
-                      <option value="ALPA">Alpa / Tanpa Keterangan</option>
+                      <option value="ALPA">Alpa (tanpa keterangan)</option>
                     </Select>
                   </div>
                 </div>
 
-                {/* Jam Masuk & Jam Keluar */}
                 {(singleAttStatus === 'HADIR' || singleAttStatus === 'TERLAMBAT') && (
-                  <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Jam Masuk
-                      </label>
-                      <input
-                        type="time"
-                        value={singleAttCheckIn}
-                        onChange={e => setSingleAttCheckIn(e.target.value)}
-                        className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 bg-white text-slate-800"
-                        required
-                      />
+                  <div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label htmlFor="sa-in" className={FIELD_LABEL}>Jam masuk</label>
+                        <input id="sa-in" type="time" required value={singleAttCheckIn} onChange={e => setSingleAttCheckIn(e.target.value)} className={`${FIELD_INPUT} font-mono`} />
+                      </div>
+                      <div>
+                        <label htmlFor="sa-out" className={FIELD_LABEL}>Jam pulang</label>
+                        <input id="sa-out" type="time" value={singleAttCheckOut} onChange={e => setSingleAttCheckOut(e.target.value)} className={`${FIELD_INPUT} font-mono`} />
+                      </div>
                     </div>
-
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Jam Pulang
-                      </label>
-                      <input
-                        type="time"
-                        value={singleAttCheckOut}
-                        onChange={e => setSingleAttCheckOut(e.target.value)}
-                        className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 bg-white text-slate-800"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Terlambat (Mnt)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={singleAttLateMinutes}
-                        onChange={e => setSingleAttLateMinutes(Number(e.target.value))}
-                        className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 bg-white text-slate-800"
-                        placeholder="0"
-                      />
-                    </div>
+                    {/* Terlambat dihitung dari jam kerja karyawan, sama seperti absen dari HP */}
+                    <p className={`mt-1 text-[11px] ${singleAttLate > 0 ? 'text-amber-800' : 'text-slate-600'}`}>
+                      {!singleAttCheckIn
+                        ? 'Isi jam masuk.'
+                        : singleAttSchedule.flexible
+                          ? 'Jam kerja fleksibel, tidak dihitung terlambat.'
+                          : singleAttLate > 0
+                            ? `Terlambat ${formatDuration(singleAttLate)} dari jam mulai ${singleAttSchedule.start}.`
+                            : `Tepat waktu (jam mulai ${singleAttSchedule.start}).`}
+                    </p>
                   </div>
                 )}
 
-                {/* Notes */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Catatan / Alasan
-                  </label>
+                  <label htmlFor="sa-notes" className={FIELD_LABEL}>Catatan</label>
                   <textarea
+                    id="sa-notes"
                     rows={2}
                     value={singleAttNotes}
                     onChange={e => setSingleAttNotes(e.target.value)}
-                    placeholder="Misal: Uji organoleptik menu sup, izin urusan keluarga, flu demam..."
-                    className="w-full text-xs border border-slate-300 rounded-lg p-2.5 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    placeholder="Mis. izin acara keluarga, sakit demam"
+                    className={`${FIELD_INPUT} py-2 leading-relaxed`}
                   />
                 </div>
 
-                {/* Photo Proof with Auto WebP Compression */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Dokumentasi Foto Bukti / Surat Dokter (WebP)
-                  </label>
-                  <PhotoUploadCompressor
-                    photos={singleAttPhotos}
-                    onChange={photos => {
-                      setSingleAttPhotos(photos);
-                      setSingleAttPhotoTouched(true);
-                    }}
-                    maxPhotos={1}
-                    folder="profile"
-                    label="Unggah Foto Kehadiran / Surat Sakit"
-                    description="Otomatis dikonversi ke format WebP & dikompres ~90% agar hemat memori penyimpanan."
-                  />
-                </div>
-              </div>
-
-              <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsSingleAttModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  Simpan Presensi
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+                <PhotoUploadCompressor
+                  photos={singleAttPhotos}
+                  onChange={photos => {
+                    setSingleAttPhotos(photos);
+                    setSingleAttPhotoTouched(true);
+                  }}
+                  maxPhotos={1}
+                  folder="profile"
+                  label="Foto bukti (opsional)"
+                  description="Mis. surat dokter atau foto kehadiran. Otomatis dikompres."
+                  emptyText="Belum ada foto."
+                />
+        </FormDialog>
       )}
 
       {/* =========================================================================
           MODAL 3: EMPLOYEE MASTER (ADD / EDIT)
       ========================================================================= */}
       {isEmployeeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto no-print">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  {editingEmployeeId ? 'Ubah Data Karyawan' : 'Tambah Karyawan Baru'}
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Data karyawan SPPG Tumpang Jeru
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsEmployeeModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
+        <DialogShell
+          size="lg"
+          title={editingEmployeeId ? 'Ubah data karyawan' : 'Tambah karyawan'}
+          description="Bagian dan jam kerja dipakai untuk absen dan menghitung keterlambatan."
+          onClose={() => setIsEmployeeModalOpen(false)}
+          onSubmit={handleSaveEmployee}
+          footer={
+            <>
+              <button type="button" onClick={() => setIsEmployeeModalOpen(false)} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
+                Batal
               </button>
-            </div>
-
-            <form onSubmit={handleSaveEmployee} className="flex-1 flex flex-col overflow-hidden">
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <button type="submit" className={BTN_PRIMARY}>
+                {editingEmployeeId ? 'Simpan perubahan' : 'Tambah karyawan'}
+              </button>
+            </>
+          }
+        >
                 {/* Nama Lengkap & Gender */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className={FIELD_LABEL}>
                       Nama Lengkap Karyawan *
                     </label>
                     <input
@@ -2575,12 +2431,12 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                       placeholder="Misal: Slamet Riyadi, S.E."
                       value={empName}
                       onChange={e => setEmpName(e.target.value)}
-                      className="w-full text-xs border border-slate-300 rounded-lg p-2.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className={FIELD_INPUT}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className={FIELD_LABEL}>
                       Jenis Kelamin
                     </label>
                     <Select className="w-full"
@@ -2595,7 +2451,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                 {/* NIP & NIK */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className={FIELD_LABEL}>
                       NIP SPPG *
                     </label>
                     <input
@@ -2604,12 +2460,12 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                       placeholder="SPPG-JT-019"
                       value={empNip}
                       onChange={e => setEmpNip(e.target.value)}
-                      className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 text-slate-800"
+                      className={`${FIELD_INPUT} font-mono`}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className={FIELD_LABEL}>
                       NIK KTP (16 Digit)
                     </label>
                     <input
@@ -2617,7 +2473,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                       placeholder="350719..."
                       value={empNik}
                       onChange={e => setEmpNik(e.target.value)}
-                      className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 text-slate-800"
+                      className={`${FIELD_INPUT} font-mono`}
                     />
                   </div>
                 </div>
@@ -2625,13 +2481,13 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                 {/* Departemen & Jabatan */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className={FIELD_LABEL}>
                       Bagian *
                     </label>
                     <Select className="w-full"
                       value={empDept}
                       onChange={e => setEmpDept(e.target.value as EmployeeDepartment)}>
-                      {DEPARTMENTS.map(d => (
+                      {departmentOptions.map(d => (
                         <option key={d} value={d}>
                           {d}
                         </option>
@@ -2640,7 +2496,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className={FIELD_LABEL}>
                       Jabatan / Posisi Kerja *
                     </label>
                     <input
@@ -2649,14 +2505,14 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                       placeholder="Misal: Juru Masak Sayur & Kuah"
                       value={empPosition}
                       onChange={e => setEmpPosition(e.target.value)}
-                      className="w-full text-xs border border-slate-300 rounded-lg p-2.5 text-slate-800"
+                      className={FIELD_INPUT}
                     />
                   </div>
                 </div>
 
                 {/* Jam kerja: jam tetap dipakai menghitung terlambat; fleksibel hanya mencatat jam masuk & pulang */}
                 <div>
-                  <span className="block text-xs font-semibold text-slate-700 mb-1">Jam kerja</span>
+                  <span className={FIELD_LABEL}>Jam kerja</span>
                   <div className="flex flex-wrap items-center gap-2">
                     <Select
                       className="w-36"
@@ -2674,21 +2530,26 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                     </Select>
                     {!empSchedule.flexible && (
                       <>
-                        <input
-                          type="time"
-                          aria-label="Jam mulai"
-                          value={empSchedule.start || ''}
-                          onChange={e => setEmpShift(formatSchedule({ ...empSchedule, start: e.target.value }))}
-                          className={`${FIELD_INPUT} w-32`}
-                        />
+                        {/* Lebar tetap: FIELD_INPUT selalu w-full, jadi lebarnya diatur oleh pembungkus */}
+                        <div className="w-32">
+                          <input
+                            type="time"
+                            aria-label="Jam mulai"
+                            value={empSchedule.start || ''}
+                            onChange={e => setEmpShift(formatSchedule({ ...empSchedule, start: e.target.value }))}
+                            className={`${FIELD_INPUT} font-mono`}
+                          />
+                        </div>
                         <span className="text-xs text-slate-600">sampai</span>
-                        <input
-                          type="time"
-                          aria-label="Jam selesai"
-                          value={empSchedule.end || ''}
-                          onChange={e => setEmpShift(formatSchedule({ ...empSchedule, end: e.target.value }))}
-                          className={`${FIELD_INPUT} w-32`}
-                        />
+                        <div className="w-32">
+                          <input
+                            type="time"
+                            aria-label="Jam selesai"
+                            value={empSchedule.end || ''}
+                            onChange={e => setEmpShift(formatSchedule({ ...empSchedule, end: e.target.value }))}
+                            className={`${FIELD_INPUT} font-mono`}
+                          />
+                        </div>
                       </>
                     )}
                   </div>
@@ -2704,7 +2565,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                 {/* Hubungan Kerja & Status */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className={FIELD_LABEL}>
                       Status Kerja
                     </label>
                     <Select className="w-full"
@@ -2719,7 +2580,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className={FIELD_LABEL}>
                       Status Keaktifan
                     </label>
                     <Select className="w-full"
@@ -2735,7 +2596,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                 {/* Kontak & Tanggal Bergabung */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className={FIELD_LABEL}>
                       No. WhatsApp / HP
                     </label>
                     <input
@@ -2743,19 +2604,19 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                       placeholder="0812-3456-7890"
                       value={empPhone}
                       onChange={e => setEmpPhone(e.target.value)}
-                      className="w-full text-xs font-mono border border-slate-300 rounded-lg p-2 text-slate-800"
+                      className={`${FIELD_INPUT} font-mono`}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className={FIELD_LABEL}>
                       Tanggal Bergabung
                     </label>
                     <input
                       type="date"
                       value={empJoinDate}
                       onChange={e => setEmpJoinDate(e.target.value)}
-                      className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-800 font-medium"
+                      className={FIELD_INPUT}
                     />
                   </div>
                 </div>
@@ -2763,7 +2624,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                 {/* Alamat & Kontak Darurat */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className={FIELD_LABEL}>
                       Alamat Domisili
                     </label>
                     <input
@@ -2771,12 +2632,12 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                       placeholder="Desa Jeru, Kec. Tumpang, Kab. Malang"
                       value={empAddress}
                       onChange={e => setEmpAddress(e.target.value)}
-                      className="w-full text-xs border border-slate-300 rounded-lg p-2 text-slate-800"
+                      className={FIELD_INPUT}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    <label className={FIELD_LABEL}>
                       Kontak Darurat (Nama & No. HP)
                     </label>
                     <input
@@ -2784,14 +2645,14 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                       placeholder="0812-9988-7766 (Istri - Rini)"
                       value={empEmergencyContact}
                       onChange={e => setEmpEmergencyContact(e.target.value)}
-                      className="w-full text-xs border border-slate-300 rounded-lg p-2 text-slate-800"
+                      className={FIELD_INPUT}
                     />
                   </div>
                 </div>
 
                 {/* Catatan Tambahan */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className={FIELD_LABEL}>
                     Catatan Kualifikasi / Keterangan Staf
                   </label>
                   <textarea
@@ -2799,125 +2660,73 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                     placeholder="Pengalaman memasak, sertifikat higienitas, lisensi mengemudi SIM B1, dll..."
                     value={empNotes}
                     onChange={e => setEmpNotes(e.target.value)}
-                    className="w-full text-xs border border-slate-300 rounded-lg p-2.5 text-slate-800"
+                    className={`${FIELD_INPUT} py-2 leading-relaxed`}
                   />
                 </div>
-              </div>
-
-              <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsEmployeeModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  {editingEmployeeId ? 'Simpan Perubahan' : 'Tambahkan Karyawan'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        </DialogShell>
       )}
 
       {/* =========================================================================
           MODAL 4: PHOTO PREVIEW POPUP
       ========================================================================= */}
       {photoPreviewUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-xs no-print">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-4 overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-3">
-              <span className="text-xs font-bold text-slate-800">
-                Dokumentasi Bukti Kehadiran (WebP)
-              </span>
-              <button
-                type="button"
-                onClick={() => setPhotoPreviewUrl(null)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="rounded-xl overflow-hidden bg-slate-100 max-h-[70vh] flex items-center justify-center">
-              <img
-                src={photoPreviewUrl}
-                alt="Bukti Kehadiran"
-                className="w-full h-auto object-contain max-h-[70vh]"
-              />
-            </div>
+        <DialogShell
+          size="md"
+          title="Foto absen"
+          description="Foto diambil saat absen masuk. Dihapus otomatis setelah 60 hari."
+          onClose={() => setPhotoPreviewUrl(null)}
+          footer={
+            <button type="button" onClick={() => setPhotoPreviewUrl(null)} className={BTN_SECONDARY}>
+              Tutup
+            </button>
+          }
+        >
+          <div className="rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center">
+            <img src={photoPreviewUrl} alt="Foto absen" className="w-full h-auto object-contain max-h-[65vh]" />
           </div>
-        </div>
+        </DialogShell>
       )}
 
       {/* =========================================================================
           MODAL 5: MODAL CETAK & PRATINJAU PRESENSI KARYAWAN
       ========================================================================= */}
       {isPrintAttendanceOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto no-print">
-          <div className={`bg-slate-50 rounded-2xl shadow-2xl border border-slate-200 ${attPrintMode === 'RANGE' ? 'max-w-[96vw]' : 'max-w-5xl'} w-full max-h-[96vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150`}>
-            {/* Header Modal */}
-            <div className="px-6 py-4 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Pratinjau Cetak Laporan Presensi Karyawan
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Satuan Pelayanan Pemenuhan Gizi (SPPG Tumpang Jeru) • Format resmi kop dinas & rekapitulasi per divisi
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-sm transition-colors cursor-pointer"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>Cetak / Simpan PDF</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsPrintAttendanceOpen(false)}
-                  className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                  title="Tutup pratinjau"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Filter & Kontrol Cetak Presensi */}
-            <div className="px-6 py-3.5 bg-white border-b border-slate-200">
+        <DialogShell
+          size={attPrintMode === 'RANGE' ? 'full' : '2xl'}
+          title="Cetak laporan presensi"
+          description="Pilih harian atau rentang tanggal. Di dialog cetak, pilih Save as PDF untuk menyimpan arsip."
+          onClose={() => setIsPrintAttendanceOpen(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setIsPrintAttendanceOpen(false)} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
+                Tutup
+              </button>
+              <button type="button" onClick={() => window.print()} className={BTN_PRIMARY}>
+                <Printer className="w-4 h-4" />
+                Cetak / simpan PDF
+              </button>
+            </>
+          }
+        >
               <div className="flex flex-wrap items-center gap-3 text-xs">
-                {/* Mode Cetak Toggle */}
-                <div className="flex items-center p-1 bg-slate-100 rounded-lg border border-slate-200 font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => setAttPrintMode('DAILY')}
-                    className={`px-3 py-1 rounded transition-colors cursor-pointer ${
-                      attPrintMode === 'DAILY'
-                        ? 'bg-white text-emerald-800 shadow-2xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Presensi Harian
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAttPrintMode('RANGE')}
-                    className={`px-3 py-1 rounded transition-colors cursor-pointer ${
-                      attPrintMode === 'RANGE'
-                        ? 'bg-white text-emerald-800 shadow-2xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Rekap Rentang Tanggal
-                  </button>
+                <div role="tablist" aria-label="Jenis laporan" className="inline-flex gap-1 p-1 bg-slate-100 rounded-lg">
+                  {([
+                    ['DAILY', 'Harian'],
+                    ['RANGE', 'Rentang tanggal'],
+                  ] as const).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={attPrintMode === id}
+                      onClick={() => setAttPrintMode(id)}
+                      className={`px-3 min-h-[44px] sm:min-h-[30px] rounded-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+                        attPrintMode === id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
 
                 <div className="h-6 w-px bg-slate-200 hidden sm:block" />
@@ -2925,36 +2734,36 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                 {/* Date Controls */}
                 {attPrintMode === 'DAILY' ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-slate-500 font-medium">Tanggal:</span>
+                    <span className="text-slate-600 font-medium">Tanggal:</span>
                     <input
                       type="date"
                       value={attPrintTargetDate}
                       onChange={e => setAttPrintTargetDate(e.target.value)}
-                      className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-slate-50 text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="px-2 min-h-[44px] sm:min-h-[30px] rounded-md border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                     />
                     <button
                       type="button"
                       onClick={() => setAttPrintTargetDate(todayStr)}
-                      className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                      className="px-2.5 min-h-[44px] sm:min-h-[30px] text-[11px] font-medium rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                     >
                       Hari Ini
                     </button>
                   </div>
                 ) : (
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-slate-500 font-medium">Periode:</span>
+                    <span className="text-slate-600 font-medium">Periode:</span>
                     <input
                       type="date"
                       value={attPrintStartDate}
                       onChange={e => setAttPrintStartDate(e.target.value)}
-                      className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-slate-50 text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="px-2 min-h-[44px] sm:min-h-[30px] rounded-md border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                     />
                     <span className="text-slate-400">s/d</span>
                     <input
                       type="date"
                       value={attPrintEndDate}
                       onChange={e => setAttPrintEndDate(e.target.value)}
-                      className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-slate-50 text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="px-2 min-h-[44px] sm:min-h-[30px] rounded-md border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                     />
                     <button
                       type="button"
@@ -2964,7 +2773,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                         setAttPrintStartDate(localDateIso(d));
                         setAttPrintEndDate(todayStr);
                       }}
-                      className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                      className="px-2.5 min-h-[44px] sm:min-h-[30px] text-[11px] font-medium rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                     >
                       7 Hari
                     </button>
@@ -2976,7 +2785,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                         setAttPrintStartDate(localDateIso(d));
                         setAttPrintEndDate(todayStr);
                       }}
-                      className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                      className="px-2.5 min-h-[44px] sm:min-h-[30px] text-[11px] font-medium rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                     >
                       14 Hari
                     </button>
@@ -2988,7 +2797,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                         setAttPrintStartDate(start);
                         setAttPrintEndDate(todayStr);
                       }}
-                      className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                      className="px-2.5 min-h-[44px] sm:min-h-[30px] text-[11px] font-medium rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                     >
                       Bulan Ini
                     </button>
@@ -3000,7 +2809,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                         setAttPrintStartDate(localDateIso(d));
                         setAttPrintEndDate(todayStr);
                       }}
-                      className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                      className="px-2.5 min-h-[44px] sm:min-h-[30px] text-[11px] font-medium rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                     >
                       30 Hari
                     </button>
@@ -3012,12 +2821,12 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                         setAttPrintStartDate(localDateIso(new Date(now.getFullYear(), now.getMonth() - 1, 1)));
                         setAttPrintEndDate(localDateIso(new Date(now.getFullYear(), now.getMonth(), 0)));
                       }}
-                      className="px-2 py-1 text-[11px] font-semibold rounded border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
+                      className="px-2.5 min-h-[44px] sm:min-h-[30px] text-[11px] font-medium rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                     >
                       Bulan Lalu
                     </button>
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded text-[11px] font-semibold">
-                      Otomatis Landscape A4 ({printRangeDaysCount} hari muat 100%)
+                    <span className="text-[11px] text-slate-600">
+                      {printRangeDaysCount} hari, dicetak A4 mendatar
                     </span>
                   </div>
                 )}
@@ -3026,12 +2835,12 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
 
                 {/* Filter Divisi */}
                 <div className="flex items-center gap-1.5">
-                  <span className="text-slate-500 font-medium">Divisi:</span>
+                  <span className="text-slate-600 font-medium">Bagian:</span>
                   <Select size="sm"
                     value={attPrintDept}
                     onChange={e => setAttPrintDept(e.target.value)}>
-                    <option value="ALL">Semua Divisi (Pisah per Divisi)</option>
-                    {DEPARTMENTS.map(d => (
+                    <option value="ALL">Semua bagian</option>
+                    {departmentOptions.map(d => (
                       <option key={d} value={d}>
                         {d}
                       </option>
@@ -3042,7 +2851,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                 {/* Filter Status (Untuk Harian) */}
                 {attPrintMode === 'DAILY' && (
                   <div className="flex items-center gap-1.5">
-                    <span className="text-slate-500 font-medium">Status:</span>
+                    <span className="text-slate-600 font-medium">Status:</span>
                     <Select size="sm"
                       value={attPrintStatus}
                       onChange={e => setAttPrintStatus(e.target.value)}>
@@ -3057,93 +2866,46 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
                   </div>
                 )}
               </div>
-            </div>
 
-            {/* Area Pratinjau Kertas Cetak */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100">
-              <div className="bg-white rounded-xl shadow-md border border-slate-200 p-6 sm:p-8 max-w-4xl mx-auto">
+            {/* Pratinjau kertas: latar abu-abu memisahkan lembar cetak dari kontrol */}
+            <div className="rounded-xl bg-slate-100 p-3 sm:p-5 overflow-x-auto">
+              <div className="bg-white rounded-lg border border-slate-200 p-5 sm:p-8 max-w-4xl mx-auto">
                 {renderPrintableAttendanceSheet()}
               </div>
             </div>
-
-            {/* Footer Modal */}
-            <div className="px-6 py-3 bg-white border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
-              <div className="flex items-center gap-2">
-                <Info className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>
-                  Tips: Pada dialog cetak peramban, pilih &ldquo;Save as PDF&rdquo; untuk menyimpan arsip PDF atau langsung cetak ke printer fisik.
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsPrintAttendanceOpen(false)}
-                  className="px-4 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
-                >
-                  Tutup
-                </button>
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-sm transition-colors cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Cetak / Cetak PDF</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        </DialogShell>
       )}
 
       {/* =========================================================================
           MODAL 6: MODAL CETAK & PRATINJAU MASTER KARYAWAN
       ========================================================================= */}
       {isPrintEmployeesOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto no-print">
-          <div className="bg-slate-50 rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[96vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            {/* Header Modal */}
-            <div className="px-6 py-4 bg-white border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Pratinjau Cetak Data Induk / Master Karyawan
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Satuan Pelayanan Pemenuhan Gizi (SPPG Tumpang Jeru) • Format resmi kop dinas & rincian per divisi
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-sm transition-colors cursor-pointer"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>Cetak / Simpan PDF</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsPrintEmployeesOpen(false)}
-                  className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                  title="Tutup pratinjau"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Filter & Kontrol Cetak Master Karyawan */}
-            <div className="px-6 py-3.5 bg-white border-b border-slate-200">
+        <DialogShell
+          size="2xl"
+          title="Cetak data karyawan"
+          description="Daftar karyawan per bagian dengan kop SPPG. Di dialog cetak, pilih Save as PDF untuk menyimpan arsip."
+          onClose={() => setIsPrintEmployeesOpen(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setIsPrintEmployeesOpen(false)} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
+                Tutup
+              </button>
+              <button type="button" onClick={() => window.print()} className={BTN_PRIMARY}>
+                <Printer className="w-4 h-4" />
+                Cetak / simpan PDF
+              </button>
+            </>
+          }
+        >
               <div className="flex flex-wrap items-center gap-3 text-xs">
                 {/* Filter Divisi */}
                 <div className="flex items-center gap-1.5">
-                  <span className="text-slate-500 font-medium">Divisi:</span>
+                  <span className="text-slate-600 font-medium">Bagian:</span>
                   <Select size="sm"
                     value={empPrintDept}
                     onChange={e => setEmpPrintDept(e.target.value)}>
-                    <option value="ALL">Semua Divisi (Pisah per Divisi)</option>
-                    {DEPARTMENTS.map(d => (
+                    <option value="ALL">Semua bagian</option>
+                    {departmentOptions.map(d => (
                       <option key={d} value={d}>
                         {d}
                       </option>
@@ -3153,7 +2915,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
 
                 {/* Filter Status Keaktifan */}
                 <div className="flex items-center gap-1.5">
-                  <span className="text-slate-500 font-medium">Status:</span>
+                  <span className="text-slate-600 font-medium">Status:</span>
                   <Select size="sm"
                     value={empPrintStatus}
                     onChange={e => setEmpPrintStatus(e.target.value)}>
@@ -3166,62 +2928,33 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
 
                 {/* Search Filter */}
                 <div className="flex items-center gap-1.5">
-                  <span className="text-slate-500 font-medium">Cari:</span>
+                  <span className="text-slate-600 font-medium">Cari:</span>
                   <input
                     type="text"
                     placeholder="Nama, NIP, posisi..."
                     value={empPrintSearch}
                     onChange={e => setEmpPrintSearch(e.target.value)}
-                    className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-slate-50 text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 w-44"
+                    aria-label="Cari karyawan"
+                    className="px-2 min-h-[44px] sm:min-h-[30px] rounded-md border border-slate-300 bg-white text-xs text-slate-900 placeholder:text-slate-500 w-44 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                   />
                   {empPrintSearch && (
                     <button
                       type="button"
                       onClick={() => setEmpPrintSearch('')}
-                      className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                      className="text-slate-700 hover:text-slate-900 text-xs font-medium underline underline-offset-2 cursor-pointer"
                     >
-                      Reset
+                      Hapus pencarian
                     </button>
                   )}
                 </div>
               </div>
-            </div>
 
-            {/* Area Pratinjau Kertas Cetak */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100">
-              <div className="bg-white rounded-xl shadow-md border border-slate-200 p-6 sm:p-8 max-w-4xl mx-auto">
+            <div className="rounded-xl bg-slate-100 p-3 sm:p-5 overflow-x-auto">
+              <div className="bg-white rounded-lg border border-slate-200 p-5 sm:p-8 max-w-4xl mx-auto">
                 {renderPrintableEmployeesSheet()}
               </div>
             </div>
-
-            {/* Footer Modal */}
-            <div className="px-6 py-3 bg-white border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
-              <div className="flex items-center gap-2">
-                <Info className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>
-                  Tips: Pada dialog cetak peramban, pilih &ldquo;Save as PDF&rdquo; untuk menyimpan arsip PDF atau langsung cetak ke printer fisik.
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsPrintEmployeesOpen(false)}
-                  className="px-4 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
-                >
-                  Tutup
-                </button>
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-sm transition-colors cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>Cetak / Cetak PDF</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        </DialogShell>
       )}
 
       {/* =========================================================================

@@ -20,6 +20,8 @@ interface PhotoUploadCompressorProps {
   folder?: 'receiving' | 'waste' | 'menu' | 'profile';
   label?: string;
   description?: string;
+  /** Teks saat belum ada foto. */
+  emptyText?: string;
 }
 
 export const PhotoUploadCompressor: React.FC<PhotoUploadCompressorProps> = ({
@@ -29,6 +31,7 @@ export const PhotoUploadCompressor: React.FC<PhotoUploadCompressorProps> = ({
   folder = 'receiving',
   label = 'Dokumentasi Foto Kedatangan (Auto-Kompres WebP)',
   description = 'Foto dari kamera HP otomatis dikonversi ke WebP & dikompres hingga ~95% sebelum di-upload.',
+  emptyText = 'Belum ada foto dokumentasi yang dilampirkan. Lampirkan foto surat jalan atau fisik timbangan barang.',
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processStatus, setProcessStatus] = useState<string>('');
@@ -230,7 +233,7 @@ export const PhotoUploadCompressor: React.FC<PhotoUploadCompressorProps> = ({
       ) : (
         <div className="border border-dashed border-slate-200 rounded-lg p-4 text-center bg-slate-50/50">
           <p className="text-xs text-slate-400">
-            Belum ada foto dokumentasi yang dilampirkan. Lampirkan foto surat jalan atau fisik timbangan barang.
+            {emptyText}
           </p>
         </div>
       )}

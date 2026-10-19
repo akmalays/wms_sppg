@@ -125,6 +125,8 @@ const DIALOG_WIDTH = {
   lg: 'sm:max-w-2xl',
   xl: 'sm:max-w-4xl',
   '2xl': 'sm:max-w-6xl',
+  /** Pratinjau cetak lebar (mis. rekap presensi A4 mendatar). */
+  full: 'sm:max-w-[96vw]',
 };
 
 interface DialogShellProps {
