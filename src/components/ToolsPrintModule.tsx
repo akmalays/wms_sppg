@@ -915,6 +915,28 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
   const filteredOpnameItems = useMemo(() => {
     if (opnameLocation === 'ALL') return items;
+    if (opnameLocation === 'Gudang Non-Food') {
+      return items.filter(i => {
+        const l = (i.location || '').toLowerCase();
+        const c = (i.category || '').toLowerCase();
+        const n = (i.name || '').toLowerCase();
+        return (
+          l.includes('non-food') ||
+          l.includes('nonfood') ||
+          l.includes('rak n') ||
+          l.includes('apd') ||
+          c.includes('cleaning') ||
+          c.includes('packaging') ||
+          c.includes('hygiene') ||
+          c.includes('apd') ||
+          n.includes('masker') ||
+          n.includes('sarung tangan') ||
+          n.includes('sabun') ||
+          n.includes('tissue') ||
+          n.includes('plastik')
+        );
+      });
+    }
     return items.filter(i => i.location.toLowerCase().includes(opnameLocation.toLowerCase()));
   }, [items, opnameLocation]);
 
@@ -1202,7 +1224,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   // =========================================================================
   // RACK LABELS (LABEL RAK GUDANG KERING & BASAH DENGAN DAFTAR ISI ITEM)
   // =========================================================================
-  const [rackWarehouseFilter, setRackWarehouseFilter] = useState<'ALL' | 'GUDANG_KERING' | 'GUDANG_BASAH'>('ALL');
+  const [rackWarehouseFilter, setRackWarehouseFilter] = useState<'ALL' | 'GUDANG_KERING' | 'GUDANG_NONFOOD' | 'GUDANG_BASAH'>('ALL');
   const [rackSelectedId, setRackSelectedId] = useState<string>('ALL');
   const [rackSearchQuery, setRackSearchQuery] = useState<string>('');
   const [rackLayoutMode, setRackLayoutMode] = useState<'1' | '2'>('2');
@@ -1405,8 +1427,14 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
   const filteredRacks = useMemo(() => {
     return allWarehouseRacks.filter(rack => {
-      if (rackWarehouseFilter !== 'ALL' && rack.warehouseType !== rackWarehouseFilter) {
-        return false;
+      if (rackWarehouseFilter !== 'ALL') {
+        if (rackWarehouseFilter === 'GUDANG_NONFOOD') {
+          if (!rack.id.includes('-N')) return false;
+        } else if (rackWarehouseFilter === 'GUDANG_KERING') {
+          if (rack.warehouseType !== 'GUDANG_KERING' || rack.id.includes('-N')) return false;
+        } else if (rack.warehouseType !== rackWarehouseFilter) {
+          return false;
+        }
       }
       if (rackSelectedId !== 'ALL' && rack.id !== rackSelectedId) {
         return false;
@@ -2344,7 +2372,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                     setHasCustomRackSelection(false);
                   }}>
                   <option value="ALL">Semua gudang</option>
-                  <option value="GUDANG_KERING">Gudang kering</option>
+                  <option value="GUDANG_KERING">Gudang kering (pangan)</option>
+                  <option value="GUDANG_NONFOOD">Gudang non-food (sanitasi, kemasan & APD)</option>
                   <option value="GUDANG_BASAH">Gudang basah (chiller/freezer)</option>
                 </Select>
               </div>
@@ -2359,7 +2388,12 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                   }}>
                   <option value="ALL">Semua rak ({allWarehouseRacks.length})</option>
                   {allWarehouseRacks
-                    .filter(r => rackWarehouseFilter === 'ALL' || r.warehouseType === rackWarehouseFilter)
+                    .filter(r => {
+                      if (rackWarehouseFilter === 'ALL') return true;
+                      if (rackWarehouseFilter === 'GUDANG_NONFOOD') return r.id.includes('-N');
+                      if (rackWarehouseFilter === 'GUDANG_KERING') return r.warehouseType === 'GUDANG_KERING' && !r.id.includes('-N');
+                      return r.warehouseType === rackWarehouseFilter;
+                    })
                     .map(r => (
                       <option key={r.id} value={r.id}>
                         {r.id} • {r.name} ({r.items.length} item)
@@ -2439,6 +2473,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               <Select className="w-full" id="opn-loc" value={opnameLocation} onChange={e => setOpnameLocation(e.target.value)}>
                 <option value="ALL">Semua lokasi</option>
                 <option value="Gudang Kering">Gudang kering</option>
+                <option value="Gudang Non-Food">Gudang non-food (sanitasi, kemasan & APD)</option>
                 <option value="Chiller">Chiller</option>
                 <option value="Freezer">Freezer</option>
                 <option value="Dapur">Dapur</option>
@@ -3145,15 +3180,28 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               >
                 {filteredRacks.map(rack => {
                   const isSelected = !hasCustomRackSelection || selectedRackIds.includes(rack.id);
-                  const isDry = rack.warehouseType === 'GUDANG_KERING';
+                  const isNonFood = rack.id.includes('-N');
+                  const isDry = rack.warehouseType === 'GUDANG_KERING' && !isNonFood;
                   const isOverridden = Boolean(rackOverrides[rack.id] || rack.isCustom);
+
+                  // Skema warna kartu plakat: Emerald untuk Non-Food (Sanitasi/Kemasan/APD), Amber untuk Gudang Kering Pangan, Sky Blue untuk Gudang Basah
+                  const cardBorderColor = isNonFood ? '#047857' : isDry ? '#d97706' : '#0284c7';
+                  const headerBgColor = isNonFood ? '#065f46' : isDry ? '#92400e' : '#0369a1';
+                  const headerTextColor = isNonFood ? '#ecfdf5' : isDry ? '#fffbeb' : '#f0f9ff';
+                  const headerBorderColor = isNonFood ? '#064e3b' : isDry ? '#78350f' : '#075985';
+                  const iconBgColor = isNonFood ? 'rgba(2, 44, 34, 0.65)' : isDry ? 'rgba(69, 26, 3, 0.65)' : 'rgba(8, 47, 73, 0.65)';
+                  const rotationBadgeBg = isNonFood ? '#d1fae5' : isDry ? '#fef3c7' : '#e0f2fe';
+                  const rotationBadgeColor = isNonFood ? '#064e3b' : isDry ? '#78350f' : '#075985';
+                  const rotationBadgeBorder = isNonFood ? '#6ee7b7' : isDry ? '#fcd34d' : '#7dd3fc';
+                  const rackIdBgColor = isNonFood ? '#065f46' : isDry ? '#92400e' : '#0369a1';
+                  const qrBoxBorder = isNonFood ? '#059669' : isDry ? '#d97706' : '#0284c7';
+                  const qrBoxBg = isNonFood ? '#ecfdf5' : isDry ? '#fffbeb' : '#f0f9ff';
+                  const qrCodeColor = isNonFood ? '#064e3b' : isDry ? '#78350f' : '#075985';
 
                   return (
                     <div
                       key={rack.id}
-                      className={`relative border-2 ${
-                        isDry ? 'border-amber-600 bg-white' : 'border-sky-600 bg-white'
-                      } rounded-xl p-3.5 sm:p-4 print:p-3 flex flex-col justify-between gap-2.5 print:gap-2 shadow-xs transition-all ${
+                      className={`relative border-2 rounded-xl p-3.5 sm:p-4 print:p-3 flex flex-col justify-between gap-2.5 print:gap-2 shadow-xs transition-all ${
                         !isSelected ? 'opacity-40 border-slate-300 no-print' : ''
                       } ${
                         rackLayoutMode === '2'
@@ -3161,7 +3209,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                           : 'rack-card-1per-page'
                       }`}
                       style={{
-                        borderColor: isDry ? '#d97706' : '#0284c7',
+                        borderColor: cardBorderColor,
+                        backgroundColor: '#ffffff',
                         WebkitPrintColorAdjust: 'exact',
                         printColorAdjust: 'exact',
                       }}
@@ -3201,31 +3250,29 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         />
                       </div>
 
-                      {/* Header Plakat: Visual Pembeda Basah vs Kering */}
+                      {/* Header Plakat: Visual Pembeda Kering vs Non-Food vs Basah */}
                       <div
-                        className={`-mx-3.5 -mt-3.5 sm:-mx-4 sm:-mt-4 print:-mx-3 print:-mt-3 p-3 print:py-2 print:px-3 rounded-t-lg flex items-center justify-between border-b ${
-                          isDry
-                            ? 'bg-amber-800 text-amber-50 border-amber-900'
-                            : 'bg-sky-800 text-sky-50 border-sky-900'
-                        }`}
+                        className="-mx-3.5 -mt-3.5 sm:-mx-4 sm:-mt-4 print:-mx-3 print:-mt-3 p-3 print:py-2 print:px-3 rounded-t-lg flex items-center justify-between border-b"
                         style={{
-                          backgroundColor: isDry ? '#92400e' : '#0369a1',
-                          color: isDry ? '#fffbeb' : '#f0f9ff',
-                          borderColor: isDry ? '#78350f' : '#075985',
+                          backgroundColor: headerBgColor,
+                          color: headerTextColor,
+                          borderColor: headerBorderColor,
                           WebkitPrintColorAdjust: 'exact',
                           printColorAdjust: 'exact',
                         }}
                       >
                         <div className="flex items-center gap-2">
                           <div
-                            className={`p-1.5 rounded-lg ${isDry ? 'bg-amber-950/60' : 'bg-sky-950/60'}`}
+                            className="p-1.5 rounded-lg"
                             style={{
-                              backgroundColor: isDry ? 'rgba(69, 26, 3, 0.65)' : 'rgba(8, 47, 73, 0.65)',
+                              backgroundColor: iconBgColor,
                               WebkitPrintColorAdjust: 'exact',
                               printColorAdjust: 'exact',
                             }}
                           >
-                            {isDry ? (
+                            {isNonFood ? (
+                              <ShieldCheck className="w-4 h-4 text-emerald-200" />
+                            ) : isDry ? (
                               <Package className="w-4 h-4 text-amber-200" />
                             ) : (
                               <Snowflake className="w-4 h-4 text-sky-200" />
@@ -3243,15 +3290,11 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
 
                         <div className="text-right pr-14 sm:pr-0">
                           <span
-                            className={`inline-block px-2 py-0.5 rounded-full text-[9.5px] print:text-[8.5px] font-bold border ${
-                              isDry
-                                ? 'bg-amber-100 text-amber-900 border-amber-300'
-                                : 'bg-sky-100 text-sky-900 border-sky-300'
-                            }`}
+                            className="inline-block px-2 py-0.5 rounded-full text-[9.5px] print:text-[8.5px] font-bold border"
                             style={{
-                              backgroundColor: isDry ? '#fef3c7' : '#e0f2fe',
-                              color: isDry ? '#78350f' : '#075985',
-                              borderColor: isDry ? '#fcd34d' : '#7dd3fc',
+                              backgroundColor: rotationBadgeBg,
+                              color: rotationBadgeColor,
+                              borderColor: rotationBadgeBorder,
                               WebkitPrintColorAdjust: 'exact',
                               printColorAdjust: 'exact',
                             }}
@@ -3265,11 +3308,9 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       <div className="flex items-start justify-between gap-2.5 pt-0.5">
                         <div className="space-y-0.5 flex-1 min-w-0">
                           <div
-                            className={`inline-block px-2 py-0.5 rounded font-mono font-bold text-[10px] tracking-tight ${
-                              isDry ? 'bg-amber-800 text-amber-50' : 'bg-sky-800 text-sky-50'
-                            }`}
+                            className="inline-block px-2 py-0.5 rounded font-mono font-bold text-[10px] tracking-tight"
                             style={{
-                              backgroundColor: isDry ? '#92400e' : '#0369a1',
+                              backgroundColor: rackIdBgColor,
                               color: '#ffffff',
                               WebkitPrintColorAdjust: 'exact',
                               printColorAdjust: 'exact',
@@ -3296,26 +3337,20 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                           </div>
                         </div>
 
-                        {/* Barcode / QR Code Box with Amber/Sky Theme */}
+                        {/* Barcode / QR Code Box */}
                         <div
-                          className={`flex flex-col items-center justify-center p-1 border-2 rounded-xl shrink-0 text-center w-16 h-16 print:w-14 print:h-14 ${
-                            isDry
-                              ? 'border-amber-600 bg-amber-50 text-amber-900'
-                              : 'border-sky-600 bg-sky-50 text-sky-900'
-                          }`}
+                          className="flex flex-col items-center justify-center p-1 border-2 rounded-xl shrink-0 text-center w-16 h-16 print:w-14 print:h-14"
                           style={{
-                            borderColor: isDry ? '#d97706' : '#0284c7',
-                            backgroundColor: isDry ? '#fffbeb' : '#f0f9ff',
+                            borderColor: qrBoxBorder,
+                            backgroundColor: qrBoxBg,
                             WebkitPrintColorAdjust: 'exact',
                             printColorAdjust: 'exact',
                           }}
                         >
-                          <QrSvg value={buildScanUrl(rack.id)} className="w-11 h-11 print:w-10 print:h-10" color={isDry ? '#78350f' : '#075985'} />
+                          <QrSvg value={buildScanUrl(rack.id)} className="w-11 h-11 print:w-10 print:h-10" color={qrCodeColor} />
                           <span
-                            className={`text-[8px] print:text-[7px] font-mono font-bold truncate w-full mt-0.5 ${
-                              isDry ? 'text-amber-900' : 'text-sky-900'
-                            }`}
-                            style={{ color: isDry ? '#78350f' : '#075985' }}
+                            className="text-[8px] print:text-[7px] font-mono font-bold truncate w-full mt-0.5"
+                            style={{ color: qrCodeColor }}
                           >
                             {rack.id}
                           </span>

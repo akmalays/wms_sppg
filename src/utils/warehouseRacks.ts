@@ -93,29 +93,42 @@ export const BASE_RACKS_CONFIG: RackConfig[] = [
   },
   {
     id: 'RAK-KRG-N1',
-    name: 'Rak N1 - Non-Food: Sabun & Sanitasi Dapur',
+    name: 'Rak N1 - Non-Food: Sabun & Sanitasi',
     warehouseType: 'GUDANG_KERING',
-    warehouseName: 'Gudang Kering & Non-Food',
-    zone: 'Zona Kimia & Sanitasi (Terpisah Fisik)',
+    warehouseName: 'Gudang Non-Food',
+    zone: 'Zona Sabun & Sanitasi Dapur (Terpisah Fisik)',
     temperatureGuide: '20°C - 25°C (Berventilasi Baik)',
-    storageRule: 'STANDAR HACCP: Terpisah mutlak dari bahan makanan! Dilarang keras menyimpan bahan pangan di rak ini.',
+    storageRule: 'STANDAR HACCP: Terpisah mutlak dari bahan makanan & kemasan! Dilarang keras menyimpan bahan pangan atau masker/APD di rak ini.',
     rotationMethod: 'FIFO',
-    capacityMax: '40 Jerigen 5L',
+    capacityMax: '40 Jerigen 5L / Botol',
     picName: 'Staf Sanitasi & Kebersihan',
-    customNote: 'Penyimpanan khusus cairan pembersih, deterjen & disinfektan food contact.',
+    customNote: 'Penyimpanan sabun cuci piring food-contact, deterjen pencucian tray, karbol lantai & disinfektan.',
   },
   {
     id: 'RAK-KRG-N2',
     name: 'Rak N2 - Non-Food: Plastik, Tissue & Kemasan',
     warehouseType: 'GUDANG_KERING',
-    warehouseName: 'Gudang Kering & Non-Food',
+    warehouseName: 'Gudang Non-Food',
     zone: 'Zona Kemasan & Packaging Dapur',
-    temperatureGuide: '20°C - 25°C (Bersih & Bebas Debu)',
+    temperatureGuide: '20°C - 25°C (Bersih, Kering & Bebas Debu)',
     storageRule: 'Simpan kardus/pack dalam kondisi tertutup plastik pembungkus agar higienis sebelum didistribusikan ke dapur.',
     rotationMethod: 'FIFO',
     capacityMax: '30 Dus Kemasan / Kontainer',
     picName: 'Staf Logistik Non-Food',
-    customNote: 'Penyimpanan kantong sampah, sarung tangan & tissue dapur.',
+    customNote: 'Penyimpanan kantong sampah, plastik wrap, thinwall, mika bento, paper bowl & tissue dapur.',
+  },
+  {
+    id: 'RAK-KRG-N3',
+    name: 'Rak N3 - Non-Food: APD & Masker',
+    warehouseType: 'GUDANG_KERING',
+    warehouseName: 'Gudang Non-Food',
+    zone: 'Zona Higiene & Alat Pelindung Diri (APD)',
+    temperatureGuide: '20°C - 25°C (Kering, Bersih & Bebas Debu)',
+    storageRule: 'Simpan dalam kotak/kontainer tertutup rapat dan steril. Wajib digunakan sebelum memasuki area pengolahan dapur SPPG.',
+    rotationMethod: 'FIFO',
+    capacityMax: '25 Box APD / Kontainer Tertutup',
+    picName: 'Staf Higiene & K3 Dapur',
+    customNote: 'Penyimpanan masker medis (3-ply/hijab), penutup kepala (hairnet), celemek/apron, dan sarung tangan food-grade.',
   },
 
   // --- GUDANG BASAH & DAPUR: 3 freezer, 1 chiller, 1 palet sisa bahan ---
@@ -239,17 +252,62 @@ export function matchItemToRackId(
     if (suggested) return suggested;
   }
 
-  if (l.includes('rak n1') || upperId.startsWith('ITM-NFD-001') || n.includes('sabun') || c.includes('cleaning')) return 'RAK-KRG-N1';
+  // Cek Non-Food (3 Kategori: Sabun dan Sanitasi, Plastik Tissue dan Kemasan, APD dan Masker)
+  // Kategori 3: APD & Masker
   if (
-    l.includes('rak n2') ||
     l.includes('rak n3') ||
     l.includes('apd') ||
+    n.includes('masker') ||
+    n.includes('hairnet') ||
+    n.includes('nurse cap') ||
+    n.includes('penutup kepala') ||
+    n.includes('celemek') ||
+    n.includes('apron') ||
+    n.includes('sarung tangan') ||
+    n.includes('face shield') ||
+    c.includes('apd') ||
+    c.includes('pelindung')
+  ) {
+    return 'RAK-KRG-N3';
+  }
+
+  // Kategori 1: Sabun & Sanitasi
+  if (
+    l.includes('rak n1') ||
+    upperId.startsWith('ITM-NFD-001') ||
+    n.includes('sabun') ||
+    n.includes('sanitasi') ||
+    n.includes('deterjen') ||
+    n.includes('pembersih') ||
+    n.includes('karbol') ||
+    n.includes('disinfektan') ||
+    n.includes('rinso') ||
+    n.includes('sunlight') ||
+    c.includes('cleaning') ||
+    c.includes('sanitasi')
+  ) {
+    return 'RAK-KRG-N1';
+  }
+
+  // Kategori 2: Plastik, Tissue & Kemasan
+  if (
+    l.includes('rak n2') ||
     upperId.startsWith('ITM-NFD-') ||
     n.includes('plastik') ||
     n.includes('tissue') ||
-    n.includes('sarung tangan')
-  )
+    n.includes('tisu') ||
+    n.includes('kemasan') ||
+    n.includes('packaging') ||
+    n.includes('wrap') ||
+    n.includes('mika') ||
+    n.includes('thinwall') ||
+    n.includes('kresek') ||
+    n.includes('kantong sampah') ||
+    c.includes('packaging') ||
+    c.includes('kemasan')
+  ) {
     return 'RAK-KRG-N2';
+  }
 
   // Gudang basah: freezer untuk ayam/protein beku, chiller untuk buah, sayur, telur & sisa bahan terbuka
   if (l.includes('freezer 2') || l.includes('bin-frz-d1')) return 'BIN-FRZ-D1';

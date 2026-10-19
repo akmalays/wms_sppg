@@ -85,15 +85,15 @@ export const WAREHOUSE_SKU_DEFINITIONS: Record<WarehouseSkuType, WarehouseSkuDef
   },
   GUDANG_NONFOOD: {
     key: 'GUDANG_NONFOOD',
-    label: 'Gudang Non-Food (Kemasan & Sanitasi)',
+    label: 'Gudang Non-Food (Sanitasi, Kemasan & APD)',
     prefix: 'ITM-NFD',
-    shortDesc: 'Sabun Cuci Piring, Kantong Plastik Sampah, Tissue, APD & Sanitasi',
+    shortDesc: 'Sabun Sanitasi, Plastik Kemasan, Tissue Dapur, APD & Masker',
     temperature: '20°C - 25°C (Berventilasi Baik, Terpisah Mutlak dari Makanan)',
-    defaultLocation: 'Gudang Non-Food - Rak N1 (Sabun, Kebersihan & Sanitasi Dapur)',
+    defaultLocation: 'Gudang Non-Food - Rak N1 (Sabun dan Sanitasi)',
     suggestedLocations: [
-      'Gudang Non-Food - Rak N1 (Sabun, Kebersihan & Sanitasi Dapur)',
-      'Gudang Non-Food - Rak N2 (Plastik, Kemasan & Tissue Dapur)',
-      'Gudang Non-Food - Rak N3 (Perlengkapan APD & Masker)',
+      'Gudang Non-Food - Rak N1 (Sabun dan Sanitasi)',
+      'Gudang Non-Food - Rak N2 (Plastik, Tissue dan Kemasan)',
+      'Gudang Non-Food - Rak N3 (APD dan Masker)',
     ],
   },
   OPERASIONAL_ATK: {
@@ -308,13 +308,13 @@ export const STANDARD_STORAGE_RACKS: Record<string, StorageRackSpecification> = 
     id: 'RAK-KRG-N1',
     shortName: 'Gudang Non-Food - Rak N1',
     rackCode: 'Rak N1',
-    commodityDetail: 'Sabun & Sanitasi Dapur',
-    fullDisplay: 'Gudang Non-Food - Rak N1 (Sabun, Kebersihan & Sanitasi Dapur)',
+    commodityDetail: 'Sabun & Sanitasi',
+    fullDisplay: 'Gudang Non-Food - Rak N1 (Sabun dan Sanitasi)',
     warehouseType: 'GUDANG_NONFOOD',
-    zone: 'Zona Kimia & Sanitasi (Terpisah Fisik Mutlak)',
+    zone: 'Zona Sabun & Sanitasi Dapur (Terpisah Fisik Mutlak)',
     temperature: '20°C - 25°C (Berventilasi Baik)',
-    capacityMax: '40 Jerigen 5L',
-    storageRule: 'STANDAR HACCP: Terpisah mutlak dari bahan makanan! Dilarang keras menyimpan bahan pangan apa pun di rak ini.',
+    capacityMax: '40 Jerigen 5L / Botol',
+    storageRule: 'STANDAR HACCP: Terpisah mutlak dari bahan makanan & kemasan! Dilarang keras menyimpan bahan pangan apa pun di rak ini.',
     description: 'Penyimpanan cairan pembersih piring food-contact, deterjen pencucian tray SUS 304, sabun lantai, dan disinfektan dapur.',
     rotationMethod: 'FIFO',
     picDefault: 'Staf Sanitasi & Kebersihan'
@@ -324,15 +324,30 @@ export const STANDARD_STORAGE_RACKS: Record<string, StorageRackSpecification> = 
     shortName: 'Gudang Non-Food - Rak N2',
     rackCode: 'Rak N2',
     commodityDetail: 'Plastik, Tissue & Kemasan',
-    fullDisplay: 'Gudang Non-Food - Rak N2 (Plastik, Kemasan & Tissue Dapur)',
+    fullDisplay: 'Gudang Non-Food - Rak N2 (Plastik, Tissue dan Kemasan)',
     warehouseType: 'GUDANG_NONFOOD',
     zone: 'Zona Kemasan & Packaging Dapur',
-    temperature: '20°C - 25°C (Bersih & Bebas Debu)',
+    temperature: '20°C - 25°C (Bersih, Kering & Bebas Debu)',
     capacityMax: '30 Dus Kemasan / Kontainer',
     storageRule: 'Simpan kardus/pack dalam kondisi tertutup plastik pembungkus agar higienis sebelum didistribusikan ke dapur.',
-    description: 'Penyimpanan kantong sampah medis/dapur, tissue serap minyak, sarung tangan plastik (hand gloves), dan mika kemasan.',
+    description: 'Penyimpanan kantong sampah medis/dapur, tissue serap minyak, tissue hand towel, mika bento, dan thinwall kemasan.',
     rotationMethod: 'FIFO',
     picDefault: 'Staf Logistik Non-Food'
+  },
+  'RAK-KRG-N3': {
+    id: 'RAK-KRG-N3',
+    shortName: 'Gudang Non-Food - Rak N3',
+    rackCode: 'Rak N3',
+    commodityDetail: 'APD & Masker',
+    fullDisplay: 'Gudang Non-Food - Rak N3 (APD dan Masker)',
+    warehouseType: 'GUDANG_NONFOOD',
+    zone: 'Zona Higiene & Alat Pelindung Diri (APD)',
+    temperature: '20°C - 25°C (Kering, Bersih & Bebas Debu)',
+    capacityMax: '25 Box APD / Kontainer Tertutup',
+    storageRule: 'Simpan dalam wadah/kotak tertutup rapat dan steril. Wajib digunakan sebelum memasuki area pengolahan dapur SPPG.',
+    description: 'Penyimpanan masker medis (3-ply/hijab), penutup kepala (nurse cap/hairnet), celemek/apron, dan sarung tangan food-grade.',
+    rotationMethod: 'FIFO',
+    picDefault: 'Staf Higiene & K3 Dapur'
   },
   'BIN-FRZ-F2': {
     id: 'BIN-FRZ-F2',
@@ -455,11 +470,39 @@ export function getStorageLocationDetails(rawLocation: string): StorageRackSpeci
     return STANDARD_STORAGE_RACKS[`RAK-KRG-A${rakNo[1]}`];
   }
 
-  // 3. Cek Non-Food
-  if (l.includes('rak n1') || l.includes('sabun') || l.includes('sanitasi')) {
+  // 3. Cek Non-Food (3 Kategori: Sabun dan Sanitasi, Plastik Tissue dan Kemasan, APD dan Masker)
+  if (
+    l.includes('rak n3') ||
+    l.includes('apd') ||
+    l.includes('masker') ||
+    l.includes('hairnet') ||
+    l.includes('celemek') ||
+    l.includes('apron') ||
+    l.includes('sarung tangan')
+  ) {
+    return STANDARD_STORAGE_RACKS['RAK-KRG-N3'];
+  }
+  if (
+    l.includes('rak n1') ||
+    l.includes('sabun') ||
+    l.includes('sanitasi') ||
+    l.includes('deterjen') ||
+    l.includes('karbol') ||
+    l.includes('pembersih') ||
+    l.includes('disinfektan')
+  ) {
     return STANDARD_STORAGE_RACKS['RAK-KRG-N1'];
   }
-  if (l.includes('rak n2') || l.includes('rak n3') || l.includes('plastik') || l.includes('tissue') || l.includes('kemasan') || l.includes('apd')) {
+  if (
+    l.includes('rak n2') ||
+    l.includes('plastik') ||
+    l.includes('tissue') ||
+    l.includes('tisu') ||
+    l.includes('kemasan') ||
+    l.includes('mika') ||
+    l.includes('thinwall') ||
+    l.includes('wrap')
+  ) {
     return STANDARD_STORAGE_RACKS['RAK-KRG-N2'];
   }
 

@@ -7,10 +7,11 @@ import { KopText } from '../common/KopText';
 // SOP penanganan bahan, satu dokumen per tempat simpan agar bisa ditempel di lokasinya.
 // Isi tiap rak/unit diambil dari Master Barang dengan aturan rak yang sama seperti Plakat Rak.
 
-export type SopPlace = 'DRY' | 'CHILLER' | 'FREEZER' | 'LEFTOVER';
+export type SopPlace = 'DRY' | 'NONFOOD' | 'CHILLER' | 'FREEZER' | 'LEFTOVER';
 export const SOP_PLACE_OPTIONS: { value: SopPlace | 'ALL'; label: string }[] = [
   { value: 'ALL', label: 'Semua tempat (1 SOP per halaman)' },
   { value: 'DRY', label: 'Gudang Kering' },
+  { value: 'NONFOOD', label: 'Gudang Non-Food (Sanitasi, Kemasan & APD)' },
   { value: 'CHILLER', label: 'Chiller' },
   { value: 'FREEZER', label: 'Freezer' },
   { value: 'LEFTOVER', label: 'Palet Sisa Bahan' },
@@ -353,6 +354,75 @@ const SOPS: Record<SopPlace, SopDefinition> = {
       { item: 'Minyak terbuka', limit: '≤ 1 bulan sejak dibuka*', discard: 'Tengik atau keruh' },
     ],
   },
+
+  NONFOOD: {
+    docNo: 'SOP/GDG/05',
+    title: 'Penyimpanan Non-Food: Sabun, Kemasan & APD',
+    location: 'Gudang Non-Food: Rak N1, Rak N2, Rak N3',
+    standard: 'Suhu ruang 20–25°C, berventilasi baik, terpisah fisik mutlak dari bahan pangan',
+    purpose: 'Mencegah kontaminasi silang kimia/pembersih ke makanan dan menjaga higienitas kemasan serta APD dapur SPPG.',
+    layoutTitle: 'Tata letak 3 kategori non-food:',
+    layout: [
+      {
+        place: 'Rak N1:Sabun & Sanitasi',
+        rackId: 'RAK-KRG-N1',
+        fallback: 'Sabun cuci piring food-contact, deterjen tray, karbol lantai, disinfektan',
+        rules: 'STANDAR HACCP: Terpisah mutlak dari makanan & kemasan. Jerigen tertutup rapat, ambalan bawah untuk cairan berat.',
+      },
+      {
+        place: 'Rak N2:Plastik, Tissue & Kemasan',
+        rackId: 'RAK-KRG-N2',
+        fallback: 'Plastik wrap, mika bento, thinwall, kantong sampah dapur, tissue serap minyak/tangan',
+        rules: 'Kondisi dus/pack tertutup plastik pembungkus agar higienis dan bebas debu sebelum ke dapur.',
+      },
+      {
+        place: 'Rak N3:APD & Masker',
+        rackId: 'RAK-KRG-N3',
+        fallback: 'Masker medis 3-ply/hijab, hairnet/penutup kepala, celemek/apron, sarung tangan food-grade',
+        rules: 'Simpan dalam kontainer/box tertutup rapat, steril dan bersih. Wajib dipakai staf sebelum masuk dapur.',
+      },
+    ],
+    notAllowed: [
+      'Menyimpan bahan makanan atau minuman apa pun di rak non-food.',
+      'Mencampur sabun/cairan pembersih di ambalan yang sama dengan kemasan makanan atau masker/APD.',
+      'Membiarkan kemasan masker, sarung tangan, atau tissue terbuka berdebu.',
+      'Menaruh jerigen sabun bocor di atas lantai tanpa alas penampung.',
+    ],
+    steps: [
+      {
+        title: 'Penerimaan & penyimpanan',
+        items: [
+          'Periksa kondisi fisik: jerigen tidak bocor, kardus masker & kemasan tidak penyok atau basah.',
+          <>Pisahkan langsung ke rak masing-masing: <b>Rak N1 (Sabun & Sanitasi)</b>, <b>Rak N2 (Plastik, Tissue & Kemasan)</b>, <b>Rak N3 (APD & Masker)</b>.</>,
+          'Barang baru diletakkan di belakang/bawah, stok lama di depan/atas (FIFO).',
+          'Catat penerimaan di aplikasi WMS SPPG pada hari yang sama.',
+        ],
+      },
+      {
+        title: 'Pengambilan & pemakaian',
+        items: [
+          'Ambil sesuai kebutuhan operasional harian dapur & sanitasi.',
+          'Gunakan APD (masker, hairnet, apron, sarung tangan) sebelum menangani makanan.',
+          'Segera tutup kembali wadah/kontainer APD dan kemasan setelah mengambil isi.',
+          'Cairan pembersih dituangkan hati-hati menggunakan corong agar tidak tercecer.',
+        ],
+      },
+    ],
+    routine: [
+      { when: 'Harian', tasks: 'Cek ketersediaan masker, sarung tangan, sabun cuci piring, dan tissue meja.' },
+      { when: 'Mingguan', tasks: 'Bersihkan rak dari debu, periksa kerapian susunan dus kemasan dan box APD.' },
+    ],
+    problems: [
+      { issue: 'Jerigen sabun bocor atau menetes', action: 'Segera lap bersih dengan kain terpisah, pindahkan ke wadah penampung baru.' },
+      { issue: 'Masker atau APD terkena air / kotor', action: 'Jangan dipakai untuk pemorsian makanan; pisahkan dan buang.' },
+      { issue: 'Stok APD atau sabun menipis di bawah batas minimum', action: 'Segera buat pengajuan nota belanja non-food ke Asisten Lapangan.' },
+    ],
+    shelfLife: [
+      { item: 'Sabun cuci piring & pembersih', limit: '12 – 24 bulan dalam kemasan tertutup', discard: 'Berubah warna, bau menyengat rusak, mengendap abnormal' },
+      { item: 'Plastik kemasan & tissue', limit: 'Simpan kering, habiskan ≤ 6 bulan', discard: 'Kotor, lembap berjamur, atau robek tercemar' },
+      { item: 'Masker & sarung tangan APD', limit: '3 – 5 tahun (tertera di box)', discard: 'Kotor, basah, karet putus, atau kemasan primer terbuka lama' },
+    ],
+  },
 };
 
 const Section: React.FC<{ no: number; title: string; children: React.ReactNode }> = ({ no, title, children }) => (
@@ -553,7 +623,7 @@ export const SopGudangDoc: React.FC<SopGudangDocProps> = ({ items, place, effect
     return names.length > 8 ? `${shown}, dan ${names.length - 8} barang lain` : shown;
   };
 
-  const places: SopPlace[] = place === 'ALL' ? ['DRY', 'CHILLER', 'FREEZER', 'LEFTOVER'] : [place];
+  const places: SopPlace[] = place === 'ALL' ? ['DRY', 'NONFOOD', 'CHILLER', 'FREEZER', 'LEFTOVER'] : [place];
 
   return (
     <>

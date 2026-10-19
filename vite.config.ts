@@ -9,7 +9,11 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+        'jsqr': path.resolve(__dirname, 'node_modules/jsqr/dist/jsQR.js'),
       },
+    },
+    optimizeDeps: {
+      include: ['jsqr'],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
