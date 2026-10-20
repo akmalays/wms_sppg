@@ -177,8 +177,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
     { id: '1', sku: '', name: '', category: 'Bahan Basah', baseUnit: 'Kg', initialStock: 0, minStock: 15, location: 'Chiller Dapur - Bin C1 (Daging Ayam & Protein Unggas)', notes: '' },
     { id: '2', sku: '', name: '', category: 'Bahan Kering', baseUnit: 'Kg', initialStock: 0, minStock: 20, location: 'Gudang Kering - Palet Tengah (Sembako Sak & Karung Curah)', notes: '' },
     { id: '3', sku: '', name: '', category: 'ATK & Administrasi', baseUnit: 'Rim', initialStock: 0, minStock: 5, location: 'Ruang Kantor / Lemari ATK (Alat Tulis Kantor & Administrasi)', notes: '' },
-    { id: '4', sku: '', name: '', category: 'Alat Kebersihan', baseUnit: 'Pouch', initialStock: 0, minStock: 10, location: 'Gudang Non-Food - Rak N1 (Sabun, Kebersihan & Sanitasi Dapur)', notes: '' },
-    { id: '5', sku: '', name: '', category: 'Perlengkapan & APD', baseUnit: 'Pack', initialStock: 0, minStock: 10, location: 'Gudang Non-Food - Rak N2 (Plastik, Kemasan & Tissue Dapur)', notes: '' },
+    { id: '4', sku: '', name: '', category: 'Sanitasi, Kemasan & APD', baseUnit: 'Pouch', initialStock: 0, minStock: 10, location: 'Gudang Non-Food - Rak N1 (Sabun, Kebersihan & Sanitasi Dapur)', notes: '' },
+    { id: '5', sku: '', name: '', category: 'Sanitasi, Kemasan & APD', baseUnit: 'Pack', initialStock: 0, minStock: 10, location: 'Gudang Non-Food - Rak N2 (Plastik, Kemasan & Tissue Dapur)', notes: '' },
   ]);
 
   // ----------------------------------------------------
@@ -284,8 +284,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
       'Bahan Basah': 0,
       'Bahan Kering': 0,
       'ATK & Administrasi': 0,
-      'Alat Kebersihan': 0,
-      'Perlengkapan & APD': 0,
+      'Sanitasi, Kemasan & APD': 0,
       'Operasional & Keperluan Lain': 0,
     };
 
@@ -367,8 +366,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
       'Bahan Basah',
       'Bahan Kering',
       'ATK & Administrasi',
-      'Alat Kebersihan',
-      'Perlengkapan & APD',
+      'Sanitasi, Kemasan & APD',
       'Operasional & Keperluan Lain',
     ];
 
@@ -710,8 +708,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
         ? 'Gudang Kering & Sembako'
         : chosenCat === 'ATK & Administrasi'
         ? 'Ruang Kantor & Administrasi'
-        : chosenCat === 'Alat Kebersihan'
-        ? 'Gudang Sanitasi & Kebersihan'
+        : chosenCat === 'Sanitasi, Kemasan & APD'
+        ? 'Gudang Non-Food'
         : 'Gudang Utama SPPG MLG TUMPANG JERU'
     );
     setOpnameFormNotes('');
@@ -1000,12 +998,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
       const nextSku = generateAutoSku(wh, items);
       setFormSku(nextSku);
       setFormLocation(WAREHOUSE_SKU_DEFINITIONS[wh].defaultLocation);
-      if (wh === 'GUDANG_KERING' && (formCategory === 'Bahan Basah' || formCategory === 'Alat Kebersihan')) {
+      if (wh === 'GUDANG_KERING' && (formCategory === 'Bahan Basah' || formCategory === 'Sanitasi, Kemasan & APD')) {
         setFormCategory('Bahan Kering');
-      } else if (wh === 'GUDANG_BASAH' && (formCategory === 'Bahan Kering' || formCategory === 'Alat Kebersihan')) {
+      } else if (wh === 'GUDANG_BASAH' && (formCategory === 'Bahan Kering' || formCategory === 'Sanitasi, Kemasan & APD')) {
         setFormCategory('Bahan Basah');
       } else if (wh === 'GUDANG_NONFOOD') {
-        setFormCategory('Alat Kebersihan');
+        setFormCategory('Sanitasi, Kemasan & APD');
       }
     }
   };
@@ -1187,9 +1185,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
     } else if (r.category === 'ATK & Administrasi') {
       r.location = 'Ruang Kantor / Lemari ATK (Alat Tulis Kantor & Administrasi)';
       r.baseUnit = 'Rim';
-    } else if (r.category === 'Alat Kebersihan') {
-      r.location = 'Gudang Non-Food - Rak N1 (Sabun, Kebersihan & Sanitasi Dapur)';
+    } else if (r.category === 'Sanitasi, Kemasan & APD' && /sabun|deterjen|pembersih|cleaner|karbol|disinfe|wipol|sunlight/i.test(r.name)) {
+      r.location = 'Gudang Non-Food - Rak N1 (Sabun dan Sanitasi)';
       r.baseUnit = 'Pouch';
+    } else if (r.category === 'Sanitasi, Kemasan & APD' && /masker|sarung tangan|celemek|apron|hairnet|nurse cap|apd/i.test(r.name)) {
+      r.location = 'Gudang Non-Food - Rak N3 (APD dan Masker)';
+      r.baseUnit = 'Box';
     } else {
       r.location = 'Gudang Non-Food - Rak N2 (Plastik, Kemasan & Tissue Dapur)';
       r.baseUnit = 'Pack';

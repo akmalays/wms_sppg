@@ -14,6 +14,9 @@
 -- 1. MENU ORDERS
 -- ------------------------------------------------------------------------------
 ALTER TABLE public.menu_orders ADD COLUMN IF NOT EXISTS data JSONB;
+-- Tabel lama tidak punya chef_in_charge; tambahkan dulu agar baris berikutnya tidak gagal
+-- (lihat juga 20261020000001_menu_orders_legacy_columns.sql).
+ALTER TABLE public.menu_orders ADD COLUMN IF NOT EXISTS chef_in_charge TEXT;
 ALTER TABLE public.menu_orders ALTER COLUMN chef_in_charge DROP NOT NULL;
 
 DROP POLICY IF EXISTS "Menu orders viewable by all authenticated users" ON public.menu_orders;

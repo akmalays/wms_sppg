@@ -258,7 +258,7 @@ export const SearchPicker: React.FC<SearchPickerProps> = ({
                   className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer border-t border-slate-100 ${active === customRow ? 'bg-emerald-50' : ''}`}>
                   <Plus className="w-4 h-4 text-emerald-700 shrink-0" />
                   <span className="text-slate-800">
-                    Pakai <strong className="text-slate-900">"{trimmed}"</strong> sebagai barang baru
+                    Pakai <strong className="text-slate-900">"{trimmed}"</strong> sebagai {noun} baru
                   </span>
                 </li>
               )}

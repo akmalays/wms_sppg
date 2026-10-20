@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { CLOUD_WRITE_FAILED_EVENT } from '../lib/cloudEvents';
 import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -73,6 +74,15 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     },
     [showToast]
   );
+
+  useEffect(() => {
+    const onCloudFailed = (e: Event) => {
+      const { label, message } = (e as CustomEvent<{ label: string; message: string }>).detail;
+      showToast(`Gagal ${label} ke server: ${message}. Perubahan ini akan hilang saat halaman dimuat ulang.`, 'error', 'Tidak tersimpan ke server', 12000);
+    };
+    window.addEventListener(CLOUD_WRITE_FAILED_EVENT, onCloudFailed);
+    return () => window.removeEventListener(CLOUD_WRITE_FAILED_EVENT, onCloudFailed);
+  }, [showToast]);
 
   return (
     <ToastContext.Provider value={{ toasts, showToast, success, error, warning, info, removeToast }}>

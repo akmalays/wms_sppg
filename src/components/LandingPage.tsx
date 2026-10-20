@@ -30,7 +30,6 @@ import {
 import { fetchPublicSiteData, PublicSiteData, currentWeekRange } from '../db/publicSiteData';
 import { localDateIso } from '../utils/localDate';
 import {
-  Lock,
   LayoutGrid,
   ArrowRight,
   Building2,
@@ -51,7 +50,6 @@ import {
 import { SPPG_ADDRESS, SPPG_EMAIL, SPPG_PHONE } from './common/KopText';
 
 export interface LandingPageProps {
-  onNavigateToLogin?: () => void;
   isStaffLoggedIn?: boolean;
   onReturnToDashboard?: () => void;
   staffName?: string;
@@ -252,7 +250,6 @@ const NAV_LINKS = [
 const PUBLIC_FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#133d2c] focus-visible:ring-offset-2';
 
 export const LandingPage: React.FC<LandingPageProps> = ({
-  onNavigateToLogin,
   onReturnToDashboard,
   staffName
 }) => {
@@ -523,15 +520,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   </div>
                 </div>
               </div>
-            ) : onNavigateToLogin ? (
-              <button
-                type="button"
-                onClick={onNavigateToLogin}
-                className={`hidden sm:inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-lg text-xs font-semibold text-[#2a3830] border border-[#ded7c8] bg-white hover:bg-[#f6f2e8] cursor-pointer ${PUBLIC_FOCUS}`}
-              >
-                <Lock className="w-3.5 h-3.5" />
-                Masuk petugas
-              </button>
             ) : null}
             <button
               type="button"
@@ -559,16 +547,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   {link.label}
                 </a>
               ))}
-              {!onReturnToDashboard && onNavigateToLogin && (
-                <button
-                  type="button"
-                  onClick={onNavigateToLogin}
-                  className={`flex items-center gap-2 px-3 min-h-[44px] rounded-lg text-sm font-medium text-[#2a3830] hover:bg-[#f0ece1] text-left cursor-pointer ${PUBLIC_FOCUS}`}
-                >
-                  <Lock className="w-4 h-4" />
-                  Masuk petugas
-                </button>
-              )}
             </div>
           </nav>
         )}

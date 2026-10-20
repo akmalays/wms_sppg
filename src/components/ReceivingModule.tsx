@@ -9,7 +9,6 @@ import {
   Supplier,
   NonFoodExpense,
   normalizeItemCategory,
-  MainItemCategory,
   PurchaseOrderNota,
   PurchaseOrderItem,
   PaymentMethod,
@@ -93,6 +92,8 @@ import {
   STANDARD_CATEGORIES,
   StandardCategory,
   normalizeToStandardCategory,
+  getItemSubcategory,
+  getSubcategoryOrder,
 } from '../utils/categoryStandards';
 
 interface ReceivingModuleProps {
@@ -127,6 +128,9 @@ export interface UnifiedRecord {
   volunteer?: string;
   notes?: string;
   rawDoc?: ReceivingDocument;
+  /** Baris penerimaan & belanja tertautnya, untuk menghapus catatan yang salah */
+  lineId?: string;
+  linkedExpenseId?: string;
 }
 
 type PeriodType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
@@ -202,6 +206,7 @@ function parseExpenseDate(dateStr: string): Date | null {
 
 export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) => {
   const { currentUser, can } = useAuth();
+  const canDeleteRecords = can('RECEIVE_GOODS');
   const toast = useToast();
 
   // Confirmation Modal & Action Loading states
@@ -367,8 +372,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     localDateIso().slice(0, 7)
   );
 
-  // Category filter: 'ALL' | 'Bahan Basah' | 'Bahan Kering' | 'Bahan Peralatan' | 'SURAT_JALAN'
-  const [selectedCategoryTab, setSelectedCategoryTab] = useState<'ALL' | MainItemCategory | 'SURAT_JALAN'>('ALL');
+  // Filter kategori memakai kategori yang sama dengan Master Barang, plus sub-kategori dan sumber catatan
+  const [selectedCategoryTab, setSelectedCategoryTab] = useState<'ALL' | StandardCategory>('ALL');
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string>('ALL');
+  const [sourceFilter, setSourceFilter] = useState<'ALL' | UnifiedRecord['source']>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -754,29 +761,36 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     }
   };
 
-  const handleDeleteExpense = (id: string, name: string) => {
+  // Hapus catatan yang salah: penerimaan mengurangi lagi stoknya, belanja langsung hanya dihapus.
+  const handleDeleteRecord = (r: UnifiedRecord) => {
+    const isStock = r.source === 'DELIVERY_ORDER';
+    const qty = `${formatRecordQty(r.quantity)} ${r.unit}`;
+    const nota = getMatchingNotaForRecord(r);
     setConfirmDialog({
       isOpen: true,
-      title: 'Hapus Catatan Belanja?',
-      message: `Apakah Anda yakin ingin menghapus catatan barang "${name}"? Data pengeluaran dan catatan terkait akan dihapus dari sistem.`,
-      confirmText: 'Ya, Hapus',
+      title: `Hapus ${r.itemName}?`,
+      message:
+        (isStock
+          ? `Stok ${r.itemName} akan dikurangi ${qty}, dan catatan pembatalannya masuk Buku Mutasi.${r.linkedExpenseId ? ' Catatan belanjanya ikut dihapus.' : ''}`
+          : `Catatan belanja ${r.itemName} (${qty}) akan dihapus. Stok tidak berubah.`) +
+        (nota ? ` Nota ${nota.poNumber} masih mencantumkan barang ini, jadi edit notanya setelah ini.` : ''),
+      confirmText: 'Hapus',
       cancelText: 'Batal',
       variant: 'danger',
       onConfirm: async () => {
         setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-        setActionLoading({
-          isLoading: true,
-          message: 'Menghapus catatan barang...',
-        });
         try {
-          await new Promise(r => setTimeout(r, 250));
-          warehouseDb.deleteNonFoodExpense(id, currentUser);
-          toast.success(`Catatan "${name}" berhasil dihapus.`, 'Catatan Dihapus');
+          if (isStock) {
+            if (!r.rawDoc || !r.lineId) throw new Error('Baris penerimaan ini tidak bisa dihapus.');
+            warehouseDb.deleteReceivingLine(r.rawDoc.id, r.lineId, currentUser, r.linkedExpenseId);
+          } else {
+            warehouseDb.deleteNonFoodExpense(r.id, currentUser);
+          }
+          setSelectedRecordIds(prev => prev.filter(id => id !== r.id));
+          toast.success(`${r.itemName} dihapus.`, 'Catatan dihapus');
           refreshAll();
         } catch (err: any) {
-          toast.error(err?.message || 'Gagal menghapus catatan barang.', 'Gagal Menghapus');
-        } finally {
-          setActionLoading({ isLoading: false });
+          toast.error(err?.message || 'Gagal menghapus catatan.', 'Gagal menghapus');
         }
       },
     });
@@ -1141,6 +1155,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
         list.push({
           id: `${rec.id}-${idx}`,
           source: 'DELIVERY_ORDER',
+          lineId: l.id,
+          linkedExpenseId: priced?.id,
           date: rec.date,
           parsedDate: parseExpenseDate(rec.date),
           time: rec.arrivalTime,
@@ -1203,28 +1219,43 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     });
   }, [unifiedRecords, effectiveDateRange]);
 
-  // Dynamic Category Counts in Period
+  // Kategori & sub-kategori tiap catatan, dihitung sekali per periode
+  const recordCategory = (r: UnifiedRecord): StandardCategory =>
+    normalizeToStandardCategory(r.displayCategory || r.category, r.itemName);
+
+  const sourceRecords = useMemo(
+    () => (sourceFilter === 'ALL' ? periodRecords : periodRecords.filter(r => r.source === sourceFilter)),
+    [periodRecords, sourceFilter]
+  );
+
   const categoryCounts = useMemo(() => {
-    let basah = 0;
-    let kering = 0;
-    let peralatan = 0;
-    let suratJalan = 0;
-
-    periodRecords.forEach(r => {
-      if (r.source === 'DELIVERY_ORDER') suratJalan += 1;
-      const norm = normalizeItemCategory(r.displayCategory || r.category);
-      if (norm === 'Bahan Basah') basah += 1;
-      else if (norm === 'Bahan Kering') kering += 1;
-      else if (norm === 'Bahan Peralatan') peralatan += 1;
+    const counts: Record<string, number> = {};
+    sourceRecords.forEach(r => {
+      const cat = recordCategory(r);
+      counts[cat] = (counts[cat] || 0) + 1;
     });
+    return counts;
+  }, [sourceRecords]);
 
-    return {
-      'Bahan Basah': basah,
-      'Bahan Kering': kering,
-      'Bahan Peralatan': peralatan,
-      'SURAT_JALAN': suratJalan,
-    };
-  }, [periodRecords]);
+  const subcategoryCounts = useMemo(() => {
+    if (selectedCategoryTab === 'ALL') return [];
+    const counts: Record<string, number> = {};
+    sourceRecords.forEach(r => {
+      if (recordCategory(r) !== selectedCategoryTab) return;
+      const sub = getItemSubcategory(selectedCategoryTab, r.itemName);
+      counts[sub] = (counts[sub] || 0) + 1;
+    });
+    return getSubcategoryOrder(selectedCategoryTab)
+      .filter(label => counts[label])
+      .map(label => ({ label, count: counts[label] }));
+  }, [sourceRecords, selectedCategoryTab]);
+
+  const matchesCategoryFilters = (r: UnifiedRecord): boolean => {
+    if (sourceFilter !== 'ALL' && r.source !== sourceFilter) return false;
+    if (selectedCategoryTab === 'ALL') return true;
+    if (recordCategory(r) !== selectedCategoryTab) return false;
+    return selectedSubcategory === 'ALL' || getItemSubcategory(selectedCategoryTab, r.itemName) === selectedSubcategory;
+  };
 
   // Metrics for Current Period
   const metrics = useMemo(() => {
@@ -1237,7 +1268,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     periodRecords.forEach(r => {
       totalItems += 1;
       totalCost += r.nominal;
-      const normalized = normalizeItemCategory(r.displayCategory || r.category);
+      const normalized = normalizeItemCategory(r.displayCategory || r.category, r.itemName);
       if (normalized === 'Bahan Basah') wetCost += r.nominal;
       else if (normalized === 'Bahan Kering') dryCost += r.nominal;
       else opCost += r.nominal;
@@ -1270,15 +1301,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
   // Filtered List based on Category, Supplier & Search
   const filteredRecords = useMemo(() => {
     return periodRecords.filter(r => {
-      // Category filter
-      if (selectedCategoryTab === 'SURAT_JALAN') {
-        if (r.source !== 'DELIVERY_ORDER') return false;
-      } else if (selectedCategoryTab !== 'ALL') {
-        const norm = normalizeItemCategory(r.displayCategory || r.category);
-        if (norm !== selectedCategoryTab) {
-          return false;
-        }
-      }
+      if (!matchesCategoryFilters(r)) return false;
 
       // Supplier filter
       if (selectedSupplierFilter !== 'ALL') {
@@ -1303,7 +1326,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
 
       return true;
     });
-  }, [periodRecords, selectedCategoryTab, selectedSupplierFilter, searchQuery]);
+  }, [periodRecords, selectedCategoryTab, selectedSubcategory, sourceFilter, selectedSupplierFilter, searchQuery]);
 
   // Baris yang sudah punya nota tidak bisa dipilih lagi, supaya tidak terbit nota ganda
   const selectableRecords = filteredRecords.filter(r => !getMatchingNotaForRecord(r));
@@ -2059,40 +2082,70 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
 
             {/* Row 2: Unified Category Tabs, Supplier Select, Search, & View Toggle */}
             <div className="p-3.5 bg-slate-50/50 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-              {/* Category Filter Tabs */}
-              <div className="flex flex-wrap items-center gap-1">
-                {[
-                  { id: 'ALL', label: 'Semua Kategori', count: periodRecords.length },
-                  { id: 'Bahan Basah', label: 'Bahan Basah', count: categoryCounts['Bahan Basah'] || 0 },
-                  { id: 'Bahan Kering', label: 'Bahan Kering', count: categoryCounts['Bahan Kering'] || 0 },
-                  { id: 'Bahan Peralatan', label: 'Peralatan', count: categoryCounts['Bahan Peralatan'] || 0 },
-                  { id: 'SURAT_JALAN', label: 'Masuk stok', count: categoryCounts['SURAT_JALAN'] || 0 },
-                ].map(tab => {
-                  const isActive = selectedCategoryTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setSelectedCategoryTab(tab.id as any)}
-                      className={`h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-                        isActive
-                          ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                          : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/70'
-                      }`}
-                    >
-                      <span>{tab.label}</span>
-                      {tab.count > 0 && (
-                        <span
-                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
-                            isActive ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-500'
+              {/* Filter kategori (sama dengan Master Barang) + sub-kategori */}
+              <div className="space-y-2 min-w-0">
+                <div className="flex flex-wrap items-center gap-1">
+                  {[
+                    { id: 'ALL', label: 'Semua kategori', count: sourceRecords.length },
+                    ...STANDARD_CATEGORIES.map(cat => ({ id: cat, label: cat, count: categoryCounts[cat] || 0 })),
+                  ]
+                    .filter(tab => tab.id === 'ALL' || tab.count > 0 || tab.id === selectedCategoryTab)
+                    .map(tab => {
+                      const isActive = selectedCategoryTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          aria-pressed={isActive}
+                          onClick={() => {
+                            setSelectedCategoryTab(tab.id as 'ALL' | StandardCategory);
+                            setSelectedSubcategory('ALL');
+                          }}
+                          className={`h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
+                            isActive
+                              ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                              : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/70'
                           }`}
                         >
-                          {tab.count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+                          <span>{tab.label}</span>
+                          {tab.count > 0 && (
+                            <span
+                              className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                                isActive ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-500'
+                              }`}
+                            >
+                              {tab.count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                </div>
+
+                {subcategoryCounts.length > 1 && (
+                  <div className="flex flex-wrap items-center gap-1" role="group" aria-label={`Sub-kategori ${selectedCategoryTab}`}>
+                    <span className="text-[11px] text-slate-500 mr-1">Sub-kategori:</span>
+                    {[{ label: 'ALL', count: 0 }, ...subcategoryCounts].map(sub => {
+                      const isActive = selectedSubcategory === sub.label;
+                      return (
+                        <button
+                          key={sub.label}
+                          type="button"
+                          aria-pressed={isActive}
+                          onClick={() => setSelectedSubcategory(sub.label)}
+                          className={`h-7 px-2.5 rounded-md text-[11px] font-medium cursor-pointer flex items-center gap-1 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
+                            isActive
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-semibold'
+                              : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                          }`}
+                        >
+                          <span>{sub.label === 'ALL' ? 'Semua' : sub.label}</span>
+                          {sub.label !== 'ALL' && <span className="font-mono text-[10px] text-slate-500">{sub.count}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Right Side: View Mode Toggle, Supplier Select, & Search Box */}
@@ -2131,6 +2184,19 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                     )}
                   </button>
                 </div>
+
+                {/* Sumber catatan: surat jalan/PO yang menambah stok vs belanja yang dicatat langsung */}
+                <Select
+                  size="sm"
+                  className="w-full sm:w-44"
+                  aria-label="Filter sumber catatan"
+                  value={sourceFilter}
+                  onChange={e => setSourceFilter(e.target.value as 'ALL' | UnifiedRecord['source'])}
+                >
+                  <option value="ALL">Semua sumber</option>
+                  <option value="DELIVERY_ORDER">Masuk stok (surat jalan)</option>
+                  <option value="EXPENSE_INPUT">Belanja langsung</option>
+                </Select>
 
                 {/* Supplier Filter Dropdown */}
                 <div className="w-full sm:w-52">
@@ -2195,12 +2261,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                   .filter(s => selectedSupplierFilter === 'ALL' || s.name === selectedSupplierFilter)
                   .map(supplier => {
                     const matchingRecords = supplier.records.filter(r => {
-                      if (selectedCategoryTab === 'SURAT_JALAN') {
-                        if (r.source !== 'DELIVERY_ORDER') return false;
-                      } else if (selectedCategoryTab !== 'ALL') {
-                        const norm = normalizeItemCategory(r.displayCategory || r.category);
-                        if (norm !== selectedCategoryTab) return false;
-                      }
+                      if (!matchesCategoryFilters(r)) return false;
                       if (searchQuery.trim()) {
                         const q = searchQuery.toLowerCase();
                         const matchName = r.itemName.toLowerCase().includes(q);
@@ -2460,7 +2521,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
               {filteredRecords.length === 0 ? (
                 <div className="py-12 px-4 text-center max-w-sm mx-auto">
                   <h4 className="text-xs font-semibold text-slate-800">
-                    {searchQuery || selectedCategoryTab !== 'ALL' || selectedSupplierFilter !== 'ALL'
+                    {searchQuery || selectedCategoryTab !== 'ALL' || sourceFilter !== 'ALL' || selectedSupplierFilter !== 'ALL'
                       ? 'Tidak ada catatan yang cocok dengan filter.'
                       : 'Belum ada barang masuk di periode ini.'}
                   </h4>
@@ -2588,16 +2649,29 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                                   <span className="text-[11px] text-slate-600">Belum ada</span>
                                 )}
                               </td>
-                              <td className="py-3 px-2 text-center">
-                                {isStock && r.rawDoc ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => r.rawDoc && setSelectedDocForDetail(r.rawDoc)}
-                                    className="text-[11px] font-semibold text-emerald-700 hover:underline cursor-pointer"
-                                  >
-                                    Detail
-                                  </button>
-                                ) : null}
+                              <td className="py-3 px-2">
+                                <div className="flex items-center justify-center gap-1">
+                                  {isStock && r.rawDoc ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => r.rawDoc && setSelectedDocForDetail(r.rawDoc)}
+                                      className="text-[11px] font-semibold text-emerald-700 hover:underline cursor-pointer"
+                                    >
+                                      Detail
+                                    </button>
+                                  ) : null}
+                                  {canDeleteRecords && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteRecord(r)}
+                                      aria-label={`Hapus ${r.itemName}`}
+                                      title="Hapus catatan ini"
+                                      className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -2664,6 +2738,16 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                                       className="px-2.5 rounded-lg text-[11px] font-semibold text-slate-700 border border-slate-300 cursor-pointer min-h-[44px]"
                                     >
                                       Detail
+                                    </button>
+                                  )}
+                                  {canDeleteRecords && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteRecord(r)}
+                                      aria-label={`Hapus ${r.itemName}`}
+                                      className="w-11 min-h-[44px] rounded-lg flex items-center justify-center text-slate-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
                                     </button>
                                   )}
                                 </div>

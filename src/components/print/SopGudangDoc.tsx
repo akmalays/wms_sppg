@@ -7,7 +7,7 @@ import { KopText } from '../common/KopText';
 // SOP penanganan bahan, satu dokumen per tempat simpan agar bisa ditempel di lokasinya.
 // Isi tiap rak/unit diambil dari Master Barang dengan aturan rak yang sama seperti Plakat Rak.
 
-export type SopPlace = 'DRY' | 'NONFOOD' | 'CHILLER' | 'FREEZER' | 'LEFTOVER';
+export type SopPlace = 'DRY' | 'NONFOOD' | 'CHILLER' | 'FREEZER' | 'LEFTOVER' | 'APD';
 export const SOP_PLACE_OPTIONS: { value: SopPlace | 'ALL'; label: string }[] = [
   { value: 'ALL', label: 'Semua tempat (1 SOP per halaman)' },
   { value: 'DRY', label: 'Gudang Kering' },
@@ -15,6 +15,7 @@ export const SOP_PLACE_OPTIONS: { value: SopPlace | 'ALL'; label: string }[] = [
   { value: 'CHILLER', label: 'Chiller' },
   { value: 'FREEZER', label: 'Freezer' },
   { value: 'LEFTOVER', label: 'Palet Sisa Bahan' },
+  { value: 'APD', label: 'Pemakaian APD (dapur)' },
 ];
 
 interface SopGudangDocProps {
@@ -52,7 +53,7 @@ interface SopDefinition {
   shelfLife: { item: string; limit: string; discard: string }[];
 }
 
-const SOPS: Record<SopPlace, SopDefinition> = {
+const SOPS: Record<Exclude<SopPlace, 'APD'>, SopDefinition> = {
   DRY: {
     docNo: 'SOP/GDG/01',
     title: 'Penyimpanan Bahan di Gudang Kering',
@@ -62,31 +63,31 @@ const SOPS: Record<SopPlace, SopDefinition> = {
     layoutTitle: 'Tata letak: simpan menurut bentuk barang',
     layout: [
       {
-        place: 'Palet Tengah:Sembako Berat',
+        place: 'Palet Tengah: Sembako Berat',
         rackId: 'PLT-KRG-T1',
         fallback: 'Beras sak, tepung sak, gula sak, minyak goreng',
         rules: 'Masih dalam sak/karung atau dus/jerigen besar. Susun bersilangan, maks. 8 tumpuk.',
       },
       {
-        place: 'Rak 1:Garam, Rempah & Bumbu Dasar',
+        place: 'Rak 1: Garam, Rempah & Bumbu Dasar',
         rackId: 'RAK-KRG-A1',
         fallback: 'Garam, kemiri, cengkeh, terasi, petis',
         rules: 'Bentuk utuh/padat. Kemasan terbuka masuk toples tertutup berlabel.',
       },
       {
-        place: 'Rak 2:Tepung, Gula & Bumbu Bubuk',
+        place: 'Rak 2: Tepung, Gula & Bumbu Bubuk',
         rackId: 'RAK-KRG-A2',
         fallback: 'Tepung kemasan kecil, gula, royco, lada bubuk',
         rules: 'Bentuk bubuk/butiran. Mudah menggumpal & mengundang semut, kemasan harus rapat.',
       },
       {
-        place: 'Rak 3:Saus, Kecap & Mentega',
+        place: 'Rak 3: Saus, Kecap & Mentega',
         rackId: 'RAK-KRG-A3',
         fallback: 'Kecap, saus, cuka, minyak wijen, mayones, mentega',
         rules: 'Bentuk cair/kental. Botol berdiri, tutup rapat, botol besar di ambalan bawah.',
       },
       {
-        place: 'Rak 4:Stok Cadangan Dus',
+        place: 'Rak 4: Stok Cadangan Dus',
         fallback: 'Dus tertutup cadangan untuk Rak 1–3',
         rules: 'Hanya dus yang belum dibuka. Tulis nama + tanggal datang di sisi dus.',
       },
@@ -94,7 +95,7 @@ const SOPS: Record<SopPlace, SopDefinition> = {
     notAllowed: [
       'Bahan basah, ayam, sayur, buah, dan bahan beku (→ Chiller/Freezer).',
       'Sisa bahan terbuka dari dapur (→ Palet Sisa Bahan).',
-      'Sabun, pembersih, dan bahan kimia (→ Rak Non-Food N1–N3).',
+      'Sabun, pembersih, dan bahan kimia (simpan di Gudang Non-Food, Rak N1).',
       'Bahan apa pun langsung di lantai.',
     ],
     steps: [
@@ -141,9 +142,9 @@ const SOPS: Record<SopPlace, SopDefinition> = {
   },
 
   CHILLER: {
-    docNo: 'SOP/GDG/02',
+    docNo: 'SOP/GDG/03',
     title: 'Penyimpanan Bahan di Chiller',
-    location: 'Gudang Basah:Chiller',
+    location: 'Gudang Basah: Chiller',
     standard: 'Suhu 1–5°C, dicek dan dicatat pagi & sore',
     purpose: 'Menjaga buah, sayur, telur, dan ayam yang dicairkan tetap segar dan aman, tanpa saling mencemari.',
     layoutTitle: 'Tata letak: dari atas ke bawah',
@@ -214,7 +215,7 @@ const SOPS: Record<SopPlace, SopDefinition> = {
   },
 
   FREEZER: {
-    docNo: 'SOP/GDG/03',
+    docNo: 'SOP/GDG/04',
     title: 'Penyimpanan Bahan di Freezer',
     location: 'Freezer 1 (Gudang Basah), Freezer 2 & Freezer 3 (Dapur)',
     standard: 'Suhu −18°C atau lebih dingin, dicek dan dicatat pagi & sore',
@@ -222,19 +223,19 @@ const SOPS: Record<SopPlace, SopDefinition> = {
     layoutTitle: 'Pembagian freezer',
     layout: [
       {
-        place: 'Freezer 1 (Gudang Basah):Stok Ayam',
+        place: 'Freezer 1 (Gudang Basah): Stok Ayam',
         rackId: 'BIN-FRZ-F2',
         fallback: 'Ayam yang baru datang dari supplier',
         rules: 'Stok utama. Jarang dibuka; diambil untuk mengisi Freezer 2 sesuai menu.',
       },
       {
-        place: 'Freezer 2 (Dapur):Ayam Siap Masak',
+        place: 'Freezer 2 (Dapur): Ayam Siap Masak',
         rackId: 'BIN-FRZ-D1',
         fallback: 'Ayam yang sudah dibagi per kebutuhan menu besok',
         rules: 'Per kantong sesuai menu (H-1), label menu + tanggal.',
       },
       {
-        place: 'Freezer 3 (Dapur):Protein & Olahan Beku',
+        place: 'Freezer 3 (Dapur): Protein & Olahan Beku',
         rackId: 'BIN-FRZ-D2',
         fallback: 'Ikan, daging sapi, nugget, sosis, bakso',
         rules: 'Terpisah dari ayam, per jenis dalam kantong/wadah tertutup.',
@@ -287,25 +288,25 @@ const SOPS: Record<SopPlace, SopDefinition> = {
   },
 
   LEFTOVER: {
-    docNo: 'SOP/GDG/04',
+    docNo: 'SOP/GDG/05',
     title: 'Penanganan Sisa Bahan Terbuka dari Dapur',
-    location: 'Gudang Basah:Palet Sisa Bahan',
+    location: 'Gudang Basah: Palet Sisa Bahan',
     standard: 'Suhu ruang, kering, semua sisa di dalam box tertutup di atas palet',
     purpose: 'Sisa bahan yang sudah dibuka tetap layak pakai, mudah ditemukan, dan dipakai lebih dulu sebelum membuka kemasan baru.',
     layoutTitle: 'Pembagian box di palet',
     layout: [
       {
-        place: 'Box 1:Tepung & Gula',
+        place: 'Box 1: Tepung & Gula',
         fallback: 'Sisa tepung terigu/beras/kanji/panir, gula pasir, gula merah',
         rules: 'Kemasan dilipat dan dijepit/diikat rapat, atau dipindah ke wadah tertutup.',
       },
       {
-        place: 'Box 2:Royco & Bumbu Bubuk',
+        place: 'Box 2: Royco & Bumbu Bubuk',
         fallback: 'Sisa royco/kaldu, lada bubuk, ketumbar bubuk, pala bubuk, baking soda',
         rules: 'Wajib kedap udara agar tidak menggumpal.',
       },
       {
-        place: 'Box 3:Saus, Kecap & Minyak',
+        place: 'Box 3: Saus, Kecap & Minyak',
         fallback: 'Sisa kecap, saus, cuka, minyak wijen, minyak goreng',
         rules: 'Botol berdiri, tutup rapat, mulut botol dilap bersih.',
       },
@@ -356,71 +357,71 @@ const SOPS: Record<SopPlace, SopDefinition> = {
   },
 
   NONFOOD: {
-    docNo: 'SOP/GDG/05',
+    docNo: 'SOP/GDG/02',
     title: 'Penyimpanan Non-Food: Sabun, Kemasan & APD',
     location: 'Gudang Non-Food: Rak N1, Rak N2, Rak N3',
-    standard: 'Suhu ruang 20–25°C, berventilasi baik, terpisah fisik mutlak dari bahan pangan',
-    purpose: 'Mencegah kontaminasi silang kimia/pembersih ke makanan dan menjaga higienitas kemasan serta APD dapur SPPG.',
-    layoutTitle: 'Tata letak 3 kategori non-food:',
+    standard: 'Suhu ruang, kering, berventilasi baik, dan terpisah dari bahan pangan',
+    purpose: 'Mencegah bahan pembersih mencemari makanan, serta menjaga kemasan dan APD tetap bersih sampai dipakai di dapur.',
+    layoutTitle: 'Tata letak: 3 kategori non-food',
     layout: [
       {
-        place: 'Rak N1:Sabun & Sanitasi',
+        place: 'Rak N1: Sabun & Sanitasi',
         rackId: 'RAK-KRG-N1',
-        fallback: 'Sabun cuci piring food-contact, deterjen tray, karbol lantai, disinfektan',
-        rules: 'STANDAR HACCP: Terpisah mutlak dari makanan & kemasan. Jerigen tertutup rapat, ambalan bawah untuk cairan berat.',
+        fallback: 'Sabun cuci piring, sabun cuci ompreng, pembersih lantai, disinfektan',
+        rules: 'Jauhkan dari makanan dan kemasan makanan. Tutup jeriken rapat. Cairan berat di ambalan paling bawah.',
       },
       {
-        place: 'Rak N2:Plastik, Tissue & Kemasan',
+        place: 'Rak N2: Plastik, Tissue & Kemasan',
         rackId: 'RAK-KRG-N2',
-        fallback: 'Plastik wrap, mika bento, thinwall, kantong sampah dapur, tissue serap minyak/tangan',
-        rules: 'Kondisi dus/pack tertutup plastik pembungkus agar higienis dan bebas debu sebelum ke dapur.',
+        fallback: 'Plastik wrap, plastik kemasan, thinwall, kantong sampah, tisu dapur & tisu tangan',
+        rules: 'Simpan dalam dus atau bungkus aslinya yang tertutup, supaya bersih dan tidak berdebu.',
       },
       {
-        place: 'Rak N3:APD & Masker',
+        place: 'Rak N3: APD & Masker',
         rackId: 'RAK-KRG-N3',
-        fallback: 'Masker medis 3-ply/hijab, hairnet/penutup kepala, celemek/apron, sarung tangan food-grade',
-        rules: 'Simpan dalam kontainer/box tertutup rapat, steril dan bersih. Wajib dipakai staf sebelum masuk dapur.',
+        fallback: 'Masker medis 3 lapis, penutup kepala (hairnet), celemek, sarung tangan plastik/food grade',
+        rules: 'Simpan dalam box tertutup rapat yang bersih dan kering. Ambil secukupnya untuk dipakai hari itu.',
       },
     ],
     notAllowed: [
-      'Menyimpan bahan makanan atau minuman apa pun di rak non-food.',
-      'Mencampur sabun/cairan pembersih di ambalan yang sama dengan kemasan makanan atau masker/APD.',
-      'Membiarkan kemasan masker, sarung tangan, atau tissue terbuka berdebu.',
-      'Menaruh jerigen sabun bocor di atas lantai tanpa alas penampung.',
+      'Bahan makanan atau minuman dalam bentuk apa pun.',
+      'Sabun atau cairan pembersih di ambalan yang sama dengan kemasan makanan atau APD.',
+      'Masker, sarung tangan, atau tisu yang kemasannya dibiarkan terbuka.',
+      'Jeriken sabun yang bocor diletakkan di lantai tanpa alas penampung.',
     ],
     steps: [
       {
-        title: 'Penerimaan & penyimpanan',
+        title: 'Menerima & menyimpan',
         items: [
-          'Periksa kondisi fisik: jerigen tidak bocor, kardus masker & kemasan tidak penyok atau basah.',
-          <>Pisahkan langsung ke rak masing-masing: <b>Rak N1 (Sabun & Sanitasi)</b>, <b>Rak N2 (Plastik, Tissue & Kemasan)</b>, <b>Rak N3 (APD & Masker)</b>.</>,
-          'Barang baru diletakkan di belakang/bawah, stok lama di depan/atas (FIFO).',
+          'Periksa kondisi barang: jeriken tidak bocor, dus masker dan kemasan tidak penyok atau basah.',
+          <>Langsung simpan di raknya: <b>Rak N1 (Sabun & Sanitasi)</b>, <b>Rak N2 (Plastik, Tissue & Kemasan)</b>, <b>Rak N3 (APD & Masker)</b>.</>,
+          'Barang baru ditaruh di belakang atau bawah, stok lama di depan atau atas (FIFO).',
           'Catat penerimaan di aplikasi WMS SPPG pada hari yang sama.',
         ],
       },
       {
-        title: 'Pengambilan & pemakaian',
+        title: 'Mengambil & memakai',
         items: [
-          'Ambil sesuai kebutuhan operasional harian dapur & sanitasi.',
-          'Gunakan APD (masker, hairnet, apron, sarung tangan) sebelum menangani makanan.',
-          'Segera tutup kembali wadah/kontainer APD dan kemasan setelah mengambil isi.',
-          'Cairan pembersih dituangkan hati-hati menggunakan corong agar tidak tercecer.',
+          'Ambil secukupnya untuk kebutuhan dapur dan kebersihan hari itu.',
+          'Pakai APD lengkap (masker, penutup kepala, celemek, sarung tangan) sebelum menangani makanan.',
+          'Tutup kembali box APD dan kemasan segera setelah mengambil isinya.',
+          'Tuang cairan pembersih dengan corong supaya tidak tumpah.',
         ],
       },
     ],
     routine: [
-      { when: 'Harian', tasks: 'Cek ketersediaan masker, sarung tangan, sabun cuci piring, dan tissue meja.' },
-      { when: 'Mingguan', tasks: 'Bersihkan rak dari debu, periksa kerapian susunan dus kemasan dan box APD.' },
+      { when: 'Harian', tasks: 'Cek persediaan masker, sarung tangan, sabun cuci piring, dan tisu.' },
+      { when: 'Mingguan', tasks: 'Bersihkan debu di rak, rapikan susunan dus kemasan dan box APD.' },
     ],
     problems: [
-      { issue: 'Jerigen sabun bocor atau menetes', action: 'Segera lap bersih dengan kain terpisah, pindahkan ke wadah penampung baru.' },
-      { issue: 'Masker atau APD terkena air / kotor', action: 'Jangan dipakai untuk pemorsian makanan; pisahkan dan buang.' },
-      { issue: 'Stok APD atau sabun menipis di bawah batas minimum', action: 'Segera buat pengajuan nota belanja non-food ke Asisten Lapangan.' },
+      { issue: 'Jeriken sabun bocor atau menetes', action: 'Lap dengan kain khusus kebersihan, lalu pindahkan isinya ke wadah tertutup yang baik.' },
+      { issue: 'Masker atau APD basah atau kotor', action: 'Jangan dipakai. Buang dan ganti dengan yang baru.' },
+      { issue: 'Stok APD atau sabun hampir habis', action: 'Ajukan pembelian non-food ke Asisten Lapangan.' },
     ],
     shelfLife: [
-      { item: 'Sabun cuci piring & pembersih', limit: '12 – 24 bulan dalam kemasan tertutup', discard: 'Berubah warna, bau menyengat rusak, mengendap abnormal' },
-      { item: 'Plastik kemasan & tissue', limit: 'Simpan kering, habiskan ≤ 6 bulan', discard: 'Kotor, lembap berjamur, atau robek tercemar' },
-      { item: 'Masker & sarung tangan APD', limit: '3 – 5 tahun (tertera di box)', discard: 'Kotor, basah, karet putus, atau kemasan primer terbuka lama' },
+      { item: 'Sabun cuci piring & pembersih', limit: 'Sesuai tanggal kedaluwarsa di kemasan', discard: 'Warna atau bau berubah, cairan mengendap atau menggumpal' },
+      { item: 'Plastik kemasan & tisu', limit: 'Simpan kering, pakai yang lama lebih dulu', discard: 'Kotor, lembap, berjamur, atau sobek' },
+      { item: 'Masker & sarung tangan', limit: 'Sesuai tanggal kedaluwarsa di box', discard: 'Kotor, basah, tali/karet putus, atau sudah lama terbuka dari bungkusnya' },
     ],
   },
 };
@@ -448,6 +449,40 @@ const List: React.FC<{ items: React.ReactNode[]; ordered?: boolean }> = ({ items
 const TH = 'border border-slate-300 p-1.5 text-left';
 const TD = 'border border-slate-300 p-1.5';
 
+// Kop di setiap SOP agar tiap lembar bisa ditempel sendiri
+const SopHeader: React.FC<{ title: string; printedDate: string; printedBy: string }> = ({ title, printedDate, printedBy }) => (
+  <>
+    <div className="border-b-2 border-slate-900 pb-3 flex items-start justify-between gap-4">
+      <div className="flex items-center gap-3">
+        <SppgLogo size="lg" variant="color" showText={false} />
+        <KopText />
+      </div>
+      <div className="text-right text-[11px] text-slate-600 space-y-0.5 shrink-0">
+        <div>Dicetak: {printedDate}</div>
+        <div>Oleh: {printedBy}</div>
+      </div>
+    </div>
+
+    <div className="text-center">
+      <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Standar Operasional Prosedur</h2>
+      <p className="text-sm font-bold text-slate-900">{title}</p>
+    </div>
+  </>
+);
+
+const SopSigners: React.FC = () => (
+  <div className="sop-avoid grid grid-cols-2 gap-6 pt-5 text-center text-xs">
+    {SIGNERS.map(s => (
+      <div key={s.name}>
+        <p className="text-slate-700">{s.label},</p>
+        <p className="text-slate-700">{s.role}</p>
+        <div className="h-16" />
+        <p className="font-semibold text-slate-900 underline underline-offset-2">{s.name}</p>
+      </div>
+    ))}
+  </div>
+);
+
 const SopPage: React.FC<{
   sop: SopDefinition;
   contentsOf: (rackId: string | undefined, fallback: string) => string;
@@ -459,22 +494,7 @@ const SopPage: React.FC<{
   let n = 0;
   return (
     <div className={`space-y-3.5 text-xs ${breakAfter ? 'page-break pb-8 mb-8 border-b border-dashed border-slate-300 print:border-0 print:pb-0 print:mb-0' : ''}`}>
-      {/* Kop di setiap SOP agar tiap lembar bisa ditempel sendiri */}
-      <div className="border-b-2 border-slate-900 pb-3 flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <SppgLogo size="lg" variant="color" showText={false} />
-          <KopText />
-        </div>
-        <div className="text-right text-[11px] text-slate-600 space-y-0.5 shrink-0">
-          <div>Dicetak: {printedDate}</div>
-          <div>Oleh: {printedBy}</div>
-        </div>
-      </div>
-
-      <div className="text-center">
-        <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Standar Operasional Prosedur</h2>
-        <p className="text-sm font-bold text-slate-900">{sop.title}</p>
-      </div>
+      <SopHeader title={sop.title} printedDate={printedDate} printedBy={printedBy} />
 
       <table className="w-full border-collapse border border-slate-300 table-print text-[11px]">
         <tbody>
@@ -589,16 +609,181 @@ const SopPage: React.FC<{
         </p>
       </Section>
 
-      <div className="sop-avoid grid grid-cols-2 gap-6 pt-5 text-center text-xs">
-        {SIGNERS.map(s => (
-          <div key={s.name}>
-            <p className="text-slate-700">{s.label},</p>
-            <p className="text-slate-700">{s.role}</p>
-            <div className="h-16" />
-            <p className="font-semibold text-slate-900 underline underline-offset-2">{s.name}</p>
-          </div>
-        ))}
-      </div>
+      <SopSigners />
+    </div>
+  );
+};
+
+// SOP pemakaian APD: untuk semua petugas dapur, ditempel di pintu masuk dapur dan wastafel cuci tangan.
+const APD_BY_SECTION: { section: string; apd: string; note: string }[] = [
+  { section: 'Persiapan', apd: 'Penutup kepala, masker, celemek, sarung tangan plastik', note: 'Ganti sarung tangan setiap pindah dari bahan mentah ke bahan lain.' },
+  { section: 'Pengolahan', apd: 'Penutup kepala, masker, celemek', note: 'Sarung tangan tidak dipakai di dekat api atau minyak panas.' },
+  { section: 'Pemorsian', apd: 'Penutup kepala, masker, celemek, sarung tangan plastik', note: 'Makanan matang tidak boleh disentuh dengan tangan telanjang.' },
+  { section: 'Cuci ompreng', apd: 'Celemek tahan air, sarung tangan karet, sepatu/sandal tertutup', note: 'Sarung tangan karet tidak dipakai untuk memegang makanan.' },
+  { section: 'Satpam, staf & tamu', apd: 'Penutup kepala dan masker', note: 'Wajib dipakai bila masuk area pengolahan atau pemorsian.' },
+];
+
+const APD_CHANGE: { what: string; when: string }[] = [
+  { what: 'Sarung tangan plastik', when: 'Setelah memegang bahan mentah (ayam, telur), sampah, uang, HP, wajah, atau rambut; bila sobek; setiap ganti tugas; dan setelah istirahat.' },
+  { what: 'Masker', when: 'Bila basah atau kotor, setelah 4 jam dipakai, dan setelah istirahat makan.' },
+  { what: 'Penutup kepala', when: 'Bila kotor atau sobek. Yang sekali pakai diganti setiap hari kerja.' },
+  { what: 'Celemek', when: 'Bila kotor atau basah. Celemek kain dicuci setiap hari.' },
+];
+
+const ApdSopPage: React.FC<{
+  effectiveDate: string;
+  printedDate: string;
+  printedBy: string;
+  breakAfter: boolean;
+}> = ({ effectiveDate, printedDate, printedBy, breakAfter }) => {
+  let n = 0;
+  return (
+    <div className={`space-y-3.5 text-xs ${breakAfter ? 'page-break pb-8 mb-8 border-b border-dashed border-slate-300 print:border-0 print:pb-0 print:mb-0' : ''}`}>
+      <SopHeader title="Pemakaian Alat Pelindung Diri (APD) di Dapur" printedDate={printedDate} printedBy={printedBy} />
+
+      <table className="w-full border-collapse border border-slate-300 table-print text-[11px]">
+        <tbody>
+          <tr>
+            <td className={`${TD} text-slate-600 w-28`}>No. dokumen</td>
+            <td className={`${TD} font-semibold`}>SOP/DPR/01</td>
+            <td className={`${TD} text-slate-600 w-28`}>Tanggal berlaku</td>
+            <td className={`${TD} font-semibold`}>{effectiveDate}</td>
+          </tr>
+          <tr>
+            <td className={`${TD} text-slate-600`}>Berlaku untuk</td>
+            <td className={TD} colSpan={3}>Semua petugas yang masuk area dapur: persiapan, pengolahan, pemorsian, cuci ompreng, staf, dan tamu</td>
+          </tr>
+          <tr>
+            <td className={`${TD} text-slate-600`}>Tempat tempel</td>
+            <td className={TD} colSpan={3}>Pintu masuk dapur dan dekat wastafel cuci tangan</td>
+          </tr>
+          <tr>
+            <td className={`${TD} text-slate-600`}>Tujuan</td>
+            <td className={TD} colSpan={3}>Mencegah makanan tercemar rambut, keringat, ludah, atau kotoran dari tangan petugas.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <Section no={++n} title="APD wajib per bagian">
+        <table className="w-full border-collapse border border-slate-300 table-print text-[11px]">
+          <thead className="bg-slate-100 text-slate-800">
+            <tr>
+              <th className={`${TH} w-32`}>Bagian</th>
+              <th className={`${TH} w-[38%]`}>APD wajib</th>
+              <th className={TH}>Catatan</th>
+            </tr>
+          </thead>
+          <tbody>
+            {APD_BY_SECTION.map(r => (
+              <tr key={r.section} className="align-top">
+                <td className={`${TD} font-semibold text-slate-900`}>{r.section}</td>
+                <td className={`${TD} text-slate-800`}>{r.apd}</td>
+                <td className={`${TD} text-slate-700`}>{r.note}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Section>
+
+      <Section no={++n} title="Sebelum memakai APD">
+        <List
+          items={[
+            'Badan sehat. Petugas yang diare, demam, muntah, atau batuk pilek tidak boleh menangani makanan dan wajib lapor ke pengawas.',
+            'Luka di tangan ditutup plester tahan air, lalu pakai sarung tangan.',
+            'Kuku pendek dan bersih, tanpa kuteks atau kuku palsu.',
+            'Lepas cincin, gelang, dan jam tangan. Rambut panjang diikat.',
+            'HP, dompet, dan barang pribadi disimpan di loker, tidak dibawa ke area dapur.',
+          ]}
+        />
+      </Section>
+
+      <Section no={++n} title="Urutan memakai APD">
+        <List
+          ordered
+          items={[
+            <>Cuci tangan dengan sabun dan air mengalir minimal <b>20 detik</b>.</>,
+            'Pakai penutup kepala sampai seluruh rambut tertutup. Bagi yang berhijab, ujung hijab dimasukkan ke dalam celemek.',
+            'Pakai masker sampai menutup hidung dan mulut.',
+            'Pakai celemek dan ikat talinya.',
+            'Cuci tangan sekali lagi.',
+            'Pakai sarung tangan sesaat sebelum mulai kerja.',
+          ]}
+        />
+      </Section>
+
+      <Section no={++n} title="Kapan APD harus diganti">
+        <table className="w-full border-collapse border border-slate-300 table-print text-[11px]">
+          <tbody>
+            {APD_CHANGE.map(r => (
+              <tr key={r.what} className="align-top">
+                <td className={`${TD} font-semibold text-slate-900 w-36`}>{r.what}</td>
+                <td className={`${TD} text-slate-800`}>{r.when}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Section>
+
+      <Section no={++n} title="Tidak boleh">
+        <List
+          items={[
+            'Keluar dapur (ke toilet, halaman, atau lobi) masih memakai APD.',
+            'Menurunkan masker ke dagu atau membiarkan hidung terbuka.',
+            'Memakai ulang masker atau sarung tangan sekali pakai.',
+            'Memakai sarung tangan sebagai pengganti cuci tangan.',
+            'Makan, minum, merokok, atau memainkan HP di area pengolahan dan pemorsian.',
+          ]}
+        />
+      </Section>
+
+      <Section no={++n} title="Urutan melepas & membuang APD">
+        <List
+          ordered
+          items={[
+            'Lepas sarung tangan dengan membalik bagian dalamnya ke luar.',
+            'Lepas celemek. Celemek kain ditaruh di keranjang cucian.',
+            'Lepas masker dengan memegang talinya saja, jangan bagian depannya.',
+            'Lepas penutup kepala.',
+            'Buang APD sekali pakai ke tempat sampah tertutup.',
+            'Cuci tangan dengan sabun.',
+          ]}
+        />
+      </Section>
+
+      <Section no={++n} title="Bila terjadi masalah">
+        <table className="w-full border-collapse border border-slate-300 table-print text-[11px]">
+          <thead className="bg-slate-100 text-slate-800">
+            <tr>
+              <th className={`${TH} w-[35%]`}>Masalah</th>
+              <th className={TH}>Yang harus dilakukan</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              { issue: 'Sarung tangan sobek saat bekerja', action: 'Berhenti, ganti sarung tangan, lalu periksa makanan yang tersentuh. Buang makanan bila ada sobekan sarung tangan di dalamnya.' },
+              { issue: 'Tangan terluka saat bekerja', action: 'Berhenti, cuci luka, tutup dengan plester tahan air, pakai sarung tangan baru, dan lapor ke pengawas.' },
+              { issue: 'Rambut atau benda asing ditemukan di makanan', action: 'Buang porsi itu, lapor ke pengawas, dan periksa penutup kepala semua petugas di bagian itu.' },
+              { issue: 'Stok APD di dapur habis', action: 'Ambil di Gudang Non-Food Rak N3 dan catat pengambilannya. Bila stok gudang juga menipis, lapor ke Asisten Lapangan.' },
+            ].map(p => (
+              <tr key={p.issue} className="align-top">
+                <td className={`${TD} font-semibold text-slate-900`}>{p.issue}</td>
+                <td className={`${TD} text-slate-800`}>{p.action}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Section>
+
+      <Section no={++n} title="Pengawasan">
+        <List
+          items={[
+            'Kepala bagian memeriksa APD setiap petugas sebelum mulai kerja.',
+            'Petugas yang APD-nya tidak lengkap belum boleh mulai bekerja sampai APD-nya dilengkapi.',
+          ]}
+        />
+      </Section>
+
+      <SopSigners />
     </div>
   );
 };
@@ -623,21 +808,31 @@ export const SopGudangDoc: React.FC<SopGudangDocProps> = ({ items, place, effect
     return names.length > 8 ? `${shown}, dan ${names.length - 8} barang lain` : shown;
   };
 
-  const places: SopPlace[] = place === 'ALL' ? ['DRY', 'NONFOOD', 'CHILLER', 'FREEZER', 'LEFTOVER'] : [place];
+  const places: SopPlace[] = place === 'ALL' ? ['DRY', 'NONFOOD', 'CHILLER', 'FREEZER', 'LEFTOVER', 'APD'] : [place];
 
   return (
     <>
-      {places.map((p, i) => (
-        <SopPage
-          key={p}
-          sop={SOPS[p]}
-          contentsOf={contentsOf}
-          effectiveDate={effectiveDate}
-          printedDate={printedDate}
-          printedBy={printedBy}
-          breakAfter={i < places.length - 1}
-        />
-      ))}
+      {places.map((p, i) =>
+        p === 'APD' ? (
+          <ApdSopPage
+            key={p}
+            effectiveDate={effectiveDate}
+            printedDate={printedDate}
+            printedBy={printedBy}
+            breakAfter={i < places.length - 1}
+          />
+        ) : (
+          <SopPage
+            key={p}
+            sop={SOPS[p]}
+            contentsOf={contentsOf}
+            effectiveDate={effectiveDate}
+            printedDate={printedDate}
+            printedBy={printedBy}
+            breakAfter={i < places.length - 1}
+          />
+        ),
+      )}
     </>
   );
 };

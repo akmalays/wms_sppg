@@ -130,17 +130,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .eq('id', data.user.id)
             .single();
 
-          const authenticatedUser: User = {
-            id: data.user.id,
-            email: data.user.email || cleanEmail,
-            name: profile?.name || data.user.user_metadata?.name || cleanEmail.split('@')[0],
-            role: (profile?.role || 'ASLAP') as UserRole,
-            avatarUrl: profile?.avatar_url,
-          };
+          // Akun petugas yang sudah ada (USR-xxx) dipakai sebagai identitas, supaya riwayat,
+          // tautan karyawan, dan pemulihan sesi tetap cocok. Peran mengikuti profil di Supabase.
+          const localUser = warehouseDb.getUsers().find(u => u.email.toLowerCase() === cleanEmail);
+          const role = (profile?.role || localUser?.role || 'ASLAP') as UserRole;
+          const authenticatedUser: User = localUser
+            ? { ...localUser, role, avatarUrl: profile?.avatar_url || localUser.avatarUrl }
+            : {
+                id: data.user.id,
+                email: data.user.email || cleanEmail,
+                name: profile?.name || data.user.user_metadata?.name || cleanEmail.split('@')[0],
+                role,
+                avatarUrl: profile?.avatar_url,
+              };
 
           setCurrentUser(authenticatedUser);
           setIsAuthenticated(true);
           localStorage.setItem('sppg_active_user_id', authenticatedUser.id);
+          localStorage.setItem('sppg_active_user_name', authenticatedUser.name);
+          localStorage.setItem('sppg_active_user_role', authenticatedUser.role);
           localStorage.setItem('sppg_is_authenticated', 'true');
           return { success: true };
         }

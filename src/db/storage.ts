@@ -42,6 +42,7 @@ import { getRomanMonth, getYearFromDate } from '../utils/poNumberGenerator';
 import { angkaTerbilang } from '../utils/numberToWords';
 import { removeFromPrintPool } from '../utils/poPrintPool';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { reportCloudWriteError } from '../lib/cloudEvents';
 import { localDateIso, localTimestamp } from '../utils/localDate';
 import { convertQty, unitKey } from '../utils/unitConversion';
 
@@ -1477,7 +1478,7 @@ export const INITIAL_PURCHASE_ORDERS: PurchaseOrderNota[] = [
       {
         id: 'POI-010',
         name: 'Sabun Cuci Piring Sunlight Jeruk Nipis 750ml',
-        category: 'Alat Kebersihan',
+        category: 'Sanitasi, Kemasan & APD',
         quantity: 5,
         unit: 'Pouch',
         unitPrice: 18500,
@@ -2252,11 +2253,11 @@ class WarehouseDatabase {
     this.initCloudAndRealtime();
   }
 
-  // Tulis ke Supabase tanpa menunggu; kegagalan dicatat di console, data tetap ada di cache lokal.
+  // Tulis ke Supabase tanpa menunggu; kegagalan dilaporkan ke layar, data tetap ada di cache lokal.
   private pushCloud(label: string, run: () => PromiseLike<{ error: any }>): void {
     if (!isSupabaseConfigured()) return;
     run().then(({ error }) => {
-      if (error) console.error(`Supabase ${label} gagal:`, error.message || error);
+      if (error) reportCloudWriteError(label, error);
     });
   }
 
@@ -3383,7 +3384,7 @@ class WarehouseDatabase {
     // Direct save to Supabase Cloud
     if (isSupabaseConfigured()) {
       supabase.from('item_master').upsert(mapItemToSupabase(item)).then(({ error }) => {
-        if (error) console.error('Supabase item upsert error:', error);
+        if (error) reportCloudWriteError(`simpan barang "${item.name}"`, error);
       });
     }
 
@@ -3864,6 +3865,98 @@ class WarehouseDatabase {
     return true;
   }
 
+  /**
+   * Hapus satu baris penerimaan yang salah catat. Stok yang dulu ditambahkan baris ini dikurangi lagi
+   * lewat transaksi koreksi (riwayat penerimaan tetap terlihat di Buku Mutasi), dan belanja yang tertaut
+   * ikut dihapus agar nominalnya tidak tetap terhitung.
+   */
+  public deleteReceivingLine(receivingId: string, lineId: string, user: User, linkedExpenseId?: string): void {
+    const docIdx = this.receivings.findIndex(r => r.id === receivingId);
+    if (docIdx < 0) throw new Error('Dokumen penerimaan tidak ditemukan.');
+    const doc = this.receivings[docIdx];
+    const line = doc.lines.find(l => l.id === lineId);
+    if (!line) throw new Error('Baris penerimaan tidak ditemukan.');
+
+    // Penerimaan lewat PO mencatat transaksinya dengan nomor PO, penerimaan langsung dengan nomor GR.
+    const po = this.purchaseOrders.find(p => p.relatedReceivingId === receivingId);
+    const refs = [receivingId, po?.poNumber].filter(Boolean) as string[];
+    const receivedTx = this.transactions.find(
+      t => t.transactionType === 'RECEIVING' && t.itemId === line.itemId && refs.includes(t.referenceDocument)
+    );
+    const itemIdx = this.items.findIndex(i => i.id === line.itemId);
+
+    let reversalTx: InventoryTransaction | undefined;
+    if (receivedTx && itemIdx >= 0) {
+      const item = this.items[itemIdx];
+      const newStock = Math.round((item.currentStock - receivedTx.quantity) * 1000) / 1000;
+      if (newStock < 0) {
+        throw new Error(
+          `Stok ${item.name} tinggal ${item.currentStock} ${item.baseUnit}, kurang dari ${receivedTx.quantity} ${item.baseUnit} yang akan dibatalkan. ` +
+            'Sebagian sudah terpakai, jadi catat dulu koreksi stoknya di Buku Mutasi.'
+        );
+      }
+      const nowIso = new Date().toISOString();
+      this.items[itemIdx] = { ...item, currentStock: newStock, updatedAt: nowIso };
+      reversalTx = {
+        id: `TX-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        timestamp: localTimestamp(),
+        itemId: item.id,
+        itemName: item.name,
+        itemType: item.itemType,
+        category: item.category,
+        location: item.location,
+        quantity: -receivedTx.quantity,
+        unit: item.baseUnit,
+        transactionType: 'ADJUSTMENT',
+        referenceDocument: receivingId,
+        userId: user.id,
+        userName: user.name,
+        userRole: user.role,
+        notes: `Pembatalan penerimaan ${receivingId} (salah catat): ${line.itemName} ${line.quantity} ${line.unit}.`,
+        balanceAfter: newStock,
+      };
+      this.transactions.unshift(reversalTx);
+    }
+
+    const remaining = doc.lines.filter(l => l.id !== lineId);
+    if (remaining.length > 0) {
+      this.receivings[docIdx] = { ...doc, lines: remaining };
+    } else {
+      this.receivings.splice(docIdx, 1);
+    }
+
+    const expIdx = linkedExpenseId ? this.nonFoodExpenses.findIndex(e => e.id === linkedExpenseId) : -1;
+    if (expIdx >= 0) this.nonFoodExpenses.splice(expIdx, 1);
+
+    if (reversalTx) {
+      const item = this.items[itemIdx];
+      const tx = reversalTx;
+      this.pushCloud('koreksi stok pembatalan penerimaan', () => supabase.from('inventory_transactions').insert(mapTxToSupabase(tx)));
+      this.pushCloud(`stok ${item.name}`, () =>
+        supabase.from('item_master').update({ current_stock: item.currentStock, updated_at: item.updatedAt }).eq('id', item.id)
+      );
+    }
+    if (remaining.length > 0) {
+      this.pushCloud('hapus baris penerimaan', () => supabase.from('receiving_lines').delete().eq('id', lineId));
+    } else {
+      // Baris ikut terhapus lewat ON DELETE CASCADE
+      this.pushCloud('hapus dokumen penerimaan', () => supabase.from('receiving_documents').delete().eq('id', receivingId));
+    }
+    if (expIdx >= 0 && linkedExpenseId) {
+      this.pushCloud('hapus belanja tertaut', () => supabase.from('non_food_expenses').delete().eq('id', linkedExpenseId));
+    }
+
+    this.notifyAllChanged();
+    this.logAudit(
+      user,
+      'RECEIVING_LINE_DELETED',
+      'RECEIVING',
+      receivingId,
+      `Menghapus baris penerimaan ${line.itemName} (${line.quantity} ${line.unit}) dari ${receivingId}` +
+        (reversalTx ? `; stok dikurangi ${-reversalTx.quantity} ${reversalTx.unit}.` : '; stok tidak berubah (tidak ada transaksi penerimaan).')
+    );
+  }
+
   public recordNonFoodExpensesBatch(
     expenses: Omit<NonFoodExpense, 'id' | 'createdAt'>[],
     user: User
@@ -4322,29 +4415,52 @@ class WarehouseDatabase {
     return updated;
   }
 
+  /** PO yang barangnya sudah diterima atau sudah dibayar dikunci: tidak boleh dihapus atau diterbitkan ulang. */
+  public isPurchaseOrderLocked(po: PurchaseOrderNota): boolean {
+    return po.status === 'SELESAI' || po.status === 'DIBAYAR' || !!po.relatedReceivingId;
+  }
+
+  /**
+   * PO milik satu menu. PO lama yang belum punya relatedMenuOrderId dikenali dari catatan otomatisnya,
+   * dengan tanggal dan judul menu yang persis sama, agar PO menu lain di tanggal yang sama tidak ikut terbawa.
+   */
+  public getPurchaseOrdersByMenuOrderId(menuOrderId: string): PurchaseOrderNota[] {
+    const targetOrder = this.menuOrders.find(o => o.id === menuOrderId);
+    return this.purchaseOrders.filter(po =>
+      po.relatedMenuOrderId
+        ? po.relatedMenuOrderId === menuOrderId
+        : !!targetOrder &&
+          po.date === targetOrder.date &&
+          !!po.notes?.includes(`Perencanaan Menu: ${targetOrder.menuTitle} (`)
+    );
+  }
+
+  /** Hapus PO milik menu yang belum dikunci. PO yang sudah diterima atau dibayar tetap disimpan. */
   public deletePurchaseOrdersByMenuOrderId(menuOrderId: string, user?: User): number {
     const targetOrder = this.menuOrders.find(o => o.id === menuOrderId);
-    const removedPos: PurchaseOrderNota[] = [];
+    const linked = this.getPurchaseOrdersByMenuOrderId(menuOrderId);
+    const removedPos = linked.filter(po => !this.isPurchaseOrderLocked(po));
+    const hasLocked = removedPos.length < linked.length;
+    const removedIds = new Set(removedPos.map(po => po.id));
 
-    this.purchaseOrders = this.purchaseOrders.filter(po => {
-      const isMatch =
-        po.relatedMenuOrderId === menuOrderId ||
-        (targetOrder && po.notes && po.notes.includes(targetOrder.menuTitle)) ||
-        (targetOrder && po.date === targetOrder.date && po.notes?.includes('Perencanaan Menu'));
-      if (isMatch) {
-        removedPos.push(po);
+    if (removedPos.length > 0) {
+      this.purchaseOrders = this.purchaseOrders.filter(po => !removedIds.has(po.id));
+      removedPos.forEach(po => {
         try {
           removeFromPrintPool(po.id);
           removeFromPrintPool(po.poNumber);
         } catch {}
-        return false;
-      }
-      return true;
-    });
-
-    if (removedPos.length > 0) {
+      });
       setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
-      if (targetOrder) {
+
+      // Tanpa ini PO lama tetap ada di cloud dan muncul lagi (dobel) setelah halaman dimuat ulang.
+      if (isSupabaseConfigured()) {
+        supabase.from('purchase_orders').delete().in('id', Array.from(removedIds)).then(({ error }) => {
+          if (error) console.error('Supabase PO delete error:', error);
+        });
+      }
+
+      if (targetOrder && !hasLocked) {
         targetOrder.poArrivalItems = [];
         setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
         this.pushMenuOrder(targetOrder);

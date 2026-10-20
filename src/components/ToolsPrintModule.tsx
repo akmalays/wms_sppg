@@ -127,7 +127,7 @@ const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
   { id: 'EQUIPMENT_LABEL', label: 'Label Barang & Aset', hint: 'Stiker berkode QR untuk barang gudang dan aset dapur.' },
   { id: 'RACK_LABEL', label: 'Plakat Rak', hint: 'Plakat rak berisi daftar barang dan aturan penyimpanan.' },
   { id: 'SUPPLIER_EXPENSE_NOTE', label: 'Nota Kas Keluar', hint: 'Bukti pembayaran ke supplier dengan tanda tangan.' },
-  { id: 'SOP_STORAGE', label: 'SOP Gudang', hint: 'SOP penanganan bahan di gudang kering, gudang basah, chiller, freezer, dan sisa bahan dari dapur.' },
+  { id: 'SOP_STORAGE', label: 'SOP Gudang', hint: 'SOP penanganan bahan di gudang kering, non-food, chiller, freezer, sisa bahan dari dapur, serta pemakaian APD di dapur.' },
 ];
 
 const INPUT_CLS =
@@ -3357,7 +3357,42 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         </div>
                       </div>
 
-                      {/* DAFTAR ITEM YANG MENGISI RAK INI */}
+                      {rack.isReserve ? (
+                        /* Rak cadangan: isi berubah-ubah, jadi plakat berisi cara memberi label dus dan rak tujuan saat dus dibuka */
+                        <div className="space-y-1.5">
+                          <h3 className="font-bold text-[11px] print:text-[10px] text-slate-900">Isi rak: berubah-ubah</h3>
+                          <p className="text-[10px] print:text-[9px] leading-snug text-slate-700">
+                            Rak ini menampung dus yang belum dibuka dari barang Rak 1 sampai Rak 3. Isinya tidak tetap, jadi setiap dus wajib diberi label.
+                          </p>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-2">
+                            <div className="rounded-lg border border-slate-300 p-2 space-y-1">
+                              <div className="text-[9.5px] print:text-[8.5px] font-bold text-slate-900">Contoh label di sisi dus</div>
+                              <div className="rounded border-2 border-dashed border-slate-400 px-2 py-1.5 font-mono text-[10px] print:text-[9px] leading-snug text-slate-900">
+                                <div className="font-bold">ROYCO AYAM 1 KG</div>
+                                <div>Isi: 12 pcs</div>
+                                <div>Datang: 20/10/2026</div>
+                                <div>Rak asal: Rak 2</div>
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-slate-300 p-2 space-y-1">
+                              <div className="text-[9.5px] print:text-[8.5px] font-bold text-slate-900">Dus dibuka, isinya dipindah ke</div>
+                              <ul className="text-[9.5px] print:text-[8.5px] leading-snug text-slate-700 space-y-0.5">
+                                {BASE_RACKS_CONFIG.filter(r => ['RAK-KRG-A1', 'RAK-KRG-A2', 'RAK-KRG-A3'].includes(r.id)).map(r => (
+                                  <li key={r.id}>{r.name.replace(' - ', ': ')}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+
+                          {rack.items.length > 0 && (
+                            <div className="no-print p-2 rounded-lg border border-amber-300 bg-amber-50 text-[10px] text-amber-900 leading-snug">
+                              {rack.items.length} barang masih tercatat berlokasi di Rak 4: {rack.items.map(i => i.name).join(', ')}. Ubah lokasinya di Master Barang ke rak asal (Rak 1 sampai Rak 3), supaya muncul di plakat rak tersebut.
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                      /* DAFTAR ITEM YANG MENGISI RAK INI */
                       <div className="space-y-1">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
@@ -3398,10 +3433,10 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                                 >
                                   <th className="py-1 px-2 w-7 text-center">No</th>
                                   <th className="py-1 px-2 w-20">Kode SKU</th>
-                                  <th className="py-1 px-2">Nama Bahan Pangan / Barang</th>
+                                  <th className="py-1 px-2">Nama barang</th>
                                   <th className="py-1 px-2">Kategori</th>
                                   <th className="py-1 px-2 w-16 text-center">Satuan</th>
-                                  <th className="py-1 px-2">Catatan Penanganan / Posisi</th>
+                                  <th className="py-1 px-2">Catatan penanganan</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-200 text-[10px] print:text-[9px]">
@@ -3447,6 +3482,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                           </span>
                         </div>
                       </div>
+                      )}
 
                       {/* Standar Operasional Penataan (SOP Rak SPPG) */}
                       <div
@@ -3474,7 +3510,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         </p>
                         {rack.customNote && (
                           <div className="text-[9px] print:text-[8px] font-medium text-slate-800 pt-0.5 border-t border-slate-200/80">
-                            <span className="font-semibold">Catatan Khusus:</span> {rack.customNote}
+                            <span className="font-semibold">Catatan:</span> {rack.customNote}
                           </div>
                         )}
                       </div>

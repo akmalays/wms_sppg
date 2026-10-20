@@ -26,8 +26,7 @@ export const STANDARD_CATEGORIES = [
   'Bahan Basah',
   'Bahan Kering',
   'ATK & Administrasi',
-  'Alat Kebersihan',
-  'Perlengkapan & APD',
+  'Sanitasi, Kemasan & APD',
   'Operasional & Keperluan Lain',
 ] as const;
 
@@ -40,8 +39,7 @@ export const CATEGORY_HIERARCHY_MAP: Record<StandardCategory, MainCategory> = {
   'Bahan Basah': 'Bahan Basah',
   'Bahan Kering': 'Bahan Kering',
   'ATK & Administrasi': 'Bahan Peralatan',
-  'Alat Kebersihan': 'Bahan Peralatan',
-  'Perlengkapan & APD': 'Bahan Peralatan',
+  'Sanitasi, Kemasan & APD': 'Bahan Peralatan',
   'Operasional & Keperluan Lain': 'Bahan Peralatan',
 };
 
@@ -71,14 +69,12 @@ export const SUBCATEGORIES_MAP: Record<StandardCategory, readonly string[]> = {
     'Tinta & Cetak',
     'Perlengkapan Kantor (Staples, Lakban)',
   ],
-  'Alat Kebersihan': [
+  'Sanitasi, Kemasan & APD': [
     'Sabun & Deterjen (Cuci Piring, Handsoap)',
     'Karbol & Disinfektan Lantai',
     'Alat Pembersih Fisik (Sapu, Pel, Pengki)',
     'Kain Lap & Spons (Microfiber, Kanebo, Busa)',
     'Plastik Sampah (Trash Bag Hitam)',
-  ],
-  'Perlengkapan & APD': [
     'Wadah & Kemasan (Kotak Makan Mika, Thinwall)',
     'Kantong Plastik / Kresek',
     'Alat Pelindung Diri (Masker, Sarung Tangan, Nurse Cap)',
@@ -199,7 +195,8 @@ export function normalizeToStandardCategory(category?: string, itemName?: string
     return 'ATK & Administrasi';
   }
 
-  // Alat Kebersihan
+  // Sanitasi, Kemasan & APD: gabungan "Alat Kebersihan" dan "Perlengkapan & APD" lama.
+  // Nilai lama di database tetap terbaca lewat kata 'kebersihan', 'perlengkapan', dan 'apd'.
   if (
     c.includes('cleaning') ||
     c.includes('kebersihan') ||
@@ -219,10 +216,9 @@ export function normalizeToStandardCategory(category?: string, itemName?: string
     n.includes('mop') ||
     n.includes('kamper')
   ) {
-    return 'Alat Kebersihan';
+    return 'Sanitasi, Kemasan & APD';
   }
 
-  // Perlengkapan & APD
   if (
     c.includes('apd') ||
     c.includes('packaging') ||
@@ -254,7 +250,7 @@ export function normalizeToStandardCategory(category?: string, itemName?: string
     n.includes('termometer') ||
     n.includes('trolley')
   ) {
-    return 'Perlengkapan & APD';
+    return 'Sanitasi, Kemasan & APD';
   }
 
   // Operasional & Keperluan Lain
@@ -338,3 +334,52 @@ export const MAIN_CATEGORY_BADGES: Record<
     dot: 'bg-blue-500',
   },
 };
+
+/**
+ * Sub-kategori untuk filter, mengikuti pembagian rak gudang (Rak 1–4, Rak N1–N3, freezer/chiller).
+ * Ditentukan dari nama barang; aturan pertama yang cocok dipakai, sisanya masuk "Lainnya".
+ */
+export const SUBCATEGORY_OTHER = 'Lainnya';
+
+const SUBCATEGORY_RULES: Record<StandardCategory, { label: string; pattern: RegExp }[]> = {
+  'Bahan Basah': [
+    { label: 'Ayam & daging', pattern: /ayam|daging|sapi|bebek|hati|ampela|sosis|nugget|bakso/i },
+    { label: 'Ikan & seafood', pattern: /ikan|lele|tongkol|tuna|nila|udang|cumi/i },
+    { label: 'Telur', pattern: /telur/i },
+    { label: 'Tahu & tempe', pattern: /tahu|tempe/i },
+    { label: 'Buah', pattern: /buah|pisang|semangka|pepaya|melon|jeruk|apel|anggur|nanas|salak/i },
+    { label: 'Sayur & bumbu segar', pattern: /sayur|bayam|kangkung|wortel|kentang|buncis|labu|kubis|kol|sawi|tomat|cabe|cabai|bawang|jahe|kunyit|lengkuas|sereh|daun|timun|terong|jagung|brokoli/i },
+  ],
+  'Bahan Kering': [
+    { label: 'Tepung & gula', pattern: /tepung|terigu|kanji|tapioka|maizena|hunkwee|panir|gula|baking|ragi|pengembang/i },
+    { label: 'Beras & minyak', pattern: /beras|minyak goreng|minyak sawit/i },
+    { label: 'Saus, kecap & mentega', pattern: /saus|saos|kecap|sauce|cuka|mayo|mentega|margarin|blue band|wijen|petis|teriyaki/i },
+    { label: 'Bumbu & rempah', pattern: /garam|lada|merica|ketumbar|kemiri|cengkeh|pala|kayu manis|royco|masako|kaldu|penyedap|terasi|bumbu|ladaku|micin|msg/i },
+  ],
+  'Sanitasi, Kemasan & APD': [
+    { label: 'Sabun & pembersih', pattern: /sabun|deterjen|detergen|sunlight|cleaner|pembersih|karbol|wipol|disinfe|desinfe|pemutih|bayclin/i },
+    { label: 'APD & masker', pattern: /masker|3 ?pl[a]?y|hijab|sarung tangan|glove|nurse cap|hairnet|penutup kepala|celemek|apron|apd/i },
+    { label: 'Plastik & kemasan', pattern: /plastik|kresek|trash ?bag|kantong|thinwall|mika|klip|ctik|wrap|box|kemasan|tempat saus|tisu|tissue/i },
+    { label: 'Alat kebersihan', pattern: /sapu|pel|mop|cikrak|pengki|lap|spons|sabut|kanebo|sikat|gayung|ember/i },
+  ],
+  'ATK & Administrasi': [
+    { label: 'Kertas & buku', pattern: /kertas|hvs|buku|nota|kwitansi|thermal/i },
+    { label: 'Alat tulis', pattern: /pulpen|bolpoin|pena|spidol|pensil|stabilo|penghapus/i },
+    { label: 'Tinta & cetak', pattern: /tinta|toner|printer|cartridge/i },
+  ],
+  'Operasional & Keperluan Lain': [
+    { label: 'Gas & bahan bakar', pattern: /gas|elpiji|lpg|bensin|solar/i },
+    { label: 'Air & es', pattern: /galon|air minum|aqua|es batu/i },
+    { label: 'Listrik & utilitas', pattern: /listrik|token|pln|internet|pulsa/i },
+  ],
+};
+
+export function getItemSubcategory(category: StandardCategory, itemName?: string): string {
+  const n = itemName || '';
+  return SUBCATEGORY_RULES[category]?.find(r => r.pattern.test(n))?.label || SUBCATEGORY_OTHER;
+}
+
+/** Urutan sub-kategori sesuai aturan, "Lainnya" paling akhir. */
+export function getSubcategoryOrder(category: StandardCategory): string[] {
+  return [...(SUBCATEGORY_RULES[category] || []).map(r => r.label), SUBCATEGORY_OTHER];
+}

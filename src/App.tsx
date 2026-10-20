@@ -164,7 +164,6 @@ const MainLayout: React.FC = () => {
         isStaffLoggedIn={isAuthenticated}
         staffName={currentUser?.name}
         onReturnToDashboard={isAuthenticated ? navigateToDashboard : undefined}
-        onNavigateToLogin={navigateToDashboard}
       />
     );
   }

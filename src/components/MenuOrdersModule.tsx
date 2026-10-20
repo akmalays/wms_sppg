@@ -95,6 +95,21 @@ function parseNumericQuantity(qty: string | number): number {
   return match ? parseFloat(match[0]) : 0;
 }
 
+// Pembanding nama bahan dan supplier: abaikan huruf besar dan spasi berlebih.
+const normName = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+
+/** Baris dengan bahan dan supplier yang sama dalam satu daftar PO. */
+function findDuplicatePoRows(items: MenuPoArrivalItem[]): string[] {
+  const seen = new Set<string>();
+  const dupes = new Set<string>();
+  items.forEach((it) => {
+    const key = `${normName(it.itemName)}|${normName(it.supplier)}`;
+    if (seen.has(key)) dupes.add(it.itemName);
+    seen.add(key);
+  });
+  return Array.from(dupes);
+}
+
 function parseMenuDate(dateStr: string): Date | null {
   if (!dateStr) return null;
   const clean = dateStr.toLowerCase().trim();
@@ -430,6 +445,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
       notes?: string;
     }>
   >([]);
+  // Baris yang baru ditambahkan lewat kelompok supplier, agar kursor langsung ke nama bahan.
+  const [poFocusRow, setPoFocusRow] = useState<number | null>(null);
 
   const anyFormModalOpen = isMenuModalOpen || isPoModalOpen || isBeneficiaryModalOpen || isBeneficiaryPrintModalOpen;
   useEffect(() => {
@@ -1444,9 +1461,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
     setSelectedPoOrderId(targetOrder.id);
     setPoFormDate(targetOrder.poDate || "H-1");
 
+    setPoFocusRow(null);
     if (targetOrder.poArrivalItems && targetOrder.poArrivalItems.length > 0) {
       setPoFormRows(
-        targetOrder.poArrivalItems.map((p) => ({
+        withSuggestedSuppliers(targetOrder.poArrivalItems.map((p) => ({
           category: p.category || "Bahan Makanan",
           itemName: p.itemName,
           qtyOrder: p.qtyOrder || "",
@@ -1455,25 +1473,120 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
           arrivalTime: p.arrivalTime || "",
           pic: p.pic || currentUser.name,
           notes: p.notes || "",
-        })),
+        }))),
       );
     } else {
-      // Default baris kosong atau default template
-      setPoFormRows([
-        {category: "", itemName: "", qtyOrder: "", qtyArrived: "", supplier: "", arrivalTime: "", pic: currentUser.name, notes: ""},
-      ]);
+      // Mulai kosong: pengguna memilih supplier dulu, lalu mengisi bahannya.
+      setPoFormRows([]);
     }
 
     setIsPoModalOpen(true);
   };
 
+  // Naik setiap ada supplier baru dari form PO, agar daftar pilihan ikut diperbarui.
+  const [supplierListVersion, setSupplierListVersion] = useState(0);
   const masterSuppliers = useMemo(() => {
     try {
       return warehouseDb.getSuppliers();
     } catch {
       return [];
     }
-  }, []);
+  }, [supplierListVersion]);
+
+  const supplierOptions = useMemo(
+    () =>
+      masterSuppliers
+        .filter((s) => s.isActive !== false)
+        .map((s) => ({value: s.name, label: s.name, group: s.supplyCategory || "Lainnya"}))
+        .sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label)),
+    [masterSuppliers],
+  );
+
+  const findMasterSupplier = (name: string) => masterSuppliers.find((s) => normName(s.name) === normName(name));
+
+  type PoFormRow = (typeof poFormRows)[number];
+  type IndexedPoRow = {row: PoFormRow; idx: number};
+  // Isian lama dari versi sebelumnya, bukan nama supplier sungguhan.
+  const cleanSupplier = (name: string) => (["Pemasok Rekanan", "Pemasok Lokal"].includes(name.trim()) ? "" : name.trim());
+
+  // Supplier kosong ditebak sekali saat daftar dimuat, bukan saat mengetik, agar baris tidak pindah kelompok di tengah ketikan.
+  const withSuggestedSuppliers = (rows: PoFormRow[]): PoFormRow[] =>
+    rows.map((r) => ({...r, supplier: cleanSupplier(r.supplier) || resolveSupplierForItem(r.category, r.itemName, "", masterSuppliers)}));
+
+  // Daftar bahan tetap satu array datar; kelompok per supplier hanya cara menampilkannya.
+  const poGroups = (() => {
+    const groups = new Map<string, {key: string; supplier: string; rows: IndexedPoRow[]}>();
+    const unassigned: IndexedPoRow[] = [];
+    poFormRows.forEach((row, idx) => {
+      const name = cleanSupplier(row.supplier);
+      if (!name) {
+        unassigned.push({row, idx});
+        return;
+      }
+      const key = normName(name);
+      if (!groups.has(key)) groups.set(key, {key, supplier: findMasterSupplier(name)?.name || name, rows: []});
+      groups.get(key)!.rows.push({row, idx});
+    });
+    return {assigned: Array.from(groups.values()), unassigned};
+  })();
+
+  const duplicatePoRowIdx = new Set<number>();
+  poGroups.assigned.forEach((g) => {
+    const seen = new Set<string>();
+    g.rows.forEach(({row, idx}) => {
+      const k = normName(row.itemName);
+      if (!k) return;
+      if (seen.has(k)) duplicatePoRowIdx.add(idx);
+      seen.add(k);
+    });
+  });
+
+  const updatePoRow = (idx: number, patch: Partial<PoFormRow>) =>
+    setPoFormRows((rows) => rows.map((r, i) => (i === idx ? {...r, ...patch} : r)));
+
+  const removePoRow = (idx: number) => setPoFormRows((rows) => rows.filter((_, i) => i !== idx));
+
+  const addPoRow = (supplier: string) => {
+    const name = supplier.trim();
+    if (!name) return;
+    const lastInGroup = [...poFormRows].reverse().find((r) => normName(cleanSupplier(r.supplier)) === normName(name));
+    setPoFocusRow(poFormRows.length);
+    setPoFormRows([
+      ...poFormRows,
+      {
+        category: lastInGroup?.category || "Sayur dan Buah",
+        itemName: "",
+        qtyOrder: "",
+        qtyArrived: "",
+        supplier: findMasterSupplier(name)?.name || name,
+        arrivalTime: "08.00",
+        pic: currentUser.name,
+        notes: "",
+      },
+    ]);
+  };
+
+  // Ganti supplier satu kelompok sekaligus, mis. supplier langganan mendadak tidak bisa kirim.
+  const renamePoGroup = (groupKey: string, supplier: string) => {
+    const name = supplier.trim();
+    if (!name) return;
+    setPoFormRows((rows) => rows.map((r) => (normName(cleanSupplier(r.supplier)) === groupKey ? {...r, supplier: name} : r)));
+  };
+
+  const removePoGroup = async (group: {key: string; supplier: string; rows: IndexedPoRow[]}) => {
+    const filled = group.rows.filter(({row}) => row.itemName.trim()).length;
+    if (
+      filled > 0 &&
+      !(await askConfirm({
+        title: `Hapus ${filled} bahan dari ${group.supplier}?`,
+        message: "Bahan dalam kelompok ini dihapus dari daftar PO.",
+        confirmText: "Hapus",
+        variant: "danger",
+      }))
+    )
+      return;
+    setPoFormRows((rows) => rows.filter((r) => normName(cleanSupplier(r.supplier)) !== group.key));
+  };
 
   const resolveSupplierForItem = (
     category: string,
@@ -1543,7 +1656,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
     return "";
   };
 
-  const handleSaveAndGenerateOfficialPo = () => {
+  const handleSaveAndGenerateOfficialPo = async () => {
     if (!selectedPoOrderId) {
       toast.warning("Pilih menu tujuan untuk PO ini.", "Menu Belum Dipilih");
       return;
@@ -1560,7 +1673,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
         .filter((r) => r.itemName.trim())
         .map((r) => {
           const estimatedCost = parseNumericQuantity(r.qtyOrder || r.qtyArrived) * estimatePrice(r.itemName);
-          const autoSupplier = resolveSupplierForItem(r.category, r.itemName, r.supplier, masterSuppliers);
+          const autoSupplier = cleanSupplier(r.supplier);
           return {
             category: r.category.trim(),
             itemName: r.itemName.trim(),
@@ -1583,6 +1696,72 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
         toast.error(`Pilih supplier untuk: ${noSupplier.map((it) => it.itemName).join(", ")}.`, "Supplier Belum Diisi");
         return;
       }
+      const duplicates = findDuplicatePoRows(validItems);
+      if (duplicates.length > 0) {
+        toast.error(`${duplicates.join(", ")} tercatat lebih dari sekali untuk supplier yang sama. Gabungkan jumlahnya di satu baris.`, "Bahan Dobel");
+        return;
+      }
+
+      // Terbit ulang diblokir: PO lama bisa sudah dicetak, dikirim ke supplier, atau diterima.
+      const existingMenuPos = warehouseDb.getPurchaseOrdersByMenuOrderId(targetOrder.id);
+      if (existingMenuPos.length > 0) {
+        const poNumbers = existingMenuPos.map((po) => po.poNumber).join(", ");
+        if (existingMenuPos.some((po) => warehouseDb.isPurchaseOrderLocked(po))) {
+          toast.error(`PO ${poNumbers} untuk menu ini sudah diterima atau dibayar, jadi tidak bisa diterbitkan ulang.`, "PO Sudah Terbit");
+        } else {
+          toast.error(`Menu ini sudah punya PO ${poNumbers}. Batalkan PO dulu bila ingin menerbitkan ulang.`, "PO Sudah Terbit");
+        }
+        return;
+      }
+
+      const poTargetDate = targetOrder.date || localDateIso(new Date());
+      const existingPOs = warehouseDb.getPurchaseOrders();
+
+      // Bahan sama ke supplier sama di tanggal yang sama dari menu lain: bisa disengaja (beda sesi), jadi hanya diingatkan.
+      const overlaps = validItems.flatMap((item) => {
+        const hit = existingPOs.find(
+          (po) =>
+            po.date === poTargetDate &&
+            po.relatedMenuOrderId !== targetOrder.id &&
+            normName(po.supplierName) === normName(item.supplier) &&
+            po.items.some((pi) => normName(pi.name) === normName(item.itemName)),
+        );
+        return hit ? [`${item.itemName} (${hit.poNumber})`] : [];
+      });
+      const newSupplierNames = Array.from(
+        new Map(validItems.filter((it) => !findMasterSupplier(it.supplier)).map((it) => [normName(it.supplier), it.supplier.trim()])).values(),
+      );
+
+      if (overlaps.length > 0 || newSupplierNames.length > 0) {
+        const ok = await askConfirm({
+          title: "Periksa sebelum terbit PO",
+          message: (
+            <div className="space-y-2">
+              {overlaps.length > 0 && (
+                <p>
+                  Sudah dipesan ke supplier yang sama untuk {formatIndonesianDate(poTargetDate)} lewat menu lain: <strong>{overlaps.join(", ")}</strong>.
+                  Lanjutkan hanya bila memang perlu pesanan terpisah.
+                </p>
+              )}
+              {newSupplierNames.length > 0 && (
+                <p>
+                  Supplier baru ditambahkan ke daftar supplier: <strong>{newSupplierNames.join(", ")}</strong>. Kontak dan alamatnya
+                  dilengkapi nanti di menu Supplier.
+                </p>
+              )}
+            </div>
+          ),
+          confirmText: "Terbitkan PO",
+        });
+        if (!ok) return;
+      }
+
+      // Supplier baru dicatat ke master dulu agar PO punya supplierId dan bisa dilengkapi kontaknya.
+      const supplierByName = new Map(masterSuppliers.map((s) => [normName(s.name), s]));
+      newSupplierNames.forEach((name) => {
+        supplierByName.set(normName(name), warehouseDb.quickAddSupplier(name, currentUser));
+      });
+      if (newSupplierNames.length > 0) setSupplierListVersion((v) => v + 1);
 
       // 1. Simpan ke data Menu Order lokal
       const updatedOrder: MenuOrder = {
@@ -1593,31 +1772,22 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
 
       warehouseDb.saveMenuOrder(updatedOrder, currentUser, false);
 
-      // 2. Bersihkan draft PO resmi lama untuk menu ini agar tidak ada duplikasi / PO usang
-      warehouseDb.deletePurchaseOrdersByMenuOrderId(selectedPoOrderId, currentUser);
-
-      // 3. Kelompokkan bahan berdasarkan nama Supplier untuk dibuatkan PO resmi
+      // 2. Kelompokkan bahan berdasarkan nama Supplier untuk dibuatkan PO resmi
       const itemsBySupplier = new Map<string, MenuPoArrivalItem[]>();
       validItems.forEach((item) => {
-        const suppName = item.supplier || "Pemasok Rekanan";
+        const suppName = supplierByName.get(normName(item.supplier))?.name || item.supplier;
         if (!itemsBySupplier.has(suppName)) {
           itemsBySupplier.set(suppName, []);
         }
         itemsBySupplier.get(suppName)!.push(item);
       });
 
-      const existingPOs = warehouseDb.getPurchaseOrders();
       const generatedPos: PurchaseOrderNota[] = [];
-      const poTargetDate = targetOrder.date || localDateIso(new Date());
       let currentSeqList = [...existingPOs];
 
       itemsBySupplier.forEach((supplierItems, supplierName) => {
-        const suppObj = masterSuppliers.find(
-          (s) =>
-            s.name.toLowerCase() === supplierName.toLowerCase() ||
-            supplierName.toLowerCase().includes(s.name.toLowerCase()) ||
-            s.name.toLowerCase().includes(supplierName.toLowerCase()),
-        );
+        // Cocokkan nama persis: pencocokan sebagian bisa mengarah ke supplier lain ("Tahu Pak Rio" ke "Tahu Rio").
+        const suppObj = supplierByName.get(normName(supplierName));
 
         const nextPoNum = generateNextPoNumber(currentSeqList, poTargetDate);
 
@@ -1688,7 +1858,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
   };
 
   const handleApplyPoTemplate = () => {
-    setPoFormRows(STANDARD_PO_TEMPLATES.map((t) => ({...t, notes: ""})));
+    setPoFocusRow(null);
+    setPoFormRows(withSuggestedSuppliers(STANDARD_PO_TEMPLATES.map((t) => ({...t, notes: ""}))));
   };
 
   const handleDeletePoForOrder = async (orderId?: string) => {
@@ -1707,6 +1878,16 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
 
     if (confirmDelete) {
       const deletedCount = warehouseDb.deletePurchaseOrdersByMenuOrderId(targetId, currentUser);
+      const lockedPos = warehouseDb.getPurchaseOrdersByMenuOrderId(targetId);
+      if (lockedPos.length > 0) {
+        refreshOrders();
+        setIsPoModalOpen(false);
+        toast.warning(
+          `${deletedCount} PO dibatalkan. PO ${lockedPos.map((po) => po.poNumber).join(", ")} tetap disimpan karena sudah diterima atau dibayar.`,
+          "Sebagian PO Dikunci",
+        );
+        return;
+      }
       if (targetOrder) {
         const updatedOrder: MenuOrder = {
           ...targetOrder,
@@ -1739,7 +1920,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
         .filter((r) => r.itemName.trim())
         .map((r) => {
           const estimatedCost = parseNumericQuantity(r.qtyOrder || r.qtyArrived) * estimatePrice(r.itemName);
-          const autoSupplier = resolveSupplierForItem(r.category, r.itemName, r.supplier, masterSuppliers);
+          const autoSupplier = cleanSupplier(r.supplier);
           return {
             category: r.category.trim(),
             itemName: r.itemName.trim(),
@@ -1754,8 +1935,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
         });
 
       if (validItems.length === 0) {
-        // Jika user mengosongkan seluruh baris, hapus seluruh PO terkait
-        warehouseDb.deletePurchaseOrdersByMenuOrderId(selectedPoOrderId, currentUser);
+        if (warehouseDb.getPurchaseOrdersByMenuOrderId(selectedPoOrderId).length > 0) {
+          toast.warning("Menu ini sudah punya PO terbit. Pakai tombol Batalkan PO untuk menghapusnya.", "PO Sudah Terbit");
+          return;
+        }
         const updatedOrder: MenuOrder = {
           ...targetOrder,
           poDate: poFormDate.trim() || targetOrder.poDate,
@@ -1765,6 +1948,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
         refreshOrders();
         setIsPoModalOpen(false);
         toast.success(`Seluruh rincian PO untuk menu ${updatedOrder.menuTitle} telah dihapus.`);
+        return;
+      }
+
+      const duplicates = findDuplicatePoRows(validItems);
+      if (duplicates.length > 0) {
+        toast.error(`${duplicates.join(", ")} tercatat lebih dari sekali untuk supplier yang sama. Gabungkan jumlahnya di satu baris.`, "Bahan Dobel");
         return;
       }
 
@@ -3347,7 +3536,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
                         const found = orders.find((o) => o.id === newId);
                         if (found && found.poArrivalItems && found.poArrivalItems.length > 0) {
                           setPoFormRows(
-                            found.poArrivalItems.map((p) => ({
+                            withSuggestedSuppliers(found.poArrivalItems.map((p) => ({
                               category: p.category || "Bahan Makanan",
                               itemName: p.itemName,
                               qtyOrder: p.qtyOrder || "",
@@ -3356,7 +3545,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
                               arrivalTime: p.arrivalTime || "",
                               pic: p.pic || currentUser.name,
                               notes: p.notes || "",
-                            })),
+                            }))),
                           );
                         }
                       }}
@@ -3377,8 +3566,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
 
                 <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-800">Bahan ({poFormRows.length})</h3>
-                    <p className="text-[11px] text-slate-600">Supplier terisi otomatis dari nama dan kategori bahan bila dikenali.</p>
+                    <h3 className="text-sm font-semibold text-slate-800">Bahan per supplier</h3>
+                    <p className="text-[11px] text-slate-600">Satu kelompok supplier jadi satu PO. Supplier di luar daftar bisa diketik langsung.</p>
                   </div>
                   <button
                     type="button"
@@ -3389,149 +3578,176 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
                   </button>
                 </div>
 
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
-                        <tr>
-                          <th className="py-2 px-3 w-9 font-semibold text-center">No</th>
-                          <th className="py-2 px-3 w-40 font-semibold">Kategori</th>
-                          <th className="py-2 px-3 font-semibold min-w-[180px]">Nama bahan</th>
-                          <th className="py-2 px-3 w-48 font-semibold">Supplier</th>
-                          <th className="py-2 px-3 w-32 font-semibold">Jumlah</th>
-                          <th className="py-2 px-2 w-12"><span className="sr-only">Hapus</span></th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {poFormRows.map((row, rIdx) => (
-                          <tr key={rIdx}>
-                            <td className="py-2 px-3 text-center text-slate-600 font-mono">{rIdx + 1}</td>
-                            <td className="py-2 px-3">
-                              <Select className="w-full" size="sm"
-                                value={row.category}
-                                onChange={(e) => {
-                                  const newCat = e.target.value;
-                                  const updated = [...poFormRows];
-                                  updated[rIdx].category = newCat;
-                                  if (!updated[rIdx].supplier || updated[rIdx].supplier === "Pemasok Rekanan") {
-                                    const suggested = resolveSupplierForItem(newCat, updated[rIdx].itemName, "", masterSuppliers);
-                                    if (suggested && suggested !== "Pemasok Rekanan") {
-                                      updated[rIdx].supplier = suggested;
-                                    }
-                                  }
-                                  setPoFormRows(updated);
-                                }}>
-                                <option value="Protein">Protein</option>
-                                <option value="Sembako">Sembako</option>
-                                <option value="Sayur dan Buah">Sayur dan Buah</option>
-                                <option value="Sayur">Sayur</option>
-                                <option value="Buah">Buah</option>
-                                <option value="Bumbu">Bumbu</option>
-                                <option value="Bahan Olahan">Bahan Olahan</option>
-                                <option value="Lain-lain">Lain-lain</option>
-                              </Select>
-                            </td>
-                            <td className="py-2 px-3">
-                              <input
-                                type="text"
-                                required
-                                placeholder="Misal: Ayam Potong / Telur Ayam"
-                                value={row.itemName}
-                                onChange={(e) => {
-                                  const newName = e.target.value;
-                                  const updated = [...poFormRows];
-                                  updated[rIdx].itemName = newName;
-                                  if (!updated[rIdx].supplier || updated[rIdx].supplier === "Pemasok Rekanan") {
-                                    const suggested = resolveSupplierForItem(updated[rIdx].category, newName, "", masterSuppliers);
-                                    if (suggested && suggested !== "Pemasok Rekanan") {
-                                      updated[rIdx].supplier = suggested;
-                                    }
-                                  }
-                                  setPoFormRows(updated);
-                                }}
-                                aria-label={`Nama bahan baris ${rIdx + 1}`}
-                                className={TABLE_INPUT}
-                              />
-                            </td>
-                            <td className="py-2 px-3">
-                              <input
-                                type="text"
-                                list="po-supplier-options"
-                                placeholder="Pilih atau ketik"
-                                value={row.supplier}
-                                onChange={(e) => {
-                                  const updated = [...poFormRows];
-                                  updated[rIdx].supplier = e.target.value;
-                                  setPoFormRows(updated);
-                                }}
-                                aria-label={`Supplier baris ${rIdx + 1}`}
-                                className={TABLE_INPUT}
-                              />
-                            </td>
-                            <td className="py-2 px-3">
-                              <input
-                                type="text"
-                                required
-                                placeholder="Mis. 26 kg"
-                                value={row.qtyOrder}
-                                onChange={(e) => {
-                                  const updated = [...poFormRows];
-                                  updated[rIdx].qtyOrder = e.target.value;
-                                  setPoFormRows(updated);
-                                }}
-                                aria-label={`Jumlah baris ${rIdx + 1}`}
-                                className={`${TABLE_INPUT} font-mono`}
-                              />
-                            </td>
-                            <td className="py-2 px-2 text-center">
+                {poFormRows.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center">
+                    <p className="text-sm text-slate-700">Belum ada bahan.</p>
+                    <p className="mt-1 text-[11px] text-slate-600">Pilih supplier di bawah, lalu isi bahan yang dikirimnya.</p>
+                  </div>
+                )}
+
+                {(() => {
+                  const renderPoRow = ({row, idx}: IndexedPoRow, withSupplier: boolean) => {
+                    const isDup = duplicatePoRowIdx.has(idx);
+                    return (
+                      <li
+                        key={idx}
+                        className={`grid gap-2 px-3 py-2 items-start grid-cols-[1fr_1fr_2.75rem] ${
+                          withSupplier ? "sm:grid-cols-[9rem_1fr_7rem_12rem_2.25rem]" : "sm:grid-cols-[9rem_1fr_7rem_2.25rem]"
+                        }`}>
+                        <Select
+                          className="w-full"
+                          size="sm"
+                          aria-label={`Kategori ${row.itemName || `baris ${idx + 1}`}`}
+                          value={row.category}
+                          onChange={(e) => updatePoRow(idx, {category: e.target.value})}>
+                          <option value="Protein">Protein</option>
+                          <option value="Sembako">Sembako</option>
+                          <option value="Sayur dan Buah">Sayur dan Buah</option>
+                          <option value="Sayur">Sayur</option>
+                          <option value="Buah">Buah</option>
+                          <option value="Bumbu">Bumbu</option>
+                          <option value="Bahan Olahan">Bahan Olahan</option>
+                          <option value="Lain-lain">Lain-lain</option>
+                        </Select>
+                        <div className="col-span-3 sm:col-span-1 order-first sm:order-none">
+                          <input
+                            type="text"
+                            required
+                            autoFocus={idx === poFocusRow}
+                            onFocus={() => idx === poFocusRow && setPoFocusRow(null)}
+                            placeholder="Misal: Ayam Potong / Telur Ayam"
+                            value={row.itemName}
+                            onChange={(e) => updatePoRow(idx, {itemName: e.target.value})}
+                            aria-label={`Nama bahan baris ${idx + 1}`}
+                            aria-invalid={isDup || undefined}
+                            className={isDup ? TABLE_INPUT.replace("border-slate-300", "border-rose-500") : TABLE_INPUT}
+                          />
+                          {isDup && <p className="mt-1 text-[11px] text-rose-700">Sudah ada di supplier ini. Gabungkan jumlahnya.</p>}
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Mis. 26 kg"
+                          value={row.qtyOrder}
+                          onChange={(e) => updatePoRow(idx, {qtyOrder: e.target.value})}
+                          aria-label={`Jumlah ${row.itemName || `baris ${idx + 1}`}`}
+                          className={`${TABLE_INPUT} font-mono`}
+                        />
+                        {withSupplier && (
+                          <div className="col-span-3 sm:col-span-1 order-last sm:order-none">
+                            <SearchPicker
+                              size="sm"
+                              allowCustom
+                              noun="supplier"
+                              value=""
+                              options={supplierOptions}
+                              placeholder="Pilih supplier"
+                              searchPlaceholder="Cari atau ketik supplier baru..."
+                              ariaLabel={`Supplier untuk ${row.itemName || `baris ${idx + 1}`}`}
+                              onSelect={(opt, text) => updatePoRow(idx, {supplier: opt ? opt.value : text})}
+                            />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removePoRow(idx)}
+                          aria-label={`Hapus ${row.itemName || `baris ${idx + 1}`}`}
+                          title="Hapus bahan"
+                          className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[30px] sm:min-h-[30px] rounded-md text-slate-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer ${FOCUS_RING}`}>
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </li>
+                    );
+                  };
+
+                  let poNo = 0;
+                  return (
+                    <div className="space-y-3">
+                      {poGroups.assigned.map((group) => {
+                        const filled = group.rows.filter(({row}) => row.itemName.trim()).length;
+                        if (filled > 0) poNo += 1;
+                        const isNew = !findMasterSupplier(group.supplier);
+                        return (
+                          <section key={group.key} aria-label={`Bahan dari ${group.supplier}`} className="border border-slate-200 rounded-xl overflow-hidden">
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 bg-slate-50 border-b border-slate-200">
+                              <div className="w-full sm:w-64">
+                                <SearchPicker
+                                  size="sm"
+                                  allowCustom
+                                  noun="supplier"
+                                  value={group.supplier}
+                                  options={supplierOptions}
+                                  searchPlaceholder="Cari atau ketik supplier baru..."
+                                  ariaLabel={`Ganti supplier ${group.supplier}`}
+                                  onSelect={(opt, text) => renamePoGroup(group.key, opt ? opt.value : text)}
+                                />
+                              </div>
+                              <span className="text-[11px] text-slate-600">
+                                {filled > 0 ? `${filled} bahan · PO ${poNo}` : "Belum ada bahan"}
+                              </span>
+                              {isNew && <span className="text-[11px] text-amber-800">Supplier baru, masuk daftar saat PO terbit</span>}
                               <button
                                 type="button"
-                                disabled={poFormRows.length === 1}
-                                onClick={() => {
-                                  const updated = poFormRows.filter((_, idx) => idx !== rIdx);
-                                  setPoFormRows(updated);
-                                }}
-                                aria-label={`Hapus baris ${rIdx + 1}`}
-                                title="Hapus baris"
-                                className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[30px] sm:min-h-[30px] rounded-md text-slate-500 hover:text-rose-700 hover:bg-rose-50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer ${FOCUS_RING}`}>
+                                onClick={() => removePoGroup(group)}
+                                aria-label={`Hapus semua bahan dari ${group.supplier}`}
+                                title="Hapus kelompok supplier"
+                                className={`ml-auto inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[30px] sm:min-h-[30px] rounded-md text-slate-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer ${FOCUS_RING}`}>
                                 <Trash2 className="w-4 h-4" />
                               </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <datalist id="po-supplier-options">
-                      {masterSuppliers.map((s) => (
-                        <option key={s.id} value={s.name}>
-                          {s.supplyCategory ? `${s.name} (${s.supplyCategory})` : s.name}
-                        </option>
-                      ))}
-                    </datalist>
-                  </div>
+                            </div>
+                            <div className="hidden sm:grid grid-cols-[9rem_1fr_7rem_2.25rem] gap-2 px-3 pt-2 text-[11px] font-semibold text-slate-600" aria-hidden="true">
+                              <span>Kategori</span>
+                              <span>Nama bahan</span>
+                              <span>Jumlah</span>
+                            </div>
+                            <ul className="divide-y divide-slate-100">{group.rows.map((r) => renderPoRow(r, false))}</ul>
+                            <div className="px-3 py-2 border-t border-slate-100">
+                              <button
+                                type="button"
+                                onClick={() => addPoRow(group.supplier)}
+                                aria-label={`Tambah bahan dari ${group.supplier}`}
+                                className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
+                                <Plus className="w-4 h-4 text-slate-500" />
+                                Tambah bahan
+                              </button>
+                            </div>
+                          </section>
+                        );
+                      })}
 
-                  <div className="px-3 py-2 border-t border-slate-200">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPoFormRows([
-                          ...poFormRows,
-                          {
-                            category: "Sayur dan Buah",
-                            itemName: "",
-                            qtyOrder: "",
-                            qtyArrived: "",
-                            supplier: "",
-                            arrivalTime: "08.00",
-                            pic: currentUser.name,
-                            notes: "",
-                          },
-                        ])
-                      }
-                      className={BTN_SECONDARY}>
-                      <Plus className="w-4 h-4 text-slate-500" />
-                      Tambah bahan
-                    </button>
+                      {poGroups.unassigned.length > 0 && (
+                        <section aria-label="Bahan tanpa supplier" className="border border-amber-300 rounded-xl overflow-hidden">
+                          <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
+                            <h4 className="text-xs font-semibold text-amber-900">Belum ada supplier ({poGroups.unassigned.length})</h4>
+                            <p className="text-[11px] text-amber-900">Pilih supplier tiap bahan. Bahan pindah ke kelompok supplier itu.</p>
+                          </div>
+                          <div className="hidden sm:grid grid-cols-[9rem_1fr_7rem_12rem_2.25rem] gap-2 px-3 pt-2 text-[11px] font-semibold text-slate-600" aria-hidden="true">
+                            <span>Kategori</span>
+                            <span>Nama bahan</span>
+                            <span>Jumlah</span>
+                            <span>Supplier</span>
+                          </div>
+                          <ul className="divide-y divide-slate-100">{poGroups.unassigned.map((r) => renderPoRow(r, true))}</ul>
+                        </section>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-700">{poGroups.assigned.length > 0 ? "Supplier lain" : "Supplier"}</span>
+                  <div className="w-full sm:w-72">
+                    <SearchPicker
+                      size="sm"
+                      allowCustom
+                      noun="supplier"
+                      value=""
+                      options={supplierOptions}
+                      placeholder="Pilih atau ketik supplier..."
+                      searchPlaceholder="Cari atau ketik supplier baru..."
+                      ariaLabel="Tambah kelompok supplier"
+                      onSelect={(opt, text) => addPoRow(opt ? opt.value : text)}
+                    />
                   </div>
                 </div>
         </DialogShell>
