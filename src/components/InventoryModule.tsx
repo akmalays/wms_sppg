@@ -26,9 +26,6 @@ import {
   XCircle,
   ArrowDownRight,
   Edit2,
-  TableProperties,
-  ClipboardPaste,
-  PlusCircle,
   FileSpreadsheet,
   Download,
   Info,
@@ -49,7 +46,8 @@ import {
   Tag,
   Sliders
 } from 'lucide-react';
-import { exportToExcel, downloadExcelTemplate } from '../lib/excelExport';
+import { exportToExcel } from '../lib/excelExport';
+import { BTN_PRIMARY, BTN_SECONDARY } from './common/FormDialog';
 import { SppgLogo } from './SppgLogo';
 import { useToast } from '../context/ToastContext';
 import { localDateIso } from '../utils/localDate';
@@ -90,20 +88,6 @@ export function getDetailedItemCategory(item: { name: string; category?: string;
 // a guessed price would show up as real money in the stock value and printed recap.
 function getItemEstimatedUnitPrice(_name: string, _category: string, explicitPrice?: number): number {
   return explicitPrice && explicitPrice > 0 ? explicitPrice : 0;
-}
-
-interface BatchMasterItemRow {
-  id: string;
-  sku: string;
-  name: string;
-  category: SppgCategory;
-  baseUnit: BaseUnit;
-  initialStock: number;
-  minStock: number;
-  location: string;
-  notes: string;
-  /** Set once the user picks a category by hand; until then it follows the typed name */
-  categoryTouched?: boolean;
 }
 
 export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = 'stock' }) => {
@@ -148,7 +132,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
   // ----------------------------------------------------
   const [editingItem, setEditingItem] = useState<ItemMaster | null>(null);
   const [isSingleModalOpen, setIsSingleModalOpen] = useState(false);
-  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [adjustingItem, setAdjustingItem] = useState<ItemMaster | null>(null);
   const [adjustQtyDelta, setAdjustQtyDelta] = useState<number>(0);
   const [adjustType, setAdjustType] = useState<'ADD' | 'SUBTRACT' | 'SET'>('ADD');
@@ -169,17 +152,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
   const [formNotes, setFormNotes] = useState('');
   const [formIsActive, setFormIsActive] = useState<boolean>(true);
   const [formError, setFormError] = useState('');
-
-  // Batch Master Items Form State
-  const [batchMode, setBatchMode] = useState<'GRID' | 'PASTE'>('GRID');
-  const [pasteRawText, setPasteRawText] = useState('');
-  const [batchRows, setBatchRows] = useState<BatchMasterItemRow[]>([
-    { id: '1', sku: '', name: '', category: 'Bahan Basah', baseUnit: 'Kg', initialStock: 0, minStock: 15, location: 'Chiller Dapur - Bin C1 (Daging Ayam & Protein Unggas)', notes: '' },
-    { id: '2', sku: '', name: '', category: 'Bahan Kering', baseUnit: 'Kg', initialStock: 0, minStock: 20, location: 'Gudang Kering - Palet Tengah (Sembako Sak & Karung Curah)', notes: '' },
-    { id: '3', sku: '', name: '', category: 'ATK & Administrasi', baseUnit: 'Rim', initialStock: 0, minStock: 5, location: 'Ruang Kantor / Lemari ATK (Alat Tulis Kantor & Administrasi)', notes: '' },
-    { id: '4', sku: '', name: '', category: 'Sanitasi, Kemasan & APD', baseUnit: 'Pouch', initialStock: 0, minStock: 10, location: 'Gudang Non-Food - Rak N1 (Sabun, Kebersihan & Sanitasi Dapur)', notes: '' },
-    { id: '5', sku: '', name: '', category: 'Sanitasi, Kemasan & APD', baseUnit: 'Pack', initialStock: 0, minStock: 10, location: 'Gudang Non-Food - Rak N2 (Plastik, Kemasan & Tissue Dapur)', notes: '' },
-  ]);
 
   // ----------------------------------------------------
   // Opname Tab States
@@ -212,7 +184,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
     };
   }, []);
 
-  // Escape closes the short dialogs. Opname counting and batch entry are left out on purpose:
+  // Escape closes the short dialogs. Opname counting is left out on purpose:
   // a stray key press there would throw away a lot of typed data.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -698,7 +670,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
   // Opname Logic & Handlers
   // ----------------------------------------------------
   const handleOpenCreateOpname = (presetCategory?: SppgCategory) => {
-    const chosenCat = presetCategory || (selectedCategoryTab !== 'Semua Kategori' ? selectedCategoryTab : 'Semua Kategori');
+    // Tanpa preset selalu mulai dari semua kategori; filter tab Stok tidak terlihat dari tab Opname.
+    const chosenCat = presetCategory || 'Semua Kategori';
     setOpnameCategoryFilter(chosenCat);
     setOpnameFormDate(localDateIso());
     setOpnameFormLocation(
@@ -1152,203 +1125,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
     );
   };
 
-  // ----------------------------------------------------
-  // Batch Master Items Handlers
-  // ----------------------------------------------------
-  const handleAddBatchRow = (count: number = 1) => {
-    const newRows: BatchMasterItemRow[] = [];
-    const timestamp = Date.now();
-    for (let i = 0; i < count; i++) {
-      newRows.push({
-        id: String(timestamp + Math.random() + i),
-        sku: '',
-        name: '',
-        category: 'Bahan Kering',
-        baseUnit: 'Kg',
-        initialStock: 0,
-        minStock: 10,
-        location: 'Gudang Kering',
-        notes: '',
-      });
-    }
-    setBatchRows(prev => [...prev, ...newRows]);
-  };
-
-  const applyBatchCategoryDefaults = (row: BatchMasterItemRow): BatchMasterItemRow => {
-    const r = { ...row };
-    if (r.category === 'Bahan Kering') {
-      r.location = 'Gudang Kering - Rak A1 (Sembako Beras & Karung Pangan)';
-      r.baseUnit = 'Kg';
-    } else if (r.category === 'Bahan Basah') {
-      r.location = 'Gudang Basah - Rak V1 (Sayuran Segar & Umbi Hijau)';
-      r.baseUnit = 'Kg';
-    } else if (r.category === 'ATK & Administrasi') {
-      r.location = 'Ruang Kantor / Lemari ATK (Alat Tulis Kantor & Administrasi)';
-      r.baseUnit = 'Rim';
-    } else if (r.category === 'Sanitasi, Kemasan & APD' && /sabun|deterjen|pembersih|cleaner|karbol|disinfe|wipol|sunlight/i.test(r.name)) {
-      r.location = 'Gudang Non-Food - Rak N1 (Sabun dan Sanitasi)';
-      r.baseUnit = 'Pouch';
-    } else if (r.category === 'Sanitasi, Kemasan & APD' && /masker|sarung tangan|celemek|apron|hairnet|nurse cap|apd/i.test(r.name)) {
-      r.location = 'Gudang Non-Food - Rak N3 (APD dan Masker)';
-      r.baseUnit = 'Box';
-    } else {
-      r.location = 'Gudang Non-Food - Rak N2 (Plastik, Kemasan & Tissue Dapur)';
-      r.baseUnit = 'Pack';
-    }
-    return r;
-  };
-
-  const handleUpdateBatchRow = (id: string, field: keyof BatchMasterItemRow, value: any) => {
-    setBatchRows(prev =>
-      prev.map(row => {
-        if (row.id !== id) return row;
-        const updated = { ...row, [field]: value };
-        if (field === 'category') updated.categoryTouched = true;
-        // Rows start with a placeholder category; follow the item name until the user chooses one
-        if (field === 'name' && !row.categoryTouched && String(value).trim()) {
-          const detected = getDetailedItemCategory({ name: String(value) });
-          if (detected !== row.category) {
-            return { ...applyBatchCategoryDefaults({ ...updated, category: detected }), categoryTouched: false };
-          }
-        }
-        if (field === 'category') return applyBatchCategoryDefaults(updated);
-        return updated;
-      })
-    );
-  };
-
-  const handleRemoveBatchRow = (id: string) => {
-    setBatchRows(prev => (prev.length > 1 ? prev.filter(r => r.id !== id) : prev));
-  };
-
-  const handleParsePastedText = () => {
-    if (!pasteRawText.trim()) {
-      showError('Silakan tempel teks data master barang dari Excel terlebih dahulu.');
-      return;
-    }
-
-    const lines = pasteRawText.trim().split(/\r?\n/);
-    const parsedRows: BatchMasterItemRow[] = [];
-
-    lines.forEach((line, idx) => {
-      let cols = line.split('\t');
-      if (cols.length === 1 && line.includes(';')) cols = line.split(';');
-      else if (cols.length === 1 && line.includes(',')) cols = line.split(',');
-
-      const c0 = (cols[0] || '').trim();
-      const c1 = (cols[1] || '').trim();
-      const c2 = (cols[2] || '').trim();
-      const c3 = (cols[3] || '').trim();
-      const c4 = (cols[4] || '').trim();
-
-      if (idx === 0 && (c0.toLowerCase().includes('sku') || c0.toLowerCase().includes('nama'))) return;
-
-      let name = c0;
-      let cat: SppgCategory = 'Bahan Kering';
-      let unit: BaseUnit = 'Kg';
-      let stock = 0;
-      let minStock = 10;
-
-      if (cols.length >= 3) {
-        name = c0;
-        unit = (c1 || 'Kg') as BaseUnit;
-        stock = parseFloat(c2) || 0;
-        minStock = c3 === '' ? 10 : Math.max(0, parseFloat(c3) || 0);
-      }
-
-      if (name) {
-        cat = getDetailedItemCategory({ name });
-        parsedRows.push({
-          id: String(Date.now() + Math.random() + idx),
-          sku: '',
-          name,
-          category: cat,
-          baseUnit: unit,
-          initialStock: stock,
-          minStock,
-          location: cat === 'Bahan Basah' ? 'Chiller Dapur' : 'Gudang Utama',
-          notes: c4 || '',
-        });
-      }
-    });
-
-    if (parsedRows.length > 0) {
-      setBatchRows(parsedRows);
-      setBatchMode('GRID');
-      setPasteRawText('');
-      showToast(`Berhasil membaca ${parsedRows.length} baris barang dari Excel! Periksa dan simpan.`);
-    } else {
-      showError('Tidak ada baris barang yang terdeteksi.');
-    }
-  };
-
-  const handleSaveAllBatchMaster = (e: React.FormEvent) => {
-    e.preventDefault();
-    const validRows = batchRows.filter(r => r.name.trim() !== '');
-    if (validRows.length === 0) {
-      showError('Harap isi minimal 1 nama barang pada tabel.');
-      return;
-    }
-    const existingNames = new Set(items.map(i => i.name.trim().toLowerCase()));
-    const seenNames = new Set<string>();
-    const duplicateNames = validRows
-      .map(r => r.name.trim())
-      .filter(name => {
-        const key = name.toLowerCase();
-        const dup = existingNames.has(key) || seenNames.has(key);
-        seenNames.add(key);
-        return dup;
-      });
-    if (duplicateNames.length > 0) {
-      showError(`Barang sudah ada di master: ${duplicateNames.join(', ')}. Hapus baris itu atau ubah stoknya lewat Koreksi.`, 'Barang Kembar');
-      return;
-    }
-
-    try {
-      // Empty SKU: next free code for the item's storage area, counting codes assigned earlier in this batch
-      const assigned: ItemMaster[] = [...items];
-      const itemsToSave: ItemMaster[] = validRows.map(r => {
-        const id = r.sku.trim() || generateAutoSku(detectWarehouseType(r.location, r.category), assigned);
-        assigned.push({ id } as ItemMaster);
-        return { ...r, sku: id };
-      }).map(r => ({
-        id: r.sku,
-        name: r.name.trim(),
-        itemType: r.category === 'Bahan Basah'
-          ? 'FOOD_DAILY_FLOW'
-          : r.category === 'Bahan Kering'
-          ? 'FOOD_CARRYING_STOCK'
-          : 'OPERATIONAL_CONSUMABLE',
-        category: r.category,
-        baseUnit: r.baseUnit,
-        minimumStock: Math.max(0, Number(r.minStock) || 0),
-        reorderPoint: Math.max(0, Number(r.minStock) || 0) * 1.5,
-        currentStock: Number(r.initialStock) || 0,
-        location: r.location.trim() || 'Gudang Utama',
-        expiryTrackingEnabled: r.category === 'Bahan Basah' || r.category === 'Bahan Kering',
-        isActive: true,
-        notes: r.notes.trim() || undefined,
-      }));
-
-      warehouseDb.saveItemsBatch(itemsToSave, currentUser);
-      refreshData();
-      setIsBatchModalOpen(false);
-      // Start the next batch empty so saved rows are not submitted twice
-      setBatchRows(prev => prev.slice(0, 5).map((r, i) => ({
-        ...r,
-        id: String(Date.now() + i),
-        sku: '',
-        name: '',
-        initialStock: 0,
-        notes: '',
-        categoryTouched: false,
-      })));
-      showToast(`${validRows.length} barang baru tersimpan ke master barang.`);
-    } catch (err: any) {
-      showError(err.message || 'Gagal menyimpan batch barang.');
-    }
-  };
-
   // Export Stock Data to Excel
   const handleExportStockExcel = () => {
     if (filteredItems.length === 0) {
@@ -1520,17 +1296,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                   Tambah Barang
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveMainTab('opname');
-                  handleOpenCreateOpname(selectedCategoryTab !== 'Semua Kategori' ? selectedCategoryTab : undefined);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-              >
-                <ClipboardCheck className="w-4 h-4 text-slate-500" />
-                {selectedCategoryTab !== 'Semua Kategori' ? `Opname ${selectedCategoryTab}` : 'Mulai Opname'}
-              </button>
               <button
                 type="button"
                 onClick={handleExportStockExcel}
@@ -1766,43 +1531,20 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
               </p>
             </div>
 
-            <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
               {can('MANAGE_ITEMS') && (
-                <button
-                  type="button"
-                  onClick={handleOpenNewSingleItem}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors cursor-pointer"
-                  title="Tambah item custom baru"
-                >
-                  <Plus className="w-4 h-4 text-emerald-100" />
-                  <span>Tambah Barang</span>
+                <button type="button" onClick={handleOpenNewSingleItem} className={BTN_PRIMARY}>
+                  <Plus className="w-4 h-4" />
+                  Tambah barang
                 </button>
               )}
-
-              {can('MANAGE_ITEMS') && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBatchMode('GRID');
-                    setPasteRawText('');
-                    setIsBatchModalOpen(true);
-                  }}
-                  className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 transition-colors cursor-pointer"
-                  title="Input masal banyak item sekaligus"
-                >
-                  <TableProperties className="w-4 h-4 text-slate-600" />
-                  <span>Tambah Banyak</span>
-                </button>
-              )}
-
               <button
                 type="button"
                 onClick={handleExportMasterExcel}
-                className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-xl bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
-                title="Unduh seluruh data master barang ke Excel"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                <span>Ekspor Excel</span>
+                className={BTN_SECONDARY}
+                title="Unduh barang yang tampil di tabel (sesuai filter) ke Excel">
+                <FileSpreadsheet className="w-4 h-4 text-slate-500" />
+                Ekspor Excel
               </button>
             </div>
           </div>
@@ -1953,22 +1695,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                                 <button
                                   type="button"
                                   onClick={handleOpenNewSingleItem}
-                                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors cursor-pointer"
+                                  className={BTN_PRIMARY}
                                 >
-                                  <Plus className="w-4 h-4 text-emerald-100" />
-                                  <span>Tambah Item Pertama</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setBatchMode('GRID');
-                                    setPasteRawText('');
-                                    setIsBatchModalOpen(true);
-                                  }}
-                                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-900 text-white shadow-2xs transition-colors cursor-pointer"
-                                >
-                                  <TableProperties className="w-4 h-4" />
-                                  <span>Input Masal (Batch)</span>
+                                  <Plus className="w-4 h-4" />
+                                  Tambah barang pertama
                                 </button>
                               </div>
                             )}
@@ -2128,13 +1858,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleOpenCreateOpname()}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <Plus className="w-4 h-4 text-emerald-100" />
-                <span>Mulai Opname</span>
+              <button type="button" onClick={() => handleOpenCreateOpname()} className={BTN_PRIMARY}>
+                <Plus className="w-4 h-4" />
+                Mulai opname
               </button>
             </div>
           </div>
@@ -3230,263 +2956,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODAL: INPUT MASAL MASTER BARANG */}
-      {/* ========================================================================= */}
-      {isBatchModalOpen && (
-        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 overflow-y-auto">
-          <div role="dialog" aria-modal="true" aria-label="Tambah banyak barang" className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden">
-            <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Tambah Banyak Barang</h3>
-                <p className="text-xs text-slate-600 mt-0.5">
-                  Isi tabel atau tempel dari Excel. SKU dan kategori terisi otomatis dari nama barang.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex bg-slate-200/80 p-0.5 rounded-lg text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setBatchMode('GRID')}
-                    className={`px-3 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
-                      batchMode === 'GRID' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
-                    }`}
-                  >
-                    Isi Tabel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBatchMode('PASTE')}
-                    className={`flex items-center gap-1 px-3 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
-                      batchMode === 'PASTE' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-slate-600'
-                    }`}
-                  >
-                    <ClipboardPaste className="w-3.5 h-3.5" />
-                    <span>Tempel dari Excel</span>
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setIsBatchModalOpen(false)}
-                  aria-label="Tutup"
-                  className="p-2 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer ml-auto sm:ml-2"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
-              {batchMode === 'GRID' && (
-                <div className="space-y-3">
-                  <div className="border border-slate-200 rounded-xl overflow-x-auto">
-                    <table className="w-full min-w-[820px] text-left text-xs">
-                      <thead className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
-                        <tr>
-                          <th className="py-2.5 px-2 text-center w-8">#</th>
-                          <th className="py-2.5 px-2 w-28">SKU</th>
-                          <th className="py-2.5 px-2 min-w-[180px]">Nama Barang <span className="text-rose-500">*</span></th>
-                          <th className="py-2.5 px-2 w-36">Kategori</th>
-                          <th className="py-2.5 px-2 w-20">Satuan</th>
-                          <th className="py-2.5 px-2 w-24 text-right">Stok Awal</th>
-                          <th className="py-2.5 px-2 w-24 text-right">Minimum</th>
-                          <th className="py-2.5 px-2 min-w-[120px]">Lokasi</th>
-                          <th className="py-2.5 px-1 text-center w-8"></th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {batchRows.map((row, index) => (
-                          <tr key={row.id} className="hover:bg-slate-50/80">
-                            <td className="py-1.5 px-2 text-center text-slate-500 text-[11px]">{index + 1}</td>
-                            <td className="py-1.5 px-2">
-                              <input
-                                type="text"
-                                value={row.sku}
-                                onChange={e => handleUpdateBatchRow(row.id, 'sku', e.target.value.toUpperCase())}
-                                placeholder="Otomatis"
-                                aria-label={`SKU baris ${index + 1}`}
-                                className="w-full text-xs border border-slate-200 rounded px-1.5 py-1 font-mono placeholder:text-slate-500 placeholder:font-sans"
-                              />
-                            </td>
-                            <td className="py-1.5 px-2">
-                              <input
-                                type="text"
-                                value={row.name}
-                                onChange={e => handleUpdateBatchRow(row.id, 'name', e.target.value)}
-                                placeholder="Nama barang..."
-                                aria-label={`Nama barang baris ${index + 1}`}
-                                className="w-full text-xs border border-slate-200 rounded px-2 py-1 placeholder:text-slate-500"
-                              />
-                            </td>
-                            <td className="py-1.5 px-2">
-                              <Select className="w-full" size="sm"
-                                value={row.category}
-                                onChange={e => handleUpdateBatchRow(row.id, 'category', e.target.value as SppgCategory)}>
-                                {SPPG_STOCK_CATEGORIES.filter(c => c !== 'Semua Kategori').map(c => (
-                                  <option key={c} value={c}>{c}</option>
-                                ))}
-                              </Select>
-                            </td>
-                            <td className="py-1.5 px-2">
-                              <input
-                                type="text"
-                                value={row.baseUnit}
-                                list="batch-unit-list"
-                                onChange={e => handleUpdateBatchRow(row.id, 'baseUnit', e.target.value)}
-                                aria-label={`Satuan baris ${index + 1}`}
-                                className="w-full text-xs border border-slate-200 rounded px-1 py-1"
-                              />
-                            </td>
-                            <td className="py-1.5 px-2 text-right">
-                              <input
-                                type="number"
-                                min="0"
-                                value={row.initialStock || ''}
-                                placeholder="0"
-                                aria-label={`Stok awal baris ${index + 1}`}
-                                onChange={e => handleUpdateBatchRow(row.id, 'initialStock', Math.max(0, Number(e.target.value) || 0))}
-                                className="w-full text-xs border border-slate-200 rounded px-1 py-1 text-right font-mono"
-                              />
-                            </td>
-                            <td className="py-1.5 px-2 text-right">
-                              <input
-                                type="number"
-                                min="0"
-                                value={row.minStock}
-                                aria-label={`Batas minimum baris ${index + 1}`}
-                                onChange={e => handleUpdateBatchRow(row.id, 'minStock', Math.max(0, Number(e.target.value) || 0))}
-                                className="w-full text-xs border border-slate-200 rounded px-1 py-1 text-right font-mono"
-                              />
-                            </td>
-                            <td className="py-1.5 px-2">
-                              <input
-                                type="text"
-                                list="batch-location-list"
-                                value={row.location}
-                                onChange={e => handleUpdateBatchRow(row.id, 'location', e.target.value)}
-                                placeholder="Pilih / ketik lokasi rak..."
-                                className="w-full text-xs border border-slate-200 rounded px-1.5 py-1"
-                              />
-                            </td>
-                            <td className="py-1.5 px-1 text-center">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveBatchRow(row.id)}
-                                disabled={batchRows.length <= 1}
-                                aria-label={`Hapus baris ${index + 1}`}
-                                className="text-slate-500 hover:text-rose-600 disabled:opacity-30 p-1.5 cursor-pointer"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Datalist rekomendasi lokasi rak untuk tabel batch */}
-                  <datalist id="batch-location-list">
-                    {ALL_STANDARD_LOCATIONS.map(loc => (
-                      <option key={loc} value={loc} />
-                    ))}
-                  </datalist>
-                  <datalist id="batch-unit-list">
-                    {['Kg', 'Gram', 'Liter', 'Pcs', 'Pack', 'Dus', 'Ikat', 'Butir', 'Roll', 'Botol', 'Jerigen', 'Pouch', 'Rim'].map(u => (
-                      <option key={u} value={u} />
-                    ))}
-                  </datalist>
-
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleAddBatchRow(1)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Tambah 1 Baris</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleAddBatchRow(5)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer"
-                      >
-                        <PlusCircle className="w-3.5 h-3.5" />
-                        <span>+5 Baris</span>
-                      </button>
-                    </div>
-
-                    <span className="text-xs text-slate-600">
-                      {batchRows.filter(r => r.name.trim() !== '').length} dari {batchRows.length} baris terisi
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {batchMode === 'PASTE' && (
-                <div className="space-y-3">
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-950 flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-semibold mb-0.5">Urutan kolom dari Excel / Google Sheet:</p>
-                      <p className="text-[11px] text-emerald-900">
-                        Salin (Ctrl+C) data kolom dari Excel lalu tempel (Ctrl+V) ke kotak teks di bawah:
-                        <br />
-                        <code className="bg-emerald-100 px-1 rounded font-mono text-[10px]">
-                          Nama barang | Satuan | Stok awal | Batas minimum | Catatan
-                        </code>.
-                      </p>
-                    </div>
-                  </div>
-
-                  <textarea
-                    rows={8}
-                    value={pasteRawText}
-                    onChange={e => setPasteRawText(e.target.value)}
-                    placeholder="Tempel teks Excel di sini...&#10;Contoh:&#10;Beras Ramos&#9;Kg&#9;50&#9;20&#10;Daging Ayam Karkas&#9;Kg&#9;25&#9;15&#10;Kertas HVS A4&#9;Rim&#9;10&#9;5&#10;Sunlight 750ml&#9;Pouch&#9;8&#9;4"
-                    className="w-full text-xs font-mono border border-slate-300 rounded-xl p-3 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-
-                  <div className="flex items-center justify-end">
-                    <button
-                      type="button"
-                      onClick={handleParsePastedText}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold cursor-pointer"
-                    >
-                      <ClipboardPaste className="w-4 h-4" />
-                      <span>Ekstrak Data ke Tabel</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="px-4 sm:px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <span className="text-[11px] text-slate-600">Stok awal tercatat di Buku Mutasi.</span>
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsBatchModalOpen(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px]"
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveAllBatchMaster}
-                  className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px]"
-                >
-                  Simpan {batchRows.filter(r => r.name.trim() !== '').length || ''} Barang
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       )}

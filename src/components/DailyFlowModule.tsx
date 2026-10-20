@@ -7,6 +7,7 @@ import { ScanButton } from './common/QrScannerDialog';
 import { ScanTarget } from '../utils/scanCode';
 import { localDateIso } from '../utils/localDate';
 import { CheckCircle2, AlertTriangle, Search, X } from 'lucide-react';
+import { FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './common/FormDialog';
 
 type Scope = 'ALL' | 'FOOD_DAILY_FLOW' | 'FOOD_CARRYING_STOCK';
 
@@ -18,8 +19,6 @@ const SCOPE_TABS: { id: Scope; label: string }[] = [
 
 const KITCHEN_LOCATION = 'Dapur SPPG Tumpang Jeru';
 
-const INPUT_CLS =
-  'w-full px-2.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600';
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
 
 const fmt = (n: number) => n.toLocaleString('id-ID', { maximumFractionDigits: 2 });
@@ -297,10 +296,11 @@ export const DailyFlowModule: React.FC = () => {
           </div>
         </div>
 
-        {section === 'DAPUR' && (
+        {/* Tanggal di header agar posisinya sama di kedua tab; tombol catat hanya untuk bahan dapur
+            karena form operasional sudah terbuka di halaman. */}
         <div className="flex flex-col sm:flex-row sm:items-end gap-2">
           <div>
-            <label htmlFor="flow-date" className="block text-[11px] font-medium text-slate-700 mb-1">
+            <label htmlFor="flow-date" className={FIELD_LABEL}>
               Tanggal
             </label>
             <input
@@ -309,33 +309,27 @@ export const DailyFlowModule: React.FC = () => {
               value={selectedDate}
               max={today}
               onChange={e => setSelectedDate(e.target.value || today)}
-              className={`${INPUT_CLS} sm:w-40`}
+              className={`${FIELD_INPUT} sm:w-40`}
             />
           </div>
-          {can('RECORD_CONSUMPTION') && (
-            <button
-              type="button"
-              onClick={openModal}
-              disabled={!isToday || rows.length === 0}
-              className={`inline-flex items-center justify-center px-4 min-h-[44px] sm:min-h-[34px] rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer ${FOCUS}`}
-            >
+          {section === 'DAPUR' && can('RECORD_CONSUMPTION') && (
+            <button type="button" onClick={openModal} disabled={!isToday || rows.length === 0} className={BTN_PRIMARY}>
               Catat pemakaian hari ini
             </button>
           )}
         </div>
-        )}
       </div>
-
-      {section === 'OPERASIONAL' ? (
-        <OperationalIssuePanel />
-      ) : (
-      <>
 
       {!isToday && (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          Menampilkan {formatLongDate(selectedDate)}. Pemakaian hanya bisa dicatat untuk hari ini.
+          Menampilkan {formatLongDate(selectedDate)}. {section === 'DAPUR' ? 'Pemakaian' : 'Barang keluar'} hanya bisa dicatat untuk hari ini.
         </p>
       )}
+
+      {section === 'OPERASIONAL' ? (
+        <OperationalIssuePanel selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+      ) : (
+      <>
 
       {feedback && (
         <div
@@ -389,7 +383,7 @@ export const DailyFlowModule: React.FC = () => {
             placeholder="Cari bahan atau lokasi"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            className={`${INPUT_CLS} pl-8`}
+            className={`${FIELD_INPUT} pl-8`}
           />
         </div>
       </div>
@@ -501,11 +495,7 @@ export const DailyFlowModule: React.FC = () => {
               <div className="px-4 sm:px-5 py-2.5 border-b border-slate-100 flex flex-wrap items-center gap-2 text-xs">
                 {menuSuggestionCount > 0 ? (
                   <>
-                    <button
-                      type="button"
-                      onClick={fillFromMenu}
-                      className={`px-3 min-h-[44px] sm:min-h-[30px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-medium text-slate-800 cursor-pointer ${FOCUS}`}
-                    >
+                    <button type="button" onClick={fillFromMenu} className={BTN_SECONDARY}>
                       Isi dari menu hari ini ({menuSuggestionCount})
                     </button>
                     <span className="text-slate-600">
@@ -536,7 +526,7 @@ export const DailyFlowModule: React.FC = () => {
                         focusFirstMatch();
                       }
                     }}
-                    className={`${INPUT_CLS} pl-8`}
+                    className={`${FIELD_INPUT} pl-8`}
                   />
                 </div>
                 {modalQuery.trim() && (
@@ -595,7 +585,7 @@ export const DailyFlowModule: React.FC = () => {
                               placeholder="0"
                               aria-invalid={change?.overStock || change?.invalid || undefined}
                               onChange={e => setInputs(prev => ({ ...prev, [r.itemId]: e.target.value }))}
-                              className={`${INPUT_CLS} text-right font-mono ${
+                              className={`${FIELD_INPUT} text-right font-mono ${
                                 change?.overStock || change?.invalid ? 'border-rose-400 bg-rose-50' : ''
                               }`}
                             />
@@ -626,17 +616,13 @@ export const DailyFlowModule: React.FC = () => {
                       ' akan disimpan.'}
                 </span>
                 <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    className={`flex-1 sm:flex-none px-4 min-h-[44px] sm:min-h-[34px] rounded-lg font-medium text-slate-700 hover:bg-slate-200/70 cursor-pointer ${FOCUS}`}
-                  >
+                  <button type="button" onClick={closeModal} className={`${BTN_SECONDARY} ${BTN_GHOST} flex-1 sm:flex-none`}>
                     Batal
                   </button>
                   <button
                     type="submit"
                     disabled={blocking.length > 0 || changes.length === 0}
-                    className={`flex-1 sm:flex-none px-4 min-h-[44px] sm:min-h-[34px] rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold cursor-pointer ${FOCUS}`}
+                    className={`${BTN_PRIMARY} flex-1 sm:flex-none`}
                   >
                     Simpan pemakaian
                   </button>

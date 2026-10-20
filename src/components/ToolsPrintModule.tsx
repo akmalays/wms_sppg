@@ -51,7 +51,7 @@ import { SppgLogo } from './SppgLogo';
 import QRCode from 'qrcode';
 import { localDateIso } from '../utils/localDate';
 
-export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE';
+export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'NONFOOD_ISSUE_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE';
 
 export interface ItemTagData {
   uniqueKey: string;
@@ -123,6 +123,7 @@ const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
   { id: 'OPNAME_SHEET', label: 'Lembar Opname', hint: 'Lembar hitung fisik stok per lokasi.' },
   { id: 'BIN_CARD', label: 'Kartu Stok', hint: 'Kartu gantung di rak untuk mencatat keluar-masuk satu barang.' },
   { id: 'KITCHEN_REQUISITION', label: 'Bon Dapur', hint: 'Bon permintaan bahan dari dapur ke gudang, diisi tangan.' },
+  { id: 'NONFOOD_ISSUE_FORM', label: 'Pengambilan Non-Food', hint: 'Log harian barang non-food yang diambil relawan dari gudang. Disalin ke Barang Keluar > Operasional.' },
   { id: 'ITEM_TAG_LABEL', label: 'Tag Bahan Datang', hint: 'Tag kecil untuk wadah: supplier, jam datang, dan batas pakai.' },
   { id: 'EQUIPMENT_LABEL', label: 'Label Barang & Aset', hint: 'Stiker berkode QR untuk barang gudang dan aset dapur.' },
   { id: 'RACK_LABEL', label: 'Plakat Rak', hint: 'Plakat rak berisi daftar barang dan aturan penyimpanan.' },
@@ -498,6 +499,10 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   // Data sources
   const [receivingDocs, setReceivingDocs] = useState<ReceivingDocument[]>(() => warehouseDb.getReceivings());
   const [items, setItems] = useState<ItemMaster[]>(() => warehouseDb.getItems());
+  const nonFoodItems = useMemo(
+    () => items.filter(i => i.isActive && i.itemType === 'OPERATIONAL_CONSUMABLE').sort((a, b) => a.name.localeCompare(b.name)),
+    [items]
+  );
   const equipment = useMemo(() => warehouseDb.getEquipment(), []);
   const suppliers = useMemo(() => warehouseDb.getSuppliers(), []);
   const users = useMemo(() => warehouseDb.getUsers(), []);
@@ -2776,6 +2781,53 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               <SignBox role="Diserahkan (gudang)" name={currentUser?.name} />
               <SignBox role="Mengetahui (Kepala SPPG)" name={headOfficeName || undefined} />
             </div>
+          </div>
+        )}
+
+        {/* Log pengambilan non-food: kolomnya sama dengan layar "Input dari form kertas" di Barang Keluar,
+            jadi penyalinan cukup baris demi baris. Daftar barang di bawah agar nama yang ditulis cocok dengan master. */}
+        {activeForm === 'NONFOOD_ISSUE_FORM' && (
+          <div className="space-y-5 text-xs">
+            <DocTitle title="Form Pengambilan Barang Non-Food" subtitle="Barang operasional yang diambil dari gudang" />
+
+            <Field label="Tanggal" value={formatLongDate(printDate)} />
+
+            <table className="w-full border-collapse border border-slate-300 table-print">
+              <thead className="bg-slate-100 text-slate-800 font-semibold">
+                <tr>
+                  <th className="border border-slate-300 p-1.5 w-8 text-center">No</th>
+                  <th className="border border-slate-300 p-1.5 text-left">Nama barang</th>
+                  <th className="border border-slate-300 p-1.5 text-right w-14">Qty</th>
+                  <th className="border border-slate-300 p-1.5 text-center w-16">Satuan</th>
+                  <th className="border border-slate-300 p-1.5 text-left w-32">Nama relawan</th>
+                  <th className="border border-slate-300 p-1.5 text-left w-28">PIC</th>
+                  <th className="border border-slate-300 p-1.5 text-center w-16">Paraf</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 20 }).map((_, idx) => (
+                  <tr key={idx} className="h-8">
+                    <td className="border border-slate-300 p-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
+                    {Array.from({ length: 6 }).map((__, c) => (
+                      <td key={c} className="border border-slate-300 p-1.5"></td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {nonFoodItems.length > 0 && (
+              <div className="break-inside-avoid">
+                <p className="font-semibold text-slate-800 mb-1.5">Nama barang di gudang (tulis sesuai daftar ini)</p>
+                <ul className="columns-2 sm:columns-3 print:columns-3 gap-6 text-[10px] text-slate-700 leading-relaxed">
+                  {nonFoodItems.map(item => (
+                    <li key={item.id} className="break-inside-avoid">
+                      {item.name} <span className="text-slate-500">({item.baseUnit})</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 

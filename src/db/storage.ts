@@ -3004,18 +3004,20 @@ class WarehouseDatabase {
   }
 
   // --- RECORD ISSUE / CONSUMPTION ---
+  /** occurredAt diisi saat menyalin catatan kertas: transaksi masuk ke tanggal di kertas, bukan saat diinput. */
   public recordConsumption(
     itemId: string,
     quantity: number,
     location: string,
     user: User,
     notes: string,
-    referenceDoc?: string
+    referenceDoc?: string,
+    occurredAt?: Date
   ): InventoryTransaction {
     if (quantity <= 0) {
       throw new Error('Jumlah pemakaian bahan harus lebih dari 0.');
     }
-    return this.postConsumption(itemId, -quantity, location, user, notes, referenceDoc);
+    return this.postConsumption(itemId, -quantity, location, user, notes, referenceDoc, occurredAt);
   }
 
   // Koreksi pemakaian yang tercatat berlebih: bahan dikembalikan ke stok.
@@ -3040,7 +3042,8 @@ class WarehouseDatabase {
     location: string,
     user: User,
     notes: string,
-    referenceDoc?: string
+    referenceDoc?: string,
+    occurredAt?: Date
   ): InventoryTransaction {
     const itemIndex = this.items.findIndex(i => i.id === itemId);
     if (itemIndex < 0) {
@@ -3055,14 +3058,17 @@ class WarehouseDatabase {
     }
 
     const newStock = Number((item.currentStock + signedQty).toFixed(2));
-    const now = new Date();
+    const now = occurredAt || new Date();
     const timestampStr = localTimestamp(now);
     const ref = referenceDoc || `ISS-${localDateIso(now).replace(/-/g, '')}-${Math.floor(Math.random() * 100)}`;
+    // Catatan mundur tidak boleh memundurkan tanggal gerak terakhir barang.
+    const movementDate =
+      item.lastMovementDate && item.lastMovementDate > localDateIso(now) ? item.lastMovementDate : localDateIso(now);
 
     this.items[itemIndex] = {
       ...item,
       currentStock: newStock,
-      lastMovementDate: localDateIso(now),
+      lastMovementDate: movementDate,
     };
 
     const tx: InventoryTransaction = {
@@ -3093,7 +3099,7 @@ class WarehouseDatabase {
       });
       supabase.from('item_master').update({
         current_stock: newStock,
-        last_movement_date: new Date(localDateIso()).toISOString(),
+        last_movement_date: new Date(movementDate).toISOString(),
         updated_at: new Date().toISOString(),
       }).eq('id', item.id).then();
     }

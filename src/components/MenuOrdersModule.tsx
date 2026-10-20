@@ -4,7 +4,7 @@ import {SearchPicker} from "./common/SearchPicker";
 import { useConfirm } from '../context/ConfirmContext';
 import {useAuth} from "../context/AuthContext";
 import {useToast} from "../context/ToastContext";
-import {warehouseDb, APP_SETTINGS_CHANGED_EVENT} from "../db/storage";
+import {warehouseDb, APP_SETTINGS_CHANGED_EVENT, signerName} from "../db/storage";
 import {getBeneficiaryRecap, saveBeneficiaryRecap, getBeneficiaryRecapsInRange, getAllBeneficiaryRecapDates, getLastBeneficiaryRecapBefore, parseBeneficiaryRecapText, DailyBeneficiaryRecap, SkipReason, SKIP_REASON_LABEL} from "../utils/beneficiaryRecap";
 import {MenuOrder, MenuOrderStatus, MenuIngredientReq, MenuPoArrivalItem, SchoolBeneficiaryAllocation, PurchaseOrderNota, PurchaseOrderItem} from "../types/warehouse";
 import {generateNextPoNumber} from "../utils/poNumberGenerator";
@@ -13,7 +13,6 @@ import {
   UtensilsCrossed,
   Plus,
   Printer,
-  FileText,
   Search,
   Calendar,
   Clock,
@@ -39,7 +38,7 @@ import {
 import {exportMultiSheetExcel, exportToExcel} from "../lib/excelExport";
 import {localDateIso} from "../utils/localDate";
 import {normalizeQtyForUnit} from "../utils/unitConversion";
-import {SPPG_ADDRESS} from "./common/KopText";
+import {KopText} from "./common/KopText";
 import {FormDialog, DialogShell, FIELD_INPUT, FIELD_LABEL, TABLE_INPUT, BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST, FOCUS_RING} from "./common/FormDialog";
 import {ActionDropdown} from "./common/ActionDropdown";
 import {DateStepper} from "./common/DateStepper";
@@ -2136,35 +2135,16 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
                 },
               ]}
             />
-            <ActionDropdown
-              triggerLabel="Cetak"
-              triggerIcon={Printer}
-              triggerVariant="white"
-              header="Cetak"
-              widthClass="w-60"
-              items={[
-                ...(onNavigate
-                  ? [{
-                      id: "menu-print",
-                      label: "Poster menu MBG",
-                      description: "Buka studio cetak menu harian",
-                      icon: Printer,
-                      iconBgClass: "bg-slate-100 text-slate-700",
-                      iconColorClass: "text-slate-600",
-                      onClick: () => onNavigate("menu_print"),
-                    }]
-                  : []),
-                {
-                  id: "page-print",
-                  label: "Halaman ini",
-                  description: "Cetak atau simpan sebagai PDF",
-                  icon: FileText,
-                  iconBgClass: "bg-slate-100 text-slate-700",
-                  iconColorClass: "text-slate-600",
-                  onClick: () => window.print(),
-                },
-              ]}
-            />
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => onNavigate("menu_print")}
+                className={BTN_SECONDARY}
+                title="Buka studio cetak poster menu harian">
+                <Printer className="w-4 h-4" />
+                Poster menu
+              </button>
+            )}
             <button
               type="button"
               onClick={handleExportExcelAll}
@@ -3962,11 +3942,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
                 <div className="flex items-center justify-between border-b-2 border-slate-900 pb-3 mb-4">
                   <div className="flex items-center gap-3">
                     <SppgLogo size="md" variant="color" showText={false} />
-                    <div>
-                      <div className="text-sm font-bold tracking-tight text-slate-900 leading-tight">SATUAN PELAYANAN PEMENUHAN GIZI (SPPG MLG TUMPANG JERU)</div>
-                      <div className="text-[11px] font-semibold text-slate-700">BADAN GIZI NASIONAL (BGN) REPUBLIK INDONESIA</div>
-                      <div className="text-[10px] text-slate-500">{SPPG_ADDRESS}</div>
-                    </div>
+                    <KopText />
                   </div>
                   <div className="text-right text-[10px] font-mono text-slate-500">
                     <div>Dokumen Resmi Distribusi</div>
@@ -4038,18 +4014,18 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
                 <div className="mt-8 grid grid-cols-2 text-center text-xs pt-4 border-t border-slate-200">
                   <div className="space-y-12">
                     <div>
-                      <div className="text-slate-500 text-[11px]">Mengetahui & Menyetujui,</div>
-                      <div className="font-semibold text-slate-800">Ahli Gizi / Kepala SPPG</div>
+                      <div className="text-slate-500 text-[11px]">Mengetahui,</div>
+                      <div className="font-semibold text-slate-800">Kepala SPPG</div>
                     </div>
-                    <div className="font-bold underline text-slate-900">( .................................................. )</div>
+                    <div className="font-bold underline text-slate-900">( {signerName("KEPALA_SPPG")} )</div>
                   </div>
 
                   <div className="space-y-12">
                     <div>
-                      <div className="text-slate-500 text-[11px]">Dibuat & Diverifikasi,</div>
-                      <div className="font-semibold text-slate-800">Petugas Distribusi & Penerima Manfaat</div>
+                      <div className="text-slate-500 text-[11px]">Dibuat oleh,</div>
+                      <div className="font-semibold text-slate-800">Asisten Lapangan</div>
                     </div>
-                    <div className="font-bold underline text-slate-900">( {currentUser?.name || "Petugas SPPG"} )</div>
+                    <div className="font-bold underline text-slate-900">( {signerName("ASLAP")} )</div>
                   </div>
                 </div>
               </div>

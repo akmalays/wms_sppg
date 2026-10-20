@@ -3,7 +3,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb, signerName } from '../db/storage';
-import { MainItemCategory, normalizeItemCategory } from '../types/warehouse';
+import { STANDARD_CATEGORIES, StandardCategory, normalizeToStandardCategory } from '../utils/categoryStandards';
 import { Printer, Search, CheckCircle2, FileSpreadsheet, Trash2, Plus, X } from 'lucide-react';
 import { exportMultiSheetExcel } from '../lib/excelExport';
 import { SppgLogo } from './SppgLogo';
@@ -28,7 +28,10 @@ const KIND_BADGE: Record<ExpenseKind, string> = {
   DAPUR: 'bg-sky-50 text-sky-800 border-sky-200',
 };
 
-const CATEGORIES: MainItemCategory[] = ['Bahan Basah', 'Bahan Kering', 'Bahan Peralatan'];
+// Sama dengan kategori Master Barang, agar rekap pengeluaran bisa dicocokkan dengan stok.
+const CATEGORIES: StandardCategory[] = [...STANDARD_CATEGORIES];
+const emptyByCategory = <T,>(make: () => T) =>
+  Object.fromEntries(CATEGORIES.map(c => [c, make()])) as Record<StandardCategory, T>;
 
 const MONTH_NAMES = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -86,7 +89,7 @@ interface UnifiedExpense {
   parsedDate: Date | null;
   time: string;
   itemName: string;
-  category: MainItemCategory;
+  category: StandardCategory;
   quantityLabel: string;
   numericQty: number;
   unit: string;
@@ -123,7 +126,7 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
   const [endDate, setEndDate] = useState<string>(today);
   const [selectedMonth, setSelectedMonth] = useState<string>(today.slice(0, 7));
 
-  const [categoryFilter, setCategoryFilter] = useState<'ALL' | MainItemCategory>('ALL');
+  const [categoryFilter, setCategoryFilter] = useState<'ALL' | StandardCategory>('ALL');
   const [kindFilter, setKindFilter] = useState<'ALL' | ExpenseKind>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeView, setActiveView] = useState<'SUMMARY' | 'TRANSACTIONS'>('SUMMARY');
@@ -174,7 +177,7 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
         parsedDate: parseExpenseDate(exp.date),
         time: exp.time || '',
         itemName: exp.itemName,
-        category: normalizeItemCategory(exp.category, exp.itemName),
+        category: normalizeToStandardCategory(exp.category, exp.itemName),
         quantityLabel,
         numericQty: qty,
         unit,
@@ -197,9 +200,10 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
           kind: 'DAPUR',
           rawDate,
           parsedDate: parseExpenseDate(rawDate),
-          time: tx.timestamp.slice(11, 16).replace(':', '.'),
+          // Catatan dari form kertas tidak punya jam asli (disimpan pukul 12.00), jadi tidak ditampilkan.
+          time: tx.referenceDocument?.startsWith('FORM-') ? '' : tx.timestamp.slice(11, 16).replace(':', '.'),
           itemName: tx.itemName,
-          category: normalizeItemCategory(tx.category, tx.itemName),
+          category: normalizeToStandardCategory(tx.category, tx.itemName),
           quantityLabel: qty < 0
             ? `Koreksi ${Math.abs(qty).toLocaleString('id-ID')} ${tx.unit}`
             : `${qty.toLocaleString('id-ID')} ${tx.unit}`,
@@ -270,7 +274,7 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
   }, [periodExpenses, categoryFilter, kindFilter, searchQuery]);
 
   const totals = useMemo(() => {
-    const byCategory: Record<MainItemCategory, number> = { 'Bahan Basah': 0, 'Bahan Kering': 0, 'Bahan Peralatan': 0 };
+    const byCategory = emptyByCategory(() => 0);
     let belanja = 0;
     let belanjaCount = 0;
     let pengambilanCount = 0;
@@ -305,7 +309,7 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
   }, [filteredExpenses]);
 
   const categoryItems = useMemo(() => {
-    const result: Record<MainItemCategory, ItemAgg[]> = { 'Bahan Basah': [], 'Bahan Kering': [], 'Bahan Peralatan': [] };
+    const result = emptyByCategory<ItemAgg[]>(() => []);
     const maps: Record<string, Map<string, ItemAgg>> = {};
     CATEGORIES.forEach(c => (maps[c] = new Map()));
 
@@ -341,7 +345,7 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
   }, [filteredExpenses]);
 
   const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = { ALL: 0, 'Bahan Basah': 0, 'Bahan Kering': 0, 'Bahan Peralatan': 0 };
+    const counts: Record<string, number> = { ALL: 0, ...emptyByCategory(() => 0) };
     periodExpenses.forEach(e => {
       if (kindFilter !== 'ALL' && e.kind !== kindFilter) return;
       counts.ALL += 1;
@@ -725,8 +729,8 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
         </div>
 
         {/* RINGKASAN */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="p-4 rounded-xl bg-white border border-slate-200 sm:col-span-2 lg:col-span-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="p-4 rounded-xl bg-white border border-slate-200">
             <div className="text-xs font-medium text-slate-600">Total belanja · {range.label}</div>
             <div className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">{formatRp(totals.belanja)}</div>
             <div className="text-xs text-slate-600 mt-1">

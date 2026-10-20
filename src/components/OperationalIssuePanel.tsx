@@ -6,10 +6,9 @@ import { localDateIso } from '../utils/localDate';
 import { SearchPicker } from './common/SearchPicker';
 import { ScanButton } from './common/QrScannerDialog';
 import { ScanTarget } from '../utils/scanCode';
+import { FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY } from './common/FormDialog';
+import { PaperIssueFormDialog, PAPER_FORM_REF_PREFIX } from './PaperIssueFormDialog';
 
-const INPUT_CLS =
-  'w-full px-2.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600';
-const LABEL_CLS = 'block text-[11px] font-medium text-slate-700 mb-1';
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
 
 const fmt = (n: number) => n.toLocaleString('id-ID', { maximumFractionDigits: 2 });
@@ -19,17 +18,21 @@ const fmt = (n: number) => n.toLocaleString('id-ID', { maximumFractionDigits: 2 
  * jadi tidak masuk hitungan Pemakaian Dapur. Dicatat sebagai ISSUE_CONSUMPTION agar stok berkurang
  * dan ikut di Laporan Pengeluaran; kolom lokasi berisi "dipakai untuk".
  */
-export const OperationalIssuePanel: React.FC = () => {
+/** Tanggal diatur dari header Barang Keluar agar sama dengan tab Bahan dapur. */
+export const OperationalIssuePanel: React.FC<{ selectedDate: string; onSelectDate: (date: string) => void }> = ({
+  selectedDate,
+  onSelectDate,
+}) => {
   const { currentUser, can } = useAuth();
   const today = localDateIso();
   const [dataVersion, setDataVersion] = useState(0);
-  const [selectedDate, setSelectedDate] = useState(today);
   const [itemId, setItemId] = useState('');
   const [qty, setQty] = useState('');
   const [usedFor, setUsedFor] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
+  const [isPaperOpen, setIsPaperOpen] = useState(false);
 
   useEffect(() => {
     const onSync = () => setDataVersion(v => v + 1);
@@ -66,7 +69,8 @@ export const OperationalIssuePanel: React.FC = () => {
 
   const selected = items.find(i => i.id === itemId);
   const lowStock = items.filter(i => i.currentStock <= i.minimumStock);
-  const canRecord = can('RECORD_CONSUMPTION');
+  // Sama dengan bahan dapur: catatan baru selalu bertanggal hari ini, jadi form hanya muncul saat melihat hari ini.
+  const canRecord = can('RECORD_CONSUMPTION') && selectedDate === today;
 
   const handleScan = ({ code }: ScanTarget) => {
     setError('');
@@ -106,6 +110,15 @@ export const OperationalIssuePanel: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {feedback && (
+        <p role="status" className="flex items-start gap-2 px-3 py-2 rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-900 text-xs">
+          <CheckCircle2 className="w-4 h-4 shrink-0 mt-px" />
+          <span className="flex-1">{feedback}</span>
+          <button type="button" onClick={() => setFeedback('')} aria-label="Tutup pesan" className={`-m-1 p-1 rounded cursor-pointer ${FOCUS}`}>
+            <X className="w-4 h-4" />
+          </button>
+        </p>
+      )}
       {canRecord && (
         <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-3">
           <div>
@@ -113,15 +126,6 @@ export const OperationalIssuePanel: React.FC = () => {
             <p className="text-[11px] text-slate-600 mt-0.5">Tisu, sabun, ATK, gas, kemasan, dan barang operasional lain. Stok gudang langsung berkurang.</p>
           </div>
 
-          {feedback && (
-            <p role="status" className="flex items-start gap-2 px-3 py-2 rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-900 text-xs">
-              <CheckCircle2 className="w-4 h-4 shrink-0 mt-px" />
-              <span className="flex-1">{feedback}</span>
-              <button type="button" onClick={() => setFeedback('')} aria-label="Tutup pesan" className={`-m-1 p-1 rounded cursor-pointer ${FOCUS}`}>
-                <X className="w-4 h-4" />
-              </button>
-            </p>
-          )}
           {error && (
             <p role="alert" className="flex items-start gap-2 px-3 py-2 rounded-lg border bg-rose-50 border-rose-200 text-rose-900 text-xs">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
@@ -131,7 +135,7 @@ export const OperationalIssuePanel: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 text-xs">
             <div className="sm:col-span-5">
-              <label htmlFor="op-item" className={LABEL_CLS}>Barang</label>
+              <label htmlFor="op-item" className={FIELD_LABEL}>Barang</label>
               <div className="flex gap-2">
               <div className="flex-1 min-w-0">
               <SearchPicker
@@ -148,22 +152,22 @@ export const OperationalIssuePanel: React.FC = () => {
               </div>
             </div>
             <div className="sm:col-span-2">
-              <label htmlFor="op-qty" className={LABEL_CLS}>Jumlah{selected ? ` (${selected.baseUnit})` : ''}</label>
-              <input id="op-qty" type="number" min="0" step="any" inputMode="decimal" value={qty} onChange={e => setQty(e.target.value)} className={`${INPUT_CLS} text-right font-mono tabular-nums`} />
+              <label htmlFor="op-qty" className={FIELD_LABEL}>Jumlah{selected ? ` (${selected.baseUnit})` : ''}</label>
+              <input id="op-qty" type="number" min="0" step="any" inputMode="decimal" value={qty} onChange={e => setQty(e.target.value)} className={`${FIELD_INPUT} text-right font-mono tabular-nums`} />
             </div>
             <div className="sm:col-span-5">
-              <label htmlFor="op-for" className={LABEL_CLS}>Dipakai untuk / oleh</label>
-              <input id="op-for" value={usedFor} onChange={e => setUsedFor(e.target.value)} placeholder="Contoh: Kantor, Area cuci, Pak Budi" className={INPUT_CLS} />
+              <label htmlFor="op-for" className={FIELD_LABEL}>Dipakai untuk / oleh</label>
+              <input id="op-for" value={usedFor} onChange={e => setUsedFor(e.target.value)} placeholder="Contoh: Kantor, Area cuci, Pak Budi" className={FIELD_INPUT} />
             </div>
             <div className="sm:col-span-9">
-              <label htmlFor="op-notes" className={LABEL_CLS}>Catatan (opsional)</label>
-              <input id="op-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Contoh: ganti tisu toilet" className={INPUT_CLS} />
+              <label htmlFor="op-notes" className={FIELD_LABEL}>Catatan (opsional)</label>
+              <input id="op-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Contoh: ganti tisu toilet" className={FIELD_INPUT} />
             </div>
             <div className="sm:col-span-3 flex items-end">
               <button
                 type="submit"
                 disabled={items.length === 0}
-                className={`w-full inline-flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer ${FOCUS}`}
+                className={`${BTN_PRIMARY} w-full`}
               >
                 <PackageMinus className="w-4 h-4" />
                 Catat keluar
@@ -191,10 +195,16 @@ export const OperationalIssuePanel: React.FC = () => {
             <h2 className="text-sm font-semibold text-slate-900">Riwayat barang keluar</h2>
             <p className="text-[11px] text-slate-600 mt-0.5">{issued.length} catatan pada tanggal ini.</p>
           </div>
-          <div>
-            <label htmlFor="op-date" className={LABEL_CLS}>Tanggal</label>
-            <input id="op-date" type="date" value={selectedDate} max={today} onChange={e => setSelectedDate(e.target.value || today)} className={`${INPUT_CLS} sm:w-40`} />
-          </div>
+          {can('RECORD_CONSUMPTION') && (
+            <button
+              type="button"
+              onClick={() => setIsPaperOpen(true)}
+              disabled={items.length === 0}
+              className={`${BTN_SECONDARY} self-start sm:self-auto`}
+              title="Salin Form Pengambilan Non-Food (kertas) ke aplikasi">
+              Input dari form kertas
+            </button>
+          )}
         </div>
         {issued.length === 0 ? (
           <p className="px-5 py-10 text-center text-xs text-slate-600">Belum ada barang operasional yang keluar pada tanggal ini.</p>
@@ -213,7 +223,10 @@ export const OperationalIssuePanel: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {issued.map(tx => (
                   <tr key={tx.id}>
-                    <td className="py-2.5 px-4 font-mono tabular-nums text-slate-700">{tx.timestamp.slice(11, 16)}</td>
+                    <td className="py-2.5 px-4 font-mono tabular-nums text-slate-700">
+                      {/* Kertas tidak mencatat jam, jadi jam buatan tidak ditampilkan. */}
+                      {tx.referenceDocument?.startsWith(PAPER_FORM_REF_PREFIX) ? <span className="font-sans text-slate-600">Form</span> : tx.timestamp.slice(11, 16)}
+                    </td>
                     <td className="py-2.5 px-4">
                       <div className="font-medium text-slate-900">{tx.itemName}</div>
                       {tx.notes && tx.notes !== 'Barang keluar operasional' && <div className="text-[11px] text-slate-600">{tx.notes}</div>}
@@ -230,6 +243,22 @@ export const OperationalIssuePanel: React.FC = () => {
           </div>
         )}
       </section>
+
+      {isPaperOpen && (
+        <PaperIssueFormDialog
+          items={items}
+          itemOptions={options}
+          defaultDate={selectedDate}
+          onClose={() => setIsPaperOpen(false)}
+          onSaved={(message, date) => {
+            setIsPaperOpen(false);
+            setError('');
+            setFeedback(message);
+            onSelectDate(date);
+            setDataVersion(v => v + 1);
+          }}
+        />
+      )}
     </div>
   );
 };
