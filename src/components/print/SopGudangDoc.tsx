@@ -7,7 +7,7 @@ import { KopText } from '../common/KopText';
 // SOP penanganan bahan, satu dokumen per tempat simpan agar bisa ditempel di lokasinya.
 // Isi tiap rak/unit diambil dari Master Barang dengan aturan rak yang sama seperti Plakat Rak.
 
-export type SopPlace = 'DRY' | 'NONFOOD' | 'CHILLER' | 'FREEZER' | 'LEFTOVER' | 'APD';
+export type SopPlace = 'DRY' | 'NONFOOD' | 'CHILLER' | 'FREEZER' | 'LEFTOVER' | 'CRATE' | 'APD';
 export const SOP_PLACE_OPTIONS: { value: SopPlace | 'ALL'; label: string }[] = [
   { value: 'ALL', label: 'Semua tempat (1 SOP per halaman)' },
   { value: 'DRY', label: 'Gudang Kering' },
@@ -15,6 +15,7 @@ export const SOP_PLACE_OPTIONS: { value: SopPlace | 'ALL'; label: string }[] = [
   { value: 'CHILLER', label: 'Chiller' },
   { value: 'FREEZER', label: 'Freezer' },
   { value: 'LEFTOVER', label: 'Palet Sisa Bahan' },
+  { value: 'CRATE', label: 'Area Krat & Wadah Retur (Roti & Buah)' },
   { value: 'APD', label: 'Pemakaian APD (dapur)' },
 ];
 
@@ -424,6 +425,89 @@ const SOPS: Record<Exclude<SopPlace, 'APD'>, SopDefinition> = {
       { item: 'Masker & sarung tangan', limit: 'Sesuai tanggal kedaluwarsa di box', discard: 'Kotor, basah, tali/karet putus, atau sudah lama terbuka dari bungkusnya' },
     ],
   },
+
+  CRATE: {
+    docNo: 'SOP/GDG/06',
+    title: 'Penanganan & Penyimpanan Krat serta Wadah Retur',
+    location: 'Area Transit Krat & Wadah Logistik',
+    standard: 'Kering, bersih, di atas palet alas, tumpukan rapi stabil, dan terpisah dari bahan makanan matang',
+    purpose: 'Menjaga wadah roti dan buah tetap tertata rapi, mencegah bau dan hama dari sisa buah, serta memastikan krat milik supplier aman dan siap diretur tepat waktu.',
+    layoutTitle: 'Tata letak: zonasi menurut pemilik wadah',
+    layout: [
+      {
+        place: 'Palet A: Krat Roti (Sari Roti / Vendor Roti)',
+        fallback: 'Krat plastik roti tawar/manis milik supplier',
+        rules: 'Susun saling mengunci (interlocking). Bersihkan remah roti sebelum ditumpuk. Tumpukan maksimal 10 krat.',
+      },
+      {
+        place: 'Palet B: Krat Buah Supplier (Anggur, Kelengkeng, Jeruk)',
+        fallback: 'Keranjang plastik buah berlubang (keranjang anggur, kelengkeng, apel)',
+        rules: 'Pastikan kosong dari sisa buah busuk, tangkai, atau kertas pembungkus. Balik posisi bila basah agar cepat tiris.',
+      },
+      {
+        place: 'Palet C: Wadah Transit Internal Dapur',
+        fallback: 'Krat/box plastik bersih milik SPPG untuk distribusi ke meja persiapan',
+        rules: 'Wajib dicuci dan disanitasi sebelum ditumpuk. Pisahkan tegas dari krat kotor luar pasar.',
+      },
+      {
+        place: 'Sudut Terpisah: Krat Rusak / Retak',
+        fallback: 'Krat pecah, patah, atau tanpa identitas jelas',
+        rules: 'Beri tanda agar tidak dipakai kembali dan segera dilaporkan ke supplier atau pengawas.',
+      },
+    ],
+    notAllowed: [
+      'Menumpuk krat langsung di lantai tanpa alas palet.',
+      'Membiarkan sisa buah busuk, plastik pembungkus kotor, atau tangkai tertinggal di dalam krat.',
+      'Menaruh krat bekas pasar atau jalanan di dalam ruang pengolahan atau pemorsian makanan matang.',
+      'Tumpukan krat melebihi batas aman (tinggi lebih dari 150 cm / >10 tumpuk) yang rawan roboh.',
+      'Memakai krat retur supplier untuk tempat sampah atau wadah limbah basah.',
+    ],
+    steps: [
+      {
+        title: 'Penerimaan & pengosongan bahan',
+        items: [
+          'Setelah bahan diterima, buah dan roti segera dipindahkan ke rak penyimpanan atau meja kerja dapur.',
+          <>Keluarkan seluruh <b>kertas alas, plastik wrap, sisa tangkai, dan buah busuk</b> dari dalam krat ke tempat sampah.</>,
+          'Periksa kondisi fisik krat: pastikan tidak ada bagian yang pecah tajam yang membahayakan tangan petugas.',
+          'Catat jumlah krat yang diterima dari supplier pada bukti serah terima logistik.',
+        ],
+      },
+      {
+        title: 'Pembersihan & penataan di palet',
+        items: [
+          'Krat yang terkena air getah buah dibilas air bersih dan ditiriskan sampai kering sebelum ditumpuk.',
+          <>Kelompokkan menurut vendor: <b>krat Sari Roti disatukan dengan Sari Roti</b>, <b>krat buah disatukan menurut ukuran keranjang</b>.</>,
+          'Susun krat secara simetris di atas palet agar tumpukan tegak dan kokoh.',
+          'Sisakan lorong akses minimal 60 cm agar troli barang tetap bisa lewat dengan lancar.',
+        ],
+      },
+      {
+        title: 'Pengembalian ke supplier (retur)',
+        items: [
+          'Saat supplier datang mengantar pesanan berikutnya, siapkan krat kosong milik supplier tersebut.',
+          'Hitung fisik krat bersama pengemudi atau petugas supplier.',
+          'Pastikan jumlah krat yang dikembalikan sesuai dengan catatan bon tanda terima.',
+          'Minta paraf serah terima pengembalian wadah pada surat jalan atau buku ekspedisi.',
+        ],
+      },
+    ],
+    routine: [
+      { when: 'Setiap barang selesai dibongkar', tasks: 'Segera bersihkan sisa kotoran dari krat dan rapikan ke paletnya masing-masing.' },
+      { when: 'Harian (Sore)', tasks: 'Sapu lantai area krat, pastikan tidak ada genangan air getah atau tumpukan sampah yang memicu lalat/semut.' },
+      { when: 'Saat jadwal kirim supplier', tasks: 'Cek fisik dan jumlah krat yang akan diserahterimakan kembali ke vendor.' },
+    ],
+    problems: [
+      { issue: 'Krat berbau masam atau ada getah lengket', action: 'Bawa ke area cuci luar, semprot dengan air bersih, tiriskan terbalik sampai kering.' },
+      { issue: 'Tumpukan krat miring atau bergeser', action: 'Segera bongkar dan susun ulang dari bawah. Jangan menambah beban di atas tumpukan yang goyang.' },
+      { issue: 'Krat pecah atau pegangan patah', action: 'Pisahkan ke palet krat rusak dan catat agar tidak dituntut ganti rugi oleh supplier.' },
+      { issue: 'Jumlah krat saat retur tidak cocok dengan catatan', action: 'Cek area dapur apakah masih ada wadah yang belum dikembalikan, lapor ke Asisten Lapangan.' },
+    ],
+    shelfLife: [
+      { item: 'Krat Sari Roti', limit: 'Retur pada pengiriman berikutnya (maks. 2–3 hari)', discard: 'Pecah sudut, retak badan, patah kuping kunci' },
+      { item: 'Krat Buah Pasar/Vendor', limit: 'Retur pada jadwal kirim berikutnya', discard: 'Pecah, getas, lubang kawat tajam' },
+      { item: 'Palet alas krat', limit: 'Dipakai berkala selama tidak lapuk', discard: 'Patah papan, paku mencuat, basah berjamur' },
+    ],
+  },
 };
 
 const Section: React.FC<{ no: number; title: string; children: React.ReactNode }> = ({ no, title, children }) => (
@@ -808,7 +892,7 @@ export const SopGudangDoc: React.FC<SopGudangDocProps> = ({ items, place, effect
     return names.length > 8 ? `${shown}, dan ${names.length - 8} barang lain` : shown;
   };
 
-  const places: SopPlace[] = place === 'ALL' ? ['DRY', 'NONFOOD', 'CHILLER', 'FREEZER', 'LEFTOVER', 'APD'] : [place];
+  const places: SopPlace[] = place === 'ALL' ? ['DRY', 'NONFOOD', 'CHILLER', 'FREEZER', 'LEFTOVER', 'CRATE', 'APD'] : [place];
 
   return (
     <>

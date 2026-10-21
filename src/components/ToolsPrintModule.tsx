@@ -5,6 +5,7 @@ import { SearchPicker } from './common/SearchPicker';
 import { Select } from './common/Select';
 import { KopText } from './common/KopText';
 import { SopGudangDoc, SopPlace, SOP_PLACE_OPTIONS } from './print/SopGudangDoc';
+import { DoDontPosterDoc, DoDontTarget, DO_DONT_OPTIONS } from './print/DoDontPosterDoc';
 import {
   Printer,
   FileText,
@@ -51,7 +52,7 @@ import { SppgLogo } from './SppgLogo';
 import QRCode from 'qrcode';
 import { localDateIso } from '../utils/localDate';
 
-export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'NONFOOD_ISSUE_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE';
+export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'NONFOOD_ISSUE_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE' | 'DO_DONT_POSTER';
 
 export interface ItemTagData {
   uniqueKey: string;
@@ -128,8 +129,59 @@ const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
   { id: 'EQUIPMENT_LABEL', label: 'Label Barang & Aset', hint: 'Stiker berkode QR untuk barang gudang dan aset dapur.' },
   { id: 'RACK_LABEL', label: 'Plakat Rak', hint: 'Plakat rak berisi daftar barang dan aturan penyimpanan.' },
   { id: 'SUPPLIER_EXPENSE_NOTE', label: 'Nota Kas Keluar', hint: 'Bukti pembayaran ke supplier dengan tanda tangan.' },
-  { id: 'SOP_STORAGE', label: 'SOP Gudang', hint: 'SOP penanganan bahan di gudang kering, non-food, chiller, freezer, sisa bahan dari dapur, serta pemakaian APD di dapur.' },
+  { id: 'SOP_STORAGE', label: 'SOP Gudang', hint: 'SOP penanganan bahan di gudang kering, non-food, chiller, freezer, sisa bahan dari dapur, area krat, serta pemakaian APD di dapur.' },
+  { id: 'DO_DONT_POSTER', label: "Plakat Do & Don't", hint: "Poster visual do & don't (chiller & freezer) untuk ditempel di pintu dan dipedomani relawan dapur." },
 ];
+
+export type FormCategory = 'DOCUMENTS' | 'LABELS' | 'STANDARDS';
+
+export interface FormCategoryGroup {
+  id: FormCategory;
+  label: string;
+  shortLabel: string;
+  forms: FormType[];
+}
+
+export const FORM_CATEGORIES: FormCategoryGroup[] = [
+  {
+    id: 'DOCUMENTS',
+    label: 'Formulir & Dokumen Operasional',
+    shortLabel: 'Formulir Operasional',
+    forms: [
+      'RECEIVING_FORM',
+      'KITCHEN_REQUISITION',
+      'NONFOOD_ISSUE_FORM',
+      'OPNAME_SHEET',
+      'BIN_CARD',
+      'SUPPLIER_EXPENSE_NOTE',
+    ],
+  },
+  {
+    id: 'LABELS',
+    label: 'Label, Tag & Plakat Rak',
+    shortLabel: 'Label & Tag QR',
+    forms: [
+      'ITEM_TAG_LABEL',
+      'EQUIPMENT_LABEL',
+      'RACK_LABEL',
+    ],
+  },
+  {
+    id: 'STANDARDS',
+    label: 'SOP & Panduan Relawan',
+    shortLabel: 'SOP & Plakat',
+    forms: [
+      'SOP_STORAGE',
+      'DO_DONT_POSTER',
+    ],
+  },
+];
+
+export const getCategoryForForm = (formId: FormType): FormCategory => {
+  const cat = FORM_CATEGORIES.find(c => c.forms.includes(formId));
+  return cat ? cat.id : 'DOCUMENTS';
+};
+
 
 const INPUT_CLS =
   'w-full px-2.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600';
@@ -495,6 +547,26 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   );
   const [printDate, setPrintDate] = useState<string>(localDateIso());
   const [sopPlace, setSopPlace] = useState<SopPlace | 'ALL'>('ALL');
+  const [doDontTarget, setDoDontTarget] = useState<DoDontTarget>('ALL');
+  const [activeCategory, setActiveCategory] = useState<FormCategory>(() =>
+    getCategoryForForm(initialSupplierId ? 'SUPPLIER_EXPENSE_NOTE' : (initialForm || 'RECEIVING_FORM'))
+  );
+
+  // Jika activeForm diubah dari luar, pastikan activeCategory tetap sinkron
+  useEffect(() => {
+    setActiveCategory(getCategoryForForm(activeForm));
+  }, [activeForm]);
+
+  const handleSelectCategory = (catId: FormCategory) => {
+    setActiveCategory(catId);
+    const cat = FORM_CATEGORIES.find(c => c.id === catId);
+    if (cat && !cat.forms.includes(activeForm)) {
+      setActiveForm(cat.forms[0]);
+    }
+  };
+
+  const currentCategoryGroup = FORM_CATEGORIES.find(c => c.id === activeCategory) || FORM_CATEGORIES[0];
+  const currentCategoryForms = FORM_TABS.filter(t => currentCategoryGroup.forms.includes(t.id));
 
   // Data sources
   const [receivingDocs, setReceivingDocs] = useState<ReceivingDocument[]>(() => warehouseDb.getReceivings());
@@ -1752,6 +1824,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       ? labelsToPrint.length
       : activeForm === 'RACK_LABEL'
       ? racksToPrint.length
+      : activeForm === 'DO_DONT_POSTER'
+      ? (doDontTarget === 'ALL' ? 2 : 1)
       : null;
   const printDisabled = printCount === 0 || (activeForm === 'BIN_CARD' && !selectedItem);
 
@@ -1862,36 +1936,97 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             className="inline-flex items-center justify-center gap-2 px-4 min-h-[44px] sm:min-h-[36px] rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
           >
             <Printer className="w-4 h-4" />
-            {printCount === null ? 'Cetak' : `Cetak ${printCount} ${activeForm === 'RACK_LABEL' ? 'plakat' : activeForm === 'ITEM_TAG_LABEL' ? 'tag' : 'label'}`}
+            {printCount === null ? 'Cetak' : `Cetak ${printCount} ${activeForm === 'RACK_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'plakat' : activeForm === 'ITEM_TAG_LABEL' ? 'tag' : 'label'}`}
           </button>
         </div>
 
-        <div role="tablist" aria-label="Jenis form" className="flex gap-1 overflow-x-auto px-4 mt-3 border-b border-slate-200">
-          {FORM_TABS.map(tab => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={activeForm === tab.id}
-              title={tab.hint}
-              onClick={() => setActiveForm(tab.id)}
-              className={`shrink-0 px-3 min-h-[44px] sm:min-h-[38px] text-xs whitespace-nowrap border-b-2 -mb-px cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 rounded-t-md ${
-                activeForm === tab.id
-                  ? 'border-emerald-700 text-emerald-800 font-semibold'
-                  : 'border-transparent text-slate-600 hover:text-slate-900 font-medium'
-              }`}
+        {/* Kategori Utama (Level 1) & Pemilih Cepat */}
+        <div className="px-4 pt-3 pb-2 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2.5 bg-slate-50/70">
+          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-200/70 rounded-lg text-xs">
+            {FORM_CATEGORIES.map(cat => {
+              const isCatActive = activeCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => handleSelectCategory(cat.id)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isCatActive
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+                  }`}
+                >
+                  <span>{cat.shortLabel}</span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded-full text-[10px] leading-none ${
+                      isCatActive ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-slate-300/60 text-slate-600'
+                    }`}
+                  >
+                    {cat.forms.length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Pemilih Cepat Form (Dropdown) */}
+          <div className="flex items-center gap-2 text-xs text-slate-600 ml-auto">
+            <span className="hidden sm:inline text-[11px] text-slate-500 font-medium">Pilih langsung:</span>
+            <select
+              value={activeForm}
+              onChange={e => setActiveForm(e.target.value as FormType)}
+              className="px-2.5 py-1.5 text-xs rounded-md border border-slate-300 bg-white text-slate-800 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-700 cursor-pointer"
             >
-              {tab.label}
-            </button>
-          ))}
+              {FORM_CATEGORIES.map(cat => (
+                <optgroup key={cat.id} label={cat.label}>
+                  {cat.forms.map(fId => {
+                    const tab = FORM_TABS.find(t => t.id === fId);
+                    return (
+                      <option key={fId} value={fId}>
+                        {tab?.label}
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              ))}
+            </select>
+          </div>
         </div>
-        <p className="px-4 pt-2 text-[11px] text-slate-600">{FORM_TABS.find(t => t.id === activeForm)?.hint}</p>
+
+        {/* Sub-menu Formulir Spesifik (Level 2) - Flex Wrap Bersih, Bebas Scrollbar */}
+        <div className="px-4 py-2.5 border-b border-slate-200 bg-white">
+          <div role="tablist" aria-label="Sub-menu form" className="flex flex-wrap items-center gap-1.5">
+            {currentCategoryForms.map(tab => {
+              const isFormActive = activeForm === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isFormActive}
+                  title={tab.hint}
+                  onClick={() => setActiveForm(tab.id)}
+                  className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-all cursor-pointer border ${
+                    isFormActive
+                      ? 'bg-emerald-50 border-emerald-600 text-emerald-900 font-semibold shadow-2xs'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500 leading-tight">
+            {FORM_TABS.find(t => t.id === activeForm)?.hint}
+          </p>
+        </div>
 
         {/* Pengaturan sesuai form yang dipilih */}
         <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 text-xs">
           {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' && activeForm !== 'ITEM_TAG_LABEL' ? (
             <div>
-              <label htmlFor="print-date" className={LABEL_CLS}>{activeForm === 'SOP_STORAGE' ? 'Tanggal berlaku' : 'Tanggal dokumen'}</label>
+              <label htmlFor="print-date" className={LABEL_CLS}>{activeForm === 'SOP_STORAGE' || activeForm === 'DO_DONT_POSTER' ? 'Tanggal berlaku' : 'Tanggal dokumen'}</label>
               <input id="print-date" type="date" value={printDate} onChange={e => setPrintDate(e.target.value || localDateIso())} className={INPUT_CLS} />
             </div>
           ) : activeForm === 'SUPPLIER_EXPENSE_NOTE' ? (
@@ -2497,6 +2632,17 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             </div>
           )}
 
+          {activeForm === 'DO_DONT_POSTER' && (
+            <div className="sm:col-span-2">
+              <label htmlFor="dodont-target" className={LABEL_CLS}>Pilihan Plakat</label>
+              <Select className="w-full" id="dodont-target" value={doDontTarget} onChange={e => setDoDontTarget(e.target.value as DoDontTarget)}>
+                {DO_DONT_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            </div>
+          )}
+
           {activeForm === 'BIN_CARD' && (
             <div className="sm:col-span-2">
               <label htmlFor="bin-item" className={LABEL_CLS}>Barang</label>
@@ -2537,11 +2683,11 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       <div
         id="print-area"
         className={`bg-white rounded-xl border border-slate-200 max-w-4xl mx-auto font-sans text-slate-900 overflow-x-auto ${
-          activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' || activeForm === 'ITEM_TAG_LABEL' ? 'p-4 sm:p-6' : 'p-5 sm:p-10'
+          activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' || activeForm === 'ITEM_TAG_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'p-4 sm:p-6' : 'p-5 sm:p-10'
         }`}
       >
         {/* Kop dokumen, sama dengan Laporan Pengeluaran. Label dan plakat dicetak tanpa kop; SOP memasang kop di tiap lembarnya. */}
-        {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'SOP_STORAGE' && (
+        {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'SOP_STORAGE' && activeForm !== 'DO_DONT_POSTER' && (
           <div className="border-b-2 border-slate-900 pb-3 mb-5 flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
               <SppgLogo size="lg" variant="color" showText={false} />
@@ -2838,6 +2984,13 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             effectiveDate={formatLongDate(printDate)}
             printedDate={formatLongDate(localDateIso())}
             printedBy={currentUser?.name || BLANK}
+          />
+        )}
+
+        {activeForm === 'DO_DONT_POSTER' && (
+          <DoDontPosterDoc
+            target={doDontTarget}
+            effectiveDate={formatLongDate(printDate)}
           />
         )}
 
