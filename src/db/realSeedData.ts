@@ -1783,8 +1783,8 @@ export const REAL_EMPLOYEES: Employee[] = [
   staff('EMP-001', 'Rizky Iman Ramdhan, S.Pd', 'L', 'Manajemen & Administrasi', 'Kepala SPPG'),
   staff('EMP-002', 'Nur Akmal Ays', 'L', 'Manajemen & Administrasi', 'Admin SPPG'),
   staff('EMP-003', 'Eno Shafira R', 'P', 'Gizi & Mutu', 'Ahli Gizi'),
-  staff('EMP-004', 'Alfiana Viransa', 'P', 'Manajemen & Administrasi', 'Akuntan SPPG'),
-  staff('EMP-005', 'M Ali Akbar Fathoni', 'L', 'Gudang & Logistik', 'Asisten Lapangan SPPG Jeru'),
+  staff('EMP-004', 'Alfiana Viransa, S.Tr.Ak.', 'P', 'Manajemen & Administrasi', 'Akuntan SPPG'),
+  staff('EMP-005', 'M. Ali Akbar Fathoni, S.Pd.', 'L', 'Gudang & Logistik', 'Asisten Lapangan SPPG Jeru'),
 ];
 
 // Absensi contoh dihapus bersama karyawan dummy; absensi diisi dari menu Karyawan.

@@ -8,6 +8,7 @@ import {
   ReceivingLine,
   Supplier,
   NonFoodExpense,
+  NonFoodDepartment,
   normalizeItemCategory,
   PurchaseOrderNota,
   PurchaseOrderItem,
@@ -15,7 +16,6 @@ import {
   PurchaseOrderStatus,
 } from '../types/warehouse';
 import {
-  Plus,
   Trash2,
   CheckCircle,
   Search,
@@ -37,7 +37,6 @@ import {
   ChevronRight,
   ChevronDown,
   X,
-  FileSpreadsheet,
   CalendarRange,
   Receipt,
   Printer,
@@ -53,8 +52,6 @@ import {
   Edit3,
   Scale,
   PackageSearch,
-  PackageCheck,
-  PackagePlus,
 } from 'lucide-react';
 import { SignaturePad } from './SignaturePad';
 import { SearchPicker, PickerOption } from './common/SearchPicker';
@@ -92,6 +89,7 @@ import {
   STANDARD_CATEGORIES,
   StandardCategory,
   normalizeToStandardCategory,
+  isMedicineItem,
   getItemSubcategory,
   getSubcategoryOrder,
 } from '../utils/categoryStandards';
@@ -99,6 +97,7 @@ import {
 interface ReceivingModuleProps {
   onRefreshData?: () => void;
   onNavigate?: (tab: string) => void;
+  onPrintReceiving?: (receivingId: string) => void;
 }
 
 export const INPUT_CATEGORIES = STANDARD_CATEGORIES;
@@ -107,6 +106,31 @@ export type InputCategoryType = StandardCategory;
 
 function autoDetectCategory(itemName: string): InputCategoryType {
   return normalizeToStandardCategory(undefined, itemName);
+}
+
+const PACKAGING_NAME_PATTERN = /plastik|kresek|mika|thinwall|kemasan|kantong|kotak makan|styrofoam|klip|cling|wrap|tisu|tissue/i;
+const PPE_NAME_PATTERN = /masker|sarung tangan|glove|apd|celemek|apron|nurse cap|hairnet|penutup kepala|sepatu boot|face shield/i;
+
+// Unit pemakai di laporan pengeluaran, mengikuti kategori standar barang.
+function expenseDepartmentFor(category: InputCategoryType, itemName: string): NonFoodDepartment {
+  if (category === 'ATK & Administrasi' || category === 'P3K & Obat-obatan') return 'Administrasi & Kantor';
+  if (category === 'Sanitasi, Kemasan & APD') {
+    return PACKAGING_NAME_PATTERN.test(itemName) ? 'Distribusi & Kemasan' : 'Area Cuci & Sanitasi';
+  }
+  return 'Dapur Pengolahan Utama';
+}
+
+// Rak gudang untuk barang baru, sama dengan pembagian rak di Gudang Non-Food.
+function suggestQuickItemLocation(category: InputCategoryType, itemName: string): string | undefined {
+  const racks = WAREHOUSE_SKU_DEFINITIONS.GUDANG_NONFOOD.suggestedLocations;
+  if (category === 'P3K & Obat-obatan') return racks[3];
+  if (category === 'Sanitasi, Kemasan & APD') {
+    if (PPE_NAME_PATTERN.test(itemName)) return racks[2];
+    if (PACKAGING_NAME_PATTERN.test(itemName)) return racks[1];
+    return racks[0];
+  }
+  if (category === 'Operasional & Keperluan Lain') return 'Area Logistik Operasional';
+  return undefined;
 }
 
 
@@ -204,7 +228,7 @@ function parseExpenseDate(dateStr: string): Date | null {
   return isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) => {
+export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, onPrintReceiving }) => {
   const { currentUser, can } = useAuth();
   const canDeleteRecords = can('RECEIVE_GOODS');
   const toast = useToast();
@@ -490,7 +514,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     setFormDeliveryNote('');
     setFormNotes('');
     setFormSupplierSign('');
-    setFormReceiverSign(`VERIFIED: ${currentUser.name}`);
+    setFormReceiverSign('');
     setFormPhotos([]);
     setErrorMessage('');
 
@@ -501,12 +525,22 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
   // ----------------------------------------------------
   // Barang baru: daftar ke Master Barang langsung dari form Terima Barang
   // ----------------------------------------------------
-  const [quickItem, setQuickItem] = useState<{ lineIndex: number | null; name: string; category: InputCategoryType; unit: string } | null>(null);
+  // categoryTouched: kategori dipilih sendiri, jadi tidak lagi ditebak dari nama barang.
+  const [quickItem, setQuickItem] = useState<{ lineIndex: number | null; name: string; category: InputCategoryType; unit: string; categoryTouched: boolean } | null>(null);
   const [quickItemError, setQuickItemError] = useState('');
 
+  // Barang menu masuk lewat PO, jadi barang baru di sini biasanya non-food.
   const openQuickItem = (lineIndex: number | null) => {
     setQuickItemError('');
-    setQuickItem({ lineIndex, name: '', category: 'Bahan Basah', unit: 'Kg' });
+    setQuickItem({ lineIndex, name: '', category: 'Sanitasi, Kemasan & APD', unit: 'Pcs', categoryTouched: false });
+  };
+
+  const handleQuickItemNameChange = (name: string) => {
+    setQuickItem(q => {
+      if (!q) return q;
+      if (q.categoryTouched || name.trim().length < 3) return { ...q, name };
+      return { ...q, name, category: autoDetectCategory(name) };
+    });
   };
 
   // Kategori input menentukan gudang (awalan SKU) dan jenis barang, sama dengan aturan di Master Barang.
@@ -514,6 +548,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     'Bahan Basah': 'GUDANG_BASAH',
     'Bahan Kering': 'GUDANG_KERING',
     'ATK & Administrasi': 'OPERASIONAL_ATK',
+    'Operasional & Keperluan Lain': 'OPERASIONAL_ATK',
   };
 
   const handleSaveQuickItem = (e: React.FormEvent) => {
@@ -548,10 +583,11 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
       reorderPoint: 0,
       currentStock: 0,
       location:
-        (warehouse === 'GUDANG_KERING' ? suggestDryLocation(name) : undefined) ||
+        (warehouse === 'GUDANG_KERING' ? suggestDryLocation(name) : suggestQuickItemLocation(quickItem.category, name)) ||
         WAREHOUSE_SKU_DEFINITIONS[warehouse]?.defaultLocation ||
         'Gudang Utama',
-      expiryTrackingEnabled: quickItem.category === 'Bahan Basah' || quickItem.category === 'Bahan Kering',
+      expiryTrackingEnabled:
+        quickItem.category === 'Bahan Basah' || quickItem.category === 'Bahan Kering' || quickItem.category === 'P3K & Obat-obatan',
       isActive: true,
       createdAt: now,
       updatedAt: now,
@@ -610,6 +646,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     });
   };
 
+  const handleLineExpiryChange = (index: number, val: string) => {
+    setLines(prev => prev.map((l, i) => (i === index ? { ...l, expiryDate: val || undefined } : l)));
+  };
+
   const handleLineNoteChange = (index: number, val: string) => {
     setLines(prev => {
       const updated = [...prev];
@@ -632,16 +672,9 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     e.preventDefault();
     setErrorMessage('');
 
-    if (!formSupplierId) {
-      const msg = 'Pilih supplier terlebih dahulu.';
-      setErrorMessage(msg);
-      toast.error(msg, 'Validasi Gagal');
-      return;
-    }
-
-    const selectedSupplier = suppliers.find(s => s.id === formSupplierId);
-    if (!selectedSupplier) {
-      const msg = 'Supplier tidak valid.';
+    const supplierText = formSupplierId.trim();
+    if (!supplierText) {
+      const msg = 'Pilih supplier, atau ketik nama toko tempat membeli.';
       setErrorMessage(msg);
       toast.error(msg, 'Validasi Gagal');
       return;
@@ -661,7 +694,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
         return;
       }
       if (line.quantity <= 0) {
-        const msg = `Baris ${idx + 1} (${line.itemName}): isi jumlah hasil timbang.`;
+        const msg = `Baris ${idx + 1} (${line.itemName}): isi jumlah yang diterima.`;
         setErrorMessage(msg);
         toast.error(msg, 'Validasi Gagal');
         return;
@@ -675,6 +708,36 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
     }
 
     try {
+      // Belanja non-menu (plastik, obat, APD) sering dari minimarket atau apotek yang belum ada di
+      // Master Supplier. Nama yang diketik didaftarkan dulu agar dokumen penerimaan tetap punya supplier.
+      const registerStore = (): Supplier => {
+        const existing = warehouseDb.getSuppliers();
+        let nextNum = existing.length + 1;
+        let newId = `SUP-${String(nextNum).padStart(3, '0')}`;
+        while (existing.some(s => s.id.toLowerCase() === newId.toLowerCase())) {
+          nextNum++;
+          newId = `SUP-${String(nextNum).padStart(3, '0')}`;
+        }
+        return warehouseDb.saveSupplier(
+          {
+            id: newId,
+            name: supplierText,
+            contactPerson: '',
+            phone: '',
+            address: '',
+            supplyCategory: 'Toko / Belanja Langsung',
+            isActive: true,
+            notes: 'Didaftarkan dari Terima Barang (tanpa PO).',
+          },
+          currentUser,
+          true
+        );
+      };
+      const selectedSupplier =
+        suppliers.find(s => s.id === supplierText) ||
+        suppliers.find(s => s.name.trim().toLowerCase() === supplierText.toLowerCase()) ||
+        registerStore();
+
       const newDoc = warehouseDb.postReceiving(
         {
           date: formDate,
@@ -687,8 +750,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
           receiverRole: currentUser.role,
           notes: formNotes || undefined,
           lines: lines as any,
-          supplierSignature: formSupplierSign || `TERVERIFIKASI: Staf Pengirim ${selectedSupplier.name}`,
-          receiverSignature: formReceiverSign || `TERVERIFIKASI: ${currentUser.name} (${currentUser.role})`,
+          supplierSignature: formSupplierSign || undefined,
+          receiverSignature: formReceiverSign || `Diterima oleh ${currentUser.name} (${currentUser.role})`,
           documentationPhotos: formPhotos.length > 0 ? formPhotos : undefined,
         },
         currentUser
@@ -714,11 +777,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
             pic: currentUser.name,
             recipient: selectedSupplier.name,
             receiptRef: formDeliveryNote.trim() || newDoc.id,
-            department: category.includes('ATK')
-              ? 'Administrasi & Kantor'
-              : category.includes('Kebersihan')
-              ? 'Area Cuci & Sanitasi'
-              : 'Dapur Pengolahan Utama',
+            department: expenseDepartmentFor(category, l.itemName),
             notes: `[GR: ${newDoc.id}] [Toko/Supplier: ${selectedSupplier.name}]${l.conditionNote ? ` ${l.conditionNote}` : ''}`,
           };
         }),
@@ -1389,6 +1448,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
       <ReceivingDetailModal
         document={selectedDocForDetail}
         onClose={() => setSelectedDocForDetail(null)}
+        onPrint={onPrintReceiving}
       />
 
       {/* Notifications */}
@@ -1417,7 +1477,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                   onClick={handleOpenDeliveryOrder}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold transition-colors cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
                 >
-                  <PackageCheck className="w-4 h-4" />
                   Terima Barang
                 </button>
               )}
@@ -1427,7 +1486,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                 className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
                 title="Kumpulkan nota untuk dicetak 2 nota per lembar A4"
               >
-                <Printer className="w-4 h-4 text-slate-500" />
                 Antrean Cetak
                 {poolNotaIds.length > 0 && (
                   <span className="px-1.5 rounded-md bg-emerald-700 text-white text-[11px] font-semibold font-mono">
@@ -1441,7 +1499,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                 className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
                 title="Unduh riwayat sesuai filter ke Excel"
               >
-                <FileSpreadsheet className="w-4 h-4 text-slate-500" />
                 Ekspor Excel
               </button>
             </div>
@@ -1668,8 +1725,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
       {/* ========================================================================= */}
       {isCreatingDeliveryOrder ? (
         <form onSubmit={handleSubmitDeliveryOrder} className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/70">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-slate-200 bg-slate-50/70">
+            <div className="flex items-start gap-3">
               <button
                 type="button"
                 onClick={() => setIsCreatingDeliveryOrder(false)}
@@ -1680,37 +1737,47 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
               </button>
               <div>
                 <h2 className="text-sm font-semibold text-slate-800">Terima Barang (tanpa PO)</h2>
-                <p className="text-[11px] text-slate-600">Isi jumlah hasil timbang dan harga sesuai nota. Stok gudang bertambah dan belanja masuk laporan pengeluaran. Barang dari PO diterima lewat daftar PO.</p>
+                <p className="text-[11px] text-slate-600 max-w-2xl">
+                  Untuk barang di luar menu: plastik dan kemasan, obat, APD, sabun, gas, ATK. Stok gudang bertambah dan
+                  belanjanya masuk laporan pengeluaran. Bahan menu yang sudah ada PO-nya diterima lewat daftar PO.
+                </p>
               </div>
             </div>
           </div>
 
           {errorMessage && (
-            <div className="mx-6 mt-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+            <div role="alert" className="mx-4 sm:mx-6 mt-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
               <span>{errorMessage}</span>
             </div>
           )}
 
-          <div className="p-6 space-y-6">
+          <div className="p-4 sm:p-6 space-y-6">
             {/* Header Section */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200/80">
               {/* Supplier Searchable Selector */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Supplier / Pemasok <span className="text-rose-500">*</span>
+                  Supplier / toko <span className="text-rose-500">*</span>
                 </label>
                 <SearchPicker
                   value={formSupplierId}
                   options={supplierOptions}
-                  onSelect={opt => opt && setFormSupplierId(opt.value)}
-                  placeholder="Pilih supplier"
-                  searchPlaceholder="Cari nama supplier..."
-                  ariaLabel="Supplier / Pemasok"
+                  onSelect={(opt, text) => setFormSupplierId(opt ? opt.value : text.trim())}
+                  placeholder="Pilih atau ketik nama toko"
+                  searchPlaceholder="Cari supplier, atau ketik nama toko/apotek..."
+                  ariaLabel="Supplier atau toko"
                   noun="supplier"
+                  allowCustom
                 />
-                {selectedSupplierObj && (
-                  <p className="text-[10px] text-slate-500 mt-1 truncate">{selectedSupplierObj.address}</p>
+                {selectedSupplierObj ? (
+                  selectedSupplierObj.address && (
+                    <p className="text-[11px] text-slate-600 mt-1 truncate">{selectedSupplierObj.address}</p>
+                  )
+                ) : formSupplierId.trim() ? (
+                  <p className="text-[11px] text-slate-600 mt-1">Toko baru, disimpan ke Master Supplier saat penerimaan disimpan.</p>
+                ) : (
+                  <p className="text-[11px] text-slate-600 mt-1">Belum terdaftar? Ketik nama toko, minimarket, atau apotek.</p>
                 )}
               </div>
 
@@ -1767,7 +1834,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Catatan Tambahan</label>
                 <input
                   type="text"
-                  placeholder="Contoh: Sayur diterima dalam box pendingin..."
+                  placeholder="Contoh: stok APD untuk bulan November"
                   value={formNotes}
                   onChange={e => setFormNotes(e.target.value)}
                   className="w-full text-xs rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -1777,10 +1844,15 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
 
             {/* Item Lines Section */}
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-xs font-semibold text-slate-800">
-                  Barang Diterima ({lines.length})
-                </h4>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                <div>
+                  <h3 className="text-xs font-semibold text-slate-800">
+                    Barang diterima <span className="font-mono text-slate-500">({lines.length})</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    Jumlah dalam satuan stok gudang. Barang yang belum ada di daftar didaftarkan lewat "Barang baru".
+                  </p>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {can('MANAGE_ITEMS') && (
                     <button
@@ -1788,7 +1860,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                       onClick={() => openQuickItem(null)}
                       className="inline-flex items-center gap-1.5 min-h-[44px] sm:min-h-[32px] px-3 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-300 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                     >
-                      <PackagePlus className="w-3.5 h-3.5" />
                       Barang baru
                     </button>
                   )}
@@ -1797,31 +1868,49 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                     onClick={addLine}
                     className="inline-flex items-center gap-1.5 min-h-[44px] sm:min-h-[32px] px-3 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    Tambah Baris
+                    Tambah baris
                   </button>
                 </div>
               </div>
 
-              <div className="border border-slate-200 rounded-xl overflow-x-auto shadow-2xs">
-                <table className="w-full min-w-[820px] text-left text-xs">
-                  <thead className="bg-slate-100/90 text-slate-700 font-semibold border-b border-slate-200">
-                    <tr>
-                      <th className="py-2.5 px-3 w-10 text-center">#</th>
-                      <th className="py-2.5 px-3 min-w-[220px]">Barang <span className="text-rose-500">*</span></th>
-                      <th className="py-2.5 px-3 w-28">Jumlah timbang <span className="text-rose-500">*</span></th>
-                      <th className="py-2.5 px-3 w-16">Satuan</th>
-                      <th className="py-2.5 px-3 w-36">Harga satuan (nota) <span className="text-rose-500">*</span></th>
-                      <th className="py-2.5 px-3 w-32 text-right">Subtotal</th>
-                      <th className="py-2.5 px-3 min-w-[150px]">Kondisi & Catatan</th>
-                      <th className="py-2.5 px-3 w-10 text-center"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {lines.map((line, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-2.5 px-3 font-mono text-slate-500 text-center">{idx + 1}</td>
-                        <td className="py-2.5 px-3">
+              {/* Satu markup untuk semua layar: kartu bertumpuk di HP, baris tabel di layar lebar. */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="hidden lg:grid grid-cols-[2rem_minmax(0,2.2fr)_7rem_minmax(0,1.1fr)_7rem_minmax(0,1.6fr)_2.75rem] gap-3 px-3 py-2.5 bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-700">
+                  <span className="text-center">#</span>
+                  <span>Barang <span className="text-rose-600">*</span></span>
+                  <span>Jumlah <span className="text-rose-600">*</span></span>
+                  <span>Harga satuan (nota) <span className="text-rose-600">*</span></span>
+                  <span className="text-right">Subtotal</span>
+                  <span>Kondisi & catatan</span>
+                  <span className="sr-only">Hapus</span>
+                </div>
+
+                <ul className="divide-y divide-slate-200">
+                  {lines.map((line, idx) => {
+                    const isMedicine = !!line.itemId && isMedicineItem(line.category, line.itemName);
+                    const subtotal = line.quantity * (line.unitPrice || 0);
+                    return (
+                      <li
+                        key={idx}
+                        className="grid grid-cols-2 lg:grid-cols-[2rem_minmax(0,2.2fr)_7rem_minmax(0,1.1fr)_7rem_minmax(0,1.6fr)_2.75rem] gap-x-3 gap-y-2.5 p-3 lg:items-start"
+                      >
+                        <div className="col-span-2 lg:col-span-1 flex items-center justify-between lg:justify-center lg:pt-2.5">
+                          <span className="text-xs font-semibold text-slate-700 lg:font-mono lg:font-normal lg:text-slate-500">
+                            <span className="lg:hidden">Barang </span>{idx + 1}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeLine(idx)}
+                            disabled={lines.length === 1}
+                            aria-label={`Hapus baris ${idx + 1}`}
+                            className="lg:hidden inline-flex items-center justify-center min-h-[44px] min-w-[44px] -my-2 -mr-2 rounded-lg text-slate-600 hover:text-rose-700 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div className="col-span-2 lg:col-span-1 min-w-0">
+                          <span className="lg:hidden block text-[11px] font-medium text-slate-600 mb-1">Barang</span>
                           <SearchPicker
                             value={line.itemId}
                             options={receivingItemOptions}
@@ -1835,22 +1924,30 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                           {line.category && (
                             <span className="inline-block mt-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700">{line.category}</span>
                           )}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <input
-                            type="number"
-                            min={isCountableUnit(line.unit) ? 1 : 0}
-                            step={isCountableUnit(line.unit) ? 1 : 'any'}
-                            value={line.quantity || ''}
-                            onChange={e => handleLineQtyChange(idx, e.target.value)}
-                            className="w-full text-xs rounded border border-slate-300 px-2 py-1.5 font-mono font-bold text-slate-900 focus:ring-1 focus:ring-emerald-500 text-right"
-                            required
-                          />
-                        </td>
-                        <td className="py-2.5 px-3 font-semibold text-slate-600">{line.unit || '-'}</td>
-                        <td className="py-2.5 px-3">
-                          <div className="relative">
-                            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 font-semibold">Rp</span>
+                        </div>
+
+                        <label className="block min-w-0">
+                          <span className="lg:hidden block text-[11px] font-medium text-slate-600 mb-1">Jumlah</span>
+                          <span className="flex items-center rounded-lg border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-emerald-600">
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              min={isCountableUnit(line.unit) ? 1 : 0}
+                              step={isCountableUnit(line.unit) ? 1 : 'any'}
+                              value={line.quantity || ''}
+                              onChange={e => handleLineQtyChange(idx, e.target.value)}
+                              aria-label={`Jumlah baris ${idx + 1}`}
+                              className="w-full min-w-0 min-h-[44px] lg:min-h-[34px] bg-transparent rounded-lg px-2 text-xs font-mono font-semibold tabular-nums text-slate-900 text-right focus:outline-none"
+                              required
+                            />
+                            <span className="shrink-0 pr-2 text-[11px] font-medium text-slate-600">{line.unit || 'satuan'}</span>
+                          </span>
+                        </label>
+
+                        <label className="block min-w-0">
+                          <span className="lg:hidden block text-[11px] font-medium text-slate-600 mb-1">Harga satuan (nota)</span>
+                          <span className="flex items-center rounded-lg border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-emerald-600">
+                            <span className="shrink-0 pl-2 text-xs font-semibold text-slate-600">Rp</span>
                             <input
                               type="text"
                               inputMode="numeric"
@@ -1858,46 +1955,65 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                               value={line.unitPrice ? line.unitPrice.toLocaleString('id-ID') : ''}
                               onChange={e => handleLinePriceChange(idx, e.target.value)}
                               placeholder="0"
-                              className="w-full text-xs rounded border border-slate-300 pl-7 pr-2 py-1.5 font-mono tabular-nums text-slate-900 text-right focus:ring-1 focus:ring-emerald-500"
+                              className="w-full min-w-0 min-h-[44px] lg:min-h-[34px] bg-transparent rounded-lg px-2 text-xs font-mono tabular-nums text-slate-900 text-right focus:outline-none"
                             />
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono tabular-nums font-semibold text-slate-900">
-                          {(line.quantity * (line.unitPrice || 0)).toLocaleString('id-ID')}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <input
-                            type="text"
-                            placeholder="Contoh: segar, kemasan utuh"
-                            value={line.conditionNote || ''}
-                            onChange={e => handleLineNoteChange(idx, e.target.value)}
-                            className="w-full text-xs rounded border border-slate-200 px-2 py-1 text-slate-700 placeholder:text-slate-500"
-                          />
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
+                          </span>
+                        </label>
+
+                        <div className="col-span-2 lg:col-span-1 flex items-center justify-between lg:block lg:pt-2.5 lg:text-right">
+                          <span className="lg:hidden text-[11px] font-medium text-slate-600">Subtotal</span>
+                          <span className="text-xs font-mono tabular-nums font-semibold text-slate-900">Rp {subtotal.toLocaleString('id-ID')}</span>
+                        </div>
+
+                        <div className="col-span-2 lg:col-span-1 min-w-0 space-y-2">
+                          <label className="block">
+                            <span className="lg:hidden block text-[11px] font-medium text-slate-600 mb-1">Kondisi & catatan</span>
+                            <input
+                              type="text"
+                              placeholder="Contoh: kemasan utuh, segel rapat"
+                              value={line.conditionNote || ''}
+                              onChange={e => handleLineNoteChange(idx, e.target.value)}
+                              aria-label={`Kondisi baris ${idx + 1}`}
+                              className="w-full min-h-[44px] lg:min-h-[34px] text-xs rounded-lg border border-slate-300 px-2 text-slate-800 placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                            />
+                          </label>
+                          {isMedicine && (
+                            <label className="block">
+                              <span className="block text-[11px] font-medium text-slate-600 mb-1">Kedaluwarsa (lihat kemasan)</span>
+                              <input
+                                type="date"
+                                value={line.expiryDate || ''}
+                                min={formDate}
+                                onChange={e => handleLineExpiryChange(idx, e.target.value)}
+                                className="w-full min-h-[44px] lg:min-h-[34px] text-xs rounded-lg border border-slate-300 px-2 font-mono text-slate-800 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                              />
+                            </label>
+                          )}
+                        </div>
+
+                        <div className="hidden lg:flex justify-center">
                           <button
                             type="button"
                             onClick={() => removeLine(idx)}
                             disabled={lines.length === 1}
-                            className="text-slate-500 hover:text-rose-600 disabled:opacity-30 p-1 rounded transition-colors cursor-pointer"
+                            aria-label={`Hapus baris ${idx + 1}`}
                             title="Hapus baris"
+                            className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-600 hover:text-rose-700 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-slate-50 border-t border-slate-200">
-                    <tr>
-                      <td colSpan={5} className="py-2.5 px-3 text-right font-semibold text-slate-700">Total nota</td>
-                      <td className="py-2.5 px-3 text-right font-mono tabular-nums font-bold text-slate-900">
-                        Rp {lines.reduce((sum, l) => sum + l.quantity * (l.unitPrice || 0), 0).toLocaleString('id-ID')}
-                      </td>
-                      <td colSpan={2} />
-                    </tr>
-                  </tfoot>
-                </table>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                <div className="flex items-center justify-between lg:justify-end gap-4 px-3 py-3 bg-slate-50 border-t border-slate-200">
+                  <span className="text-xs font-semibold text-slate-700">Total nota</span>
+                  <span className="text-sm font-mono tabular-nums font-bold text-slate-900">
+                    Rp {lines.reduce((sum, l) => sum + l.quantity * (l.unitPrice || 0), 0).toLocaleString('id-ID')}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -1909,24 +2025,29 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                 maxPhotos={6}
                 folder="receiving"
                 label="Foto Kedatangan"
-                description="Foto surat jalan, angka timbangan, atau kondisi barang. Ukuran foto otomatis dikecilkan sebelum diunggah."
+                description="Foto nota atau struk, kemasan, dan tanggal kedaluwarsa obat. Ukuran foto otomatis dikecilkan sebelum diunggah."
               />
             </div>
 
             {/* Signature Section */}
             <div>
-              <h4 className="text-xs font-semibold text-slate-800 mb-2">
-                Tanda Tangan
-              </h4>
+              <h3 className="text-xs font-semibold text-slate-800">Tanda tangan</h3>
+              <p className="text-[11px] text-slate-600 mt-0.5 mb-2">Boleh dilewati bila belanja di toko tanpa pengantar barang.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <SignaturePad
-                  label="Tanda Tangan Staf Pengirim / Supplier"
-                  signatoryName={selectedSupplierObj ? `${selectedSupplierObj.contactPerson} (${selectedSupplierObj.name})` : 'Pemasok'}
+                  label="Pengirim / supplier"
+                  signatoryName={
+                    selectedSupplierObj
+                      ? selectedSupplierObj.contactPerson
+                        ? `${selectedSupplierObj.contactPerson} (${selectedSupplierObj.name})`
+                        : selectedSupplierObj.name
+                      : formSupplierId.trim() || 'Pemasok'
+                  }
                   initialValue={formSupplierSign}
                   onSave={val => setFormSupplierSign(val)}
                 />
                 <SignaturePad
-                  label="Tanda Tangan Penerima / PIC Gudang"
+                  label="Penerima / PIC gudang"
                   signatoryName={`${currentUser.name} (${currentUser.role})`}
                   initialValue={formReceiverSign}
                   onSave={val => setFormReceiverSign(val)}
@@ -1936,20 +2057,19 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
           </div>
 
           {/* Footer controls */}
-          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-2 px-4 sm:px-6 py-4 border-t border-slate-200 bg-slate-50">
             <button
               type="button"
               onClick={() => setIsCreatingDeliveryOrder(false)}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-200/50 rounded-lg transition-colors cursor-pointer"
+              className="min-h-[44px] sm:min-h-[36px] px-4 text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 min-h-[44px] sm:min-h-[36px] px-5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
             >
-              <CheckCircle className="w-4 h-4" />
-              Simpan & Tambah ke Stok
+              Simpan dan tambah ke stok
             </button>
           </div>
         </form>
@@ -2535,7 +2655,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                         onClick={handleOpenDeliveryOrder}
                         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px]"
                       >
-                        <PackageCheck className="w-3.5 h-3.5" />
                         Terima Barang
                       </button>
                     )}
@@ -2823,8 +2942,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                 id="qi-name"
                 autoFocus
                 value={quickItem.name}
-                onChange={e => setQuickItem(q => (q ? { ...q, name: e.target.value } : q))}
-                placeholder="Contoh: Tisu Gulung 2 Ply"
+                onChange={e => handleQuickItemNameChange(e.target.value)}
+                placeholder="Contoh: Sarung Tangan Plastik, Paracetamol 500 mg"
                 className={FIELD_INPUT}
               />
             </div>
@@ -2835,10 +2954,13 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
                   id="qi-cat"
                   className="w-full"
                   value={quickItem.category}
-                  onChange={e => setQuickItem(q => (q ? { ...q, category: e.target.value as InputCategoryType } : q))}
+                  onChange={e => setQuickItem(q => (q ? { ...q, category: e.target.value as InputCategoryType, categoryTouched: true } : q))}
                 >
                   {INPUT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </Select>
+                {!quickItem.categoryTouched && quickItem.name.trim().length >= 3 && (
+                  <p className="text-[11px] text-slate-600 mt-1">Ditebak dari nama. Ganti bila kurang tepat.</p>
+                )}
               </div>
               <div>
                 <label htmlFor="qi-unit" className={FIELD_LABEL}>Satuan</label>
@@ -2857,63 +2979,44 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate }) 
 
       {justSavedPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150">
-            <div className="p-6 text-center">
-              <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3.5 ring-8 ring-emerald-50">
-                <CheckCircle2 className="w-8 h-8" />
-              </div>
-              <h3 className="text-base font-bold text-slate-900">
-                {justSavedPrompt.title}
-              </h3>
-              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                {justSavedPrompt.subtitle}
-              </p>
+          <div role="dialog" aria-modal="true" className="bg-white rounded-xl shadow-lg border border-slate-200 max-w-md w-full overflow-hidden">
+            <div className="p-5 sm:p-6">
+              <h3 className="text-base font-bold text-slate-900">{justSavedPrompt.title}</h3>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">{justSavedPrompt.subtitle}</p>
 
-              {/* Summary Card */}
-              <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200 text-left text-xs space-y-2">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-200/80">
-                  <span className="text-slate-500 font-medium">Toko / Supplier:</span>
-                  <span className="font-bold text-slate-900 truncate max-w-[200px]">
-                    {justSavedPrompt.supplierName}
-                  </span>
+              <dl className="mt-4 rounded-lg border border-slate-200 divide-y divide-slate-200 text-xs">
+                <div className="flex justify-between gap-3 px-3 py-2">
+                  <dt className="text-slate-600">Toko / supplier</dt>
+                  <dd className="font-semibold text-slate-900 truncate">{justSavedPrompt.supplierName}</dd>
                 </div>
-                <div className="flex justify-between items-center pb-2 border-b border-slate-200/80">
-                  <span className="text-slate-500 font-medium">Total Item:</span>
-                  <span className="font-semibold text-slate-800">
-                    {justSavedPrompt.items.length} Barang
-                  </span>
+                <div className="flex justify-between gap-3 px-3 py-2">
+                  <dt className="text-slate-600">Jumlah barang</dt>
+                  <dd className="font-mono tabular-nums text-slate-900">{justSavedPrompt.items.length}</dd>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-medium">Total Nilai Belanja:</span>
-                  <span className="font-mono font-bold text-emerald-700 text-sm">
+                <div className="flex justify-between gap-3 px-3 py-2">
+                  <dt className="text-slate-600">Total belanja</dt>
+                  <dd className="font-mono tabular-nums font-bold text-slate-900">
                     Rp {justSavedPrompt.items.reduce((s, it) => s + (it.subtotal || it.quantity * it.unitPrice), 0).toLocaleString('id-ID')}
-                  </span>
+                  </dd>
                 </div>
-              </div>
+              </dl>
 
-              <div className="mt-3.5 p-2.5 rounded-lg bg-emerald-50 border border-emerald-100 text-[11px] text-emerald-800 text-left flex items-start gap-2">
-                <Receipt className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>
-                  Ingin langsung membuat dan mencetak <strong>Nota Pesanan / Bukti Pembelian Resmi</strong> ber-Kop Surat untuk supplier ini?
-                </span>
-              </div>
+              <p className="mt-3 text-xs text-slate-700">Cetak nota pesanan sekarang untuk arsip dan tanda tangan?</p>
 
-              {/* Action Buttons */}
-              <div className="mt-5 flex flex-col sm:flex-row gap-2.5">
+              <div className="mt-5 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setJustSavedPrompt(null)}
-                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="min-h-[44px] sm:min-h-[36px] px-4 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 >
-                  Nanti Saja / Selesai
+                  Nanti saja
                 </button>
                 <button
                   type="button"
                   onClick={handleStartNotaFromPrompt}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all  cursor-pointer"
+                  className="min-h-[44px] sm:min-h-[36px] px-4 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
                 >
-                  <Printer className="w-4 h-4" />
-                  Buat & Cetak Nota
+                  Cetak nota
                 </button>
               </div>
             </div>

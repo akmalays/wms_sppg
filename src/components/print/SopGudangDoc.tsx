@@ -3,6 +3,7 @@ import { ItemMaster } from '../../types/warehouse';
 import { matchItemToRackId } from '../../utils/warehouseRacks';
 import { SppgLogo } from '../SppgLogo';
 import { KopText } from '../common/KopText';
+import { warehouseDb } from '../../db/storage';
 
 // SOP penanganan bahan, satu dokumen per tempat simpan agar bisa ditempel di lokasinya.
 // Isi tiap rak/unit diambil dari Master Barang dengan aturan rak yang sama seperti Plakat Rak.
@@ -27,9 +28,10 @@ interface SopGudangDocProps {
   printedBy: string;
 }
 
-const SIGNERS = [
-  { label: 'Disusun oleh', role: 'Asisten Lapangan', name: 'M. Ali Akbar Fathoni, S.Pd.' },
-  { label: 'Diperiksa oleh', role: 'Akuntan', name: 'Alfiana Viransa, S.Tr.Ak.' },
+// Nama diambil dari data Karyawan (lengkap dengan gelar), sama dengan dokumen cetak lain.
+const signers = () => [
+  { label: 'Disusun oleh', role: 'Asisten Lapangan', name: warehouseDb.getSignerName('ASLAP') || 'M. Ali Akbar Fathoni, S.Pd.' },
+  { label: 'Diperiksa oleh', role: 'Akuntan', name: warehouseDb.getSignerName('AKUNTAN') || 'Alfiana Viransa, S.Tr.Ak.' },
 ];
 
 interface LayoutRow {
@@ -564,7 +566,7 @@ const SopHeader: React.FC<{ title: string; printedDate: string; printedBy: strin
 
 const SopSigners: React.FC = () => (
   <div className="sop-avoid grid grid-cols-2 gap-6 pt-5 text-center text-xs">
-    {SIGNERS.map(s => (
+    {signers().map(s => (
       <div key={s.name}>
         <p className="text-slate-700">{s.label},</p>
         <p className="text-slate-700">{s.role}</p>

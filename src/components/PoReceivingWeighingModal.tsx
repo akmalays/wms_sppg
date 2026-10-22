@@ -229,7 +229,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
         supplierId: po.supplierId,
         supplierName: po.supplierName,
         deliveryNoteNo: deliveryNoteNo.trim() || undefined,
-        arrivalTime: arrivalTime.trim().replace(':', '.') || undefined,
+        arrivalTime: arrivalTime.trim() || undefined,
         date: receiveDate,
         notes: generalNotes.trim() || undefined,
         autoUpdateStock,

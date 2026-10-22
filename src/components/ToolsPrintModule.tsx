@@ -528,18 +528,22 @@ export interface PrintTarget {
   form: FormType;
   supplierId?: string;
   labelSearch?: string;
+  /** BA Penerimaan langsung untuk dokumen ini (dari detail penerimaan). */
+  receivingId?: string;
 }
 
 export interface ToolsPrintModuleProps {
   initialForm?: FormType;
   initialSupplierId?: string;
   initialLabelSearch?: string;
+  initialReceivingId?: string;
 }
 
 export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   initialForm,
   initialSupplierId,
   initialLabelSearch,
+  initialReceivingId,
 }) => {
   const { currentUser } = useAuth();
 
@@ -610,7 +614,9 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   }, []);
 
   // Form-specific states
-  const [selectedReceivingId, setSelectedReceivingId] = useState<string>(receivingDocs[0]?.id || 'BLANK');
+  const [selectedReceivingId, setSelectedReceivingId] = useState<string>(
+    initialReceivingId && receivingDocs.some(d => d.id === initialReceivingId) ? initialReceivingId : receivingDocs[0]?.id || 'BLANK'
+  );
   const [opnameLocation, setOpnameLocation] = useState<string>('ALL');
   const [selectedItemId, setSelectedItemId] = useState<string>(items[0]?.id || '');
   const [menuToday, setMenuToday] = useState<string>('');

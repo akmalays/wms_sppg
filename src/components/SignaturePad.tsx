@@ -1,5 +1,4 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Eraser, Check, PenTool } from 'lucide-react';
 
 interface SignaturePadProps {
   label: string;
@@ -115,7 +114,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
 
   const handleQuickConfirm = () => {
     const timestamp = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-    const textSignature = `TERVERIFIKASI: ${signatoryName} (${timestamp})`;
+    const textSignature = `Dikonfirmasi oleh ${signatoryName}, pukul ${timestamp}`;
     setSavedValue(textSignature);
     onSave(textSignature);
   };
@@ -123,27 +122,22 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
   return (
     <div className="flex flex-col border border-slate-200 rounded-lg p-3 bg-white">
       <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-          <PenTool className="w-3.5 h-3.5 text-emerald-600" />
-          <span>{label}</span>
-        </div>
-        <span className="text-[11px] text-slate-500 font-medium truncate max-w-[140px]">
+        <span className="text-xs font-semibold text-slate-700">{label}</span>
+        <span className="text-[11px] text-slate-600 font-medium truncate max-w-[160px]">
           {signatoryName || 'Belum dipilih'}
         </span>
       </div>
 
       {savedValue && !savedValue.startsWith('data:image') ? (
-        <div className="h-28 flex flex-col items-center justify-center bg-emerald-50/70 border border-emerald-200 border-dashed rounded text-center p-2">
-          <Check className="w-6 h-6 text-emerald-600 mb-1" />
-          <p className="text-xs font-semibold text-emerald-900">{savedValue}</p>
-          <p className="text-[10px] text-emerald-700 mt-0.5">Tanda tangan elektronik terkonfirmasi</p>
+        <div className="h-28 flex flex-col items-center justify-center bg-slate-50 border border-slate-200 rounded text-center p-2">
+          <p className="text-xs font-medium text-slate-800">{savedValue}</p>
           {!readOnly && (
             <button
               type="button"
               onClick={clearSignature}
-              className="mt-2 text-[11px] text-rose-600 hover:text-rose-700 underline font-medium"
+              className="mt-2 min-h-[36px] px-2 text-[11px] font-semibold text-slate-700 hover:text-slate-900 underline cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
             >
-              Ganti Tanda Tangan
+              Tanda tangan manual
             </button>
           )}
         </div>
@@ -163,30 +157,29 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
             }`}
           />
           {!hasDrawn && !readOnly && (
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center text-slate-400 text-xs italic">
-              Tanda tangan di area ini (Touch / Mouse)
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center text-slate-500 text-xs">
+              Tanda tangan di sini
             </div>
           )}
         </div>
       )}
 
-      {!readOnly && !savedValue.startsWith('TERVERIFIKASI') && (
+      {!readOnly && (!savedValue || savedValue.startsWith('data:image')) && (
         <div className="flex items-center justify-between mt-2 pt-1 border-t border-slate-100">
           <button
             type="button"
             onClick={clearSignature}
             disabled={!hasDrawn}
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-rose-600 disabled:opacity-40 disabled:hover:text-slate-500 transition-colors"
+            className="min-h-[36px] px-2 -ml-2 text-[11px] font-semibold text-slate-700 hover:text-rose-700 disabled:opacity-40 disabled:hover:text-slate-700 disabled:cursor-not-allowed transition-colors cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
           >
-            <Eraser className="w-3 h-3" />
             Hapus
           </button>
           <button
             type="button"
             onClick={handleQuickConfirm}
-            className="text-[11px] font-medium text-emerald-700 hover:text-emerald-800 hover:underline"
+            className="min-h-[36px] px-2 -mr-2 text-[11px] font-semibold text-emerald-800 hover:underline cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
           >
-            Gunakan Verifikasi Nama Cepat
+            Cukup konfirmasi nama
           </button>
         </div>
       )}

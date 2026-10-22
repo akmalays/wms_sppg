@@ -1748,7 +1748,7 @@ export function mapReceivingToSupabase(doc: ReceivingDocument) {
   return {
     id: doc.id,
     date: doc.date || localDateIso(),
-    arrival_time: doc.arrivalTime || '08:00',
+    arrival_time: toClock(doc.arrivalTime),
     supplier_id: doc.supplierId,
     supplier_name: doc.supplierName || null,
     delivery_note_no: doc.deliveryNoteNo || null,
@@ -1782,7 +1782,7 @@ export function mapLineToSupabase(line: any, docId: string) {
 export function mapTxToSupabase(tx: InventoryTransaction) {
   return {
     id: tx.id,
-    timestamp: tx.timestamp ? new Date(tx.timestamp).toISOString() : new Date().toISOString(),
+    timestamp: tx.timestamp ? localTsToIso(tx.timestamp) : new Date().toISOString(),
     item_id: tx.itemId,
     item_name: tx.itemName,
     item_type: tx.itemType,
@@ -1806,9 +1806,24 @@ export function mapTxToSupabase(tx: InventoryTransaction) {
 // ------------------------------------------------------------------------------
 
 // Timestamp lokal "YYYY-MM-DD HH:mm" -> ISO untuk kolom TIMESTAMPTZ (dan sebaliknya saat dimuat).
+// Jam bergaya Indonesia ("08.30") juga diterima: new Date() menolaknya dan toISOString() lalu
+// melempar "Invalid time value".
 const localTsToIso = (ts: string): string => {
-  const d = new Date((ts || '').replace(' ', 'T'));
+  const d = new Date((ts || '').trim().replace(' ', 'T').replace(/T(\d{1,2})\.(\d{2})/, (_, h, m) => `T${h.padStart(2, '0')}:${m}`));
   return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+};
+
+// ID unik untuk baris baru. Enam digit terakhir jam (cara lama) berulang tiap sekitar 16 menit,
+// sehingga upsert ke Supabase diam-diam menimpa baris lama yang ID-nya sama.
+let idSeq = 0;
+const uniqueId = (prefix: string): string =>
+  `${prefix}-${Date.now()}-${String(idSeq++ % 1000).padStart(3, '0')}${Math.floor(Math.random() * 10)}`;
+
+/** Jam "HH:mm" untuk kolom TIME; "8.30", "08.30", dan "08:30" diterima, selain itu jam sekarang. */
+const toClock = (time?: string): string => {
+  const m = (time || '').trim().match(/^(\d{1,2})[.:](\d{2})/);
+  if (m && Number(m[1]) < 24 && Number(m[2]) < 60) return `${m[1].padStart(2, '0')}:${m[2]}`;
+  return localTimestamp().slice(11);
 };
 const isoToLocalTs = (iso: string): string => (iso ? localTimestamp(new Date(iso)) : '');
 
@@ -2259,6 +2274,34 @@ class WarehouseDatabase {
     run().then(({ error }) => {
       if (error) reportCloudWriteError(label, error);
     });
+  }
+
+  /**
+   * Kirim berurutan dan berhenti di langkah pertama yang gagal. Rincian penerimaan dan mutasinya
+   * merujuk dokumen induk, jadi tidak boleh tiba di server sebelum dokumennya tersimpan.
+   */
+  private pushCloudSequence(steps: Array<[label: string, run: () => PromiseLike<{ error: any }>]>): void {
+    if (!isSupabaseConfigured()) return;
+    void (async () => {
+      for (const [label, run] of steps) {
+        const { error } = await run();
+        if (error) {
+          reportCloudWriteError(label, error);
+          return;
+        }
+      }
+    })();
+  }
+
+  /** Nomor GR berikutnya dari nomor terbesar tahun ini; "jumlah + 1" bentrok setelah ada yang dihapus. */
+  private nextReceivingId(): string {
+    const year = new Date().getFullYear();
+    const pattern = new RegExp(`^GR-${year}-(\\d+)$`);
+    const max = this.receivings.reduce((m, r) => {
+      const hit = r.id.match(pattern);
+      return hit ? Math.max(m, Number(hit[1])) : m;
+    }, 0);
+    return `GR-${year}-${String(max + 1).padStart(4, '0')}`;
   }
 
   private async initCloudAndRealtime(): Promise<void> {
@@ -2896,9 +2939,7 @@ class WarehouseDatabase {
     }
 
     // Generate unique receiving ID
-    const year = new Date().getFullYear();
-    const count = this.receivings.length + 1;
-    const docId = `GR-${year}-${String(count).padStart(4, '0')}`;
+    const docId = this.nextReceivingId();
     const now = new Date();
     const timestampStr = localTimestamp(now);
 
@@ -2964,31 +3005,32 @@ class WarehouseDatabase {
 
     this.receivings.unshift(savedDoc);
 
-    // Save directly to Supabase Cloud
-    if (isSupabaseConfigured()) {
-      supabase.from('receiving_documents').insert(mapReceivingToSupabase(savedDoc)).then(({ error }) => {
-        if (error) console.error('Supabase receiving doc insert error:', error);
-      });
-      supabase.from('receiving_lines').insert(newLines.map(l => mapLineToSupabase(l, savedDoc.id))).then(({ error }) => {
-        if (error) console.error('Supabase receiving lines insert error:', error);
-      });
-      const newTxs = this.transactions.filter(t => t.referenceDocument === docId);
-      if (newTxs.length > 0) {
-        supabase.from('inventory_transactions').insert(newTxs.map(mapTxToSupabase)).then(({ error }) => {
-          if (error) console.error('Supabase receiving transactions error:', error);
-        });
-      }
-      for (const line of newLines) {
-        const item = this.getItemById(line.itemId);
-        if (item) {
-          supabase.from('item_master').update({
-            current_stock: item.currentStock,
-            last_movement_date: item.lastMovementDate ? new Date(item.lastMovementDate).toISOString() : new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }).eq('id', item.id).then();
-        }
-      }
-    }
+    // Dokumen dulu, lalu rincian dan mutasinya (keduanya merujuk dokumen), lalu stok barang.
+    const docRow = mapReceivingToSupabase(savedDoc);
+    const lineRows = newLines.map(l => mapLineToSupabase(l, savedDoc.id));
+    const txRows = this.transactions.filter(t => t.referenceDocument === docId).map(mapTxToSupabase);
+    const stockUpdates = newLines
+      .map(line => this.getItemById(line.itemId))
+      .filter((item): item is ItemMaster => Boolean(item))
+      .map(item => ({
+        name: item.name,
+        id: item.id,
+        row: {
+          current_stock: item.currentStock,
+          last_movement_date: localTsToIso(item.lastMovementDate || localDateIso()),
+          updated_at: new Date().toISOString(),
+        },
+      }));
+    this.pushCloudSequence([
+      [`simpan penerimaan ${docId}`, () => supabase.from('receiving_documents').insert(docRow)],
+      [`simpan rincian penerimaan ${docId}`, () => supabase.from('receiving_lines').insert(lineRows)],
+      ...(txRows.length > 0
+        ? [[`simpan mutasi stok ${docId}`, () => supabase.from('inventory_transactions').insert(txRows)] as [string, () => PromiseLike<{ error: any }>]]
+        : []),
+      ...stockUpdates.map(
+        u => [`simpan stok "${u.name}"`, () => supabase.from('item_master').update(u.row).eq('id', u.id)] as [string, () => PromiseLike<{ error: any }>]
+      ),
+    ]);
 
     this.notifyAllChanged();
 
@@ -3355,7 +3397,7 @@ class WarehouseDatabase {
 
       if (item.currentStock > 0) {
         const initTx: InventoryTransaction = {
-          id: `TX-INIT-${Date.now().toString().slice(-6)}`,
+          id: uniqueId('TX-INIT'),
           timestamp: localTimestamp(),
           itemId: item.id,
           itemName: item.name,
@@ -3467,7 +3509,7 @@ class WarehouseDatabase {
 
     const nowIso = new Date().toISOString();
     const tx: InventoryTransaction = {
-      id: `TX-ADJ-${Date.now().toString().slice(-6)}`,
+      id: uniqueId('TX-ADJ'),
       timestamp: nowIso,
       itemId: item.id,
       itemName: item.name,
@@ -3556,7 +3598,7 @@ class WarehouseDatabase {
 
       if (existingIdx < 0 && itemToSave.currentStock > 0) {
         const initTx: InventoryTransaction = {
-          id: `TX-INIT-${Date.now().toString().slice(-6)}-${i + 1}`,
+          id: uniqueId('TX-INIT'),
           timestamp: localTimestamp(new Date(now)),
           itemId: itemToSave.id,
           itemName: itemToSave.name,
@@ -3821,7 +3863,7 @@ class WarehouseDatabase {
     expense: Omit<NonFoodExpense, 'id' | 'createdAt'>,
     user: User
   ): NonFoodExpense {
-    const newId = `NFE-${Date.now().toString().slice(-6)}`;
+    const newId = uniqueId('NFE');
     const newExpense: NonFoodExpense = {
       ...expense,
       id: newId,
@@ -3972,7 +4014,7 @@ class WarehouseDatabase {
 
     for (let i = 0; i < expenses.length; i++) {
       const exp = expenses[i];
-      const newId = `NFE-${(Date.now() + i).toString().slice(-6)}`;
+      const newId = uniqueId('NFE');
       const newExpense: NonFoodExpense = {
         ...exp,
         id: newId,
@@ -4115,10 +4157,11 @@ class WarehouseDatabase {
     }
     const nowIso = new Date().toISOString();
     const todayStr = metadata.date || localDateIso();
-    const arrivalTime = metadata.arrivalTime || new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    // Disimpan "HH:mm"; toLocaleTimeString('id-ID') menghasilkan "08.30" yang tidak bisa dibaca sebagai waktu.
+    const arrivalTime = toClock(metadata.arrivalTime);
 
     // 1. Generate ReceivingDocument
-    const receivingId = `GR-${Date.now().toString().slice(-6)}`;
+    const receivingId = this.nextReceivingId();
     // Resolve each line to its master item up front so the receiving line, the new
     // master item (if any) and the stock transaction all share the same id.
     const receivingLines = weighedItems.map((item, idx) => ({
@@ -4138,7 +4181,11 @@ class WarehouseDatabase {
       id: receivingId,
       date: todayStr,
       arrivalTime: arrivalTime,
-      supplierId: metadata.supplierId || po.supplierId || 'SUP-DIRECT',
+      supplierId:
+        metadata.supplierId ||
+        po.supplierId ||
+        this.suppliers.find(sp => sp.name.trim().toLowerCase() === (po.supplierName || '').trim().toLowerCase())?.id ||
+        'SUP-DIRECT',
       supplierName: po.supplierName,
       deliveryNoteNo: metadata.deliveryNoteNo || undefined,
       receiverId: user.id,
@@ -4155,15 +4202,17 @@ class WarehouseDatabase {
     this.receivings.unshift(receivingDoc);
 
     // Save receiving doc to Supabase Cloud
-    if (isSupabaseConfigured()) {
-      supabase.from('receiving_documents').insert(mapReceivingToSupabase(receivingDoc)).then();
-      supabase.from('receiving_lines').insert(receivingLines.map(l => mapLineToSupabase(l, receivingId))).then();
-    }
+    // Semua baris server dikumpulkan dulu, lalu dikirim berurutan di akhir (lihat pushCloudSequence).
+    const cloudSteps: Array<[string, () => PromiseLike<{ error: any }>]> = [];
+    const docRow = mapReceivingToSupabase(receivingDoc);
+    const lineRows = receivingLines.map(l => mapLineToSupabase(l, receivingId));
+    cloudSteps.push([`simpan penerimaan ${receivingId}`, () => supabase.from('receiving_documents').insert(docRow)]);
 
     // 2. Auto-update Inventory Stock & Transactions if selected
     // Bahan yang satuannya tidak bisa dikonversi ke satuan stok (mis. Pcs ke Kg) tidak ditambahkan,
     // supaya stok tidak tercampur; petugas diminta menyesuaikan lewat koreksi stok.
     const unconvertedItems: string[] = [];
+    const txSteps: Array<[string, () => PromiseLike<{ error: any }>]> = [];
     if (metadata.autoUpdateStock !== false) {
       weighedItems.forEach((itemInput, idx) => {
         if (itemInput.actualQty <= 0) return;
@@ -4212,7 +4261,7 @@ class WarehouseDatabase {
         itemToUpdate.lastMovementDate = todayStr;
 
         const tx: InventoryTransaction = {
-          id: `TX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`,
+          id: uniqueId('TX'),
           timestamp: `${todayStr} ${arrivalTime}`,
           itemId: itemToUpdate.id,
           itemName: itemToUpdate.name,
@@ -4231,10 +4280,11 @@ class WarehouseDatabase {
         };
         this.transactions.unshift(tx);
 
-        if (isSupabaseConfigured()) {
-          supabase.from('item_master').upsert(mapItemToSupabase(itemToUpdate)).then();
-          supabase.from('inventory_transactions').insert(mapTxToSupabase(tx)).then();
-        }
+        const itemRow = mapItemToSupabase(itemToUpdate);
+        const txRow = mapTxToSupabase(tx);
+        // Barang baru harus ada di server sebelum rincian penerimaan dan mutasinya yang merujuk barang itu.
+        cloudSteps.push([`simpan stok "${itemToUpdate.name}"`, () => supabase.from('item_master').upsert(itemRow)]);
+        txSteps.push([`simpan mutasi stok "${itemToUpdate.name}"`, () => supabase.from('inventory_transactions').insert(txRow)]);
       });
     }
 
@@ -4243,11 +4293,11 @@ class WarehouseDatabase {
     if (metadata.autoRecordExpense !== false) {
       weighedItems.forEach((itemInput, idx) => {
         if (itemInput.actualQty <= 0) return;
-        const expId = `NFE-${(Date.now() + idx).toString().slice(-6)}`;
+        const expId = uniqueId('NFE');
         const newExpense: NonFoodExpense = {
           id: expId,
           date: todayStr,
-          time: arrivalTime,
+          time: arrivalTime.replace(':', '.'),
           itemName: itemInput.name,
           category: itemInput.category,
           quantity: itemInput.actualQty,
@@ -4266,9 +4316,8 @@ class WarehouseDatabase {
         expenseIds.push(expId);
         this.nonFoodExpenses.unshift(newExpense);
 
-        if (isSupabaseConfigured()) {
-          supabase.from('non_food_expenses').upsert(mapExpenseToSupabase(newExpense)).then();
-        }
+        const expenseRow = mapExpenseToSupabase(newExpense);
+        txSteps.push([`simpan belanja "${itemInput.name}"`, () => supabase.from('non_food_expenses').upsert(expenseRow)]);
       });
     }
 
@@ -4302,9 +4351,13 @@ class WarehouseDatabase {
 
     this.purchaseOrders[poIndex] = updatedPo;
 
-    if (isSupabaseConfigured()) {
-      supabase.from('purchase_orders').upsert(mapPoToSupabase(updatedPo)).then();
-    }
+    const poRow = mapPoToSupabase(updatedPo);
+    this.pushCloudSequence([
+      ...cloudSteps,
+      [`simpan rincian penerimaan ${receivingId}`, () => supabase.from('receiving_lines').insert(lineRows)],
+      ...txSteps,
+      [`tandai ${po.poNumber} selesai`, () => supabase.from('purchase_orders').upsert(poRow)],
+    ]);
 
     // 5. Sync back to Menu Orders poArrivalItems if applicable
     const targetMenuOrderId = po.relatedMenuOrderId;
@@ -4321,7 +4374,7 @@ class WarehouseDatabase {
             return {
               ...arrItem,
               qtyArrived: `${matchedWeighed.actualQty} ${matchedWeighed.unit}`,
-              arrivalTime: arrivalTime,
+              arrivalTime: arrivalTime.replace(':', '.'),
               unitPrice: matchedWeighed.unitPrice,
               totalCost: matchedWeighed.subtotal,
               notes: matchedWeighed.conditionNote || arrItem.notes,

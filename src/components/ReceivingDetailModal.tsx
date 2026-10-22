@@ -1,275 +1,188 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { warehouseDb } from '../db/storage';
 import { ReceivingDocument } from '../types/warehouse';
-import { X, Printer, CheckCircle2, Building2, UserCheck, Calendar, Clock, Camera, ZoomIn } from 'lucide-react';
+import { Printer } from 'lucide-react';
+import { DialogShell, BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './common/FormDialog';
 
 interface ReceivingDetailModalProps {
   document: ReceivingDocument | null;
   onClose: () => void;
+  /** Membuka BA Penerimaan di Cetak Form untuk dokumen ini; tombol cetak disembunyikan bila tidak diisi. */
+  onPrint?: (receivingId: string) => void;
 }
 
-export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ document, onClose }) => {
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-    if (document) {
-      window.addEventListener('keydown', handleKeyDown);
-    }
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [document, onClose]);
+const longDate = (iso: string) => {
+  const [y, m, d] = (iso || '').slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return iso || '-';
+  return new Date(y, m - 1, d).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+};
 
+// "07:37:00" atau "07.37" menjadi "07.37", penulisan jam yang dipakai di dokumen SPPG.
+const clock = (time?: string) => (time ? time.slice(0, 5).replace(':', '.') : '-');
+
+const rupiah = (n: number) => `Rp ${n.toLocaleString('id-ID')}`;
+
+const Fact: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div className="min-w-0">
+    <dt className="text-[11px] text-slate-600">{label}</dt>
+    <dd className="text-xs font-semibold text-slate-900 mt-0.5 break-words">{children}</dd>
+  </div>
+);
+
+// Bukti barang sudah diterima dan masuk stok: dicocokkan dengan nota supplier dan dicetak sebagai BA penerimaan.
+export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ document, onClose, onPrint }) => {
   // Harga tersimpan di catatan belanja bertanda [GR: id] (penerimaan menyimpan jumlah saja).
   const linked = useMemo(
     () => (document ? warehouseDb.getNonFoodExpenses().filter(e => e.notes?.includes(`[GR: ${document.id}]`)) : []),
     [document]
   );
-  const priceOf = (line: { itemId: string; itemName: string }) =>
-    linked.find(e => (e.itemId && e.itemId === line.itemId) || e.itemName === line.itemName);
-  const linkedTotal = linked.reduce((sum, e) => sum + (e.totalCost || 0), 0);
+  const sourcePo = useMemo(
+    () => (document ? warehouseDb.getPurchaseOrders().find(p => p.relatedReceivingId === document.id) : undefined),
+    [document]
+  );
 
   if (!document) return null;
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const priceOf = (line: { itemId: string; itemName: string }) =>
+    linked.find(e => (e.itemId && e.itemId === line.itemId) || e.itemName === line.itemName);
+  const linkedTotal = linked.reduce((sum, e) => sum + (e.totalCost || 0), 0);
+  // Catatan otomatis dari penerimaan PO sudah tergambar di baris "Dari nota pesanan".
+  const customNotes = document.notes && !document.notes.startsWith('Penerimaan & penimbangan fisik dari PO') ? document.notes : '';
+  const signatures = [
+    { label: 'Pengirim', name: document.supplierName, image: document.supplierSignature },
+    { label: 'Penerima', name: document.receiverName, image: document.receiverSignature },
+  ].filter(s => s.image?.startsWith('data:image'));
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
-      onClick={e => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-slate-900">{document.id}</h3>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                <CheckCircle2 className="w-3 h-3" />
-                {document.status}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">Bukti Fisik Penerimaan Barang (Good Receipt)</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handlePrint}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 shadow-xs transition-colors"
-            >
-              <Printer className="w-3.5 h-3.5 text-slate-600" />
-              Cetak / Print
-            </button>
-            <button
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="p-6 overflow-y-auto space-y-6 text-sm">
-          {/* Metadata Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-lg bg-slate-50 border border-slate-100">
-            <div>
-              <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
-                <Calendar className="w-3 h-3 text-slate-400" /> Tanggal
-              </span>
-              <p className="text-xs font-semibold text-slate-800 mt-0.5">{document.date}</p>
-            </div>
-            <div>
-              <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
-                <Clock className="w-3 h-3 text-slate-400" /> Waktu Tiba
-              </span>
-              <p className="text-xs font-semibold text-slate-800 mt-0.5">{document.arrivalTime} WIB</p>
-            </div>
-            <div>
-              <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
-                <Building2 className="w-3 h-3 text-slate-400" /> Supplier
-              </span>
-              <p className="text-xs font-semibold text-slate-800 mt-0.5 truncate">{document.supplierName}</p>
-            </div>
-            <div>
-              <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
-                <UserCheck className="w-3 h-3 text-slate-400" /> Penerima (PIC)
-              </span>
-              <p className="text-xs font-semibold text-slate-800 mt-0.5 truncate">{document.receiverName}</p>
-            </div>
-          </div>
-
-          {document.deliveryNoteNo && (
-            <div className="flex items-center gap-2 text-xs bg-amber-50 text-amber-900 px-3 py-2 rounded-md border border-amber-200">
-              <span className="font-semibold">No. Surat Jalan:</span>
-              <span>{document.deliveryNoteNo}</span>
-            </div>
-          )}
-
-          {document.notes && (
-            <div>
-              <span className="text-xs font-semibold text-slate-600">Catatan Penerimaan:</span>
-              <p className="text-xs text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200 mt-1">
-                {document.notes}
-              </p>
-            </div>
-          )}
-
-          {/* Line Items Table */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-xs font-semibold text-slate-700">
-                Daftar Barang Diterima ({document.lines.length} Baris)
-              </h4>
-            </div>
-            <div className="overflow-hidden border border-slate-200 rounded-lg">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
-                  <tr>
-                    <th className="py-2.5 px-3">No</th>
-                    <th className="py-2.5 px-3">Nama Barang</th>
-                    <th className="py-2.5 px-3">Kategori</th>
-                    <th className="py-2.5 px-3 text-right">Kuantitas</th>
-                    <th className="py-2.5 px-3">Satuan</th>
-                    <th className="py-2.5 px-3 text-right">Harga</th>
-                    <th className="py-2.5 px-3 text-right">Subtotal</th>
-                    <th className="py-2.5 px-3">Catatan / Batch</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {document.lines.map((line, idx) => (
-                    <tr key={line.id} className="hover:bg-slate-50/50">
-                      <td className="py-2.5 px-3 text-slate-400 font-mono">{idx + 1}</td>
-                      <td className="py-2.5 px-3 font-semibold text-slate-800">{line.itemName}</td>
-                      <td className="py-2.5 px-3">
-                        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700">
-                          {line.category}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">
-                        +{line.quantity}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">{line.unit}</td>
-                      <td className="py-2.5 px-3 text-right font-mono tabular-nums text-slate-700">
-                        {priceOf(line) ? priceOf(line)!.unitPrice!.toLocaleString('id-ID') : '-'}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono tabular-nums font-semibold text-slate-900">
-                        {priceOf(line)?.totalCost ? priceOf(line)!.totalCost!.toLocaleString('id-ID') : '-'}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-500 italic">
-                        {line.conditionNote || line.batchNumber || '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                {linkedTotal > 0 && (
-                  <tfoot className="bg-slate-50 border-t border-slate-200">
-                    <tr>
-                      <td colSpan={6} className="py-2.5 px-3 text-right font-semibold text-slate-700">Total nota</td>
-                      <td className="py-2.5 px-3 text-right font-mono tabular-nums font-bold text-slate-900">Rp {linkedTotal.toLocaleString('id-ID')}</td>
-                      <td />
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
-          </div>
-
-          {/* Photo Documentation Section */}
-          {document.documentationPhotos && document.documentationPhotos.length > 0 && (
-            <div className="space-y-2 pt-1">
-              <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                <Camera className="w-3.5 h-3.5 text-slate-500" />
-                Foto Dokumentasi Penerimaan ({document.documentationPhotos.length} Foto WebP)
-              </span>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {document.documentationPhotos.map((url, i) => (
-                  <a
-                    key={i}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group relative rounded-lg border border-slate-200 overflow-hidden bg-slate-100 aspect-4/3 flex items-center justify-center hover:ring-2 hover:ring-emerald-500 transition-all shadow-2xs"
-                  >
-                    <img
-                      src={url}
-                      alt={`Dokumentasi ${i + 1}`}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                    />
-                    <div className="absolute inset-0 bg-slate-950/30 group-hover:bg-slate-950/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span className="text-[11px] font-medium text-white bg-slate-900/80 px-2 py-1 rounded backdrop-blur-xs flex items-center gap-1">
-                        <ZoomIn className="w-3 h-3" />
-                        Buka Foto
-                      </span>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Signatures Section */}
-          <div className="grid grid-cols-2 gap-4 pt-2">
-            <div className="border border-slate-200 rounded-lg p-3 text-center bg-slate-50/40">
-              <span className="text-xs font-medium text-slate-600 block mb-1">
-                Tanda Tangan Pengirim / Supplier
-              </span>
-              <div className="h-20 flex items-center justify-center">
-                {document.supplierSignature?.startsWith('data:image') ? (
-                  <img
-                    src={document.supplierSignature}
-                    alt="Tanda Tangan Supplier"
-                    className="max-h-16 max-w-full object-contain"
-                  />
-                ) : (
-                  <span className="text-xs font-semibold text-slate-700 bg-white px-3 py-1.5 rounded border border-slate-200 shadow-2xs">
-                    {document.supplierSignature || 'Terkonfirmasi'}
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] font-medium text-slate-600 border-t border-slate-200 pt-1 mt-1">
-                {document.supplierName}
-              </p>
-            </div>
-
-            <div className="border border-slate-200 rounded-lg p-3 text-center bg-slate-50/40">
-              <span className="text-xs font-medium text-slate-600 block mb-1">
-                Tanda Tangan Penerima / SPPG MLG TUMPANG JERU
-              </span>
-              <div className="h-20 flex items-center justify-center">
-                {document.receiverSignature?.startsWith('data:image') ? (
-                  <img
-                    src={document.receiverSignature}
-                    alt="Tanda Tangan Penerima"
-                    className="max-h-16 max-w-full object-contain"
-                  />
-                ) : (
-                  <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded border border-emerald-200 shadow-2xs">
-                    {document.receiverSignature || 'Terkonfirmasi'}
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] font-medium text-slate-600 border-t border-slate-200 pt-1 mt-1">
-                {document.receiverName} ({document.receiverRole})
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end px-6 py-3 border-t border-slate-200 bg-slate-50">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors"
-          >
+    <DialogShell
+      title={`Penerimaan ${document.id}`}
+      description="Bukti barang sudah diterima dan masuk stok. Dipakai untuk mencocokkan nota supplier dan mencetak BA penerimaan."
+      onClose={onClose}
+      size="lg"
+      footer={
+        <>
+          <button type="button" onClick={onClose} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
             Tutup
           </button>
+          {onPrint && (
+            <button type="button" onClick={() => onPrint(document.id)} className={BTN_PRIMARY}>
+              <Printer className="w-3.5 h-3.5" />
+              Cetak BA penerimaan
+            </button>
+          )}
+        </>
+      }
+    >
+      <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3">
+        <Fact label="Tanggal">{longDate(document.date)}</Fact>
+        <Fact label="Jam tiba">{clock(document.arrivalTime)}</Fact>
+        <Fact label="Supplier">{document.supplierName || '-'}</Fact>
+        <Fact label="Diterima oleh">{document.receiverName || '-'}</Fact>
+        <Fact label="No. surat jalan">
+          <span className="font-mono">{document.deliveryNoteNo || '-'}</span>
+        </Fact>
+        <Fact label="Dari nota pesanan">
+          <span className="font-mono">{sourcePo?.poNumber.replace(/^NO\.\s*/, '') || '-'}</span>
+        </Fact>
+      </dl>
+
+      {customNotes && (
+        <p className="text-xs text-slate-800">
+          <span className="text-slate-600">Catatan: </span>
+          {customNotes}
+        </p>
+      )}
+
+      <section>
+        <h3 className="text-sm font-semibold text-slate-800 mb-2">Barang diterima ({document.lines.length})</h3>
+        <div className="rounded-lg border border-slate-200 overflow-x-auto">
+          <table className="w-full min-w-[420px] text-left text-xs">
+            <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+              <tr>
+                <th className="py-2 px-3">Barang</th>
+                <th className="py-2 px-3 text-right">Jumlah</th>
+                <th className="py-2 px-3 text-right">Harga satuan</th>
+                <th className="py-2 px-3 text-right">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {document.lines.map(line => {
+                const price = priceOf(line);
+                return (
+                  <tr key={line.id} className="align-top">
+                    <td className="py-2 px-3">
+                      <div className="font-semibold text-slate-900">{line.itemName}</div>
+                      {(line.conditionNote || line.batchNumber) && (
+                        <div className="text-[11px] text-slate-600 mt-0.5">{line.conditionNote || `Batch ${line.batchNumber}`}</div>
+                      )}
+                      {line.expiryDate && (
+                        <div className="text-[11px] text-slate-600 mt-0.5">
+                          Kedaluwarsa <span className="font-mono">{line.expiryDate.split('-').reverse().join('/')}</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono tabular-nums text-slate-900 whitespace-nowrap">
+                      {line.quantity.toLocaleString('id-ID', { maximumFractionDigits: 2 })} {line.unit}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono tabular-nums text-slate-800 whitespace-nowrap">
+                      {price?.unitPrice ? rupiah(price.unitPrice) : '-'}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono tabular-nums font-semibold text-slate-900 whitespace-nowrap">
+                      {price?.totalCost ? rupiah(price.totalCost) : '-'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            {linkedTotal > 0 && (
+              <tfoot className="border-t border-slate-200 bg-slate-50">
+                <tr>
+                  <td colSpan={3} className="py-2 px-3 text-right font-semibold text-slate-800">Total belanja</td>
+                  <td className="py-2 px-3 text-right font-mono tabular-nums font-bold text-slate-900 whitespace-nowrap">{rupiah(linkedTotal)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
         </div>
-      </div>
-    </div>
+        {linkedTotal === 0 && (
+          <p className="text-[11px] text-slate-600 mt-1.5">Harga belum tercatat di Pengeluaran Harian untuk penerimaan ini.</p>
+        )}
+      </section>
+
+      {document.documentationPhotos && document.documentationPhotos.length > 0 && (
+        <section>
+          <h3 className="text-sm font-semibold text-slate-800 mb-2">Foto penerimaan ({document.documentationPhotos.length})</h3>
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+            {document.documentationPhotos.map((url, i) => (
+              <a
+                key={i}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Buka foto ${i + 1}`}
+                className="block rounded-lg border border-slate-200 overflow-hidden bg-slate-100 aspect-4/3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+              >
+                <img src={url} alt={`Foto penerimaan ${i + 1}`} className="w-full h-full object-cover" />
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Tanda tangan hanya tampil bila memang direkam di aplikasi; selain itu ditandatangani di BA cetak. */}
+      {signatures.length > 0 ? (
+        <section className="grid grid-cols-2 gap-3">
+          {signatures.map(s => (
+            <div key={s.label} className="rounded-lg border border-slate-200 p-3 text-center">
+              <p className="text-[11px] text-slate-600">{s.label}</p>
+              <img src={s.image} alt={`Tanda tangan ${s.label.toLowerCase()}`} className="h-14 mx-auto object-contain" />
+              <p className="text-xs font-semibold text-slate-900 border-t border-slate-200 pt-1">{s.name}</p>
+            </div>
+          ))}
+        </section>
+      ) : (
+        <p className="text-[11px] text-slate-600">Tanda tangan supplier dan penerima dibubuhkan di BA penerimaan yang dicetak.</p>
+      )}
+    </DialogShell>
   );
 };

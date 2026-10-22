@@ -218,6 +218,7 @@ const MainLayout: React.FC = () => {
             <DashboardView
               onNavigate={setActiveTab}
               onRefreshData={handleRefresh}
+              onPrintReceiving={receivingId => openPrintForm({ form: 'RECEIVING_FORM', receivingId })}
             />
           )}
 
@@ -261,12 +262,17 @@ const MainLayout: React.FC = () => {
               initialForm={printTarget?.form}
               initialSupplierId={printTarget?.supplierId}
               initialLabelSearch={printTarget?.labelSearch}
+              initialReceivingId={printTarget?.receivingId}
             />
           )}
 
           {/* Secondary / Deep Logistics Modules */}
           {activeTab === 'receiving' && (
-            <ReceivingModule onRefreshData={handleRefresh} onNavigate={setActiveTab} />
+            <ReceivingModule
+              onRefreshData={handleRefresh}
+              onNavigate={setActiveTab}
+              onPrintReceiving={receivingId => openPrintForm({ form: 'RECEIVING_FORM', receivingId })}
+            />
           )}
 
           {activeTab === 'daily_flow' && (
@@ -314,7 +320,7 @@ const MainLayout: React.FC = () => {
   );
 };
 
-const SELF_SYNCING_TABS = new Set(['profile', 'receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit', 'scan']);
+const SELF_SYNCING_TABS = new Set(['profile', 'menu_print', 'receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit', 'scan']);
 
 export default function App() {
   return (

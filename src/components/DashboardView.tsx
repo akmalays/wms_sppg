@@ -33,6 +33,7 @@ import { localDateIso } from '../utils/localDate';
 interface DashboardViewProps {
   onNavigate: (tab: string) => void;
   onRefreshData?: () => void;
+  onPrintReceiving?: (receivingId: string) => void;
 }
 
 type TriageFilter = 'ALL' | 'OUT_OF_STOCK' | 'LOW_STOCK' | 'OPNAME' | 'EQUIPMENT';
@@ -56,7 +57,7 @@ const formatDate = (iso: string, withWeekday = false) =>
 const namesPreview = (names: string[], max: number) =>
   names.slice(0, max).join(', ') + (names.length > max ? `, +${names.length - max} lainnya` : '');
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefreshData }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefreshData, onPrintReceiving }) => {
   const [items] = useState<ItemMaster[]>(() => warehouseDb.getItems());
   const [receivings] = useState<ReceivingDocument[]>(() => warehouseDb.getReceivings());
   const [equipment] = useState<EquipmentItem[]>(() => warehouseDb.getEquipment());
@@ -312,6 +313,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
       <ReceivingDetailModal
         document={selectedReceivingDoc}
         onClose={() => setSelectedReceivingDoc(null)}
+        onPrint={onPrintReceiving}
       />
 
       {/* 1. HEADER & RINGKASAN HARI INI */}
