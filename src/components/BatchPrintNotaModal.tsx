@@ -15,6 +15,7 @@ import { PurchaseOrderNota } from '../types/warehouse';
 import { warehouseDb, signerName } from '../db/storage';
 import logoSppgImg from '../assets/logo sppg.png';
 import ttdRizkyImg from '../assets/ttd rizky.png';
+import { deliveryTimeNoteFor } from '../utils/notaDelivery';
 
 export interface BatchPrintNotaModalProps {
   isOpen: boolean;
@@ -274,7 +275,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
               <span className="w-16 shrink-0 font-medium">Pengiriman</span>
               <span className="w-2.5 text-center">:</span>
               <span className="font-medium text-black">
-                {displayDeliveryDate} (Jam 12.00-15.00)
+                {displayDeliveryDate} {deliveryTimeNoteFor(nota)}
               </span>
             </div>
           </div>
@@ -352,11 +353,11 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
                 <div>Kepala Satuan Pelayanan</div>
                 <div>Pemenuhan Gizi</div>
               </div>
-              <div className="my-0.5 h-9 sm:h-10 flex items-center justify-center">
+              <div className="my-0.5 h-14 sm:h-16 flex items-center justify-center">
                 <img
                   src={ttdRizkyImg}
                   alt="Tanda Tangan Rizky"
-                  className="h-9 sm:h-10 w-auto object-contain"
+                  className="h-14 sm:h-16 w-auto object-contain"
                 />
               </div>
               <div className="mt-0.5 font-bold text-black underline underline-offset-2 text-[10px]">

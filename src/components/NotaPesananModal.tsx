@@ -14,7 +14,8 @@ import logoSppgImg from '../assets/logo sppg.png';
 import ttdRizkyImg from '../assets/ttd rizky.png';
 import { buildItemReference } from '../utils/itemReference';
 import { normalizeToStandardCategory } from '../utils/categoryStandards';
-import { syncPoNumberWithDate, extractPoSequenceNumber, getRomanMonth, getYearFromDate } from '../utils/poNumberGenerator';
+import { syncPoNumberWithDate, extractPoSequenceNumber, getYearFromDate } from '../utils/poNumberGenerator';
+import { deliveryTimeNoteFor, deriveReceivedTimeNote } from '../utils/notaDelivery';
 import { useToast } from '../context/ToastContext';
 import { warehouseDb } from '../db/storage';
 import { normalizeQtyForUnit } from '../utils/unitConversion';
@@ -79,37 +80,6 @@ function formatDateWithDashes(dateStr: string): string {
   return dateStr;
 }
 
-// Jam pengiriman di nota mengikuti jam barang diterima: dari dokumen penerimaan, lalu catatan belanja
-// dengan supplier dan tanggal yang sama. Nota yang belum diterima memakai jam di syarat pengiriman.
-const DEFAULT_DELIVERY_TIME_NOTE = '(Jam 12.00-15.00)';
-
-function deriveDeliveryTimeNote(nota: PurchaseOrderNota): string {
-  const day = (nota.deliveryDate || nota.date || '').slice(0, 10);
-  const supplier = (nota.supplierName || '').trim().toLowerCase();
-
-  const receivings = warehouseDb.getReceivings();
-  const receiving =
-    receivings.find(r => r.id === nota.relatedReceivingId) ||
-    (supplier && day ? receivings.find(r => r.date?.slice(0, 10) === day && r.supplierName?.trim().toLowerCase() === supplier) : undefined);
-  if (receiving?.arrivalTime) return `(Jam ${receiving.arrivalTime.slice(0, 5).replace(':', '.')})`;
-
-  const expenses = warehouseDb.getNonFoodExpenses();
-  const expense =
-    expenses.find(e => e.time && nota.relatedExpenseIds?.includes(e.id)) ||
-    (supplier && day
-      ? expenses.find(
-          e =>
-            e.time &&
-            e.date?.slice(0, 10) === day &&
-            ((e.recipient || '').trim().toLowerCase() === supplier || (e.notes || '').toLowerCase().includes(`toko/supplier: ${supplier}`))
-        )
-      : undefined);
-  if (expense?.time) return `(Jam ${expense.time.replace(':', '.')})`;
-
-  const fromTerms = nota.deliveryTerms?.match(/\(Jam [^)]+\)/);
-  return fromTerms ? fromTerms[0] : DEFAULT_DELIVERY_TIME_NOTE;
-}
-
 export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
   isOpen,
   onClose,
@@ -134,7 +104,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
 
   // Field khusus format resmi BGN
   const [deliveryFrom, setDeliveryFrom] = useState('SPPG MLG TUMPANG JERU');
-  const [deliveryTimeNote, setDeliveryTimeNote] = useState(() => deriveDeliveryTimeNote(nota));
+  const [deliveryTimeNote, setDeliveryTimeNote] = useState(() => deliveryTimeNoteFor(nota));
   const [signerName, setSignerName] = useState(
     formData.approvedBy && !formData.approvedBy.includes('Siti Rahma')
       ? formData.approvedBy
@@ -159,7 +129,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
   // Sync state when incoming nota changes
   useEffect(() => {
     setFormData(nota);
-    setDeliveryTimeNote(deriveDeliveryTimeNote(nota));
+    setDeliveryTimeNote(deliveryTimeNoteFor(nota));
     if (nota.approvedBy && !nota.approvedBy.includes('Siti Rahma')) {
       setSignerName(nota.approvedBy);
     } else {
@@ -194,21 +164,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
     });
   };
 
-  // Nomor format resmi NP/SPPG/{urut}/{bulan romawi}/{tahun}: hanya angka urut yang diketik,
-  // bulan dan tahun mengikuti tanggal nota.
-  const poNumberParts = (() => {
-    const m = (formData.poNumber || '').match(/^\s*(?:NO\.\s*)?(NP\/SPPG\/)(\d*)(\/.*)?$/i);
-    return m ? { prefix: m[1].toUpperCase(), seq: m[2], suffix: m[3] || '' } : null;
-  })();
-
-  const handlePoSequenceChange = (raw: string) => {
-    const digits = raw.replace(/\D/g, '').slice(0, 6);
-    const date = formData.date || formData.deliveryDate || new Date().toISOString().slice(0, 10);
-    setFormData(prev => ({
-      ...prev,
-      poNumber: `NO. NP/SPPG/${digits}/${getRomanMonth(date)}/${getYearFromDate(date)}`,
-    }));
-  };
+  const receivedTimeNote = useMemo(() => deriveReceivedTimeNote(formData), [formData]);
 
   const currentSeq = extractPoSequenceNumber(formData.poNumber);
   const duplicateNota =
@@ -311,7 +267,8 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
       const subtotal = qty === rawQty && it.subtotal ? it.subtotal : Math.round(qty * unitPrice);
       return { ...it, quantity: qty, unitPrice, subtotal };
     });
-    return { ...formData, items, ...recalculateTotals(items), approvedBy: signerName };
+    const deliveryTime = deliveryTimeNote.trim() && deliveryTimeNote.trim() !== receivedTimeNote ? deliveryTimeNote.trim() : undefined;
+    return { ...formData, items, ...recalculateTotals(items), approvedBy: signerName, deliveryTime };
   };
 
   const handleSaveOnly = () => {
@@ -420,35 +377,16 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                 isCompact ? 'text-[11px]' : 'text-xs'
               } font-semibold text-black mt-0.5 flex items-center justify-center gap-1`}
             >
-              {poNumberParts ? (
-                <span className="inline-flex items-baseline font-mono font-bold">
-                  <span>NO. {poNumberParts.prefix}</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={poNumberParts.seq}
-                    onChange={e => handlePoSequenceChange(e.target.value)}
-                    aria-label="Nomor urut nota"
-                    title="Nomor urut nota bisa diubah untuk melanjutkan nomor nota yang sudah berjalan"
-                    style={{ width: `${Math.max(poNumberParts.seq.length, 3) + 1}ch` }}
-                    className="font-mono font-bold text-black text-center bg-transparent border-b border-dashed border-slate-500 print:border-0 rounded-none focus:outline-none focus-visible:bg-emerald-50"
-                  />
-                  <span>{poNumberParts.suffix}</span>
-                </span>
-              ) : (
-                <>
-                  {!formData.poNumber?.trim().toUpperCase().startsWith('NO.') && <span>NO.</span>}
-                  <input
-                    type="text"
-                    value={formData.poNumber}
-                    onChange={e => handleFieldChange('poNumber', e.target.value)}
-                    aria-label="Nomor nota"
-                    className={`font-bold text-black bg-transparent text-center focus:outline-none font-mono ${
-                      isCompact ? 'w-64 text-[11px]' : 'w-72 text-xs'
-                    }`}
-                  />
-                </>
-              )}
+              {!formData.poNumber?.trim().toUpperCase().startsWith('NO.') && <span className="font-mono font-bold">NO.</span>}
+              <input
+                type="text"
+                value={formData.poNumber}
+                onChange={e => handleFieldChange('poNumber', e.target.value)}
+                aria-label="Nomor nota"
+                title="Seluruh nomor nota bisa diubah"
+                style={{ width: `${Math.max((formData.poNumber || '').length, 12) + 1}ch` }}
+                className="font-mono font-bold text-black text-center bg-transparent border-b border-dashed border-slate-500 print:border-0 rounded-none focus:outline-none focus-visible:bg-emerald-50"
+              />
             </div>
           </div>
 
@@ -527,9 +465,21 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                   type="text"
                   value={deliveryTimeNote}
                   onChange={e => setDeliveryTimeNote(e.target.value)}
-                  className="text-black bg-transparent focus:outline-none flex-1"
-                  placeholder="(Jam 12.00-15.00)"
+                  aria-label="Jam pengiriman"
+                  title="Otomatis mengikuti jam barang diterima, bisa diubah"
+                  className="text-black bg-transparent border-b border-dashed border-slate-400 print:border-0 rounded-none focus:outline-none focus-visible:bg-emerald-50 flex-1 min-w-0"
+                  placeholder={receivedTimeNote}
                 />
+                {!isSecondCopy && deliveryTimeNote.trim() !== receivedTimeNote && (
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryTimeNote(receivedTimeNote)}
+                    className="no-print text-[10px] text-sky-700 hover:text-sky-900 underline underline-offset-2 cursor-pointer shrink-0"
+                    title={`Kembalikan ke jam barang diterima ${receivedTimeNote}`}
+                  >
+                    Ikuti jam terima
+                  </button>
+                )}
                 <input
                   type="date"
                   value={formData.deliveryDate || formData.date}
@@ -791,11 +741,11 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
               </div>
 
               {/* TTD Rizky (Default Signature Image) */}
-              <div className={`my-0.5 ${isCompact ? 'h-11 sm:h-12' : 'h-18 sm:h-20'} flex items-center justify-center`}>
+              <div className={`my-0.5 ${isCompact ? 'h-16 sm:h-18' : 'h-24 sm:h-28'} flex items-center justify-center`}>
                 <img
                   src={ttdRizkyImg}
                   alt="Tanda Tangan Rizky"
-                  className={`${isCompact ? 'h-11 sm:h-12' : 'h-18 sm:h-20'} w-auto object-contain`}
+                  className={`${isCompact ? 'h-16 sm:h-18' : 'h-24 sm:h-28'} w-auto object-contain`}
                 />
               </div>
 
@@ -968,8 +918,8 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
               <div>
                 <span className="text-xs font-semibold text-slate-700 block mb-1">Nomor nota</span>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  Klik angka urut di bawah judul nota untuk mengubahnya, misalnya melanjutkan nomor nota kertas yang sudah
-                  berjalan. Bulan dan tahun mengikuti tanggal nota. Nota berikutnya melanjutkan dari nomor tertinggi.
+                  Klik nomor di bawah judul nota untuk mengubahnya, termasuk kode, angka urut, bulan, dan tahun. Mengganti
+                  tanggal nota menyesuaikan bulan dan tahun. Nota berikutnya melanjutkan dari nomor tertinggi.
                 </p>
                 {duplicateNota && (
                   <p role="alert" className="mt-2 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">

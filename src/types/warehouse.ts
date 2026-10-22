@@ -519,6 +519,8 @@ export interface PurchaseOrderNota {
   terbilang: string;
   notes?: string;
   deliveryTerms?: string;
+  /** Jam pengiriman yang diubah manual di nota, mis. "(Jam 09.30)". Kosong = ikut jam penerimaan barang. */
+  deliveryTime?: string;
   createdBy: string;
   createdByRole?: string;
   approvedBy?: string;
