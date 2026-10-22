@@ -1,15 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Printer,
   X,
-  Plus,
   Trash2,
-  Check,
-  Save,
-  Copy,
-  FileText,
   Scissors,
-  Layers,
 } from 'lucide-react';
 import {
   PurchaseOrderNota,
@@ -21,7 +14,7 @@ import logoSppgImg from '../assets/logo sppg.png';
 import ttdRizkyImg from '../assets/ttd rizky.png';
 import { buildItemReference } from '../utils/itemReference';
 import { normalizeToStandardCategory } from '../utils/categoryStandards';
-import { syncPoNumberWithDate } from '../utils/poNumberGenerator';
+import { syncPoNumberWithDate, extractPoSequenceNumber, getRomanMonth, getYearFromDate } from '../utils/poNumberGenerator';
 import { useToast } from '../context/ToastContext';
 import { warehouseDb } from '../db/storage';
 import { normalizeQtyForUnit } from '../utils/unitConversion';
@@ -86,6 +79,37 @@ function formatDateWithDashes(dateStr: string): string {
   return dateStr;
 }
 
+// Jam pengiriman di nota mengikuti jam barang diterima: dari dokumen penerimaan, lalu catatan belanja
+// dengan supplier dan tanggal yang sama. Nota yang belum diterima memakai jam di syarat pengiriman.
+const DEFAULT_DELIVERY_TIME_NOTE = '(Jam 12.00-15.00)';
+
+function deriveDeliveryTimeNote(nota: PurchaseOrderNota): string {
+  const day = (nota.deliveryDate || nota.date || '').slice(0, 10);
+  const supplier = (nota.supplierName || '').trim().toLowerCase();
+
+  const receivings = warehouseDb.getReceivings();
+  const receiving =
+    receivings.find(r => r.id === nota.relatedReceivingId) ||
+    (supplier && day ? receivings.find(r => r.date?.slice(0, 10) === day && r.supplierName?.trim().toLowerCase() === supplier) : undefined);
+  if (receiving?.arrivalTime) return `(Jam ${receiving.arrivalTime.slice(0, 5).replace(':', '.')})`;
+
+  const expenses = warehouseDb.getNonFoodExpenses();
+  const expense =
+    expenses.find(e => e.time && nota.relatedExpenseIds?.includes(e.id)) ||
+    (supplier && day
+      ? expenses.find(
+          e =>
+            e.time &&
+            e.date?.slice(0, 10) === day &&
+            ((e.recipient || '').trim().toLowerCase() === supplier || (e.notes || '').toLowerCase().includes(`toko/supplier: ${supplier}`))
+        )
+      : undefined);
+  if (expense?.time) return `(Jam ${expense.time.replace(':', '.')})`;
+
+  const fromTerms = nota.deliveryTerms?.match(/\(Jam [^)]+\)/);
+  return fromTerms ? fromTerms[0] : DEFAULT_DELIVERY_TIME_NOTE;
+}
+
 export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
   isOpen,
   onClose,
@@ -110,7 +134,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
 
   // Field khusus format resmi BGN
   const [deliveryFrom, setDeliveryFrom] = useState('SPPG MLG TUMPANG JERU');
-  const [deliveryTimeNote, setDeliveryTimeNote] = useState('(Jam 12.00-15.00)');
+  const [deliveryTimeNote, setDeliveryTimeNote] = useState(() => deriveDeliveryTimeNote(nota));
   const [signerName, setSignerName] = useState(
     formData.approvedBy && !formData.approvedBy.includes('Siti Rahma')
       ? formData.approvedBy
@@ -135,6 +159,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
   // Sync state when incoming nota changes
   useEffect(() => {
     setFormData(nota);
+    setDeliveryTimeNote(deriveDeliveryTimeNote(nota));
     if (nota.approvedBy && !nota.approvedBy.includes('Siti Rahma')) {
       setSignerName(nota.approvedBy);
     } else {
@@ -145,8 +170,6 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
       setPrintLayout('DOUBLE');
     }
   }, [nota]);
-
-  if (!isOpen) return null;
 
   // Auto-calculate subtotal and grandTotal
   const recalculateTotals = (items: PurchaseOrderItem[]) => {
@@ -170,6 +193,33 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
       return next;
     });
   };
+
+  // Nomor format resmi NP/SPPG/{urut}/{bulan romawi}/{tahun}: hanya angka urut yang diketik,
+  // bulan dan tahun mengikuti tanggal nota.
+  const poNumberParts = (() => {
+    const m = (formData.poNumber || '').match(/^\s*(?:NO\.\s*)?(NP\/SPPG\/)(\d*)(\/.*)?$/i);
+    return m ? { prefix: m[1].toUpperCase(), seq: m[2], suffix: m[3] || '' } : null;
+  })();
+
+  const handlePoSequenceChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, '').slice(0, 6);
+    const date = formData.date || formData.deliveryDate || new Date().toISOString().slice(0, 10);
+    setFormData(prev => ({
+      ...prev,
+      poNumber: `NO. NP/SPPG/${digits}/${getRomanMonth(date)}/${getYearFromDate(date)}`,
+    }));
+  };
+
+  const currentSeq = extractPoSequenceNumber(formData.poNumber);
+  const duplicateNota =
+    currentSeq !== null
+      ? warehouseDb.getPurchaseOrders().find(
+          po =>
+            po.id !== formData.id &&
+            extractPoSequenceNumber(po.poNumber) === currentSeq &&
+            getYearFromDate(po.date) === getYearFromDate(formData.date)
+        )
+      : undefined;
 
   const handleSupplierSelect = (supplierId: string) => {
     const found = suppliers.find(s => s.id === supplierId);
@@ -370,15 +420,35 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                 isCompact ? 'text-[11px]' : 'text-xs'
               } font-semibold text-black mt-0.5 flex items-center justify-center gap-1`}
             >
-              {!formData.poNumber?.trim().toUpperCase().startsWith('NO.') && <span>NO.</span>}
-              <input
-                type="text"
-                value={formData.poNumber}
-                onChange={e => handleFieldChange('poNumber', e.target.value)}
-                className={`font-bold text-black bg-transparent text-center focus:outline-none font-mono ${
-                  isCompact ? 'w-64 text-[11px]' : 'w-72 text-xs'
-                }`}
-              />
+              {poNumberParts ? (
+                <span className="inline-flex items-baseline font-mono font-bold">
+                  <span>NO. {poNumberParts.prefix}</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={poNumberParts.seq}
+                    onChange={e => handlePoSequenceChange(e.target.value)}
+                    aria-label="Nomor urut nota"
+                    title="Nomor urut nota bisa diubah untuk melanjutkan nomor nota yang sudah berjalan"
+                    style={{ width: `${Math.max(poNumberParts.seq.length, 3) + 1}ch` }}
+                    className="font-mono font-bold text-black text-center bg-transparent border-b border-dashed border-slate-500 print:border-0 rounded-none focus:outline-none focus-visible:bg-emerald-50"
+                  />
+                  <span>{poNumberParts.suffix}</span>
+                </span>
+              ) : (
+                <>
+                  {!formData.poNumber?.trim().toUpperCase().startsWith('NO.') && <span>NO.</span>}
+                  <input
+                    type="text"
+                    value={formData.poNumber}
+                    onChange={e => handleFieldChange('poNumber', e.target.value)}
+                    aria-label="Nomor nota"
+                    className={`font-bold text-black bg-transparent text-center focus:outline-none font-mono ${
+                      isCompact ? 'w-64 text-[11px]' : 'w-72 text-xs'
+                    }`}
+                  />
+                </>
+              )}
             </div>
           </div>
 
@@ -407,15 +477,18 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
               <span className={`${isCompact ? 'w-20' : 'w-24'} shrink-0 font-medium`}>Kepada</span>
               <span className="w-3 text-center">:</span>
               {suppliers.length > 0 ? (
+                // appearance-none dan tanpa padding: select bawaan memberi jarak kiri sehingga nama supplier
+                // tidak sejajar dengan isian Dari dan Alamat.
                 <select
                   value={formData.supplierId || ''}
                   onChange={e => handleSupplierSelect(e.target.value)}
-                  className="font-semibold text-black bg-transparent cursor-pointer focus:outline-none flex-1"
+                  aria-label="Supplier tujuan nota"
+                  className="appearance-none p-0 m-0 indent-0 font-semibold text-black bg-transparent cursor-pointer focus:outline-none focus-visible:bg-emerald-50 flex-1 min-w-0"
                 >
-                  <option value="">{formData.supplierName || '-- Pilih Mitra Supplier --'}</option>
+                  <option value="">{formData.supplierName || 'Pilih supplier'}</option>
                   {suppliers.map(s => (
                     <option key={s.id} value={s.id}>
-                      {s.name} ({s.supplyCategory})
+                      {s.name}
                     </option>
                   ))}
                 </select>
@@ -652,7 +725,6 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                   onClick={handleAddItem}
                   className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 px-2 py-0.5 rounded border border-sky-200 transition-colors cursor-pointer"
                 >
-                  <Plus className="w-3 h-3" />
                   <span>Tambah Baris Bahan Makanan</span>
                 </button>
               </div>
@@ -752,6 +824,9 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
       </div>
     );
   };
+
+  // Setelah semua hook dipanggil, agar urutan hook tetap sama saat modal dibuka dan ditutup
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
@@ -889,6 +964,22 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
           {/* Sisi Kanan: Panel Kontrol & Aksi Dokumen Sederhana (no-print) */}
           <div className="w-full lg:w-72 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 p-5 flex flex-col justify-between shrink-0 no-print overflow-y-auto">
             <div className="space-y-5">
+              {/* Nomor nota */}
+              <div>
+                <span className="text-xs font-semibold text-slate-700 block mb-1">Nomor nota</span>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Klik angka urut di bawah judul nota untuk mengubahnya, misalnya melanjutkan nomor nota kertas yang sudah
+                  berjalan. Bulan dan tahun mengikuti tanggal nota. Nota berikutnya melanjutkan dari nomor tertinggi.
+                </p>
+                {duplicateNota && (
+                  <p role="alert" className="mt-2 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                    Nomor {currentSeq} sudah dipakai nota {duplicateNota.supplierName} ({formatDateIndonesian(duplicateNota.date)}).
+                  </p>
+                )}
+              </div>
+
+              <div className="h-px bg-slate-200" />
+
               {/* Pilihan Format Cetak */}
               <div>
                 <label className="text-xs font-semibold text-slate-700 block mb-2">
@@ -905,7 +996,6 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                     }`}
                     title="Cetak 1 lembar A4 penuh standar"
                   >
-                    <FileText className="w-3.5 h-3.5" />
                     <span>1 Lembar</span>
                   </button>
                   <button
@@ -918,7 +1008,6 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                     }`}
                     title="Hemat kertas: 1 lembar A4 untuk 2 salinan"
                   >
-                    <Copy className="w-3.5 h-3.5" />
                     <span>2 Lembar</span>
                   </button>
                 </div>
@@ -941,10 +1030,9 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                 <button
                   type="button"
                   onClick={handlePrint}
-                  className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-2 active:scale-98"
+                  className="w-full py-2.5 px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs sm:text-sm font-semibold transition-colors cursor-pointer flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
                   title="Cetak dokumen resmi"
                 >
-                  <Printer className="w-4 h-4 text-emerald-100" />
                   <span>Cetak Dokumen PO</span>
                 </button>
 
@@ -955,7 +1043,6 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                   className="w-full py-2 px-3.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-2xs"
                   title="Simpan perubahan data nota"
                 >
-                  <Save className="w-3.5 h-3.5 text-slate-600" />
                   <span>Simpan Perubahan</span>
                 </button>
 
@@ -982,7 +1069,6 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                     }`}
                     title={isInPool ? 'Keluarkan nota ini dari pool antrean cetak' : 'Tampung nota ini ke pool antrean cetak'}
                   >
-                    <Layers className="w-3.5 h-3.5 text-emerald-600" />
                     <span>{isInPool ? 'Keluarkan dari Pool' : 'Masuk Pool Cetak'}</span>
                   </button>
                 )}
@@ -999,7 +1085,6 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                     className="w-full py-2 px-3.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
                     title="Buka antrean pool cetak gabungan"
                   >
-                    <Printer className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Buka Pool Cetak ({poolCount})</span>
                   </button>
                 )}
@@ -1015,7 +1100,6 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                   className="w-full py-2 px-3.5 rounded-lg border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 hover:border-rose-300 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
                   title="Hapus Nota PO ini dari sistem"
                 >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                   <span>Hapus Nota PO</span>
                 </button>
               </div>
