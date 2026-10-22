@@ -33,7 +33,7 @@ export interface WarehouseSkuDefinition {
 export const WAREHOUSE_SKU_DEFINITIONS: Record<WarehouseSkuType, WarehouseSkuDefinition> = {
   GUDANG_KERING: {
     key: 'GUDANG_KERING',
-    label: 'Gudang Kering (Dry Storage)',
+    label: 'Gudang Kering',
     prefix: 'ITM-KRG',
     shortDesc: 'Beras, Minyak, Gula, Tepung, Garam, Bumbu Kering & Bahan Pangan Awet',
     temperature: '20°C - 25°C (Suhu Ruang Terkendali)',
@@ -85,15 +85,16 @@ export const WAREHOUSE_SKU_DEFINITIONS: Record<WarehouseSkuType, WarehouseSkuDef
   },
   GUDANG_NONFOOD: {
     key: 'GUDANG_NONFOOD',
-    label: 'Gudang Non-Food (Sanitasi, Kemasan & APD)',
+    label: 'Gudang Non-Food (Sanitasi, Kemasan, APD & P3K)',
     prefix: 'ITM-NFD',
-    shortDesc: 'Sabun Sanitasi, Plastik Kemasan, Tissue Dapur, APD & Masker',
+    shortDesc: 'Sabun Sanitasi, Plastik Kemasan, Tissue Dapur, APD & Masker, P3K & Obat-obatan',
     temperature: '20°C - 25°C (Berventilasi Baik, Terpisah Mutlak dari Makanan)',
     defaultLocation: 'Gudang Non-Food - Rak N1 (Sabun dan Sanitasi)',
     suggestedLocations: [
       'Gudang Non-Food - Rak N1 (Sabun dan Sanitasi)',
       'Gudang Non-Food - Rak N2 (Plastik, Tissue dan Kemasan)',
       'Gudang Non-Food - Rak N3 (APD dan Masker)',
+      'Gudang Non-Food - Rak N4 (P3K dan Obat-obatan)',
     ],
   },
   OPERASIONAL_ATK: {

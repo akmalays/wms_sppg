@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Package, Warehouse, Wrench, FileText, MapPin, ChevronRight, ClipboardCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { warehouseDb } from '../db/storage';
+import { warehouseDb, APP_SETTINGS_CHANGED_EVENT } from '../db/storage';
 import { EquipmentCondition, EquipmentStatus, ItemMaster } from '../types/warehouse';
 import { resolveScan, ScanTarget } from '../utils/scanCode';
 import { BASE_RACKS_CONFIG, matchItemToRackId } from '../utils/warehouseRacks';
@@ -50,7 +50,10 @@ export const ScanResultModule: React.FC<ScanResultModuleProps> = ({ target, onTa
     const onSync = () => setDataVersion(v => v + 1);
     window.addEventListener('sppg_storage_items_changed', onSync);
     window.addEventListener('sppg_warehouse_sync', onSync);
+    // Plakat rak yang diubah di Cetak Form tersimpan di app_settings
+    window.addEventListener(APP_SETTINGS_CHANGED_EVENT, onSync);
     return () => {
+      window.removeEventListener(APP_SETTINGS_CHANGED_EVENT, onSync);
       window.removeEventListener('sppg_storage_items_changed', onSync);
       window.removeEventListener('sppg_warehouse_sync', onSync);
     };
@@ -116,8 +119,8 @@ export const ScanResultModule: React.FC<ScanResultModuleProps> = ({ target, onTa
               </div>
             </dl>
           )}
-          <h3 className="mt-5 text-xs font-semibold text-slate-800">Barang di rak ini ({resolved.items.length})</h3>
-          {resolved.items.length === 0 ? (
+          <h3 className="mt-5 text-xs font-semibold text-slate-800">Barang di rak ini ({resolved.items.length + resolved.otherItems.length})</h3>
+          {resolved.items.length + resolved.otherItems.length === 0 ? (
             <p className="mt-2 text-xs text-slate-600">Belum ada barang yang lokasinya di rak ini.</p>
           ) : (
             <ul className="mt-2 divide-y divide-slate-100 border border-slate-200 rounded-lg">
@@ -144,6 +147,15 @@ export const ScanResultModule: React.FC<ScanResultModuleProps> = ({ target, onTa
                   </li>
                 );
               })}
+              {resolved.otherItems.map(i => (
+                <li key={i.id} className="flex items-center justify-between gap-3 px-3 py-2.5 min-h-[48px]">
+                  <span className="min-w-0">
+                    <span className="block text-xs font-semibold text-slate-900 truncate">{i.name}</span>
+                    <span className="block text-[11px] text-slate-600 font-mono">{i.id}</span>
+                  </span>
+                  <span className="text-[11px] text-slate-600 shrink-0">Tidak ada di Master Barang</span>
+                </li>
+              ))}
             </ul>
           )}
         </Card>

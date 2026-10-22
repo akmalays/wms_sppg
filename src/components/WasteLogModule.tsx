@@ -22,9 +22,9 @@ import {
 import { SppgLogo } from './SppgLogo';
 import { localDateIso } from '../utils/localDate';
 
-type NutritionKey = 'karbohidrat' | 'sayur' | 'protein hewani' | 'protein nabati' | 'buah';
+export type NutritionKey = 'karbohidrat' | 'sayur' | 'protein hewani' | 'protein nabati' | 'buah';
 
-const NUTRITION: { key: NutritionKey; label: string; short: string; dot: string }[] = [
+export const NUTRITION: { key: NutritionKey; label: string; short: string; dot: string }[] = [
   { key: 'karbohidrat', label: 'Karbohidrat', short: 'Karbo', dot: 'bg-amber-500' },
   { key: 'sayur', label: 'Sayur', short: 'Sayur', dot: 'bg-emerald-500' },
   { key: 'protein hewani', label: 'Protein hewani', short: 'Hewani', dot: 'bg-rose-500' },
@@ -86,14 +86,14 @@ const formatKg = (val: number) =>
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 // Hanya satuan berat yang bisa dijumlahkan ke kg; Pcs dan Liter dihitung terpisah.
-const toKg = (log: WasteLog): number | null => {
+export const toKg = (log: WasteLog): number | null => {
   const unit = (log.unit || '').toLowerCase();
   if (unit === 'kg') return log.quantity;
   if (unit === 'gram') return log.quantity / 1000;
   return null;
 };
 
-const nutritionKeyOf = (category: string): NutritionKey | null => {
+export const nutritionKeyOf = (category: string): NutritionKey | null => {
   const c = (category || '').toLowerCase();
   const exact = NUTRITION.find(n => n.key === c);
   if (exact) return exact.key;
@@ -154,7 +154,12 @@ const emptyDailyValues = (): Record<NutritionKey, string> => ({
 const inputClass =
   'w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm sm:text-xs text-slate-800 min-h-[44px] sm:min-h-[36px] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600';
 
-export const WasteLogModule: React.FC = () => {
+interface WasteLogModuleProps {
+  /** Naik setiap kali QR Form Rekapitulasi Limbah dipindai: isian sisa makanan hari ini langsung dibuka. */
+  entryRequest?: number;
+}
+
+export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0 }) => {
   const { currentUser, can } = useAuth();
   const askConfirm = useConfirm();
   const canRecord = can('RECORD_CONSUMPTION');
@@ -365,6 +370,18 @@ export const WasteLogModule: React.FC = () => {
   };
 
   const dailyHasExisting = wasteLogs.some(l => l.date === dailyDate && nutritionKeyOf(l.wasteCategory));
+
+  useEffect(() => {
+    if (entryRequest > 0 && canRecord) openDailyModal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryRequest]);
+
+  // Dibuka dari QR sebelum data cloud selesai dimuat: begitu data tanggal ini tiba, tampilkan angkanya
+  // selama petugas belum mengetik apa pun.
+  useEffect(() => {
+    if (isDailyModalOpen && dailyHasExisting && NUTRITION.every(n => !dailyValues[n.key])) loadDailyForm(dailyDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wasteLogs]);
   const dailySum = round2(NUTRITION.reduce((s, n) => s + (parseFloat(dailyValues[n.key]) || 0), 0));
 
   const applySplit = () => {
@@ -721,21 +738,17 @@ export const WasteLogModule: React.FC = () => {
         </div>
 
         <div className="pt-6 border-t border-slate-300 text-xs">
-          <div className="grid grid-cols-3 gap-6 text-center">
-            <div>
-              <div className="text-slate-600">Dibuat oleh,</div>
-              <div className="font-semibold text-slate-800">Petugas Sanitasi & Limbah</div>
-              <div className="h-16 flex items-end justify-center font-bold">({currentUser.name})</div>
-            </div>
-            <div>
-              <div className="text-slate-600">Diperiksa oleh,</div>
-              <div className="font-semibold text-slate-800">Ahli Gizi SPPG</div>
-              <div className="h-16 flex items-end justify-center font-bold">({signerName('AHLI_GIZI')})</div>
-            </div>
+          {/* Penanda tangan sama dengan Form Rekapitulasi Limbah di Cetak Form */}
+          <div className="grid grid-cols-2 gap-6 text-center">
             <div>
               <div className="text-slate-600">Mengetahui,</div>
-              <div className="font-semibold text-slate-800">Kepala SPPG Tumpang Jeru</div>
-              <div className="h-16 flex items-end justify-center font-bold">({signerName('KEPALA_SPPG')})</div>
+              <div className="font-semibold text-slate-800">Akuntan SPPG Tumpang Jeru</div>
+              <div className="h-16 flex items-end justify-center font-bold">({signerName('AKUNTAN')})</div>
+            </div>
+            <div>
+              <div className="text-slate-600">Malang, {formatDate(today)}</div>
+              <div className="font-semibold text-slate-800">Asisten Lapangan</div>
+              <div className="h-16 flex items-end justify-center font-bold">({signerName('ASLAP')})</div>
             </div>
           </div>
         </div>

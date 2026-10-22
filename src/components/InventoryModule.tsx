@@ -257,6 +257,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
       'Bahan Kering': 0,
       'ATK & Administrasi': 0,
       'Sanitasi, Kemasan & APD': 0,
+      'P3K & Obat-obatan': 0,
       'Operasional & Keperluan Lain': 0,
     };
 
@@ -334,13 +335,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
 
   // Category breakdown for Stock Recap Report
   const categoryStockSummaries = useMemo(() => {
-    const categories: SppgCategory[] = [
-      'Bahan Basah',
-      'Bahan Kering',
-      'ATK & Administrasi',
-      'Sanitasi, Kemasan & APD',
-      'Operasional & Keperluan Lain',
-    ];
+    const categories: SppgCategory[] = [...STANDARD_CATEGORIES];
 
     const targetItems = filteredItems;
 
@@ -681,7 +676,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
         ? 'Gudang Kering & Sembako'
         : chosenCat === 'ATK & Administrasi'
         ? 'Ruang Kantor & Administrasi'
-        : chosenCat === 'Sanitasi, Kemasan & APD'
+        : chosenCat === 'Sanitasi, Kemasan & APD' || chosenCat === 'P3K & Obat-obatan'
         ? 'Gudang Non-Food'
         : 'Gudang Utama SPPG MLG TUMPANG JERU'
     );
@@ -975,7 +970,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
         setFormCategory('Bahan Kering');
       } else if (wh === 'GUDANG_BASAH' && (formCategory === 'Bahan Kering' || formCategory === 'Sanitasi, Kemasan & APD')) {
         setFormCategory('Bahan Basah');
-      } else if (wh === 'GUDANG_NONFOOD') {
+      } else if (wh === 'GUDANG_NONFOOD' && formCategory !== 'P3K & Obat-obatan') {
         setFormCategory('Sanitasi, Kemasan & APD');
       }
     }

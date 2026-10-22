@@ -1,22 +1,13 @@
 import React from 'react';
-import {
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  ThermometerSnowflake,
-  Snowflake,
-  Layers,
-  Sparkles,
-  Info
-} from 'lucide-react';
 import { SppgLogo } from '../SppgLogo';
+import { KopText } from '../common/KopText';
 
 export type DoDontTarget = 'ALL' | 'CHILLER' | 'FREEZER';
 
 export const DO_DONT_OPTIONS: { value: DoDontTarget; label: string }[] = [
-  { value: 'ALL', label: 'Semua Plakat (Chiller & Freezer - 1 per lembar A4)' },
-  { value: 'CHILLER', label: 'Chiller (Suhu 1–5°C: Buah, Sayur, Telur & Thawing)' },
-  { value: 'FREEZER', label: 'Freezer (Suhu ≤ -18°C: Stok Ayam & Daging Beku)' },
+  { value: 'ALL', label: 'Chiller & freezer (1 plakat per lembar A4)' },
+  { value: 'CHILLER', label: 'Chiller (1–5°C)' },
+  { value: 'FREEZER', label: 'Freezer (−18°C atau lebih dingin)' },
 ];
 
 interface DoDontPosterDocProps {
@@ -24,327 +15,184 @@ interface DoDontPosterDocProps {
   effectiveDate: string;
 }
 
-interface PosterCardProps {
-  title: string;
-  subtitle: string;
-  tempBadge: string;
-  tempColor: string;
-  icon: React.ReactNode;
-  rackGuide?: {
-    level: string;
-    items: string;
-    note: string;
-    color: string;
-  }[];
-  dos: {
-    highlight: string;
-    text: string;
-  }[];
-  donts: {
-    highlight: string;
-    text: string;
-  }[];
-  criticalNote: string;
-  breakAfter?: boolean;
+interface Rule {
+  head: string;
+  detail?: string;
 }
 
-const PosterCard: React.FC<PosterCardProps> = ({
-  title,
-  subtitle,
-  tempBadge,
-  tempColor,
-  icon,
-  rackGuide,
-  dos,
-  donts,
-  criticalNote,
-  breakAfter,
-}) => (
+interface Poster {
+  place: string;
+  location: string;
+  temp: string;
+  tempNote: string;
+  sopRef: string;
+  guideTitle: string;
+  guide: { place: string; contents: string; rule: string }[];
+  dos: Rule[];
+  donts: Rule[];
+  reportWhen: string[];
+}
+
+// Isi plakat diringkas dari SOP/GDG/03 (chiller) dan SOP/GDG/04 (freezer); angka harus sama dengan SOP.
+const POSTERS: Record<Exclude<DoDontTarget, 'ALL'>, Poster> = {
+  CHILLER: {
+    place: 'Chiller',
+    location: 'Gudang Basah',
+    temp: '1–5°C',
+    tempNote: 'Cek dan catat pagi & sore',
+    sopRef: 'SOP/GDG/03 Penyimpanan Bahan di Chiller',
+    guideTitle: 'Susunan rak, dari atas ke bawah',
+    guide: [
+      { place: 'Rak atas', contents: 'Telur, bahan siap pakai, saus yang sudah dibuka', rule: 'Telur di tray, tidak dicuci.' },
+      { place: 'Rak tengah', contents: 'Buah dan sayur', rule: 'Keranjang berlubang. Buah potong di wadah tertutup berlabel.' },
+      { place: 'Rak paling bawah', contents: 'Ayam yang sedang dicairkan', rule: 'Wadah tertutup supaya cairannya tidak menetes.' },
+    ],
+    dos: [
+      { head: 'Tutup dan beri label semua bahan.', detail: 'Tulis nama bahan dan tanggal masuk.' },
+      { head: 'Ayam yang dicairkan di rak paling bawah.', detail: 'Supaya cairannya tidak menetes ke sayur dan buah.' },
+      { head: 'Ambil yang paling lama disimpan lebih dulu.' },
+      { head: 'Buka pintu seperlunya.', detail: 'Ambil sekaligus, lalu tutup rapat.' },
+      { head: 'Masak ayam yang sudah cair paling lambat 24 jam.' },
+    ],
+    donts: [
+      { head: 'Memasukkan makanan yang masih panas.', detail: 'Dinginkan dulu, maks. 2 jam di suhu ruang.' },
+      { head: 'Mencuci sayur atau telur sebelum disimpan.', detail: 'Sayur jadi cepat berlendir dan telur mudah tercemar.' },
+      { head: 'Menaruh ayam di rak atas atau tengah.' },
+      { head: 'Menyimpan tepung, royco, atau bumbu kering.', detail: 'Tempatnya di Gudang Kering.' },
+      { head: 'Mengisi lebih dari ±80% atau menutupi kipas.', detail: 'Udara dingin tidak bisa mengalir ke semua rak.' },
+    ],
+    reportWhen: [
+      'Suhu di atas 5°C dan tidak turun dalam 2 jam.',
+      'Ada bahan yang berbau asam, berlendir, atau berjamur. Jangan dipakai.',
+      'Cairan ayam menetes ke bahan lain.',
+    ],
+  },
+  FREEZER: {
+    place: 'Freezer',
+    location: 'Freezer 1 (Gudang Basah), Freezer 2 & 3 (Dapur)',
+    temp: '−18°C',
+    tempNote: 'Atau lebih dingin. Cek dan catat pagi & sore',
+    sopRef: 'SOP/GDG/04 Penyimpanan Bahan di Freezer',
+    guideTitle: 'Pembagian freezer',
+    guide: [
+      { place: 'Freezer 1 (Gudang Basah)', contents: 'Stok ayam dari supplier', rule: 'Jarang dibuka. Diambil untuk mengisi Freezer 2.' },
+      { place: 'Freezer 2 (Dapur)', contents: 'Ayam untuk menu besok', rule: 'Per kantong sesuai menu, label menu + tanggal.' },
+      { place: 'Freezer 3 (Dapur)', contents: 'Ikan, daging sapi, nugget, sosis, bakso', rule: 'Terpisah dari ayam, per jenis.' },
+    ],
+    dos: [
+      { head: 'Ayam masuk freezer paling lambat 30 menit setelah ditimbang.' },
+      { head: 'Bagi per kantong dan ratakan tipis.', detail: 'Keluarkan udaranya supaya cepat beku.' },
+      { head: 'Label setiap kantong.', detail: 'Nama, berat, dan tanggal datang.' },
+      { head: 'Cairkan di chiller, rak paling bawah.', detail: 'Pindahkan sore hari sebelum dimasak (H-1).' },
+      { head: 'Buka pintu sesingkat mungkin.', detail: 'Tentukan dulu apa yang mau diambil.' },
+    ],
+    donts: [
+      { head: 'Membekukan lagi bahan yang sudah cair.', detail: 'Pindahkan ke chiller dan masak dalam 24 jam.' },
+      { head: 'Mencairkan di suhu ruang atau direndam air diam.' },
+      { head: 'Mencampur ayam dengan ikan atau olahan beku dalam satu wadah.' },
+      { head: 'Mengisi terlalu penuh atau menutupi lubang udara.' },
+      { head: 'Mencongkel bunga es dengan pisau.', detail: 'Pipa pendingin bisa bocor. Lapor kalau bunga es lebih dari 5 mm.' },
+    ],
+    reportWhen: [
+      'Suhu lebih hangat dari −15°C.',
+      'Listrik padam. Jangan buka pintu: freezer penuh yang tertutup bertahan ±24 jam.',
+      'Bahan sudah lunak atau cair.',
+    ],
+  },
+};
+
+const RuleList: React.FC<{ rules: Rule[] }> = ({ rules }) => (
+  <ol className="list-decimal pl-5 space-y-2 marker:font-bold marker:text-slate-900">
+    {rules.map(r => (
+      <li key={r.head} className="pl-0.5">
+        <p className="text-sm font-bold text-slate-900 leading-snug">{r.head}</p>
+        {r.detail && <p className="text-xs text-slate-700 leading-snug mt-0.5">{r.detail}</p>}
+      </li>
+    ))}
+  </ol>
+);
+
+const PosterPage: React.FC<{ poster: Poster; effectiveDate: string; breakAfter: boolean }> = ({ poster, effectiveDate, breakAfter }) => (
   <div
-    className={`bg-white text-slate-900 w-full max-w-[200mm] mx-auto p-4 sm:p-5 print:p-0 flex flex-col justify-between ${
-      breakAfter ? 'page-break mb-8 print:mb-0' : ''
+    className={`bg-white text-slate-900 w-full max-w-[200mm] mx-auto space-y-4 ${
+      breakAfter ? 'page-break pb-8 mb-8 border-b border-dashed border-slate-300 print:border-0 print:pb-0 print:mb-0' : ''
     }`}
   >
-    {/* Header Institusi Resmi */}
-    <div className="border-b-2 border-slate-900 pb-2.5 flex items-center justify-between gap-3">
+    <div className="border-b-2 border-slate-900 pb-3 flex items-start justify-between gap-4">
       <div className="flex items-center gap-3">
         <SppgLogo size="lg" variant="color" showText={false} />
-        <div>
-          <div className="text-[11px] font-bold text-slate-900 tracking-tight leading-none">
-            BADAN GIZI NASIONAL • REPUBLIK INDONESIA
-          </div>
-          <div className="text-sm font-bold text-emerald-900 leading-snug mt-0.5">
-            Satuan Pelayanan Pemenuhan Gizi (SPPG) Tumpang Jeru
-          </div>
-          <div className="text-[10px] text-slate-600 leading-none">
-            Program Makan Bergizi Gratis (MBG) • Unit Dapur & Logistik Malang
-          </div>
-        </div>
+        <KopText />
       </div>
-      <div className="text-right shrink-0">
-        <span className="inline-block px-2.5 py-1 rounded bg-slate-900 text-white font-bold text-[10px] tracking-wide">
-          PANDUAN RELAWAN DAPUR
-        </span>
-        <div className="text-[10px] text-slate-500 mt-0.5">Tempel di Pintu Unit</div>
+      <div className="text-right text-[11px] text-slate-600 space-y-0.5 shrink-0">
+        <div>Tempel di pintu {poster.place.toLowerCase()}</div>
+        <div>Berlaku: {effectiveDate}</div>
       </div>
     </div>
 
-    {/* Equipment Banner & Suhu */}
-    <div className="mt-3 bg-slate-50 border border-slate-300 rounded-lg p-3 flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2.5">
-        <div className="w-9 h-9 rounded-lg bg-emerald-800 text-white flex items-center justify-center shrink-0">
-          {icon}
-        </div>
-        <div>
-          <h2 className="text-base font-bold text-slate-950 leading-tight">{title}</h2>
-          <p className="text-[11px] text-slate-600 leading-tight mt-0.5">{subtitle}</p>
-        </div>
+    {/* Suhu wajib dibuat paling besar: hal pertama yang dicocokkan relawan dengan termometer. */}
+    <div className="flex items-end justify-between gap-4">
+      <div>
+        <h2 className="text-3xl font-bold text-slate-900 tracking-tight leading-none">{poster.place}</h2>
+        <p className="text-xs text-slate-600 mt-1.5">{poster.location}</p>
       </div>
-      <div className="text-right shrink-0">
-        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-tight">Standar Suhu</div>
-        <div className={`text-xs font-bold px-2.5 py-0.5 rounded-full inline-block mt-0.5 border ${tempColor}`}>
-          {tempBadge}
-        </div>
+      <div className="text-right">
+        <p className="text-4xl font-bold font-mono text-slate-900 leading-none">{poster.temp}</p>
+        <p className="text-[11px] text-slate-600 mt-1.5">{poster.tempNote}</p>
       </div>
     </div>
 
-    {/* Panduan Susunan Rak (Opsional / Khusus Chiller) */}
-    {rackGuide && rackGuide.length > 0 && (
-      <div className="mt-2.5 border border-slate-300 rounded-lg p-2.5 bg-slate-50/50">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 mb-1.5">
-          <Layers className="w-3.5 h-3.5 text-emerald-700" />
-          <span>Aturan Susunan Rak Penyimpanan (Wajib Urut dari Atas ke Bawah)</span>
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-[10.5px]">
-          {rackGuide.map(rg => (
-            <div key={rg.level} className={`p-2 rounded border bg-white ${rg.color}`}>
-              <div className="font-bold text-slate-900 border-b pb-0.5 mb-1">{rg.level}</div>
-              <div className="font-semibold text-slate-800 leading-tight">{rg.items}</div>
-              <div className="text-[9.5px] text-slate-600 mt-1 leading-tight">{rg.note}</div>
-            </div>
+    <section>
+      <h3 className="text-sm font-bold text-slate-900 mb-1.5">{poster.guideTitle}</h3>
+      <table className="w-full border-collapse border border-slate-300 table-print text-xs">
+        <tbody>
+          {poster.guide.map(g => (
+            <tr key={g.place} className="align-top">
+              <td className="border border-slate-300 p-2 font-bold text-slate-900 w-44">{g.place}</td>
+              <td className="border border-slate-300 p-2 font-semibold text-slate-900">{g.contents}</td>
+              <td className="border border-slate-300 p-2 text-slate-700">{g.rule}</td>
+            </tr>
           ))}
+        </tbody>
+      </table>
+    </section>
+
+    <div className="grid grid-cols-2 gap-3">
+      <section className="border-2 border-emerald-700 rounded-lg overflow-hidden">
+        <h3 className="bg-emerald-700 text-white text-base font-bold px-3 py-1.5">✓ Lakukan</h3>
+        <div className="p-3">
+          <RuleList rules={poster.dos} />
         </div>
-      </div>
-    )}
-
-    {/* Kolom Do vs Don't */}
-    <div className="mt-2.5 grid grid-cols-2 gap-3">
-      {/* Kolom DO (Wajib) */}
-      <div className="border-2 border-emerald-700 rounded-lg p-3 bg-emerald-50/20 flex flex-col justify-between">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-800 text-white text-xs font-bold mb-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-300 shrink-0" />
-            <span>DO • WAJIB DILAKUKAN</span>
-          </div>
-
-          <ul className="space-y-2 text-[11px] leading-snug text-slate-800">
-            {dos.map((item, idx) => (
-              <li key={idx} className="flex items-start gap-2">
-                <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
-                  ✓
-                </span>
-                <span>
-                  <strong className="text-emerald-950 font-bold">{item.highlight}</strong> {item.text}
-                </span>
-              </li>
-            ))}
-          </ul>
+      </section>
+      <section className="border-2 border-rose-700 rounded-lg overflow-hidden">
+        <h3 className="bg-rose-700 text-white text-base font-bold px-3 py-1.5">✕ Jangan</h3>
+        <div className="p-3">
+          <RuleList rules={poster.donts} />
         </div>
-
-        <div className="mt-3 pt-2 border-t border-emerald-200/80 text-[10px] font-medium text-emerald-900 flex items-center gap-1">
-          <Sparkles className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-          <span>Disiplin menjaga bahan = makanan sehat untuk adik-adik sekolah.</span>
-        </div>
-      </div>
-
-      {/* Kolom DON'T (Dilarang) */}
-      <div className="border-2 border-rose-700 rounded-lg p-3 bg-rose-50/20 flex flex-col justify-between">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-800 text-white text-xs font-bold mb-2">
-            <XCircle className="w-4 h-4 text-rose-300 shrink-0" />
-            <span>DON'T • DILARANG KERAS</span>
-          </div>
-
-          <ul className="space-y-2 text-[11px] leading-snug text-slate-800">
-            {donts.map((item, idx) => (
-              <li key={idx} className="flex items-start gap-2">
-                <span className="w-4 h-4 rounded-full bg-rose-100 text-rose-800 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
-                  ✕
-                </span>
-                <span>
-                  <strong className="text-rose-950 font-bold">{item.highlight}</strong> {item.text}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="mt-3 pt-2 border-t border-rose-200/80 text-[10px] font-medium text-rose-900 flex items-center gap-1">
-          <AlertTriangle className="w-3.5 h-3.5 text-rose-700 shrink-0" />
-          <span>Pelanggaran aturan penyimpanan memicu keracunan dan pembusukan.</span>
-        </div>
-      </div>
+      </section>
     </div>
 
-    {/* Catatan Kritis / Hubungi Petugas */}
-    <div className="mt-2.5 p-2.5 bg-amber-50 border border-amber-300 rounded-lg text-slate-900 flex items-start gap-2.5">
-      <AlertTriangle className="w-4 h-4 text-amber-800 shrink-0 mt-0.5" />
-      <div className="text-[10.5px] leading-tight">
-        <span className="font-bold text-amber-950">PENTING UNTUK RELAWAN:</span> {criticalNote}
-      </div>
-    </div>
+    <section className="border-2 border-amber-600 bg-amber-50 rounded-lg p-3">
+      <h3 className="text-sm font-bold text-amber-900">Lapor ke Asisten Lapangan kalau:</h3>
+      <ul className="list-disc pl-5 mt-1 space-y-0.5 text-xs text-slate-900 leading-snug">
+        {poster.reportWhen.map(r => (
+          <li key={r}>{r}</li>
+        ))}
+      </ul>
+    </section>
 
-    {/* Footer Info & Verifikasi */}
-    <div className="mt-3 pt-2 border-t border-slate-300 flex items-center justify-between text-[10px] text-slate-600">
-      <div className="flex items-center gap-1">
-        <Info className="w-3.5 h-3.5 text-slate-500" />
-        <span>Standar Higiene Pangan Dapur SPPG • Unit Pelayanan Desa Jeru, Tumpang, Malang</span>
-      </div>
-      <div className="font-semibold text-slate-800">
-        Pengawasan: Asisten Lapangan & Ahli Gizi SPPG
-      </div>
-    </div>
+    <p className="pt-2 border-t border-slate-300 text-[11px] text-slate-600">
+      Aturan lengkap: {poster.sopRef}.
+    </p>
   </div>
 );
 
-export const DoDontPosterDoc: React.FC<DoDontPosterDocProps> = ({ target }) => {
-  const showChiller = target === 'ALL' || target === 'CHILLER';
-  const showFreezer = target === 'ALL' || target === 'FREEZER';
-
-  return (
-    <div className="space-y-6">
-      {/* 1. PLAKAT PINTU CHILLER */}
-      {showChiller && (
-        <PosterCard
-          title="CHILLER GUDANG BASAH & DAPUR"
-          subtitle="Khusus Sayur Segar, Buah, Telur, dan Ayam yang Dicairkan (Thawing)"
-          tempBadge="Wajib 1°C s/d 5°C"
-          tempColor="bg-cyan-50 border-cyan-300 text-cyan-900"
-          icon={<ThermometerSnowflake className="w-5 h-5" />}
-          breakAfter={target === 'ALL'}
-          rackGuide={[
-            {
-              level: 'Rak Paling Atas',
-              items: 'Telur & Bahan Siap Saji',
-              note: 'Telur di dalam baki (jangan dicuci). Saus/keju tertutup rapat.',
-              color: 'border-cyan-200',
-            },
-            {
-              level: 'Rak Tengah',
-              items: 'Buah & Sayuran Bersih',
-              note: 'Gunakan keranjang berlubang. Buah potong wajib bertutup & berlabel.',
-              color: 'border-emerald-200',
-            },
-            {
-              level: 'Rak Paling Bawah',
-              items: 'Ayam yang Sedang Dicairkan',
-              note: 'Wajib wadah tertutup + nampan alas agar air darah tidak menetes.',
-              color: 'border-amber-200',
-            },
-          ]}
-          dos={[
-            {
-              highlight: 'Tutup rapat semua wadah.',
-              text: 'Gunakan box kedap atau plastik wrap serta tempel label nama bahan + tanggal masuk.',
-            },
-            {
-              highlight: 'Ayam cair wajib di rak paling bawah.',
-              text: 'Cegah tetesan cairan ayam mentah mencemari sayur atau buah di bawahnya.',
-            },
-            {
-              highlight: 'Jangan cuci sayur & telur sebelum simpan.',
-              text: 'Air cucian membuat kulit telur keropos dan sayur cepat berlendir membusuk.',
-            },
-            {
-              highlight: 'Ambil seperlunya, tutup pintu segera.',
-              text: 'Jangan biarkan pintu terbuka saat menimbang atau memotong bahan di meja dapur.',
-            },
-            {
-              highlight: 'Cek suhu rutin pagi dan sore.',
-              text: 'Pastikan jarum atau angka termometer selalu berada di kisaran aman 1°C – 5°C.',
-            },
-          ]}
-          donts={[
-            {
-              highlight: 'Dilarang memasukkan makanan panas mengepul.',
-              text: 'Uap panas merusak suhu kulkas dan membuat bahan lain cepat basi. Dinginkan dulu di suhu ruang.',
-            },
-            {
-              highlight: 'Dilarang menaruh ayam di rak atas atau tengah.',
-              text: 'Bakteri Salmonella dari ayam mentah sangat berbahaya bila menetes ke sayur atau buah.',
-            },
-            {
-              highlight: 'Dilarang membiarkan pintu mengganjal / renggang.',
-              text: 'Karet pintu harus menempel rapat agar suhu dingin tidak bocor ke luar.',
-            },
-            {
-              highlight: 'Dilarang menyimpan bahan kering di chiller.',
-              text: 'Tepung, royco, dan bumbu bubuk akan lembap dan menggumpal. Simpan di Gudang Kering.',
-            },
-            {
-              highlight: 'Dilarang menyimpan bahan tanpa penutup.',
-              text: 'Bahan terbuka menyerap bau makanan lain dan cepat terkontaminasi debu kulkas.',
-            },
-          ]}
-          criticalNote="Jika suhu termometer chiller terbaca di atas 6°C lebih dari 2 jam, atau tercium bau asam/anyir menyengat, SEGERA lapor ke Asisten Lapangan atau Petugas Logistik. Jangan langsung olah bahan tersebut."
-        />
-      )}
-
-      {/* 2. PLAKAT PINTU FREEZER */}
-      {showFreezer && (
-        <PosterCard
-          title="FREEZER GUDANG & DAPUR PROTEIN"
-          subtitle="Khusus Pembekuan Ayam Karkas, Fillet, Daging Sapi, Ikan, dan Olahan Beku"
-          tempBadge="Wajib ≤ -18°C (Beku Sempurna)"
-          tempColor="bg-blue-50 border-blue-300 text-blue-900"
-          icon={<Snowflake className="w-5 h-5" />}
-          dos={[
-            {
-              highlight: 'Langsung masukkan ayam baru datang.',
-              text: 'Ayam dari supplier maksimal 30 menit di suhu ruang setelah ditimbang harus sudah masuk freezer.',
-            },
-            {
-              highlight: 'Bagi per kantong & ratakan tipis.',
-              text: 'Bagi per porsi menu harian dan ratakan agar udara dingin cepat membekukan bagian tengah daging.',
-            },
-            {
-              highlight: 'Tulis label jelas di setiap kemasan.',
-              text: 'Wajib ada nama bahan, berat porsi, dan tanggal datang agar urutan pakai (FIFO) tidak keliru.',
-            },
-            {
-              highlight: 'Cairkan ayam selalu di dalam chiller.',
-              text: 'Pindahkan ayam beku ke rak bawah chiller pada sore H-1 sebelum dimasak besok pagi.',
-            },
-            {
-              highlight: 'Buka pintu sesingkat mungkin.',
-              text: 'Tentukan barang yang mau diambil sebelum membuka freezer agar udara beku tidak terbuang.',
-            },
-          ]}
-          donts={[
-            {
-              highlight: 'DILARANG KERAS membekukan kembali bahan yang sudah cair!',
-              text: 'Ayam/daging yang sudah cair TIDAK BOLEH dimasukkan lagi ke freezer karena bakteri sudah berkembang biak.',
-            },
-            {
-              highlight: 'Dilarang mencairkan daging di suhu ruang terbuka.',
-              text: 'Jangan rendam daging di bak air diam atau dijemur di meja. Cairkan di chiller atau air mengalir dingin.',
-            },
-            {
-              highlight: 'Dilarang mencampur ayam mentah dengan olahan matang.',
-              text: 'Pisahkan wadah nugget/sosis dari ayam karkas mentah untuk mencegah kontaminasi silang.',
-            },
-            {
-              highlight: 'Dilarang mengisi melebihi batas muat.',
-              text: 'Beri ruang sirkulasi udara dingin. Jangan tumpuk menutupi lubang hembusan kipas pendingin.',
-            },
-            {
-              highlight: 'Dilarang mencongkel bunga es dengan pisau / benda tajam.',
-              text: 'Bisa menusuk pipa freon dan merusak freezer. Laporkan ke petugas untuk proses defrost berkala.',
-            },
-          ]}
-          criticalNote="Daging ayam yang sudah dicairkan wajib dimasak habis maksimal 24 jam. Jika freezer mati atau listrik padam lebih dari 4 jam hingga daging lembek, lapor pengawas sebelum bahan dipindahkan."
-        />
-      )}
-    </div>
-  );
-};
+export const DoDontPosterDoc: React.FC<DoDontPosterDocProps> = ({ target, effectiveDate }) => (
+  <div>
+    {(target === 'ALL' || target === 'CHILLER') && (
+      <PosterPage poster={POSTERS.CHILLER} effectiveDate={effectiveDate} breakAfter={target === 'ALL'} />
+    )}
+    {(target === 'ALL' || target === 'FREEZER') && (
+      <PosterPage poster={POSTERS.FREEZER} effectiveDate={effectiveDate} breakAfter={false} />
+    )}
+  </div>
+);

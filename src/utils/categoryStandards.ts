@@ -20,13 +20,14 @@ export const MAIN_CATEGORIES = [
 export type MainCategory = typeof MAIN_CATEGORIES[number];
 
 /**
- * 6 Kategori Rinci Standar SPPG (Digunakan pada form input, stok opname, dan katalog barang)
+ * Kategori Rinci Standar SPPG (Digunakan pada form input, stok opname, dan katalog barang)
  */
 export const STANDARD_CATEGORIES = [
   'Bahan Basah',
   'Bahan Kering',
   'ATK & Administrasi',
   'Sanitasi, Kemasan & APD',
+  'P3K & Obat-obatan',
   'Operasional & Keperluan Lain',
 ] as const;
 
@@ -40,8 +41,18 @@ export const CATEGORY_HIERARCHY_MAP: Record<StandardCategory, MainCategory> = {
   'Bahan Kering': 'Bahan Kering',
   'ATK & Administrasi': 'Bahan Peralatan',
   'Sanitasi, Kemasan & APD': 'Bahan Peralatan',
+  'P3K & Obat-obatan': 'Bahan Peralatan',
   'Operasional & Keperluan Lain': 'Bahan Peralatan',
 };
+
+// Obat dan perlengkapan P3K dikenali dari kategori atau nama/merek yang umum dibeli SPPG.
+const MEDICINE_NAME_PATTERN =
+  /obat|tablet|kaplet|kapsul|sirup|salep|koyo|salonpas|balsem|geliga|minyak kayu putih|minyak angin|betadine|antisep|plester|hansaplast|perban|\bkasa\b|kassa|alkohol swab|oskadon|paracetamol|parasetamol|panadol|bodrex|mylanta|promag|diapet|entrostop|oralit|mixagrip|feminax|vitamin|\bvit\b|caviplex|tolak angin|antangin/i;
+
+export function isMedicineItem(category?: string, itemName?: string): boolean {
+  const c = (category || '').toLowerCase();
+  return c.includes('p3k') || c.includes('obat') || MEDICINE_NAME_PATTERN.test(itemName || '');
+}
 
 /**
  * Subkategori Deskriptif untuk Referensi & Dokumen Pengadaan
@@ -80,6 +91,12 @@ export const SUBCATEGORIES_MAP: Record<StandardCategory, readonly string[]> = {
     'Alat Pelindung Diri (Masker, Sarung Tangan, Nurse Cap)',
     'Peralatan Masak Dapur (Celemek, Pisau, Talenan)',
   ],
+  'P3K & Obat-obatan': [
+    'Obat Minum (Pereda Nyeri, Flu, Maag, Diare)',
+    'Obat Luar (Koyo, Balsem)',
+    'Perawatan Luka (Antiseptik, Plester, Kasa)',
+    'Vitamin & Suplemen',
+  ],
   'Operasional & Keperluan Lain': [
     'Bahan Bakar & Gas (Tabung LPG 12kg/3kg)',
     'Air Minum & Galon',
@@ -95,6 +112,14 @@ export const SUBCATEGORIES_MAP: Record<StandardCategory, readonly string[]> = {
 export function normalizeToMainCategory(category?: string, itemName?: string): MainCategory {
   const c = (category || '').trim().toLowerCase();
   const n = (itemName || '').trim().toLowerCase();
+
+  // Obat dicek lebih dulu: "minyak kayu putih" jangan sampai terbaca sebagai bahan kering
+  if (isMedicineItem(category, itemName)) return 'Bahan Peralatan';
+
+  const exactMain = MAIN_CATEGORIES.find(mc => mc.toLowerCase() === c);
+  if (exactMain) return exactMain;
+  const exactStandard = STANDARD_CATEGORIES.find(sc => sc.toLowerCase() === c);
+  if (exactStandard) return CATEGORY_HIERARCHY_MAP[exactStandard];
 
   // 1. Cek Kategori Bahan Basah
   if (
@@ -170,6 +195,13 @@ export function normalizeToMainCategory(category?: string, itemName?: string): M
 export function normalizeToStandardCategory(category?: string, itemName?: string): StandardCategory {
   const c = (category || '').trim().toLowerCase();
   const n = (itemName || '').trim().toLowerCase();
+
+  if (isMedicineItem(category, itemName)) return 'P3K & Obat-obatan';
+
+  // Kategori yang sudah diisi persis dengan nama standar dipakai apa adanya,
+  // supaya "kecap ikan" berkategori Bahan Kering tidak terbaca sebagai Bahan Basah dari namanya.
+  const exact = STANDARD_CATEGORIES.find(sc => sc.toLowerCase() === c);
+  if (exact) return exact;
 
   // ATK & Administrasi
   if (
@@ -361,6 +393,12 @@ const SUBCATEGORY_RULES: Record<StandardCategory, { label: string; pattern: RegE
     { label: 'APD & masker', pattern: /masker|3 ?pl[a]?y|hijab|sarung tangan|glove|nurse cap|hairnet|penutup kepala|celemek|apron|apd/i },
     { label: 'Plastik & kemasan', pattern: /plastik|kresek|trash ?bag|kantong|thinwall|mika|klip|ctik|wrap|box|kemasan|tempat saus|tisu|tissue/i },
     { label: 'Alat kebersihan', pattern: /sapu|pel|mop|cikrak|pengki|lap|spons|sabut|kanebo|sikat|gayung|ember/i },
+  ],
+  'P3K & Obat-obatan': [
+    { label: 'Obat luar', pattern: /koyo|salonpas|balsem|geliga|salep|minyak kayu putih|minyak angin/i },
+    { label: 'Perawatan luka', pattern: /betadine|antisep|plester|hansaplast|perban|kasa|kassa|alkohol|kapas/i },
+    { label: 'Vitamin', pattern: /vitamin|\bvit\b|caviplex|suplemen/i },
+    { label: 'Obat minum', pattern: /tablet|kaplet|kapsul|sirup|oskadon|paracetamol|parasetamol|panadol|bodrex|mylanta|promag|diapet|entrostop|oralit|mixagrip|feminax|tolak angin|antangin/i },
   ],
   'ATK & Administrasi': [
     { label: 'Kertas & buku', pattern: /kertas|hvs|buku|nota|kwitansi|thermal/i },

@@ -26,7 +26,7 @@ import { WebsiteCmsModule } from './components/WebsiteCmsModule';
 import { DailyMenuPublicPage } from './components/DailyMenuPublicPage';
 import { ScanResultModule } from './components/ScanResultModule';
 import { QrScannerDialog } from './components/common/QrScannerDialog';
-import { SCAN_PATH, ScanTarget, scanTargetFromLocation } from './utils/scanCode';
+import { SCAN_PATH, ScanTarget, scanTargetFromLocation, isWasteEntryTarget } from './utils/scanCode';
 
 export type AppRouteType = 'DASHBOARD' | 'MENU_TODAY' | 'LANDING';
 
@@ -68,17 +68,27 @@ export const getAppRoute = (): AppRouteType => {
 const MainLayout: React.FC = () => {
   const { currentUser, isAuthenticated } = useAuth();
   // Dibaca sekali saat aplikasi dibuka dari tautan QR, dan tetap tersimpan selama proses login.
-  const [scanTarget, setScanTarget] = useState<ScanTarget | null>(scanTargetFromLocation);
+  const [scanTarget, setScanTarget] = useState<ScanTarget | null>(() => {
+    const t = scanTargetFromLocation();
+    return isWasteEntryTarget(t) ? null : t;
+  });
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>(() => (scanTargetFromLocation() ? 'scan' : 'dashboard'));
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const t = scanTargetFromLocation();
+    return isWasteEntryTarget(t) ? 'waste_logs' : t ? 'scan' : 'dashboard';
+  });
+  // Naik setiap kali QR Form Rekapitulasi Limbah dipindai; Rekap Limbah lalu membuka isian sisa makanan.
+  const [wasteEntryRequest, setWasteEntryRequest] = useState(() => (isWasteEntryTarget(scanTargetFromLocation()) ? 1 : 0));
   const [currentRoute, setCurrentRoute] = useState<AppRouteType>(getAppRoute);
   const [dataVersion, setDataVersion] = useState<number>(0);
   // Form yang dibuka saat pindah ke Cetak Form dari halaman lain (nota supplier, label aset).
   const [printTarget, setPrintTarget] = useState<PrintTarget | undefined>(undefined);
 
   // Target cetak hanya berlaku sekali; dibersihkan begitu pengguna meninggalkan Cetak Form.
+  // Begitu juga permintaan isian limbah dari QR, supaya tidak terbuka lagi saat kembali ke Rekap Limbah.
   React.useEffect(() => {
     if (activeTab !== 'tools_forms') setPrintTarget(undefined);
+    if (activeTab !== 'waste_logs') setWasteEntryRequest(0);
   }, [activeTab]);
 
   // Sync state when browser URL changes (back/forward navigation or hash change)
@@ -135,6 +145,7 @@ const MainLayout: React.FC = () => {
   };
 
   // Alamat /s/... dibersihkan saat pindah menu, agar muat ulang halaman tidak membuka hasil pindai lagi.
+  // Untuk QR limbah dibersihkan juga, supaya isian tidak terbuka lagi saat dimuat ulang.
   React.useEffect(() => {
     if (activeTab !== 'scan' && window.location.pathname.startsWith(SCAN_PATH)) {
       window.history.replaceState(null, '', '/dashboard');
@@ -142,9 +153,14 @@ const MainLayout: React.FC = () => {
   }, [activeTab]);
 
   const openScanResult = React.useCallback((target: ScanTarget) => {
+    setIsScannerOpen(false);
+    if (isWasteEntryTarget(target)) {
+      setWasteEntryRequest(n => n + 1);
+      setActiveTab('waste_logs');
+      return;
+    }
     setScanTarget(target);
     setActiveTab('scan');
-    setIsScannerOpen(false);
   }, []);
 
   const openPrintForm = (target: PrintTarget) => {
@@ -225,7 +241,7 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'waste_logs' && (
-            <WasteLogModule />
+            <WasteLogModule entryRequest={wasteEntryRequest} />
           )}
 
           {/* Kelola Pengguna digabung ke halaman Karyawan sebagai tab "Akun aplikasi". */}
@@ -283,7 +299,7 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'audit' && <AuditLogModule />}
-          {activeTab === 'scan' && <ScanResultModule target={scanTarget} onTargetChange={setScanTarget} onNavigate={setActiveTab} />}
+          {activeTab === 'scan' && <ScanResultModule target={scanTarget} onTargetChange={openScanResult} onNavigate={setActiveTab} />}
         </div>
       </main>
 

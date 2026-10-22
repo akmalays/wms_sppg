@@ -1,3 +1,5 @@
+import { isMedicineItem } from './categoryStandards';
+
 // Konfigurasi rak gudang dan aturan barang-ke-rak, dipakai bersama oleh Cetak Form (Plakat Rak)
 // dan halaman hasil pindai QR agar isi plakat dan hasil pindai selalu sama.
 
@@ -16,6 +18,63 @@ export interface RackConfig {
   customNote?: string;
   /** Rak cadangan berisi dus dari rak lain; plakat tidak menampilkan daftar barang tetap. */
   isReserve?: boolean;
+}
+
+/** Barang yang tercantum di plakat rak (dari Master Barang, atau diketik manual). */
+export interface RackListedItem {
+  id: string;
+  name: string;
+  category: string;
+  subcategory?: string;
+  currentStock: number;
+  unit: string;
+  minStock: number;
+  reorderPoint: number;
+  handlingNote?: string;
+}
+
+/** Perubahan pada plakat bawaan dari dialog Ubah di Cetak Form; field kosong mengikuti BASE_RACKS_CONFIG. */
+export interface RackOverride {
+  name?: string;
+  warehouseType?: RackConfig['warehouseType'];
+  warehouseName?: string;
+  zone?: string;
+  temperatureGuide?: string;
+  humidityGuide?: string;
+  capacityMax?: string;
+  storageRule?: string;
+  rotationMethod?: RackConfig['rotationMethod'];
+  picName?: string;
+  customNote?: string;
+  extraItemsText?: string;
+  /** Diisi hanya bila daftar barang diatur manual; kosong berarti mengikuti lokasi di Master Barang. */
+  customItems?: RackListedItem[];
+}
+
+export interface StoredCustomRack extends RackConfig {
+  isCustom?: boolean;
+  items: RackListedItem[];
+}
+
+// Kunci app_settings, dibaca Cetak Form (Plakat Rak) dan halaman hasil pindai QR.
+export const SETTING_RACK_OVERRIDES = 'print_rack_overrides';
+export const SETTING_CUSTOM_RACKS = 'print_custom_racks';
+
+export function applyRackOverride<T extends RackConfig>(rack: T, ov: RackOverride = {}): T {
+  return {
+    ...rack,
+    name: ov.name || rack.name,
+    warehouseType: ov.warehouseType || rack.warehouseType,
+    warehouseName: ov.warehouseName || rack.warehouseName,
+    zone: ov.zone || rack.zone,
+    temperatureGuide: ov.temperatureGuide || rack.temperatureGuide,
+    humidityGuide: ov.humidityGuide !== undefined ? ov.humidityGuide : rack.humidityGuide,
+    rotationMethod: ov.rotationMethod || rack.rotationMethod,
+    capacityMax: ov.capacityMax || rack.capacityMax,
+    storageRule: ov.storageRule || rack.storageRule,
+    picName: ov.picName || rack.picName,
+    customNote: ov.customNote !== undefined ? ov.customNote : rack.customNote,
+  };
 }
 
 export const BASE_RACKS_CONFIG: RackConfig[] = [
@@ -102,11 +161,11 @@ export const BASE_RACKS_CONFIG: RackConfig[] = [
     zone: 'Gudang Non-Food - Rak N1',
     temperatureGuide: 'Suhu ruang, berventilasi baik',
     humidityGuide: 'Kering',
-    storageRule: 'Hanya sabun, pembersih, dan disinfektan. Jauhkan dari bahan makanan, kemasan makanan, dan APD. Jeriken ditutup rapat, cairan berat di ambalan paling bawah.',
+    storageRule: 'Hanya sabun, pembersih, disinfektan, dan alat kebersihan kecil. Jauhkan dari bahan makanan, kemasan makanan, dan APD. Jeriken ditutup rapat, cairan berat di ambalan paling bawah.',
     rotationMethod: 'FIFO',
     capacityMax: 'Ambalan jeriken & botol',
     picName: '',
-    customNote: 'Isi: sabun cuci piring, sabun cuci ompreng, pembersih lantai, disinfektan. Jeriken bocor dipindah ke wadah tertutup dan tumpahannya langsung dilap.',
+    customNote: 'Isi: sabun cuci piring, sabun cuci ompreng, pembersih lantai, disinfektan, serta spons, sabut, gayung, dan cikrak. Jeriken bocor dipindah ke wadah tertutup dan tumpahannya langsung dilap.',
   },
   {
     id: 'RAK-KRG-N2',
@@ -135,6 +194,20 @@ export const BASE_RACKS_CONFIG: RackConfig[] = [
     capacityMax: 'Box APD tertutup',
     picName: '',
     customNote: 'Isi: masker medis 3 lapis, penutup kepala (hairnet), celemek, sarung tangan plastik/food grade. Cara memakai APD ada di SOP/DPR/01.',
+  },
+  {
+    id: 'RAK-KRG-N4',
+    name: 'Rak N4 - Non-Food: P3K & Obat-obatan',
+    warehouseType: 'GUDANG_KERING',
+    warehouseName: 'Gudang Non-Food',
+    zone: 'Gudang Non-Food - Rak N4',
+    temperatureGuide: 'Suhu ruang, di bawah 30°C, tidak kena sinar matahari langsung',
+    humidityGuide: 'Kering, di dalam kotak tertutup',
+    storageRule: 'Simpan di kotak tertutup berlabel "P3K", terpisah dari bahan makanan dan sabun. Pakai yang paling dekat tanggal kedaluwarsanya lebih dulu. Obat yang kedaluwarsa atau kemasannya rusak dipisahkan dan dilaporkan ke Asisten Lapangan.',
+    rotationMethod: 'FEFO',
+    capacityMax: 'Kotak P3K & ambalan obat',
+    picName: '',
+    customNote: 'Isi: obat minum (pereda nyeri, flu, maag, diare), koyo & balsem, antiseptik & plester, vitamin. Obat untuk relawan yang sakit saat bertugas, bukan untuk dicampur ke makanan.',
   },
 
   // --- GUDANG BASAH & DAPUR: 3 freezer, 1 chiller, 1 palet sisa bahan ---
@@ -258,10 +331,18 @@ export function matchItemToRackId(
     if (suggested) return suggested;
   }
 
-  // Cek Non-Food (3 Kategori: Sabun dan Sanitasi, Plastik Tissue dan Kemasan, APD dan Masker)
-  // Kategori 3: APD & Masker
+  // Cek Non-Food (4 kategori: Sabun dan Sanitasi, Plastik Tissue dan Kemasan, APD dan Masker, P3K dan Obat-obatan).
+  // Lokasi yang menyebut rak N1-N4 selalu dipakai; tebakan dari nama hanya untuk lokasi yang belum jelas.
+  const nonFoodRakNo = l.match(/\brak\s*n([1-4])\b/);
+  if (nonFoodRakNo) return `RAK-KRG-N${nonFoodRakNo[1]}`;
+
+  // Kategori 4: P3K & Obat-obatan
+  if (l.includes('p3k') || isMedicineItem(cat, name)) {
+    return 'RAK-KRG-N4';
+  }
+
+  // Kategori 3: APD & Masker. Kategori "apd" saja tidak cukup: "Sanitasi, Kemasan & APD" juga memuatnya.
   if (
-    l.includes('rak n3') ||
     l.includes('apd') ||
     n.includes('masker') ||
     n.includes('hairnet') ||
@@ -271,7 +352,6 @@ export function matchItemToRackId(
     n.includes('apron') ||
     n.includes('sarung tangan') ||
     n.includes('face shield') ||
-    c.includes('apd') ||
     c.includes('pelindung')
   ) {
     return 'RAK-KRG-N3';
@@ -279,7 +359,6 @@ export function matchItemToRackId(
 
   // Kategori 1: Sabun & Sanitasi
   if (
-    l.includes('rak n1') ||
     upperId.startsWith('ITM-NFD-001') ||
     n.includes('sabun') ||
     n.includes('sanitasi') ||
@@ -297,7 +376,6 @@ export function matchItemToRackId(
 
   // Kategori 2: Plastik, Tissue & Kemasan
   if (
-    l.includes('rak n2') ||
     upperId.startsWith('ITM-NFD-') ||
     n.includes('plastik') ||
     n.includes('tissue') ||
