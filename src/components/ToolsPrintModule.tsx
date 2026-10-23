@@ -18,6 +18,8 @@ import { SopGudangDoc, SopPlace, SOP_PLACE_OPTIONS } from './print/SopGudangDoc'
 import { DoDontPosterDoc, DoDontTarget, DO_DONT_OPTIONS, doDontPosterCount } from './print/DoDontPosterDoc';
 import { RackSignDoc } from './print/RackSignDoc';
 import { PhotoDocSheet } from './print/PhotoDocSheet';
+import { PicHandoverDoc } from './print/PicHandoverDoc';
+import { ExpenseReceiptDoc } from './print/ExpenseReceiptDoc';
 import {
   Printer,
   FileText,
@@ -57,7 +59,7 @@ import { SppgLogo } from './SppgLogo';
 import { QrSvg } from './common/QrSvg';
 import { localDateIso } from '../utils/localDate';
 
-export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'NONFOOD_ISSUE_FORM' | 'WASTE_RECAP_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'RACK_SIGN' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE' | 'DO_DONT_POSTER' | 'PHOTO_DOC';
+export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'NONFOOD_ISSUE_FORM' | 'WASTE_RECAP_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'RACK_SIGN' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE' | 'DO_DONT_POSTER' | 'PHOTO_DOC' | 'PIC_HANDOVER' | 'EXPENSE_RECEIPT_BATCH';
 
 export interface ItemTagData {
   uniqueKey: string;
@@ -110,13 +112,15 @@ const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
   { id: 'EQUIPMENT_LABEL', label: 'Label Barang & Aset', hint: 'Stiker berkode QR untuk barang gudang dan aset dapur.' },
   { id: 'RACK_LABEL', label: 'Plakat Rak', hint: 'Plakat rak berisi daftar barang dan aturan penyimpanan.' },
   { id: 'RACK_SIGN', label: 'Papan Nama Rak & Kategori', hint: 'Papan nama huruf besar untuk rak dan kategori barang, terbaca dari jauh. Pasang di atas rak; plakat rak tetap di samping setinggi mata.' },
+  { id: 'PIC_HANDOVER', label: 'Serah Terima Insentif PIC', hint: 'Kuitansi serah terima insentif PIC sekolah, dibuat sekaligus dari file Excel daftar penerima. File tidak diunggah atau disimpan.' },
+  { id: 'EXPENSE_RECEIPT_BATCH', label: 'Kuitansi Pengeluaran', hint: 'Kuitansi pengeluaran dadakan (No. .../KULBanPer/bulan/tahun), dibuat sekaligus dari file Excel kuitansi. File tidak diunggah atau disimpan.' },
   { id: 'PHOTO_DOC', label: 'Dokumentasi Foto', hint: 'Foto dokumentasi untuk laporan berkala, ditata otomatis 4 sampai 9 foto per lembar A4 dengan kop dan judul di tiap lembar. Foto tidak diunggah atau disimpan.' },
   { id: 'SUPPLIER_EXPENSE_NOTE', label: 'Nota Kas Keluar', hint: 'Bukti pembayaran ke supplier dengan tanda tangan.' },
   { id: 'SOP_STORAGE', label: 'SOP Gudang', hint: 'SOP penanganan bahan di gudang kering, non-food, chiller, freezer, sisa bahan dari dapur, area krat, serta pemakaian APD di dapur.' },
   { id: 'DO_DONT_POSTER', label: "Plakat Do & Don't", hint: "Plakat aturan Lakukan & Jangan untuk chiller, freezer, gudang kering, non-food, palet sisa, area krat, dan pintu dapur (APD), diringkas dari SOP Gudang." },
 ];
 
-export type FormCategory = 'DOCUMENTS' | 'LABELS' | 'STANDARDS';
+export type FormCategory = 'DOCUMENTS' | 'FINANCE' | 'LABELS' | 'STANDARDS';
 
 export interface FormCategoryGroup {
   id: FormCategory;
@@ -128,8 +132,8 @@ export interface FormCategoryGroup {
 export const FORM_CATEGORIES: FormCategoryGroup[] = [
   {
     id: 'DOCUMENTS',
-    label: 'Formulir & Dokumen Operasional',
-    shortLabel: 'Formulir Operasional',
+    label: 'Formulir Gudang & Dapur',
+    shortLabel: 'Formulir Gudang',
     forms: [
       'RECEIVING_FORM',
       'KITCHEN_REQUISITION',
@@ -137,7 +141,17 @@ export const FORM_CATEGORIES: FormCategoryGroup[] = [
       'WASTE_RECAP_FORM',
       'OPNAME_SHEET',
       'BIN_CARD',
+    ],
+  },
+  {
+    // Kuitansi PIC, kuitansi pengeluaran, dan lampiran laporan: kebanyakan dicetak massal dari file Excel atau foto
+    id: 'FINANCE',
+    label: 'Keuangan & Laporan',
+    shortLabel: 'Keuangan & Laporan',
+    forms: [
       'SUPPLIER_EXPENSE_NOTE',
+      'PIC_HANDOVER',
+      'EXPENSE_RECEIPT_BATCH',
       'PHOTO_DOC',
     ],
   },
@@ -162,6 +176,8 @@ export const FORM_CATEGORIES: FormCategoryGroup[] = [
     ],
   },
 ];
+
+const FORMS_WITH_OWN_SETTINGS: FormType[] = ['RACK_SIGN', 'PIC_HANDOVER', 'EXPENSE_RECEIPT_BATCH', 'PHOTO_DOC'];
 
 export const getCategoryForForm = (formId: FormType): FormCategory => {
   const cat = FORM_CATEGORIES.find(c => c.forms.includes(formId));
@@ -536,6 +552,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const [doDontTarget, setDoDontTarget] = useState<DoDontTarget>('ALL');
   const [signCount, setSignCount] = useState(0);
   const [photoPageCount, setPhotoPageCount] = useState(0);
+  const [picReceiptCount, setPicReceiptCount] = useState(0);
+  const [expenseReceiptCount, setExpenseReceiptCount] = useState(0);
   const [wasteMonth, setWasteMonth] = useState<string>(() => localDateIso().slice(0, 7));
   const [wasteDateMode, setWasteDateMode] = useState<'AUTO' | 'BLANK'>('AUTO');
   const [wasteBlankDays, setWasteBlankDays] = useState(10);
@@ -1847,6 +1865,10 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       ? signCount
       : activeForm === 'PHOTO_DOC'
       ? photoPageCount
+      : activeForm === 'PIC_HANDOVER'
+      ? picReceiptCount
+      : activeForm === 'EXPENSE_RECEIPT_BATCH'
+      ? expenseReceiptCount
       : null;
   const printDisabled = printCount === 0 || (activeForm === 'BIN_CARD' && !selectedItem);
 
@@ -1957,7 +1979,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             className="inline-flex items-center justify-center gap-2 px-4 min-h-[44px] sm:min-h-[36px] rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
           >
             <Printer className="w-4 h-4" />
-            {printCount === null ? 'Cetak' : `Cetak ${printCount} ${activeForm === 'PHOTO_DOC' ? 'lembar' : activeForm === 'RACK_SIGN' ? 'papan nama' : activeForm === 'RACK_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'plakat' : activeForm === 'ITEM_TAG_LABEL' ? 'tag' : 'label'}`}
+            {printCount === null ? 'Cetak' : `Cetak ${printCount} ${activeForm === 'PIC_HANDOVER' ? 'kuitansi' : activeForm === 'EXPENSE_RECEIPT_BATCH' ? 'kuitansi' : activeForm === 'PHOTO_DOC' ? 'lembar' : activeForm === 'RACK_SIGN' ? 'papan nama' : activeForm === 'RACK_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'plakat' : activeForm === 'ITEM_TAG_LABEL' ? 'tag' : 'label'}`}
           </button>
         </div>
 
@@ -2016,12 +2038,13 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           </div>
         </div>
 
-        <p className="px-4 pt-3 text-[11px] text-slate-600 font-medium leading-snug">
+        {/* Tanpa kotak pengaturan di bawahnya, keterangan butuh jarak bawah sendiri supaya tidak menempel ke tepi kartu */}
+        <p className={`px-4 pt-3 text-[11px] text-slate-600 font-medium leading-snug ${FORMS_WITH_OWN_SETTINGS.includes(activeForm) ? 'pb-4' : ''}`}>
           {FORM_TABS.find(t => t.id === activeForm)?.hint}
         </p>
 
-        {/* Pengaturan sesuai form yang dipilih */}
-        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 text-xs">
+        {/* Pengaturan sesuai form yang dipilih. Form yang pengaturannya ada di bawah (Excel, foto, papan nama) tidak memakai kotak ini. */}
+        <div className={`p-4 grid ${FORMS_WITH_OWN_SETTINGS.includes(activeForm) ? 'hidden' : ''} grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 text-xs`}>
           {activeForm === 'WASTE_RECAP_FORM' ? (
             <>
               <div>
@@ -2064,7 +2087,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 </div>
               )}
             </>
-          ) : activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' && activeForm !== 'ITEM_TAG_LABEL' ? (
+          ) : activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'PIC_HANDOVER' && activeForm !== 'EXPENSE_RECEIPT_BATCH' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' && activeForm !== 'ITEM_TAG_LABEL' ? (
             <div>
               <label htmlFor="print-date" className={LABEL_CLS}>{activeForm === 'SOP_STORAGE' || activeForm === 'DO_DONT_POSTER' ? 'Tanggal berlaku' : 'Tanggal dokumen'}</label>
               <input id="print-date" type="date" value={printDate} onChange={e => setPrintDate(e.target.value || localDateIso())} className={INPUT_CLS} />
@@ -2539,8 +2562,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 </div>
               </div>
             </>
-          ) : (
-            /* activeForm === 'RACK_LABEL' */
+          ) : activeForm === 'RACK_LABEL' ? (
             <>
               <div>
                 <label className={LABEL_CLS}>Gudang</label>
@@ -2628,7 +2650,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 </div>
               </div>
             </>
-          )}
+          ) : null}
 
           {activeForm === 'RECEIVING_FORM' && (
             <div className="sm:col-span-2">
@@ -2723,11 +2745,11 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       <div
         id="print-area"
         className={`bg-white rounded-xl border border-slate-200 max-w-4xl mx-auto font-sans text-slate-900 overflow-x-auto ${
-          activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' || activeForm === 'RACK_SIGN' || activeForm === 'PHOTO_DOC' || activeForm === 'ITEM_TAG_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'p-4 sm:p-6' : 'p-5 sm:p-10'
+          activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' || activeForm === 'RACK_SIGN' || activeForm === 'PHOTO_DOC' || activeForm === 'PIC_HANDOVER' || activeForm === 'EXPENSE_RECEIPT_BATCH' || activeForm === 'ITEM_TAG_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'p-4 sm:p-6' : 'p-5 sm:p-10'
         }`}
       >
         {/* Kop dokumen, sama dengan Laporan Pengeluaran. Label dan plakat dicetak tanpa kop; SOP memasang kop di tiap lembarnya. */}
-        {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'SOP_STORAGE' && activeForm !== 'DO_DONT_POSTER' && (
+        {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'PIC_HANDOVER' && activeForm !== 'EXPENSE_RECEIPT_BATCH' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'SOP_STORAGE' && activeForm !== 'DO_DONT_POSTER' && (
           <div className="border-b-2 border-slate-900 pb-3 mb-5 flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
               <SppgLogo size="lg" variant="color" showText={false} />
@@ -3130,6 +3152,10 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
         )}
 
         {activeForm === 'PHOTO_DOC' && <PhotoDocSheet onCountChange={setPhotoPageCount} />}
+
+        {activeForm === 'PIC_HANDOVER' && <PicHandoverDoc onCountChange={setPicReceiptCount} />}
+
+        {activeForm === 'EXPENSE_RECEIPT_BATCH' && <ExpenseReceiptDoc onCountChange={setExpenseReceiptCount} />}
 
         {activeForm === 'RACK_SIGN' && (
           <RackSignDoc racks={allWarehouseRacks} items={items} customRacks={customRacks} onCountChange={setSignCount} />

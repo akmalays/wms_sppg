@@ -140,3 +140,10 @@
   60% { transform: scale(1.03); opacity: 1; }
   100% { transform: scale(1); }
 }
+
+/* Cetak: hanya isi aplikasi (#root) yang dicetak. Elemen lain yang ditempel langsung ke <body>,
+   seperti daftar pilihan SearchPicker atau sisipan ekstensi browser, tidak ikut menjadi blok di halaman terakhir. */
+@media print {
+  html, body { background: #ffffff !important; }
+  body > *:not(#root) { display: none !important; }
+}
