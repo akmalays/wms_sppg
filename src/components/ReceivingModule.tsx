@@ -70,6 +70,8 @@ import { LoadingOverlay } from './common/LoadingOverlay';
 import { ActionDropdown } from './common/ActionDropdown';
 import { angkaTerbilang } from './ToolsPrintModule';
 import { generateNextPoNumber } from '../utils/poNumberGenerator';
+import { isAwaitingDelivery, isMenuPurchaseOrder } from '../utils/poSupplier';
+import { useConfirm } from '../context/ConfirmContext';
 import { localDateIso } from '../utils/localDate';
 import { isCountableUnit, normalizeQtyForUnit } from '../utils/unitConversion';
 import { suggestDryLocation } from '../utils/warehouseRacks';
@@ -320,10 +322,40 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
 
   // Nota yang dibuat dari penerimaan barang (relatedReceivingId) stoknya sudah masuk,
   // jadi tidak ikut antrean timbang supaya stok tidak bertambah dua kali.
-  const pendingPOs = useMemo(
-    () => purchaseOrders.filter(po => po.status !== 'SELESAI' && !po.relatedReceivingId),
-    [purchaseOrders]
-  );
+  // Antrean hanya berisi pesanan dari menu. Nota yang dibuat dari penerimaan atau belanja yang sudah terjadi
+  // bukan barang yang ditunggu, jadi tidak boleh muncul sebagai "Terlambat".
+  const menuPOs = useMemo(() => purchaseOrders.filter(isMenuPurchaseOrder), [purchaseOrders]);
+  const pendingPOs = useMemo(() => purchaseOrders.filter(isAwaitingDelivery), [purchaseOrders]);
+  const askConfirm = useConfirm();
+
+  const latePOs = useMemo(() => {
+    const todayIso = localDateIso();
+    return pendingPOs.filter(po => {
+      const d = (po.deliveryDate || po.date || '').slice(0, 10);
+      return d !== '' && d < todayIso;
+    });
+  }, [pendingPOs]);
+
+  const handleClosePos = async (pos: PurchaseOrderNota[]) => {
+    if (pos.length === 0) return;
+    const ok = await askConfirm({
+      title: pos.length === 1 ? `Tutup PO ${pos[0].poNumber}?` : `Tutup ${pos.length} PO yang lewat jadwal?`,
+      message:
+        'Pakai ini bila barangnya sudah dicatat lewat Terima Barang atau belanja langsung, atau memang tidak jadi datang. ' +
+        'PO ditandai selesai tanpa menambah stok dan pengeluaran, dan tidak lagi muncul di antrean.' +
+        (pos.length > 1 ? `\n\n${pos.map(p => `- ${p.poNumber} · ${p.supplierName}`).join('\n')}` : ''),
+      confirmText: 'Tutup PO',
+      variant: 'warning',
+    });
+    if (!ok) return;
+    const closed = warehouseDb.closePurchaseOrdersWithoutReceiving(
+      pos.map(p => p.id),
+      'barang sudah dicatat lewat jalur lain atau tidak jadi datang',
+      currentUser
+    );
+    refreshAll();
+    toast.success(`${closed} PO ditutup dan tidak lagi ditunggu.`, 'PO Ditutup');
+  };
 
   const handleOpenWeighModal = (po: PurchaseOrderNota) => {
     setSelectedPoForWeighing(po);
@@ -1538,7 +1570,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                 Timbang bahan saat datang. Stok gudang dan laporan pengeluaran terisi otomatis.
               </p>
             </div>
-            {purchaseOrders.length > pendingPOs.length && (
+            {menuPOs.length > pendingPOs.length && (
               <button
                 type="button"
                 onClick={() => setShowAllPoQueue(prev => !prev)}
@@ -1547,21 +1579,21 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
               >
                 {showAllPoQueue
                   ? 'Sembunyikan PO yang sudah diterima'
-                  : `Tampilkan juga PO yang sudah diterima (${purchaseOrders.length - pendingPOs.length})`}
+                  : `Tampilkan juga PO yang sudah diterima (${menuPOs.length - pendingPOs.length})`}
               </button>
             )}
           </div>
 
           <div className="p-4 sm:p-5">
             {(() => {
-              const displayedQueue = [...(showAllPoQueue ? purchaseOrders : pendingPOs)].sort((a, b) => {
-                const aDone = a.status === 'SELESAI' || a.relatedReceivingId ? 1 : 0;
-                const bDone = b.status === 'SELESAI' || b.relatedReceivingId ? 1 : 0;
+              const displayedQueue = [...(showAllPoQueue ? menuPOs : pendingPOs)].sort((a, b) => {
+                const aDone = isAwaitingDelivery(a) ? 0 : 1;
+                const bDone = isAwaitingDelivery(b) ? 0 : 1;
                 if (aDone !== bDone) return aDone - bDone;
                 return (a.deliveryDate || a.date).localeCompare(b.deliveryDate || b.date);
               });
 
-              if (purchaseOrders.length === 0) {
+              if (menuPOs.length === 0) {
                 return (
                   <div className="py-8 text-center">
                     <p className="text-xs font-semibold text-slate-800">Belum ada PO.</p>
@@ -1591,12 +1623,27 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
               }
 
               return (
+                <div className="space-y-3">
+                {latePOs.length > 1 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-950">
+                    <p>
+                      <span className="font-semibold">{latePOs.length} PO sudah lewat jadwal kirim.</span> Bila barangnya sudah dicatat
+                      lewat Terima Barang atau tidak jadi datang, tutup supaya tidak ditunggu lagi.
+                    </p>
+                    <button type="button" onClick={() => handleClosePos(latePOs)} className={`${BTN_SECONDARY} shrink-0`}>
+                      Tutup {latePOs.length} PO lewat jadwal
+                    </button>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {displayedQueue.map(po => {
-                    const isFinished = po.status === 'SELESAI' || !!po.relatedReceivingId;
+                    const isFinished = !isAwaitingDelivery(po);
                     const targetDeliveryDate = (po.deliveryDate || po.date || '').slice(0, 10);
                     const isToday = targetDeliveryDate === today;
                     const isLate = !isFinished && targetDeliveryDate !== '' && targetDeliveryDate < today;
+                    const lateDays = isLate
+                      ? Math.round((new Date(today).getTime() - new Date(targetDeliveryDate).getTime()) / 86400000)
+                      : 0;
                     // Only PO generated from a menu plan carries the menu name in its notes
                     const menuMatch = po.notes?.match(/^PO dibuat otomatis dari Perencanaan Menu:\s*(.+)$/i);
                     const cleanMenuName = menuMatch ? menuMatch[1].trim() : '';
@@ -1633,7 +1680,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                                   : 'bg-slate-100 text-slate-700'
                               }`}
                             >
-                              {isFinished ? 'Sudah diterima' : isToday ? 'Datang hari ini' : isLate ? 'Terlambat' : 'Dijadwalkan'}
+                              {isFinished ? 'Sudah diterima' : isToday ? 'Datang hari ini' : isLate ? `Lewat ${lateDays} hari` : 'Dijadwalkan'}
                             </span>
                           </div>
 
@@ -1677,25 +1724,36 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                               <span className="font-semibold text-amber-700">Harga belum diisi</span>
                             )}
                           </div>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {!isFinished && (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenWeighModal(po)}
-                                className={`${BTN_PRIMARY} flex-1`}
-                              >
-                                <Scale className="w-4 h-4" />
-                                Timbang & terima
-                              </button>
-                            )}
+                          {/* Aksi utama satu baris penuh; aksi pendukung di baris bawahnya supaya label tidak terlipat */}
+                          {!isFinished && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenWeighModal(po)}
+                              className={`${BTN_PRIMARY} w-full`}
+                            >
+                              <Scale className="w-4 h-4" />
+                              Timbang & terima
+                            </button>
+                          )}
+                          <div className="flex items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => handleOpenExistingNota(po)}
-                              className={`${BTN_SECONDARY} ${isFinished ? 'flex-1' : ''}`}
+                              className={`${BTN_SECONDARY} flex-1`}
                             >
                               <FileText className="w-4 h-4 text-slate-500" />
                               Lihat nota
                             </button>
+                            {isLate && (
+                              <button
+                                type="button"
+                                onClick={() => handleClosePos([po])}
+                                title="Barang sudah dicatat lewat jalur lain atau tidak jadi datang"
+                                className={`${BTN_SECONDARY} flex-1`}
+                              >
+                                Tutup
+                              </button>
+                            )}
                             {/* Hapus dibuat ikon saja agar tidak bersaing dengan aksi utama; label tetap ada untuk pembaca layar */}
                             {!isFinished && (
                               <button
@@ -1713,6 +1771,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                       </div>
                     );
                   })}
+                </div>
                 </div>
               );
             })()}

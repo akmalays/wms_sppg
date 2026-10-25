@@ -38,7 +38,8 @@ import {
   REAL_EMPLOYEES,
   REAL_ATTENDANCE_LOGS,
 } from './realSeedData';
-import { getRomanMonth, getYearFromDate } from '../utils/poNumberGenerator';
+import { getRomanMonth, getYearFromDate, generateNextPoNumber } from '../utils/poNumberGenerator';
+import { isPendingSupplierPo } from '../utils/poSupplier';
 import { angkaTerbilang } from '../utils/numberToWords';
 import { removeFromPrintPool } from '../utils/poPrintPool';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -1614,6 +1615,47 @@ export function mapSupabaseToSupplier(row: any): Supplier {
   };
 }
 
+// Kolom penaut PO (menu asal, penerimaan, belanja, supplier). Ditambahkan migrasi 20261023000000;
+// sebelum migrasi dijalankan, PO tetap disimpan tanpa kolom ini (lihat upsertPurchaseOrderRow).
+let poLinkColumnsMissing = false;
+
+function poLinkColumns(po: PurchaseOrderNota) {
+  return {
+    supplier_id: po.supplierId || null,
+    supplier_address: po.supplierAddress || null,
+    supplier_contact: po.supplierContact || null,
+    delivery_terms: po.deliveryTerms || null,
+    delivery_time: po.deliveryTime || null,
+    related_menu_order_id: po.relatedMenuOrderId || null,
+    related_receiving_id: po.relatedReceivingId || null,
+    related_expense_ids: po.relatedExpenseIds && po.relatedExpenseIds.length > 0 ? po.relatedExpenseIds : null,
+  };
+}
+
+// Baris dari Supabase tidak memuat semua isian PO (mis. diskon, terbilang, atau tautan bila migrasi belum
+// dijalankan). Pantulan realtime dari simpanan sendiri tidak boleh menghapus isian yang ada di perangkat ini.
+export function mergePoKeepingLocalFields(local: PurchaseOrderNota, fromCloud: PurchaseOrderNota): PurchaseOrderNota {
+  const merged: PurchaseOrderNota = { ...local, ...fromCloud };
+  (Object.keys(local) as (keyof PurchaseOrderNota)[]).forEach(key => {
+    if (fromCloud[key] === undefined || fromCloud[key] === '') (merged as any)[key] = local[key];
+  });
+  return merged;
+}
+
+/** Simpan PO ke Supabase. Bila kolom penaut belum ada (migrasi belum dijalankan), ulangi tanpa kolom itu. */
+export async function upsertPurchaseOrderRow(po: PurchaseOrderNota): Promise<{ error: any }> {
+  if (!poLinkColumnsMissing) {
+    const res = await supabase.from('purchase_orders').upsert({ ...mapPoToSupabase(po), ...poLinkColumns(po) });
+    const missingColumn = res.error && (res.error.code === 'PGRST204' || /column/i.test(res.error.message || ''));
+    if (!missingColumn) return res;
+    poLinkColumnsMissing = true;
+    console.warn(
+      'Kolom penaut PO belum ada di Supabase. Jalankan migrasi 20261023000000_purchase_orders_links.sql supaya PO tidak kehilangan tautan menu dan penerimaan.'
+    );
+  }
+  return supabase.from('purchase_orders').upsert(mapPoToSupabase(po));
+}
+
 export function mapPoToSupabase(po: PurchaseOrderNota) {
   return {
     id: po.id,
@@ -1640,7 +1682,15 @@ export function mapSupabaseToPo(row: any): PurchaseOrderNota {
     poNumber: row.po_number,
     date: row.date,
     deliveryDate: row.delivery_date || row.date,
+    supplierId: row.supplier_id || undefined,
     supplierName: row.supplier_name,
+    supplierAddress: row.supplier_address || undefined,
+    supplierContact: row.supplier_contact || undefined,
+    deliveryTerms: row.delivery_terms || undefined,
+    deliveryTime: row.delivery_time || undefined,
+    relatedMenuOrderId: row.related_menu_order_id || undefined,
+    relatedReceivingId: row.related_receiving_id || undefined,
+    relatedExpenseIds: Array.isArray(row.related_expense_ids) && row.related_expense_ids.length > 0 ? row.related_expense_ids : undefined,
     status: row.status as any,
     items: Array.isArray(row.items) ? row.items : [],
     subtotal: Number(row.subtotal) || 0,
@@ -2684,7 +2734,7 @@ class WarehouseDatabase {
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
           const po = mapSupabaseToPo(payload.new);
           const idx = this.purchaseOrders.findIndex(p => p.id === po.id);
-          if (idx >= 0) this.purchaseOrders[idx] = po;
+          if (idx >= 0) this.purchaseOrders[idx] = mergePoKeepingLocalFields(this.purchaseOrders[idx], po);
           else this.purchaseOrders.unshift(po);
         } else if (payload.eventType === 'DELETE') {
           this.purchaseOrders = this.purchaseOrders.filter(p => p.id !== payload.old.id);
@@ -4077,7 +4127,7 @@ class WarehouseDatabase {
 
     // Direct save to Supabase Cloud
     if (isSupabaseConfigured()) {
-      supabase.from('purchase_orders').upsert(mapPoToSupabase(updatedPoData)).then(({ error }) => {
+      upsertPurchaseOrderRow(updatedPoData).then(({ error }) => {
         if (error) console.error('Supabase PO upsert error:', error);
       });
     }
@@ -4094,6 +4144,23 @@ class WarehouseDatabase {
       );
     }
     return updatedPoData;
+  }
+
+  /**
+   * Tutup PO yang barangnya sudah dicatat lewat jalur lain (Terima Barang manual, belanja langsung) atau tidak
+   * jadi datang. Status jadi SELESAI tanpa menambah stok atau pengeluaran, supaya tidak lagi ditunggu.
+   */
+  public closePurchaseOrdersWithoutReceiving(ids: string[], reason: string, user: User): number {
+    let closed = 0;
+    ids.forEach(id => {
+      const po = this.purchaseOrders.find(p => p.id === id);
+      if (!po || po.status === 'SELESAI') return;
+      const note = `Ditutup tanpa timbang: ${reason}`;
+      this.savePurchaseOrder({ ...po, status: 'SELESAI', notes: po.notes ? `${po.notes}\n${note}` : note }, user);
+      this.logAudit(user, 'PO_UPDATED', 'RECEIVING', po.id, `PO ${po.poNumber} (${po.supplierName}) ditutup tanpa timbang: ${reason}`);
+      closed += 1;
+    });
+    return closed;
   }
 
   public deletePurchaseOrder(id: string, user?: User): boolean {
@@ -4130,6 +4197,70 @@ class WarehouseDatabase {
       this.logAudit(user, 'PO_DELETED', 'RECEIVING', id, `Menghapus Nota Pesanan ${deleted.poNumber}`);
     }
     return true;
+  }
+
+  /**
+   * PO "Supplier menyusul": setelah supplier tiap bahan dipilih saat barang datang, PO dipecah jadi satu PO
+   * per supplier. PO asal dipakai untuk supplier pertama (nomornya tetap), supplier lain mendapat nomor PO baru.
+   * Bahan tanpa supplier (tidak datang) ikut PO supplier pertama.
+   */
+  public splitPendingSupplierPurchaseOrder(
+    poId: string,
+    supplierByPoiId: Record<string, string>,
+    user: User
+  ): { success: boolean; message: string; pos?: PurchaseOrderNota[] } {
+    const po = this.purchaseOrders.find(p => p.id === poId);
+    if (!po) return { success: false, message: 'Nota Pesanan (PO) tidak ditemukan.' };
+    if (!isPendingSupplierPo(po)) return { success: true, message: '', pos: [po] };
+    if (po.status === 'SELESAI') return { success: false, message: `PO ${po.poNumber} sudah diterima sebelumnya.` };
+
+    const groups = new Map<string, PurchaseOrderItem[]>();
+    const unassigned: PurchaseOrderItem[] = [];
+    po.items.forEach(it => {
+      const name = (supplierByPoiId[it.id] || '').trim();
+      if (!name) {
+        unassigned.push(it);
+        return;
+      }
+      const key = name.toLowerCase();
+      groups.set(key, [...(groups.get(key) || []), it]);
+    });
+    if (groups.size === 0) return { success: false, message: 'Pilih supplier untuk bahan yang datang.' };
+
+    const totals = (items: PurchaseOrderItem[]) => {
+      const subtotal = items.reduce((sum, it) => sum + (it.subtotal || it.quantity * it.unitPrice), 0);
+      return { subtotal, grandTotal: subtotal, terbilang: angkaTerbilang(subtotal) };
+    };
+    const result: PurchaseOrderNota[] = [];
+    let first = true;
+    groups.forEach(items => {
+      const supplier = this.quickAddSupplier(supplierByPoiId[items[0].id].trim(), user);
+      const groupItems = first ? [...items, ...unassigned] : items;
+      const next: PurchaseOrderNota = {
+        ...po,
+        id: first ? po.id : uniqueId('PO'),
+        poNumber: first ? po.poNumber : generateNextPoNumber(this.purchaseOrders, po.date),
+        supplierId: supplier.id,
+        supplierName: supplier.name,
+        supplierContact: supplier.phone ? `${supplier.phone} (${supplier.contactPerson || 'PIC'})` : '',
+        supplierAddress: supplier.address || '',
+        supplierPic: supplier.contactPerson || 'Pihak Rekanan',
+        items: groupItems,
+        ...totals(groupItems),
+        createdAt: first ? po.createdAt : new Date().toISOString(),
+      };
+      // Simpan satu per satu supaya nomor PO berikutnya dihitung dari PO yang baru dibuat
+      result.push(this.savePurchaseOrder(next, user));
+      first = false;
+    });
+    this.logAudit(
+      user,
+      'PO_UPDATED',
+      'RECEIVING',
+      po.id,
+      `PO ${po.poNumber} (${po.supplierName}) dipecah per supplier: ${result.map(r => `${r.poNumber} ${r.supplierName}`).join(', ')}`
+    );
+    return { success: true, message: '', pos: result };
   }
 
   public receiveAndCompletePurchaseOrder(
@@ -4351,12 +4482,11 @@ class WarehouseDatabase {
 
     this.purchaseOrders[poIndex] = updatedPo;
 
-    const poRow = mapPoToSupabase(updatedPo);
     this.pushCloudSequence([
       ...cloudSteps,
       [`simpan rincian penerimaan ${receivingId}`, () => supabase.from('receiving_lines').insert(lineRows)],
       ...txSteps,
-      [`tandai ${po.poNumber} selesai`, () => supabase.from('purchase_orders').upsert(poRow)],
+      [`tandai ${po.poNumber} selesai`, () => upsertPurchaseOrderRow(updatedPo)],
     ]);
 
     // 5. Sync back to Menu Orders poArrivalItems if applicable

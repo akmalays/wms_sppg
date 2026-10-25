@@ -29,6 +29,7 @@ import {
 import { ReceivingDetailModal } from './ReceivingDetailModal';
 import { DailyChecklistWidget } from './DailyChecklistWidget';
 import { localDateIso } from '../utils/localDate';
+import { isAwaitingDelivery, isMenuPurchaseOrder } from '../utils/poSupplier';
 
 interface DashboardViewProps {
   onNavigate: (tab: string) => void;
@@ -242,7 +243,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
 
     // 2. Dari Dokumen Purchase Order resmi untuk hari ini
     const todaysPos = purchaseOrders.filter(
-      po => po.deliveryDate === today || po.date === today
+      // Hanya pesanan dari menu; nota dari penerimaan/belanja yang sudah terjadi bukan barang yang ditunggu
+      po => isMenuPurchaseOrder(po) && (po.deliveryDate === today || po.date === today)
     );
 
     todaysPos.forEach(po => {
@@ -250,7 +252,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
         const key = `${it.name.toLowerCase()}_${(po.supplierName || '').toLowerCase()}`;
         if (!itemKeySet.has(key)) {
           itemKeySet.add(key);
-          const isFinished = po.status === 'SELESAI';
+          const isFinished = !isAwaitingDelivery(po);
           list.push({
             id: `official-po-${po.id}-${idx}`,
             itemName: it.name,

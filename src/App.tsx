@@ -237,6 +237,7 @@ const MainLayout: React.FC = () => {
           {(activeTab === 'menu_orders' || activeTab === 'menu_portions') && (
             <MenuOrdersModule
               onNavigate={setActiveTab}
+              onPrintPoSheet={date => openPrintForm({ form: 'DAILY_PO_SHEET', date })}
               initialView={activeTab === 'menu_portions' ? 'PORSI_HARI_INI' : undefined}
             />
           )}
@@ -263,6 +264,7 @@ const MainLayout: React.FC = () => {
               initialSupplierId={printTarget?.supplierId}
               initialLabelSearch={printTarget?.labelSearch}
               initialReceivingId={printTarget?.receivingId}
+              initialDate={printTarget?.date}
             />
           )}
 

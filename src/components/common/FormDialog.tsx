@@ -10,7 +10,7 @@ export const TABLE_INPUT =
 /** Tombol "Batal" di footer dialog. */
 export const BTN_GHOST = 'border-transparent bg-transparent hover:bg-slate-200/70';
 export const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
-const BTN_SOLID = `inline-flex items-center justify-center gap-1.5 px-4 min-h-[44px] sm:min-h-[34px] rounded-lg disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer ${FOCUS_RING}`;
+const BTN_SOLID = `inline-flex whitespace-nowrap items-center justify-center gap-1.5 px-4 min-h-[44px] sm:min-h-[34px] rounded-lg disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer ${FOCUS_RING}`;
 export const BTN_PRIMARY = `${BTN_SOLID} bg-emerald-700 hover:bg-emerald-800`;
 const BTN_DANGER = `${BTN_SOLID} bg-rose-700 hover:bg-rose-800`;
 export const BTN_SECONDARY = `inline-flex whitespace-nowrap items-center justify-center gap-1.5 px-3 min-h-[44px] sm:min-h-[32px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-medium cursor-pointer ${FOCUS_RING}`;

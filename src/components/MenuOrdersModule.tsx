@@ -8,6 +8,7 @@ import {warehouseDb, APP_SETTINGS_CHANGED_EVENT, signerName} from "../db/storage
 import {getBeneficiaryRecap, saveBeneficiaryRecap, getBeneficiaryRecapsInRange, getAllBeneficiaryRecapDates, getLastBeneficiaryRecapBefore, parseBeneficiaryRecapText, DailyBeneficiaryRecap, SkipReason, SKIP_REASON_LABEL} from "../utils/beneficiaryRecap";
 import {MenuOrder, MenuOrderStatus, MenuIngredientReq, MenuPoArrivalItem, SchoolBeneficiaryAllocation, PurchaseOrderNota, PurchaseOrderItem} from "../types/warehouse";
 import {generateNextPoNumber} from "../utils/poNumberGenerator";
+import {PENDING_SUPPLIER_NAME, poDateForMenu} from "../utils/poSupplier";
 import {angkaTerbilang} from "./ToolsPrintModule";
 import {
   UtensilsCrossed,
@@ -270,11 +271,13 @@ const sortBySession = (a: MenuOrder, b: MenuOrder) => MEAL_SESSION_ORDER[a.mealS
 
 interface MenuOrdersModuleProps {
   onNavigate?: (tab: string) => void;
+  /** Buka Form PO Harian di Cetak Form untuk tanggal kedatangan barang. */
+  onPrintPoSheet?: (date: string) => void;
   /** Dibuka dari pengingat Ringkasan: langsung ke Penerima Manfaat → Porsi hari ini. */
   initialView?: "PORSI_HARI_INI";
 }
 
-export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, initialView}) => {
+export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, onPrintPoSheet, initialView}) => {
   const {currentUser} = useAuth();
   const toast = useToast();
   const askConfirm = useConfirm();
@@ -1458,7 +1461,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
     }
 
     setSelectedPoOrderId(targetOrder.id);
-    setPoFormDate(targetOrder.poDate || "H-1");
+    setPoFormDate(/^\d{4}-\d{2}-\d{2}$/.test(targetOrder.poDate || "") ? targetOrder.poDate! : poDateForMenu(targetOrder.date));
 
     setPoFocusRow(null);
     if (targetOrder.poArrivalItems && targetOrder.poArrivalItems.length > 0) {
@@ -1655,7 +1658,19 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
     return "";
   };
 
+  // Klik ganda saat dialog konfirmasi terbuka bisa menerbitkan PO dua kali sebelum PO pertama tersimpan
+  const issuingPoRef = useRef(false);
   const handleSaveAndGenerateOfficialPo = async () => {
+    if (issuingPoRef.current) return;
+    issuingPoRef.current = true;
+    try {
+      await issueOfficialPo();
+    } finally {
+      issuingPoRef.current = false;
+    }
+  };
+
+  const issueOfficialPo = async () => {
     if (!selectedPoOrderId) {
       toast.warning("Pilih menu tujuan untuk PO ini.", "Menu Belum Dipilih");
       return;
@@ -1690,11 +1705,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
         toast.warning("Tambahkan minimal 1 item bahan untuk membuat PO.", "Item PO Kosong");
         return;
       }
+      // Supplier boleh kosong: bahannya masuk PO "Supplier menyusul" dan suppliernya dipilih saat barang datang
       const noSupplier = validItems.filter((it) => !it.supplier);
-      if (noSupplier.length > 0) {
-        toast.error(`Pilih supplier untuk: ${noSupplier.map((it) => it.itemName).join(", ")}.`, "Supplier Belum Diisi");
-        return;
-      }
       const duplicates = findDuplicatePoRows(validItems);
       if (duplicates.length > 0) {
         toast.error(`${duplicates.join(", ")} tercatat lebih dari sekali untuk supplier yang sama. Gabungkan jumlahnya di satu baris.`, "Bahan Dobel");
@@ -1713,7 +1725,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
         return;
       }
 
-      const poTargetDate = targetOrder.date || localDateIso(new Date());
+      // Bahan dipesan dan datang H-1 dari tanggal menu, kecuali tanggal PO diubah manual
+      const poTargetDate = /^\d{4}-\d{2}-\d{2}$/.test(poFormDate.trim()) ? poFormDate.trim() : poDateForMenu(targetOrder.date);
       const existingPOs = warehouseDb.getPurchaseOrders();
 
       // Bahan sama ke supplier sama di tanggal yang sama dari menu lain: bisa disengaja (beda sesi), jadi hanya diingatkan.
@@ -1728,10 +1741,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
         return hit ? [`${item.itemName} (${hit.poNumber})`] : [];
       });
       const newSupplierNames = Array.from(
-        new Map(validItems.filter((it) => !findMasterSupplier(it.supplier)).map((it) => [normName(it.supplier), it.supplier.trim()])).values(),
+        new Map(validItems.filter((it) => it.supplier && !findMasterSupplier(it.supplier)).map((it) => [normName(it.supplier), it.supplier.trim()])).values(),
       );
 
-      if (overlaps.length > 0 || newSupplierNames.length > 0) {
+      if (overlaps.length > 0 || newSupplierNames.length > 0 || noSupplier.length > 0) {
         const ok = await askConfirm({
           title: "Periksa sebelum terbit PO",
           message: (
@@ -1740,6 +1753,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
                 <p>
                   Sudah dipesan ke supplier yang sama untuk {formatIndonesianDate(poTargetDate)} lewat menu lain: <strong>{overlaps.join(", ")}</strong>.
                   Lanjutkan hanya bila memang perlu pesanan terpisah.
+                </p>
+              )}
+              {noSupplier.length > 0 && (
+                <p>
+                  Belum ada supplier untuk <strong>{noSupplier.map((it) => it.itemName).join(", ")}</strong>. Bahan ini masuk PO
+                  &quot;{PENDING_SUPPLIER_NAME}&quot;; suppliernya dipilih saat barang datang dan ditimbang.
                 </p>
               )}
               {newSupplierNames.length > 0 && (
@@ -1774,7 +1793,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
       // 2. Kelompokkan bahan berdasarkan nama Supplier untuk dibuatkan PO resmi
       const itemsBySupplier = new Map<string, MenuPoArrivalItem[]>();
       validItems.forEach((item) => {
-        const suppName = supplierByName.get(normName(item.supplier))?.name || item.supplier;
+        const suppName = item.supplier ? supplierByName.get(normName(item.supplier))?.name || item.supplier : PENDING_SUPPLIER_NAME;
         if (!itemsBySupplier.has(suppName)) {
           itemsBySupplier.set(suppName, []);
         }
@@ -1820,7 +1839,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
           supplierId: suppObj?.id,
           supplierName: suppObj?.name || supplierName,
           supplierContact: suppObj?.phone ? `${suppObj.phone} (${suppObj.contactPerson || "PIC"})` : "",
-          supplierAddress: suppObj?.address || "Malang, Jawa Timur",
+          supplierAddress: suppObj?.address || (supplierName === PENDING_SUPPLIER_NAME ? "" : "Malang, Jawa Timur"),
           paymentMethod: "TRANSFER",
           bankInfo: suppObj ? `Transfer Bank Rekening Resmi ${suppObj.name}` : "",
           status: "DISETUJUI",
@@ -2506,6 +2525,19 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, i
 
                           {openOrderMenuId === order.id && (
                             <div className="absolute right-0 top-full mt-1.5 w-44 bg-white rounded-xl border border-slate-200 py-1 z-30 animate-in fade-in zoom-in-95 duration-100 text-xs">
+                              {onPrintPoSheet && warehouseDb.getPurchaseOrdersByMenuOrderId(order.id).length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenOrderMenuId(null);
+                                    const po = warehouseDb.getPurchaseOrdersByMenuOrderId(order.id)[0];
+                                    onPrintPoSheet(po.deliveryDate || po.date);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer">
+                                  <Printer className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                  <span>Cetak form PO</span>
+                                </button>
+                              )}
                               {poItems.length > 0 && (
                                 <button
                                   type="button"

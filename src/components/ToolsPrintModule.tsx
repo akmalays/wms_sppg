@@ -20,6 +20,7 @@ import { RackSignDoc } from './print/RackSignDoc';
 import { PhotoDocSheet } from './print/PhotoDocSheet';
 import { PicHandoverDoc } from './print/PicHandoverDoc';
 import { ExpenseReceiptDoc } from './print/ExpenseReceiptDoc';
+import { DailyPoSheetDoc } from './print/DailyPoSheetDoc';
 import {
   Printer,
   FileText,
@@ -59,7 +60,7 @@ import { SppgLogo } from './SppgLogo';
 import { QrSvg } from './common/QrSvg';
 import { localDateIso } from '../utils/localDate';
 
-export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'NONFOOD_ISSUE_FORM' | 'WASTE_RECAP_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'RACK_SIGN' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE' | 'DO_DONT_POSTER' | 'PHOTO_DOC' | 'PIC_HANDOVER' | 'EXPENSE_RECEIPT_BATCH';
+export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'NONFOOD_ISSUE_FORM' | 'WASTE_RECAP_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'RACK_SIGN' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE' | 'DO_DONT_POSTER' | 'PHOTO_DOC' | 'PIC_HANDOVER' | 'EXPENSE_RECEIPT_BATCH' | 'DAILY_PO_SHEET';
 
 export interface ItemTagData {
   uniqueKey: string;
@@ -102,6 +103,7 @@ const formatLongDate = (iso: string) => {
 };
 
 const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
+  { id: 'DAILY_PO_SHEET', label: 'Form PO Harian', hint: 'Satu lembar berisi semua bahan PO yang datang di satu tanggal (untuk menu besok), per supplier. Hasil timbang, pengantar, dan tanda tangan penerima diisi tangan.' },
   { id: 'RECEIVING_FORM', label: 'BA Penerimaan', hint: 'Berita acara serah terima barang dari supplier.' },
   { id: 'OPNAME_SHEET', label: 'Lembar Opname', hint: 'Lembar hitung fisik stok per lokasi.' },
   { id: 'BIN_CARD', label: 'Kartu Stok', hint: 'Kartu gantung di rak untuk mencatat keluar-masuk satu barang.' },
@@ -135,6 +137,7 @@ export const FORM_CATEGORIES: FormCategoryGroup[] = [
     label: 'Formulir Gudang & Dapur',
     shortLabel: 'Formulir Gudang',
     forms: [
+      'DAILY_PO_SHEET',
       'RECEIVING_FORM',
       'KITCHEN_REQUISITION',
       'NONFOOD_ISSUE_FORM',
@@ -177,7 +180,7 @@ export const FORM_CATEGORIES: FormCategoryGroup[] = [
   },
 ];
 
-const FORMS_WITH_OWN_SETTINGS: FormType[] = ['RACK_SIGN', 'PIC_HANDOVER', 'EXPENSE_RECEIPT_BATCH', 'PHOTO_DOC'];
+const FORMS_WITH_OWN_SETTINGS: FormType[] = ['RACK_SIGN', 'PIC_HANDOVER', 'EXPENSE_RECEIPT_BATCH', 'PHOTO_DOC', 'DAILY_PO_SHEET'];
 
 export const getCategoryForForm = (formId: FormType): FormCategory => {
   const cat = FORM_CATEGORIES.find(c => c.forms.includes(formId));
@@ -527,6 +530,8 @@ export interface PrintTarget {
   labelSearch?: string;
   /** BA Penerimaan langsung untuk dokumen ini (dari detail penerimaan). */
   receivingId?: string;
+  /** Tanggal untuk Form PO Harian (dari Perencanaan Menu). */
+  date?: string;
 }
 
 export interface ToolsPrintModuleProps {
@@ -534,6 +539,7 @@ export interface ToolsPrintModuleProps {
   initialSupplierId?: string;
   initialLabelSearch?: string;
   initialReceivingId?: string;
+  initialDate?: string;
 }
 
 export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
@@ -541,6 +547,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   initialSupplierId,
   initialLabelSearch,
   initialReceivingId,
+  initialDate,
 }) => {
   const { currentUser } = useAuth();
 
@@ -554,6 +561,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const [photoPageCount, setPhotoPageCount] = useState(0);
   const [picReceiptCount, setPicReceiptCount] = useState(0);
   const [expenseReceiptCount, setExpenseReceiptCount] = useState(0);
+  const [poSheetCount, setPoSheetCount] = useState(0);
   const [wasteMonth, setWasteMonth] = useState<string>(() => localDateIso().slice(0, 7));
   const [wasteDateMode, setWasteDateMode] = useState<'AUTO' | 'BLANK'>('AUTO');
   const [wasteBlankDays, setWasteBlankDays] = useState(10);
@@ -1869,6 +1877,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       ? picReceiptCount
       : activeForm === 'EXPENSE_RECEIPT_BATCH'
       ? expenseReceiptCount
+      : activeForm === 'DAILY_PO_SHEET'
+      ? poSheetCount
       : null;
   const printDisabled = printCount === 0 || (activeForm === 'BIN_CARD' && !selectedItem);
 
@@ -1979,7 +1989,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             className="inline-flex items-center justify-center gap-2 px-4 min-h-[44px] sm:min-h-[36px] rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
           >
             <Printer className="w-4 h-4" />
-            {printCount === null ? 'Cetak' : `Cetak ${printCount} ${activeForm === 'PIC_HANDOVER' ? 'kuitansi' : activeForm === 'EXPENSE_RECEIPT_BATCH' ? 'kuitansi' : activeForm === 'PHOTO_DOC' ? 'lembar' : activeForm === 'RACK_SIGN' ? 'papan nama' : activeForm === 'RACK_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'plakat' : activeForm === 'ITEM_TAG_LABEL' ? 'tag' : 'label'}`}
+            {printCount === null ? 'Cetak' : `Cetak ${printCount} ${activeForm === 'DAILY_PO_SHEET' ? 'form' : activeForm === 'PIC_HANDOVER' ? 'kuitansi' : activeForm === 'EXPENSE_RECEIPT_BATCH' ? 'kuitansi' : activeForm === 'PHOTO_DOC' ? 'lembar' : activeForm === 'RACK_SIGN' ? 'papan nama' : activeForm === 'RACK_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'plakat' : activeForm === 'ITEM_TAG_LABEL' ? 'tag' : 'label'}`}
           </button>
         </div>
 
@@ -2745,11 +2755,11 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       <div
         id="print-area"
         className={`bg-white rounded-xl border border-slate-200 max-w-4xl mx-auto font-sans text-slate-900 overflow-x-auto ${
-          activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' || activeForm === 'RACK_SIGN' || activeForm === 'PHOTO_DOC' || activeForm === 'PIC_HANDOVER' || activeForm === 'EXPENSE_RECEIPT_BATCH' || activeForm === 'ITEM_TAG_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'p-4 sm:p-6' : 'p-5 sm:p-10'
+          activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' || activeForm === 'RACK_SIGN' || activeForm === 'PHOTO_DOC' || activeForm === 'PIC_HANDOVER' || activeForm === 'EXPENSE_RECEIPT_BATCH' || activeForm === 'DAILY_PO_SHEET' || activeForm === 'ITEM_TAG_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'p-4 sm:p-6' : 'p-5 sm:p-10'
         }`}
       >
         {/* Kop dokumen, sama dengan Laporan Pengeluaran. Label dan plakat dicetak tanpa kop; SOP memasang kop di tiap lembarnya. */}
-        {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'PIC_HANDOVER' && activeForm !== 'EXPENSE_RECEIPT_BATCH' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'SOP_STORAGE' && activeForm !== 'DO_DONT_POSTER' && (
+        {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'PIC_HANDOVER' && activeForm !== 'EXPENSE_RECEIPT_BATCH' && activeForm !== 'DAILY_PO_SHEET' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'SOP_STORAGE' && activeForm !== 'DO_DONT_POSTER' && (
           <div className="border-b-2 border-slate-900 pb-3 mb-5 flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
               <SppgLogo size="lg" variant="color" showText={false} />
@@ -3156,6 +3166,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
         {activeForm === 'PIC_HANDOVER' && <PicHandoverDoc onCountChange={setPicReceiptCount} />}
 
         {activeForm === 'EXPENSE_RECEIPT_BATCH' && <ExpenseReceiptDoc onCountChange={setExpenseReceiptCount} />}
+
+        {activeForm === 'DAILY_PO_SHEET' && <DailyPoSheetDoc initialDate={initialDate} onCountChange={setPoSheetCount} />}
 
         {activeForm === 'RACK_SIGN' && (
           <RackSignDoc racks={allWarehouseRacks} items={items} customRacks={customRacks} onCountChange={setSignCount} />
