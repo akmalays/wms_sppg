@@ -2,12 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useConfirm } from '../context/ConfirmContext';
 import {
   PurchaseOrderNota,
+  PurchaseOrderItem,
   WeighedPoItemInput,
   ReceivePoMetadata,
 } from '../types/warehouse';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb } from '../db/storage';
-import { RotateCcw } from 'lucide-react';
+import { Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { DialogShell, FIELD_INPUT, FIELD_LABEL, TABLE_INPUT, BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './common/FormDialog';
 import { localDateIso } from '../utils/localDate';
@@ -22,6 +23,11 @@ interface PoReceivingWeighingModalProps {
 }
 
 const MENU_NOTE_PREFIX = 'PO dibuat otomatis dari Perencanaan Menu:';
+// Bahan yang ikut datang padahal tidak ada di PO; dikenali dari awalan id barisnya
+const EXTRA_PREFIX = 'POI-LUAR-';
+const EXTRA_NOTE = 'Di luar PO';
+const UNIT_OPTIONS = ['Kg', 'Gram', 'Liter', 'Pcs', 'Pack', 'Dus', 'Ikat', 'Butir', 'Roll', 'Botol', 'Jerigen', 'Pouch', 'Rim'];
+const isExtraItem = (it: WeighedPoItemInput) => it.poiId.startsWith(EXTRA_PREFIX);
 
 export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> = ({
   isOpen,
@@ -40,15 +46,16 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
   );
   const [generalNotes, setGeneralNotes] = useState('');
   const [courierName, setCourierName] = useState('');
-  // PO "Supplier menyusul": supplier tiap bahan dipilih saat barang datang (indeks baris -> nama supplier)
-  const [supplierByIndex, setSupplierByIndex] = useState<Record<number, string>>({});
+  // Supplier yang benar-benar mengirim tiap bahan (id baris -> nama). Diisi supplier rencana di PO;
+  // PO "Supplier menyusul" diisi petugas saat barang datang.
+  const [supplierByPoiId, setSupplierByPoiId] = useState<Record<string, string>>({});
   const [autoUpdateStock, setAutoUpdateStock] = useState(true);
   const [autoRecordExpense, setAutoRecordExpense] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [items, setItems] = useState<WeighedPoItemInput[]>([]);
   // Raw text typed in the qty box, so "0," / "0.5" can be typed without being reset to empty
-  const [qtyDrafts, setQtyDrafts] = useState<Record<number, string>>({});
+  const [qtyDrafts, setQtyDrafts] = useState<Record<string, string>>({});
 
   // Initialize data when modal opens
   useEffect(() => {
@@ -63,7 +70,9 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
       setDeliveryNoteNo('');
       setGeneralNotes('');
       setCourierName('');
-      setSupplierByIndex({});
+      setSupplierByPoiId(
+        isPendingSupplierPo(po) ? {} : Object.fromEntries((po.items || []).map(it => [it.id, po.supplierName]))
+      );
       // A nota made from existing expense rows already has its spending recorded
       setAutoRecordExpense(!(po.relatedExpenseIds && po.relatedExpenseIds.length > 0));
 
@@ -125,20 +134,45 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
   }, [items]);
 
   const supplierOptions = useMemo(() => warehouseDb.getSuppliers().filter(s => s.isActive !== false).map(s => s.name), [isOpen]);
+  const masterItems = useMemo(() => warehouseDb.getItems().filter(i => i.isActive !== false), [isOpen]);
 
   if (!isOpen || !po) return null;
 
   const isAlreadyReceived = po.status === 'SELESAI';
   const pendingSupplier = isPendingSupplierPo(po);
+  const plannedSupplier = pendingSupplier ? '' : po.supplierName;
 
   const updateItem = (index: number, patch: (it: WeighedPoItemInput) => Partial<WeighedPoItemInput>) => {
     setItems(prev => prev.map((it, i) => (i === index ? { ...it, ...patch(it) } : it)));
   };
 
+  const handleAddExtraItem = () => {
+    const poiId = `${EXTRA_PREFIX}${Date.now()}`;
+    setItems(prev => [
+      ...prev,
+      { poiId, name: '', category: 'Bahan Makanan', unit: 'Kg', targetQty: 0, actualQty: 0, unitPrice: 0, subtotal: 0, notes: EXTRA_NOTE, conditionNote: '' },
+    ]);
+    setSupplierByPoiId(prev => ({ ...prev, [poiId]: plannedSupplier }));
+  };
+
+  // Nama yang cocok dengan Master Barang ikut membawa id, kategori, dan satuan stoknya
+  const handleExtraNameChange = (index: number, name: string) => {
+    const master = masterItems.find(m => m.name.trim().toLowerCase() === name.trim().toLowerCase());
+    updateItem(index, () =>
+      master ? { name, itemId: master.id, category: master.category, unit: master.baseUnit } : { name, itemId: undefined }
+    );
+  };
+
+  const handleRemoveExtraItem = (index: number) => {
+    const poiId = items[index].poiId;
+    setItems(prev => prev.filter((_, i) => i !== index));
+    setSupplierByPoiId(({ [poiId]: _removed, ...rest }) => rest);
+  };
+
   const handleQtyChange = (index: number, raw: string) => {
     // Petugas biasa mengetik desimal pakai koma (0,5 kg)
     const cleaned = raw.replace(',', '.').replace(/[^0-9.]/g, '');
-    setQtyDrafts(prev => ({ ...prev, [index]: raw }));
+    setQtyDrafts(prev => ({ ...prev, [items[index].poiId]: raw }));
     const newQty = Math.max(0, parseFloat(cleaned) || 0);
     updateItem(index, it => ({ actualQty: newQty, subtotal: Math.round(newQty * it.unitPrice) }));
   };
@@ -147,7 +181,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
   const handleQtyBlur = (index: number) => {
     setQtyDrafts(prev => {
       const next = { ...prev };
-      delete next[index];
+      delete next[items[index].poiId];
       return next;
     });
     updateItem(index, it => {
@@ -166,13 +200,12 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
   };
 
   const handleCopyTargetToActual = () => {
-    const updated = items.map(it => ({
-      ...it,
-      actualQty: it.targetQty,
-      subtotal: Math.round(it.targetQty * it.unitPrice),
-    }));
+    // Bahan di luar PO tidak punya jumlah pesanan, jadi angkanya dibiarkan
+    const updated = items.map(it =>
+      isExtraItem(it) ? it : { ...it, actualQty: it.targetQty, subtotal: Math.round(it.targetQty * it.unitPrice) }
+    );
     setItems(updated);
-    setQtyDrafts({});
+    setQtyDrafts(prev => Object.fromEntries(Object.entries(prev).filter(([poiId]) => poiId.startsWith(EXTRA_PREFIX))));
     toast.showToast('Jumlah diterima diisi sama dengan jumlah PO. Periksa lagi bahan yang beratnya berbeda.', 'info');
   };
 
@@ -190,7 +223,13 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
       return;
     }
 
-    const zeroItems = items.filter(it => it.actualQty <= 0);
+    const extras = items.filter(isExtraItem);
+    if (extras.some(it => !it.name.trim() || it.actualQty <= 0)) {
+      toast.error('Bahan di luar PO perlu nama dan jumlah diterima. Hapus barisnya bila tidak jadi.', 'Bahan Tambahan Belum Lengkap');
+      return;
+    }
+
+    const zeroItems = items.filter(it => !isExtraItem(it) && it.actualQty <= 0);
     if (zeroItems.length === items.length) {
       toast.error('Isi jumlah diterima hasil timbang, minimal untuk satu bahan.', 'Belum Ditimbang');
       return;
@@ -231,12 +270,10 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
       if (!confirmUnpriced) return;
     }
 
-    if (pendingSupplier) {
-      const noSupplier = items.filter((it, idx) => it.actualQty > 0 && !(supplierByIndex[idx] || '').trim());
-      if (noSupplier.length > 0) {
-        toast.error(`Pilih supplier untuk: ${noSupplier.map(it => it.name).join(', ')}.`, 'Supplier Belum Diisi');
-        return;
-      }
+    const noSupplier = items.filter(it => it.actualQty > 0 && !(supplierByPoiId[it.poiId] || '').trim());
+    if (noSupplier.length > 0) {
+      toast.error(`Pilih supplier untuk: ${noSupplier.map(it => it.name).join(', ')}.`, 'Supplier Belum Diisi');
+      return;
     }
 
     setIsSubmitting(true);
@@ -248,21 +285,31 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
         return { ...it, actualQty: qty, subtotal: Math.round(qty * it.unitPrice) };
       });
 
-      // PO "Supplier menyusul" dipecah dulu jadi PO per supplier, supaya stok, pengeluaran, dan nota
-      // tercatat atas nama supplier yang benar-benar mengirim.
-      let targets: PurchaseOrderNota[] = [po];
-      if (pendingSupplier) {
-        const assignments: Record<string, string> = {};
-        items.forEach((it, idx) => {
-          if (supplierByIndex[idx]?.trim()) assignments[it.poiId] = supplierByIndex[idx].trim();
-        });
-        const split = warehouseDb.splitPendingSupplierPurchaseOrder(po.id, assignments, currentUser);
-        if (!split.success || !split.pos) {
-          toast.error(split.message || 'Gagal memecah PO per supplier.', 'Gagal Menyimpan');
-          return;
-        }
-        targets = split.pos;
+      // PO dipecah dulu per supplier yang benar-benar mengirim (bila beda dari rencana atau ada bahan di luar PO),
+      // supaya stok, pengeluaran, dan nota tercatat atas nama supplier itu. Bahan yang tidak datang tidak
+      // diberi supplier, jadi ikut PO asal.
+      const assignments: Record<string, string> = {};
+      finalItems.forEach(it => {
+        const name = (supplierByPoiId[it.poiId] || '').trim();
+        if (it.actualQty > 0 && name) assignments[it.poiId] = name;
+      });
+      const extraItems: PurchaseOrderItem[] = finalItems.filter(isExtraItem).map(it => ({
+        id: it.poiId,
+        itemId: it.itemId,
+        name: it.name.trim(),
+        category: it.category,
+        quantity: it.actualQty,
+        unit: it.unit,
+        unitPrice: it.unitPrice,
+        subtotal: it.subtotal,
+        notes: EXTRA_NOTE,
+      }));
+      const split = warehouseDb.splitPurchaseOrderBySupplier(po.id, assignments, currentUser, extraItems);
+      if (!split.success || !split.pos) {
+        toast.error(split.message || 'Gagal memecah PO per supplier.', 'Gagal Menyimpan');
+        return;
       }
+      const targets = split.pos;
 
       const received: PurchaseOrderNota[] = [];
       const warnings: string[] = [];
@@ -270,7 +317,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
         const poiIds = new Set(target.items.map(i => i.id));
         const result = warehouseDb.receiveAndCompletePurchaseOrder(
           target.id,
-          finalItems.filter(it => poiIds.has(it.poiId)),
+          finalItems.filter(it => poiIds.has(it.poiId)).map(it => ({ ...it, name: it.name.trim() })),
           {
             poId: target.id,
             supplierId: target.supplierId,
@@ -296,7 +343,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
         toast.warning(warnings.join(' '), 'Stok Perlu Dicek');
       } else if (received.length > 1) {
         toast.success(
-          `Penerimaan disimpan dan dipecah jadi ${received.length} PO: ${received.map(r => `${r.poNumber} (${r.supplierName})`).join(', ')}. Nota tiap supplier bisa dicetak dari Barang Masuk.`,
+          `Penerimaan disimpan sebagai ${received.length} PO per supplier: ${received.map(r => `${r.poNumber} (${r.supplierName})`).join(', ')}. Nota tiap supplier bisa dicetak dari Barang Masuk.`,
           'Penerimaan Berhasil'
         );
       } else {
@@ -335,7 +382,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
       }
       description={
         <>
-          {po.supplierName}
+          {pendingSupplier ? po.supplierName : `Supplier rencana: ${po.supplierName}`}
           {menuName && <> · Menu: {menuName}</>}
         </>
       }
@@ -433,14 +480,22 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
               <div>
                 <h3 className="text-sm font-semibold text-slate-800">Hasil timbang ({items.length} bahan)</h3>
                 <p className="text-[11px] text-slate-600">
-                  Isi jumlah sesuai timbangan. Bahan yang tidak datang biarkan kosong.
-                  {pendingSupplier && ' Pilih supplier tiap bahan; PO otomatis dipecah per supplier saat disimpan.'}
+                  Isi jumlah sesuai timbangan. Bahan yang tidak datang biarkan kosong.{' '}
+                  {pendingSupplier
+                    ? 'Pilih supplier tiap bahan; PO otomatis dipecah per supplier saat disimpan.'
+                    : 'Ganti supplier bila yang mengirim berbeda; PO otomatis dipecah per supplier saat disimpan.'}
                 </p>
               </div>
-              <button type="button" onClick={handleCopyTargetToActual} className={`${BTN_SECONDARY} self-start sm:self-auto`}>
-                <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-                Samakan dengan PO
-              </button>
+              <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                <button type="button" onClick={handleCopyTargetToActual} className={BTN_SECONDARY}>
+                  <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                  Samakan dengan PO
+                </button>
+                <button type="button" onClick={handleAddExtraItem} className={BTN_SECONDARY}>
+                  <Plus className="w-3.5 h-3.5 text-slate-500" />
+                  Bahan di luar PO
+                </button>
+              </div>
             </div>
 
             <div className="border border-slate-200 rounded-xl overflow-x-auto">
@@ -448,7 +503,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                 <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
                   <tr>
                     <th className="py-2 px-3 font-semibold min-w-[180px]">Bahan</th>
-                    {pendingSupplier && <th className="py-2 px-3 font-semibold min-w-[170px]">Supplier</th>}
+                    <th className="py-2 px-3 font-semibold min-w-[170px]">Supplier</th>
                     <th className="py-2 px-3 font-semibold text-right w-24">Dipesan</th>
                     <th className="py-2 px-3 font-semibold w-36">Diterima</th>
                     <th className="py-2 px-3 font-semibold w-24">Selisih</th>
@@ -463,42 +518,87 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                     const stockUnit = stockUnitByIndex[idx];
                     const needsConversion = !!stockUnit && unitKey(stockUnit) !== unitKey(it.unit);
                     const convertedQty = needsConversion ? convertQty(it.actualQty, it.unit, stockUnit!) : null;
+                    const extra = isExtraItem(it);
+                    const label = it.name.trim() || 'bahan di luar PO';
+                    const supplier = supplierByPoiId[it.poiId] || '';
+                    const supplierMissing = it.actualQty > 0 && !supplier.trim();
+                    const supplierChanged =
+                      !extra && !!plannedSupplier && !!supplier.trim() && supplier.trim().toLowerCase() !== plannedSupplier.trim().toLowerCase();
                     return (
-                      <tr key={it.poiId || idx} className="align-top">
+                      <tr key={it.poiId || idx} className={`align-top ${extra ? 'bg-sky-50/40' : ''}`}>
                         <td className="py-2 px-3">
-                          <div className="font-semibold text-slate-900">{it.name}</div>
-                          <div className="text-[11px] text-slate-600">{it.category}</div>
+                          {extra ? (
+                            <div className="flex items-start gap-1.5">
+                              <div className="flex-1 min-w-0">
+                                <input
+                                  type="text"
+                                  list="rcv-item-options"
+                                  value={it.name}
+                                  onChange={e => handleExtraNameChange(idx, e.target.value)}
+                                  placeholder="Nama bahan"
+                                  aria-label="Nama bahan di luar PO"
+                                  aria-invalid={!it.name.trim() || undefined}
+                                  className={`${TABLE_INPUT} ${!it.name.trim() ? 'border-amber-400' : ''}`}
+                                />
+                                <div className="mt-1 text-[11px] font-medium text-sky-800">{EXTRA_NOTE}</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExtraItem(idx)}
+                                aria-label={`Hapus baris ${label}`}
+                                title="Hapus baris"
+                                className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[30px] sm:min-h-[30px] text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="font-semibold text-slate-900">{it.name}</div>
+                              <div className="text-[11px] text-slate-600">{it.category}</div>
+                            </>
+                          )}
                         </td>
-                        {pendingSupplier && (
-                          <td className="py-2 px-3">
-                            <input
-                              type="text"
-                              list="rcv-supplier-options"
-                              value={supplierByIndex[idx] || ''}
-                              onChange={e => setSupplierByIndex(prev => ({ ...prev, [idx]: e.target.value }))}
-                              placeholder="Pilih atau ketik"
-                              aria-label={`Supplier ${it.name}`}
-                              aria-invalid={(it.actualQty > 0 && !(supplierByIndex[idx] || '').trim()) || undefined}
-                              className={`${TABLE_INPUT} ${it.actualQty > 0 && !(supplierByIndex[idx] || '').trim() ? 'border-amber-400' : ''}`}
-                            />
-                          </td>
-                        )}
+                        <td className="py-2 px-3">
+                          <input
+                            type="text"
+                            list="rcv-supplier-options"
+                            value={supplier}
+                            onChange={e => setSupplierByPoiId(prev => ({ ...prev, [it.poiId]: e.target.value }))}
+                            placeholder="Pilih atau ketik"
+                            aria-label={`Supplier ${label}`}
+                            aria-invalid={supplierMissing || undefined}
+                            className={`${TABLE_INPUT} ${supplierMissing ? 'border-amber-400' : ''}`}
+                          />
+                          {supplierChanged && <div className="mt-1 text-[11px] text-amber-800">Rencana: {plannedSupplier}</div>}
+                        </td>
                         <td className="py-2 px-3 text-right font-mono text-slate-700 whitespace-nowrap pt-3">
-                          {it.targetQty.toLocaleString('id-ID')} {it.unit}
+                          {extra ? <span className="text-slate-500">-</span> : `${it.targetQty.toLocaleString('id-ID')} ${it.unit}`}
                         </td>
                         <td className="py-2 px-3">
                           <div className="flex items-center gap-1.5">
                             <input
                               type="text"
                               inputMode="decimal"
-                              value={qtyDrafts[idx] ?? (it.actualQty ? String(it.actualQty) : '')}
+                              value={qtyDrafts[it.poiId] ?? (it.actualQty ? String(it.actualQty) : '')}
                               onChange={e => handleQtyChange(idx, e.target.value)}
                               onBlur={() => handleQtyBlur(idx)}
                               placeholder="0"
-                              aria-label={`Jumlah diterima ${it.name}`}
+                              aria-label={`Jumlah diterima ${label}`}
                               className={`${TABLE_INPUT} w-20 text-right font-mono`}
                             />
-                            <span className="text-slate-600 whitespace-nowrap">{it.unit}</span>
+                            {extra ? (
+                              <input
+                                type="text"
+                                list="rcv-unit-options"
+                                value={it.unit}
+                                onChange={e => updateItem(idx, () => ({ unit: e.target.value }))}
+                                aria-label={`Satuan ${label}`}
+                                className={`${TABLE_INPUT} w-16`}
+                              />
+                            ) : (
+                              <span className="text-slate-600 whitespace-nowrap">{it.unit}</span>
+                            )}
                           </div>
                           {needsConversion && autoUpdateStock && (
                             convertedQty === null ? (
@@ -509,7 +609,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                           )}
                         </td>
                         <td className="py-2 px-3 pt-3 whitespace-nowrap">
-                          {it.actualQty <= 0 ? (
+                          {it.actualQty <= 0 || extra ? (
                             <span className="text-slate-500">-</span>
                           ) : diff === 0 ? (
                             <span className="text-slate-700">Sesuai</span>
@@ -529,7 +629,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                               step="100"
                               value={it.unitPrice || ''}
                               onChange={e => handlePriceChange(idx, parseFloat(e.target.value) || 0)}
-                              aria-label={`Harga satuan ${it.name}`}
+                              aria-label={`Harga satuan ${label}`}
                               aria-invalid={it.unitPrice <= 0 || undefined}
                               className={`${TABLE_INPUT} pl-7 text-right font-mono ${it.unitPrice <= 0 ? 'border-amber-400' : ''}`}
                             />
@@ -545,7 +645,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                             placeholder="Mis. segar, 2 ikat layu"
                             value={it.conditionNote || ''}
                             onChange={e => handleConditionChange(idx, e.target.value)}
-                            aria-label={`Kondisi ${it.name}`}
+                            aria-label={`Kondisi ${label}`}
                             className={TABLE_INPUT}
                           />
                         </td>
@@ -554,11 +654,15 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                   })}
                 </tbody>
               </table>
-              {pendingSupplier && (
-                <datalist id="rcv-supplier-options">
-                  {supplierOptions.map(name => <option key={name} value={name} />)}
-                </datalist>
-              )}
+              <datalist id="rcv-supplier-options">
+                {supplierOptions.map(name => <option key={name} value={name} />)}
+              </datalist>
+              <datalist id="rcv-item-options">
+                {masterItems.map(m => <option key={m.id} value={m.name} />)}
+              </datalist>
+              <datalist id="rcv-unit-options">
+                {UNIT_OPTIONS.map(u => <option key={u} value={u} />)}
+              </datalist>
             </div>
             {calculations.weighedCount > 0 && calculations.diffCost !== 0 && calculations.totalTargetCost > 0 && (
               <p className={`text-[11px] ${calculations.diffCost > 0 ? 'text-amber-800' : 'text-slate-700'}`}>

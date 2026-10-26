@@ -65,6 +65,15 @@ export function saveBeneficiaryRecap(
   return recap;
 }
 
+/** Hapus rekap satu tanggal (mis. salah input). Bulannya tetap ada agar tidak diunggah ulang dari cache browser lain. */
+export function deleteBeneficiaryRecap(date: string, user?: User): void {
+  const key = monthKey(date);
+  const month = warehouseDb.getAppSetting<MonthRecaps>(key, {});
+  if (!month[date]) return;
+  const { [date]: _removed, ...rest } = month;
+  warehouseDb.saveAppSetting(key, rest, user);
+}
+
 /** Rekap terakhir sebelum tanggal ini (maks. 60 hari ke belakang), sebagai angka awal hari baru. */
 export function getLastBeneficiaryRecapBefore(date: string): DailyBeneficiaryRecap | undefined {
   const [y, m, d] = date.split('-').map(Number);

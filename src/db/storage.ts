@@ -4200,23 +4200,26 @@ class WarehouseDatabase {
   }
 
   /**
-   * PO "Supplier menyusul": setelah supplier tiap bahan dipilih saat barang datang, PO dipecah jadi satu PO
-   * per supplier. PO asal dipakai untuk supplier pertama (nomornya tetap), supplier lain mendapat nomor PO baru.
-   * Bahan tanpa supplier (tidak datang) ikut PO supplier pertama.
+   * Supplier di PO hanya rencana; yang dicatat adalah supplier yang benar-benar mengirim tiap bahan saat datang,
+   * termasuk bahan tambahan di luar PO. Bila semua bahan datang dari supplier rencana tanpa tambahan, PO tidak
+   * berubah. Selain itu PO dipecah jadi satu PO per supplier: PO asal dipakai untuk supplier rencana (pada PO
+   * "Supplier menyusul": supplier pertama) dan nomornya tetap, supplier lain mendapat nomor PO baru.
+   * Bahan tanpa supplier (tidak datang) ikut PO asal.
    */
-  public splitPendingSupplierPurchaseOrder(
+  public splitPurchaseOrderBySupplier(
     poId: string,
     supplierByPoiId: Record<string, string>,
-    user: User
+    user: User,
+    extraItems: PurchaseOrderItem[] = []
   ): { success: boolean; message: string; pos?: PurchaseOrderNota[] } {
     const po = this.purchaseOrders.find(p => p.id === poId);
     if (!po) return { success: false, message: 'Nota Pesanan (PO) tidak ditemukan.' };
-    if (!isPendingSupplierPo(po)) return { success: true, message: '', pos: [po] };
     if (po.status === 'SELESAI') return { success: false, message: `PO ${po.poNumber} sudah diterima sebelumnya.` };
 
+    const plannedKey = isPendingSupplierPo(po) ? '' : po.supplierName.trim().toLowerCase();
     const groups = new Map<string, PurchaseOrderItem[]>();
     const unassigned: PurchaseOrderItem[] = [];
-    po.items.forEach(it => {
+    [...po.items, ...extraItems].forEach(it => {
       const name = (supplierByPoiId[it.id] || '').trim();
       if (!name) {
         unassigned.push(it);
@@ -4226,39 +4229,52 @@ class WarehouseDatabase {
       groups.set(key, [...(groups.get(key) || []), it]);
     });
     if (groups.size === 0) return { success: false, message: 'Pilih supplier untuk bahan yang datang.' };
+    if (groups.size === 1 && groups.has(plannedKey) && extraItems.length === 0) return { success: true, message: '', pos: [po] };
 
     const totals = (items: PurchaseOrderItem[]) => {
       const subtotal = items.reduce((sum, it) => sum + (it.subtotal || it.quantity * it.unitPrice), 0);
       return { subtotal, grandTotal: subtotal, terbilang: angkaTerbilang(subtotal) };
     };
+    // Supplier rencana didahulukan agar nomor PO asal tetap miliknya
+    const ordered = [...groups.entries()].sort(([a], [b]) => Number(b === plannedKey) - Number(a === plannedKey));
     const result: PurchaseOrderNota[] = [];
-    let first = true;
-    groups.forEach(items => {
-      const supplier = this.quickAddSupplier(supplierByPoiId[items[0].id].trim(), user);
+    ordered.forEach(([key, items], i) => {
+      const first = i === 0;
       const groupItems = first ? [...items, ...unassigned] : items;
+      // Supplier rencana memakai data kontak di PO apa adanya
+      const supplierFields =
+        key === plannedKey
+          ? {}
+          : (() => {
+              const supplier = this.quickAddSupplier(supplierByPoiId[items[0].id].trim(), user);
+              return {
+                supplierId: supplier.id,
+                supplierName: supplier.name,
+                supplierContact: supplier.phone ? `${supplier.phone} (${supplier.contactPerson || 'PIC'})` : '',
+                supplierAddress: supplier.address || '',
+                supplierPic: supplier.contactPerson || 'Pihak Rekanan',
+              };
+            })();
       const next: PurchaseOrderNota = {
         ...po,
         id: first ? po.id : uniqueId('PO'),
         poNumber: first ? po.poNumber : generateNextPoNumber(this.purchaseOrders, po.date),
-        supplierId: supplier.id,
-        supplierName: supplier.name,
-        supplierContact: supplier.phone ? `${supplier.phone} (${supplier.contactPerson || 'PIC'})` : '',
-        supplierAddress: supplier.address || '',
-        supplierPic: supplier.contactPerson || 'Pihak Rekanan',
+        ...supplierFields,
         items: groupItems,
         ...totals(groupItems),
         createdAt: first ? po.createdAt : new Date().toISOString(),
       };
       // Simpan satu per satu supaya nomor PO berikutnya dihitung dari PO yang baru dibuat
       result.push(this.savePurchaseOrder(next, user));
-      first = false;
     });
     this.logAudit(
       user,
       'PO_UPDATED',
       'RECEIVING',
       po.id,
-      `PO ${po.poNumber} (${po.supplierName}) dipecah per supplier: ${result.map(r => `${r.poNumber} ${r.supplierName}`).join(', ')}`
+      `PO ${po.poNumber} (${po.supplierName}) disesuaikan dengan supplier yang mengirim` +
+        (extraItems.length > 0 ? `, ${extraItems.length} bahan di luar PO` : '') +
+        `: ${result.map(r => `${r.poNumber} ${r.supplierName}`).join(', ')}`
     );
     return { success: true, message: '', pos: result };
   }

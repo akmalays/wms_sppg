@@ -5,7 +5,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import {useAuth} from "../context/AuthContext";
 import {useToast} from "../context/ToastContext";
 import {warehouseDb, APP_SETTINGS_CHANGED_EVENT, signerName} from "../db/storage";
-import {getBeneficiaryRecap, saveBeneficiaryRecap, getBeneficiaryRecapsInRange, getAllBeneficiaryRecapDates, getLastBeneficiaryRecapBefore, parseBeneficiaryRecapText, DailyBeneficiaryRecap, SkipReason, SKIP_REASON_LABEL} from "../utils/beneficiaryRecap";
+import {getBeneficiaryRecap, saveBeneficiaryRecap, deleteBeneficiaryRecap, getBeneficiaryRecapsInRange, getAllBeneficiaryRecapDates, getLastBeneficiaryRecapBefore, parseBeneficiaryRecapText, DailyBeneficiaryRecap, SkipReason, SKIP_REASON_LABEL} from "../utils/beneficiaryRecap";
 import {MenuOrder, MenuOrderStatus, MenuIngredientReq, MenuPoArrivalItem, SchoolBeneficiaryAllocation, PurchaseOrderNota, PurchaseOrderItem} from "../types/warehouse";
 import {generateNextPoNumber} from "../utils/poNumberGenerator";
 import {PENDING_SUPPLIER_NAME, poDateForMenu} from "../utils/poSupplier";
@@ -895,6 +895,28 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
       `Porsi ${formatIndonesianDate(beneficiarySelectedDate)} tersimpan: ${totalPortions.toLocaleString("id-ID")} porsi` +
         (skippedCount > 0 ? `, ${skippedCount} sekolah tidak dikirim.` : "."),
     );
+  };
+
+  // Salah input: rekap tanggal ini serta rincian dan target porsi semua menu tanggal itu dikosongkan.
+  const handleDeleteDailyPortions = async () => {
+    const ordersWithAllocations = dayOrders.filter((o) => o.beneficiaryAllocations?.length || o.targetPortions);
+    if (!(await askConfirm({
+      title: "Hapus porsi tanggal ini?",
+      message:
+        `Porsi per sekolah ${formatIndonesianDate(beneficiarySelectedDate)} dihapus` +
+        (ordersWithAllocations.length > 0 ? `, termasuk target porsi ${ordersWithAllocations.length} menu tanggal itu (jadi 0)` : "") +
+        ". Tabel kembali ke porsi standar sampai porsi dicatat lagi.",
+      confirmText: "Hapus",
+      variant: "danger",
+    }))) return;
+    deleteBeneficiaryRecap(beneficiarySelectedDate, currentUser);
+    ordersWithAllocations.forEach((o) =>
+      warehouseDb.saveMenuOrder({...o, beneficiaryAllocations: [], targetPortions: 0, totalBeneficiaries: 0}, currentUser, false),
+    );
+    setIsDailyDraftDirty(false);
+    setRecapVersion((v) => v + 1);
+    setOrders(warehouseDb.getMenuOrders());
+    toast.success(`Porsi ${formatIndonesianDate(beneficiarySelectedDate)} dihapus.`);
   };
 
   // Status kirim berlaku per tanggal, jadi disimpan di alokasi order hari itu, bukan di data master sekolah.
@@ -2403,29 +2425,25 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
           {/* Daily Card Feed (Mudah Dibaca & Ergonomis) */}
           {filteredOrders.length === 0 ? (
-            <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-xs text-slate-500 space-y-3">
+            <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-xs text-slate-600 space-y-3">
               <UtensilsCrossed className="w-10 h-10 text-slate-300 mx-auto" />
               <div>
                 <h4 className="text-sm font-bold text-slate-800 mb-1">
                   Belum ada jadwal menu untuk {periodType === "DAILY" ? formatIndonesianDate(selectedDailyDate) : effectiveDateRange.label}
                 </h4>
-                <p className="text-slate-500 max-w-md mx-auto">Anda dapat langsung mencatat menu dan pesanan bahan PO untuk tanggal ini, atau kembali melihat jadwal hari ini.</p>
+                <p className="max-w-md mx-auto">
+                  Catat menunya di sini, lalu pesanan bahan (PO) bisa dibuat dari menu itu.
+                </p>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => handleOpenCreateMenuModal(selectedDailyDate)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white transition-colors cursor-pointer">
+                <button type="button" onClick={() => handleOpenCreateMenuModal(selectedDailyDate)} className={BTN_PRIMARY}>
                   <Plus className="w-4 h-4" />
-                  <span>Input Menu untuk Tanggal Ini</span>
+                  Catat menu
                 </button>
                 {selectedDailyDate !== todayStr && (
-                  <button
-                    type="button"
-                    onClick={handleJumpToToday}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer">
-                    <Calendar className="w-4 h-4 text-emerald-700" />
-                    <span>Lihat Hari Ini ({formatShortDate(todayStr)})</span>
+                  <button type="button" onClick={handleJumpToToday} className={BTN_SECONDARY}>
+                    <Calendar className="w-4 h-4" />
+                    Lihat hari ini ({formatShortDate(todayStr)})
                   </button>
                 )}
               </div>
@@ -2985,70 +3003,81 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                         )}
                       </div>
 
-                      {(
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button type="button" onClick={() => setRecapPasteText("")} className={BTN_SECONDARY} title="Tempel rekap penerima manfaat dari WhatsApp atau Excel">
-                            <ClipboardPaste className="w-4 h-4" />
-                            Tempel rekap
-                          </button>
-                          <button type="button" onClick={handleScaleDailyPortionsProportional} className={BTN_SECONDARY} title="Ubah total porsi, tiap sekolah ikut menyesuaikan">
-                            Sesuaikan total
-                          </button>
-                          <button type="button" onClick={handleResetDailyAllocationsToMaster} className={BTN_SECONDARY} title="Kembalikan porsi tiap sekolah ke porsi standar">
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            Porsi standar
-                          </button>
+                      {/* Alat ubah angka dipisah garis dari Hapus/Simpan agar tombol yang mengubah data tersimpan tidak tertukar */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button type="button" onClick={() => setRecapPasteText("")} className={BTN_SECONDARY} title="Tempel rekap penerima manfaat dari WhatsApp atau Excel">
+                          <ClipboardPaste className="w-4 h-4" />
+                          Tempel rekap
+                        </button>
+                        <button type="button" onClick={handleScaleDailyPortionsProportional} className={BTN_SECONDARY} title="Ubah total porsi, tiap sekolah ikut menyesuaikan">
+                          Sesuaikan total
+                        </button>
+                        <button type="button" onClick={handleResetDailyAllocationsToMaster} className={BTN_SECONDARY} title="Kembalikan porsi tiap sekolah ke porsi standar">
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Porsi standar
+                        </button>
+                        <div className="flex items-center gap-2 sm:pl-2 sm:border-l sm:border-slate-200">
+                          {(savedRecap || dayOrders.some((o) => o.beneficiaryAllocations?.length || o.targetPortions)) && (
+                            <button
+                              type="button"
+                              onClick={handleDeleteDailyPortions}
+                              className={`inline-flex whitespace-nowrap items-center justify-center gap-1.5 px-3 min-h-[44px] sm:min-h-[32px] rounded-lg border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-medium cursor-pointer ${FOCUS_RING}`}
+                              title="Hapus porsi yang sudah tersimpan untuk tanggal ini (mis. salah input)">
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Hapus
+                            </button>
+                          )}
                           <button type="button" onClick={handleSaveDailyAllocations} disabled={!isDailyDraftDirty} className={BTN_PRIMARY}>
                             <Save className="w-4 h-4" />
                             Simpan
                           </button>
                         </div>
-                      )}
+                      </div>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 pt-3 border-t border-slate-200">
-                      {currentOrder ? (
-                        <div className="min-w-0">
-                          <div className="text-sm font-bold text-slate-900">{formatIndonesianDate(beneficiarySelectedDate)}</div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-200">
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-slate-900">{formatIndonesianDate(beneficiarySelectedDate)}</div>
+                        {currentOrder ? (
                           <div className="text-xs text-slate-600 mt-0.5 truncate">
                             {currentOrder.mealSession} · {currentOrder.menuTitle}
                           </div>
+                        ) : (
+                          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-700">
+                            <span>Belum ada menu. Porsi tetap bisa dicatat, tetapi surat jalan perlu menu.</span>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCreateMenuModal(beneficiarySelectedDate)}
+                              className={`inline-flex items-center gap-1 min-h-[44px] sm:min-h-0 rounded font-semibold text-emerald-800 hover:underline cursor-pointer ${FOCUS_RING}`}>
+                              <Plus className="w-3.5 h-3.5" />
+                              Catat menu
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="shrink-0 sm:text-right">
+                        <div className="flex items-baseline gap-1.5 sm:justify-end">
+                          <span className="text-xl font-bold text-slate-900 tabular-nums">{totalDraftPortions.toLocaleString("id-ID")}</span>
+                          <span className="text-xs text-slate-600">porsi dikirim</span>
                         </div>
-                      ) : (
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                          <p className="text-xs text-slate-700">
-                            <span className="font-semibold text-slate-900">{formatIndonesianDate(beneficiarySelectedDate)}</span> belum ada menu. Rekap penerima manfaat tetap bisa dicatat; menu diperlukan untuk surat jalan.
-                          </p>
-                          <button type="button" onClick={() => handleOpenCreateMenuModal(beneficiarySelectedDate)} className={BTN_PRIMARY}>
-                            <Plus className="w-4 h-4" />
-                            Catat menu
-                          </button>
-                        </div>
-                      )}
-                      <div className="text-right shrink-0">
-                        <div className="text-[11px] text-slate-600">Total porsi dikirim</div>
-                        <div className="text-xl font-bold text-slate-900 tabular-nums">{totalDraftPortions.toLocaleString("id-ID")}</div>
                         <div className="text-[11px] text-slate-600">
                           {sentSchools.length} sekolah dikirim{skippedSchools.length > 0 ? ` · ${skippedSchools.length} tidak` : ""}
+                          {" · "}
+                          {isDailyDraftDirty ? (
+                            <span className="font-semibold text-amber-800">Belum disimpan</span>
+                          ) : savedRecap ? (
+                            <span className="text-emerald-800">Tersimpan{savedRecap.updatedBy ? ` oleh ${savedRecap.updatedBy}` : ""}</span>
+                          ) : (
+                            <span>
+                              Belum dicatat,{" "}
+                              {draftSource === "LAST_RECAP" && draftSourceDate
+                                ? `angka awal dari ${formatShortDate(draftSourceDate)}`
+                                : draftSource === "ORDER"
+                                  ? "angka awal dari menu"
+                                  : "angka awal dari porsi standar"}
+                            </span>
+                          )}
                         </div>
-                        {!savedRecap && !isDailyDraftDirty && (
-                          <div className="text-[11px] text-slate-500">
-                            {draftSource === "LAST_RECAP" && draftSourceDate
-                              ? `Angka awal dari ${formatShortDate(draftSourceDate)}`
-                              : draftSource === "ORDER"
-                                ? "Angka awal dari menu"
-                                : "Angka awal dari porsi standar"}
-                          </div>
-                        )}
-                        {isDailyDraftDirty ? (
-                          <div className="text-[11px] font-semibold text-amber-800">Belum disimpan</div>
-                        ) : savedRecap ? (
-                          <div className="text-[11px] text-emerald-800">
-                            Rekap tersimpan{savedRecap.updatedBy ? ` · ${savedRecap.updatedBy}` : ""}
-                          </div>
-                        ) : (
-                          <div className="text-[11px] text-slate-600">Rekap tanggal ini belum dicatat</div>
-                        )}
                         {recapReportedTotal !== undefined && recapReportedTotal !== totalDraftPortions && (
                           <div className="text-[11px] font-semibold text-amber-800">
                             TOTAL di laporan {recapReportedTotal.toLocaleString("id-ID")} (selisih {(recapReportedTotal - totalDraftPortions).toLocaleString("id-ID")})

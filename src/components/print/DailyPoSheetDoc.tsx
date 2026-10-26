@@ -8,10 +8,13 @@ import { isPendingSupplierPo, isMenuPurchaseOrder } from '../../utils/poSupplier
 import { localDateIso } from '../../utils/localDate';
 
 // Form PO harian: satu lembar berisi semua bahan PO yang datang di satu tanggal (biasanya untuk menu besok),
-// dikelompokkan per supplier. Dipegang petugas saat barang datang: hasil timbang, nama pengantar, dan
-// tanda tangan penerima ditulis tangan, lalu disalin ke Terima bahan PO di Barang Masuk.
+// dikelompokkan per supplier. Dipegang petugas saat barang datang: hasil timbang, nama pengantar, serta
+// tanda tangan supplier dan penerima ditulis tangan, lalu disalin ke Terima bahan PO di Barang Masuk.
 
 const BLANK_LINE = <span className="block border-b border-dotted border-slate-400 h-4" />;
+const COLUMN_COUNT = 9;
+// Baris kosong untuk bahan yang ikut datang padahal tidak ada di PO (tambahan mendadak dari dapur)
+const EXTRA_ROW_COUNT = 4;
 
 const formatLongDate = (iso: string) => {
   const [y, m, d] = (iso || '').split('-').map(Number);
@@ -65,8 +68,16 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
     onCountChange(pos.length > 0 ? 1 : 0);
   }, [pos.length, onCountChange]);
 
+  // Supplier di PO hanya rencana: dicetak kecil, garis di bawahnya untuk supplier yang benar-benar mengirim
   const renderSupplierCell = (po: PurchaseOrderNota) =>
-    isPendingSupplierPo(po) ? BLANK_LINE : <span className="font-semibold">{po.supplierName}</span>;
+    isPendingSupplierPo(po) ? (
+      BLANK_LINE
+    ) : (
+      <>
+        <span className="block text-[10px] text-slate-600">Rencana: {po.supplierName}</span>
+        {BLANK_LINE}
+      </>
+    );
 
   let rowNo = 0;
 
@@ -127,12 +138,13 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
               <tr>
                 <th className="border border-slate-500 p-1.5 w-8">No</th>
                 <th className="border border-slate-500 p-1.5 text-left whitespace-nowrap">Nama bahan</th>
-                <th className="border border-slate-500 p-1.5 w-[11%] whitespace-nowrap">Dipesan</th>
-                <th className="border border-slate-500 p-1.5 w-[12%] whitespace-nowrap">Hasil timbang</th>
-                <th className="border border-slate-500 p-1.5 text-left w-[15%] whitespace-nowrap">Supplier</th>
-                <th className="border border-slate-500 p-1.5 text-left w-[14%] whitespace-nowrap">Nama pengantar</th>
-                <th className="border border-slate-500 p-1.5 text-left w-[12%] whitespace-nowrap">Penerima</th>
-                <th className="border border-slate-500 p-1.5 w-[11%] whitespace-nowrap">TTD penerima</th>
+                <th className="border border-slate-500 p-1.5 w-[9%] whitespace-nowrap">Dipesan</th>
+                <th className="border border-slate-500 p-1.5 w-[11%] whitespace-nowrap">Hasil timbang</th>
+                <th className="border border-slate-500 p-1.5 text-left w-[13%] whitespace-nowrap">Supplier</th>
+                <th className="border border-slate-500 p-1.5 text-left w-[12%] whitespace-nowrap">Nama pengantar</th>
+                <th className="border border-slate-500 p-1.5 w-[9%] whitespace-nowrap">TTD supplier</th>
+                <th className="border border-slate-500 p-1.5 text-left w-[11%] whitespace-nowrap">Penerima</th>
+                <th className="border border-slate-500 p-1.5 w-[9%] whitespace-nowrap">TTD penerima</th>
               </tr>
             </thead>
             <tbody>
@@ -140,8 +152,10 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
                 <React.Fragment key={po.id}>
                   {/* Judul kelompok per supplier: supplier menyusul ditulis tangan per baris */}
                   <tr className="bg-slate-50">
-                    <td colSpan={8} className="border border-slate-500 px-1.5 py-1 font-semibold">
-                      {isPendingSupplierPo(po) ? 'Supplier menyusul (tulis supplier tiap bahan saat datang)' : po.supplierName}
+                    <td colSpan={COLUMN_COUNT} className="border border-slate-500 px-1.5 py-1 font-semibold">
+                      {isPendingSupplierPo(po)
+                        ? 'Supplier menyusul (tulis supplier tiap bahan saat datang)'
+                        : `Rencana: ${po.supplierName} (tulis supplier lain bila yang mengirim berbeda)`}
                       <span className="font-normal text-slate-600"> · {po.poNumber.replace(/^NO\.\s*/i, '')}</span>
                     </td>
                   </tr>
@@ -162,12 +176,27 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
                         </td>
                         <td className="border border-slate-500 p-1.5">{renderSupplierCell(po)}</td>
                         <td className="border border-slate-500 p-1.5">{BLANK_LINE}</td>
+                        <td className="border border-slate-500 p-1.5 h-9" />
                         <td className="border border-slate-500 p-1.5">{BLANK_LINE}</td>
                         <td className="border border-slate-500 p-1.5 h-9" />
                       </tr>
                     );
                   })}
                 </React.Fragment>
+              ))}
+              <tr className="bg-slate-50">
+                <td colSpan={COLUMN_COUNT} className="border border-slate-500 px-1.5 py-1 font-semibold">
+                  Bahan tambahan di luar PO
+                  <span className="font-normal text-slate-600"> · tulis tangan, lalu catat di Barang Masuk</span>
+                </td>
+              </tr>
+              {Array.from({ length: EXTRA_ROW_COUNT }, (_, i) => (
+                <tr key={`extra-${i}`} className="align-middle">
+                  <td className="border border-slate-500 p-1.5 text-center">{rowNo + i + 1}</td>
+                  {Array.from({ length: COLUMN_COUNT - 1 }, (_, c) => (
+                    <td key={c} className="border border-slate-500 p-1.5 h-9" />
+                  ))}
+                </tr>
               ))}
             </tbody>
           </table>

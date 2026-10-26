@@ -103,7 +103,7 @@ const formatLongDate = (iso: string) => {
 };
 
 const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
-  { id: 'DAILY_PO_SHEET', label: 'Form PO Harian', hint: 'Satu lembar berisi semua bahan PO yang datang di satu tanggal (untuk menu besok), per supplier. Hasil timbang, pengantar, dan tanda tangan penerima diisi tangan.' },
+  { id: 'DAILY_PO_SHEET', label: 'Form PO Harian', hint: 'Satu lembar berisi semua bahan PO yang datang di satu tanggal (untuk menu besok), per supplier. Hasil timbang, pengantar, tanda tangan supplier dan penerima, serta bahan tambahan di luar PO diisi tangan.' },
   { id: 'RECEIVING_FORM', label: 'BA Penerimaan', hint: 'Berita acara serah terima barang dari supplier.' },
   { id: 'OPNAME_SHEET', label: 'Lembar Opname', hint: 'Lembar hitung fisik stok per lokasi.' },
   { id: 'BIN_CARD', label: 'Kartu Stok', hint: 'Kartu gantung di rak untuk mencatat keluar-masuk satu barang.' },
