@@ -4506,14 +4506,15 @@ class WarehouseDatabase {
     ]);
 
     // 5. Sync back to Menu Orders poArrivalItems if applicable
-    const targetMenuOrderId = po.relatedMenuOrderId;
+    // Hanya menu pemilik PO ini. Dulu ada cadangan "menu bertanggal sama dengan PO", padahal tanggal PO
+    // adalah H-1 dari menunya, sehingga bahan bernama sama di menu lain ikut tertandai datang.
     this.menuOrders.forEach((mOrder, mIdx) => {
       let orderChanged = false;
-      const shouldSync = targetMenuOrderId ? mOrder.id === targetMenuOrderId : mOrder.date === po.date;
+      const shouldSync = this.getPurchaseOrdersByMenuOrderId(mOrder.id).some(p => p.id === po.id);
       if (shouldSync && mOrder.poArrivalItems && mOrder.poArrivalItems.length > 0) {
         const updatedArrivals = mOrder.poArrivalItems.map(arrItem => {
           const matchedWeighed = weighedItems.find(
-            w => w.name.trim().toLowerCase() === arrItem.itemName.trim().toLowerCase()
+            w => w.actualQty > 0 && w.name.trim().toLowerCase() === arrItem.itemName.trim().toLowerCase()
           );
           if (matchedWeighed) {
             orderChanged = true;

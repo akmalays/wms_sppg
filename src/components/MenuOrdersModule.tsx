@@ -98,6 +98,13 @@ function parseNumericQuantity(qty: string | number): number {
 // Pembanding nama bahan dan supplier: abaikan huruf besar dan spasi berlebih.
 const normName = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
+// Jumlah datang hanya dipercaya bila menu tidak punya PO terbit (data lama/impor) atau PO-nya sudah diterima.
+// Menu yang PO-nya belum diterima tidak boleh menampilkan bahan sudah datang atau ditimbang.
+const isArrivalConfirmed = (menuOrderId: string): boolean => {
+  const pos = warehouseDb.getPurchaseOrdersByMenuOrderId(menuOrderId);
+  return pos.length === 0 || pos.some((po) => warehouseDb.isPurchaseOrderLocked(po));
+};
+
 /** Baris dengan bahan dan supplier yang sama dalam satu daftar PO. */
 function findDuplicatePoRows(items: MenuPoArrivalItem[]): string[] {
   const seen = new Set<string>();
@@ -581,10 +588,11 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
         inCooking++;
       }
       if (o.poArrivalItems) {
+        const arrivalConfirmed = isArrivalConfirmed(o.id);
         totalPOItemsCount += o.poArrivalItems.length;
         o.poArrivalItems.forEach((item) => {
           totalEstimatedCost += item.totalCost || 0;
-          if ((item.qtyArrived || "").trim()) arrivedItemsCount++;
+          if (arrivalConfirmed && (item.qtyArrived || "").trim()) arrivedItemsCount++;
         });
       }
     });
@@ -1714,7 +1722,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
             category: r.category.trim(),
             itemName: r.itemName.trim(),
             qtyOrder: r.qtyOrder.trim(),
-            qtyArrived: (r.qtyArrived || "").trim(),
+            // PO baru belum ada barang datang; jumlah datang hanya diisi oleh penerimaan & timbang.
+            qtyArrived: "",
             supplier: autoSupplier,
             arrivalTime: (r.arrivalTime || "").trim(),
             pic: (r.pic && r.pic.trim()) || currentUser.name,
@@ -1899,7 +1908,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
   const handleApplyPoTemplate = () => {
     setPoFocusRow(null);
-    setPoFormRows(withSuggestedSuppliers(STANDARD_PO_TEMPLATES.map((t) => ({...t, notes: ""}))));
+    // Jumlah datang dikosongkan: baru terisi setelah barang diterima dan ditimbang.
+    setPoFormRows(withSuggestedSuppliers(STANDARD_PO_TEMPLATES.map((t) => ({...t, qtyArrived: "", notes: ""}))));
   };
 
   const handleDeletePoForOrder = async (orderId?: string) => {
@@ -2453,6 +2463,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
               {filteredOrders.map((order, oIdx) => {
                 const isExpanded = expandedOrderIds[order.id] ?? true;
                 const poItems = order.poArrivalItems || [];
+                const arrivalConfirmed = isArrivalConfirmed(order.id);
                 const statusMeta = getStatusBadge(order.status);
                 const regularDishes = parseDishItems(order.menuTitle);
                 const b3Dishes = order.specialDietB3 ? parseDishItems(order.specialDietB3) : [];
@@ -2675,7 +2686,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                                       </td>
                                       <td className="py-2.5 px-4 text-right font-mono font-semibold text-slate-900 tabular-nums">{item.qtyOrder || "-"}</td>
                                       <td className="py-2.5 px-4 text-right font-mono tabular-nums">
-                                        {item.qtyArrived ? <span className="font-semibold text-slate-900">{item.qtyArrived}</span> : <span className="text-slate-500 font-sans">Belum</span>}
+                                        {arrivalConfirmed && item.qtyArrived ? <span className="font-semibold text-slate-900">{item.qtyArrived}</span> : <span className="text-slate-500 font-sans">Belum</span>}
                                       </td>
                                     </tr>
                                   ))}
