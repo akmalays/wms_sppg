@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import {exportMultiSheetExcel, exportToExcel} from "../lib/excelExport";
 import {localDateIso} from "../utils/localDate";
-import {normalizeQtyForUnit} from "../utils/unitConversion";
+import {convertQty, normalizeQtyForUnit} from "../utils/unitConversion";
 import {KopText} from "./common/KopText";
 import {FormDialog, DialogShell, FIELD_INPUT, FIELD_LABEL, TABLE_INPUT, BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST, FOCUS_RING} from "./common/FormDialog";
 import {ActionDropdown} from "./common/ActionDropdown";
@@ -93,6 +93,63 @@ function parseNumericQuantity(qty: string | number): number {
   const clean = String(qty).replace(",", ".");
   const match = clean.match(/[\d.]+/);
   return match ? parseFloat(match[0]) : 0;
+}
+
+const STANDARD_UNITS: Record<string, string> = {
+  kg: "Kg",
+  kilo: "Kg",
+  kilogram: "Kg",
+  g: "Gram",
+  gr: "Gram",
+  gram: "Gram",
+  l: "Liter",
+  lt: "Liter",
+  ltr: "Liter",
+  liter: "Liter",
+  pcs: "Pcs",
+  pc: "Pcs",
+  buah: "Pcs",
+  biji: "Pcs",
+  butir: "Butir",
+  pack: "Pack",
+  pak: "Pack",
+  dus: "Dus",
+  karton: "Dus",
+  box: "Dus",
+  ikat: "Ikat",
+  roll: "Roll",
+  botol: "Botol",
+  btl: "Botol",
+  jerigen: "Jerigen",
+  pouch: "Pouch",
+  sak: "Sak",
+  karung: "Sak",
+  unit: "Unit",
+  set: "Set",
+};
+
+/** Menyeragamkan jumlah pesanan dengan satuan master barang (atau standar satuan WMS). */
+function formatStandardQty(rawQty: string, preferredUnit?: string): string {
+  const trimmed = (rawQty || "").trim();
+  if (!trimmed) return "";
+  const num = parseNumericQuantity(trimmed);
+  if (!num) return trimmed;
+
+  const words = trimmed.match(/[a-zA-Z]+/g);
+  const typedUnit = words ? words.join(" ") : "";
+
+  if (preferredUnit) {
+    if (typedUnit) {
+      const converted = convertQty(num, typedUnit, preferredUnit);
+      if (converted !== null) {
+        return `${converted} ${preferredUnit}`;
+      }
+    }
+    return `${num} ${preferredUnit}`;
+  }
+
+  const std = typedUnit ? (STANDARD_UNITS[typedUnit.toLowerCase()] || typedUnit) : "Kg";
+  return `${num} ${std}`;
 }
 
 // Pembanding nama bahan dan supplier: abaikan huruf besar dan spasi berlebih.
@@ -253,16 +310,16 @@ function parseDishItems(menuStr: string): ParsedDish[] {
 }
 
 // Template cepat untuk PO bahan standar SPPG.
-// Supplier sengaja tidak ditulis di sini: dipilih dari Master Supplier yang aktif saat template dipakai.
+// Satuan diselaraskan dengan satuan standar Master Barang (Kg, Pcs, Liter).
 const STANDARD_PO_TEMPLATES = [
-  {category: "Protein", itemName: "Ayam Potong", qtyOrder: "260 kg", arrivalTime: "08.30"},
-  {category: "Protein", itemName: "Tahu Putih", qtyOrder: "520 pcs", arrivalTime: "09.30"},
-  {category: "Sembako", itemName: "Beras Mentari 25kg", qtyOrder: "7 sak", arrivalTime: "14.00"},
-  {category: "Sembako", itemName: "Minyak Tropical 2L", qtyOrder: "12 pouch", arrivalTime: "14.00"},
-  {category: "Sayur dan Buah", itemName: "Buncis Segar", qtyOrder: "45 kg", arrivalTime: "07.30"},
-  {category: "Sayur dan Buah", itemName: "Wortel Manis", qtyOrder: "35 kg", arrivalTime: "07.30"},
-  {category: "Sayur dan Buah", itemName: "Semangka Non-Biji", qtyOrder: "180 kg", arrivalTime: "10.00"},
-  {category: "Bumbu", itemName: "Bawang Putih Kating", qtyOrder: "8 kg", arrivalTime: "08.00"},
+  {category: "Protein", itemName: "Ayam Potong", qtyOrder: "260 Kg", arrivalTime: "08.30"},
+  {category: "Protein", itemName: "Tahu Putih", qtyOrder: "520 Pcs", arrivalTime: "09.30"},
+  {category: "Sembako", itemName: "Beras Mentari 25kg", qtyOrder: "175 Kg", arrivalTime: "14.00"},
+  {category: "Sembako", itemName: "Minyak Tropical 2L", qtyOrder: "24 Liter", arrivalTime: "14.00"},
+  {category: "Sayur dan Buah", itemName: "Buncis Segar", qtyOrder: "45 Kg", arrivalTime: "07.30"},
+  {category: "Sayur dan Buah", itemName: "Wortel Manis", qtyOrder: "35 Kg", arrivalTime: "07.30"},
+  {category: "Sayur dan Buah", itemName: "Semangka Non-Biji", qtyOrder: "180 Kg", arrivalTime: "10.00"},
+  {category: "Bumbu", itemName: "Bawang Putih Kating", qtyOrder: "8 Kg", arrivalTime: "08.00"},
 ];
 
 const getTodayIso = (): string => {
@@ -1756,12 +1813,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
       const validItems: MenuPoArrivalItem[] = poFormRows
         .filter((r) => r.itemName.trim())
         .map((r) => {
-          const estimatedCost = parseNumericQuantity(r.qtyOrder || r.qtyArrived) * estimatePrice(r.itemName);
+          const master = findMasterItem(r.itemName);
+          const stdQty = formatStandardQty(r.qtyOrder, master?.baseUnit) || r.qtyOrder.trim();
+          const estimatedCost = parseNumericQuantity(stdQty || r.qtyArrived) * estimatePrice(r.itemName);
           const autoSupplier = cleanSupplier(r.supplier);
           return {
             category: r.category.trim(),
             itemName: r.itemName.trim(),
-            qtyOrder: r.qtyOrder.trim(),
+            qtyOrder: stdQty,
             // PO baru belum ada barang datang; jumlah datang hanya diisi oleh penerimaan & timbang.
             qtyArrived: "",
             supplier: autoSupplier,
@@ -1881,8 +1940,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
         const nextPoNum = generateNextPoNumber(currentSeqList, poTargetDate);
 
         const poItems: PurchaseOrderItem[] = supplierItems.map((sItem, sIdx) => {
+          const master = findMasterItem(sItem.itemName);
           const unitMatch = (sItem.qtyOrder || sItem.qtyArrived || "").match(/[a-zA-Z]+/g);
-          const unitStr = unitMatch ? unitMatch.join(" ") : "Kg";
+          const typedUnit = unitMatch ? unitMatch.join(" ") : "";
+          const unitStr = master?.baseUnit || (typedUnit ? (STANDARD_UNITS[typedUnit.toLowerCase()] || typedUnit) : "Kg");
 
           const numQty = normalizeQtyForUnit(parseNumericQuantity(sItem.qtyOrder || sItem.qtyArrived) || 1, unitStr);
           const unitPrice = estimatePrice(sItem.itemName);
@@ -1893,7 +1954,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
             name: sItem.itemName,
             category: sItem.category || "Bahan Makanan",
             quantity: numQty,
-            unit: unitStr || "Kg",
+            unit: unitStr,
             unitPrice: unitPrice,
             subtotal: subtotal,
             notes: sItem.notes || (sItem.arrivalTime ? `Estimasi tiba: ${sItem.arrivalTime}` : undefined),
@@ -3684,6 +3745,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                 {(() => {
                   const renderPoRow = ({row, idx}: IndexedPoRow, withSupplier: boolean) => {
                     const isDup = duplicatePoRowIdx.has(idx);
+                    const masterItem = findMasterItem(row.itemName);
+                    const masterUnit = masterItem?.baseUnit;
                     return (
                       <li
                         key={idx}
@@ -3721,7 +3784,15 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                               if (idx === poFocusRow) setPoFocusRow(null);
                               const master = opt ? findMasterItem(opt.value) : undefined;
                               const category = master ? poCategoryFromMaster(master.category) : null;
-                              updatePoRow(idx, {itemName: opt ? opt.value : text, ...(category ? {category} : {})});
+                              const nextItemName = opt ? opt.value : text;
+                              const nextQty = master?.baseUnit && row.qtyOrder.trim()
+                                ? formatStandardQty(row.qtyOrder, master.baseUnit)
+                                : row.qtyOrder;
+                              updatePoRow(idx, {
+                                itemName: nextItemName,
+                                ...(category ? {category} : {}),
+                                ...(nextQty !== row.qtyOrder ? {qtyOrder: nextQty} : {}),
+                              });
                             }}
                           />
                           {isDup && <p className="mt-1 text-[11px] text-rose-700">Sudah ada di supplier ini. Gabungkan jumlahnya.</p>}
@@ -3729,15 +3800,30 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                             <p className="mt-1 text-[11px] text-amber-800">Belum ada di master barang</p>
                           )}
                         </div>
-                        <input
-                          type="text"
-                          required
-                          placeholder="Mis. 26 kg"
-                          value={row.qtyOrder}
-                          onChange={(e) => updatePoRow(idx, {qtyOrder: e.target.value})}
-                          aria-label={`Jumlah ${row.itemName || `baris ${idx + 1}`}`}
-                          className={`${TABLE_INPUT} font-mono`}
-                        />
+                        <div className="relative flex items-center min-w-0">
+                          <input
+                            type="text"
+                            required
+                            placeholder={masterUnit ? `Mis. 26 ${masterUnit}` : "Mis. 26 Kg"}
+                            value={row.qtyOrder}
+                            onChange={(e) => updatePoRow(idx, {qtyOrder: e.target.value})}
+                            onBlur={() => {
+                              if (row.qtyOrder.trim()) {
+                                const std = formatStandardQty(row.qtyOrder, masterUnit);
+                                if (std && std !== row.qtyOrder) updatePoRow(idx, {qtyOrder: std});
+                              }
+                            }}
+                            aria-label={`Jumlah ${row.itemName || `baris ${idx + 1}`}`}
+                            className={`${TABLE_INPUT} font-mono ${masterUnit ? "pr-12" : ""}`}
+                          />
+                          {masterUnit && (
+                            <span
+                              title={`Satuan standar master: ${masterUnit}`}
+                              className="pointer-events-none absolute right-1.5 text-[11px] font-semibold text-emerald-800 bg-emerald-100/80 px-1.5 py-0.5 rounded">
+                              {masterUnit}
+                            </span>
+                          )}
+                        </div>
                         {withSupplier && (
                           <div className="col-span-3 sm:col-span-1 order-last sm:order-none">
                             <SearchPicker
