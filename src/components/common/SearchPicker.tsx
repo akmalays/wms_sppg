@@ -26,6 +26,8 @@ interface SearchPickerProps {
   size?: 'md' | 'sm';
   /** Kata benda untuk penghitung, mis. "barang" pada "14 dari 61 barang". */
   noun?: string;
+  /** Fokus ke tombol saat pertama dirender, mis. baris yang baru ditambahkan. */
+  autoFocus?: boolean;
 }
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
@@ -48,6 +50,7 @@ export const SearchPicker: React.FC<SearchPickerProps> = ({
   ariaLabel,
   size = 'md',
   noun = 'pilihan',
+  autoFocus = false,
 }) => {
   const listId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -104,6 +107,12 @@ export const SearchPicker: React.FC<SearchPickerProps> = ({
     setOpen(false);
     if (refocus) triggerRef.current?.focus();
   };
+
+  useEffect(() => {
+    if (autoFocus) triggerRef.current?.focus();
+    // Hanya saat mount: fokus tidak boleh direbut ulang setiap render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useLayoutEffect(() => {
     if (!open) return;

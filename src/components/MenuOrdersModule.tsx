@@ -252,16 +252,17 @@ function parseDishItems(menuStr: string): ParsedDish[] {
   });
 }
 
-// Template cepat untuk PO bahan standar SPPG
+// Template cepat untuk PO bahan standar SPPG.
+// Supplier sengaja tidak ditulis di sini: dipilih dari Master Supplier yang aktif saat template dipakai.
 const STANDARD_PO_TEMPLATES = [
-  {category: "Protein", itemName: "Ayam Potong", qtyOrder: "260 kg", qtyArrived: "260 kg", supplier: "Ayam Segar Fajar", arrivalTime: "08.30", pic: "Akmal"},
-  {category: "Protein", itemName: "Tahu Putih", qtyOrder: "520 pcs", qtyArrived: "520 pcs", supplier: "Tahu Rio", arrivalTime: "09.30", pic: "Akmal"},
-  {category: "Sembako", itemName: "Beras Mentari 25kg", qtyOrder: "7 sak", qtyArrived: "7 sak", supplier: "Tumpang Grosir", arrivalTime: "14.00", pic: "Akmal"},
-  {category: "Sembako", itemName: "Minyak Tropical 2L", qtyOrder: "12 pouch", qtyArrived: "12 pouch", supplier: "Tumpang Grosir", arrivalTime: "14.00", pic: "Akmal"},
-  {category: "Sayur dan Buah", itemName: "Buncis Segar", qtyOrder: "45 kg", qtyArrived: "45 kg", supplier: "Sayur Segar Malang", arrivalTime: "07.30", pic: "Akmal"},
-  {category: "Sayur dan Buah", itemName: "Wortel Manis", qtyOrder: "35 kg", qtyArrived: "35 kg", supplier: "Sayur Segar Malang", arrivalTime: "07.30", pic: "Akmal"},
-  {category: "Sayur dan Buah", itemName: "Semangka Non-Biji", qtyOrder: "180 kg", qtyArrived: "180 kg", supplier: "Buah Segar Nusantara", arrivalTime: "10.00", pic: "Akmal"},
-  {category: "Bumbu", itemName: "Bawang Putih Kating", qtyOrder: "8 kg", qtyArrived: "8 kg", supplier: "Toko Bumbu Berkah", arrivalTime: "08.00", pic: "Akmal"},
+  {category: "Protein", itemName: "Ayam Potong", qtyOrder: "260 kg", arrivalTime: "08.30"},
+  {category: "Protein", itemName: "Tahu Putih", qtyOrder: "520 pcs", arrivalTime: "09.30"},
+  {category: "Sembako", itemName: "Beras Mentari 25kg", qtyOrder: "7 sak", arrivalTime: "14.00"},
+  {category: "Sembako", itemName: "Minyak Tropical 2L", qtyOrder: "12 pouch", arrivalTime: "14.00"},
+  {category: "Sayur dan Buah", itemName: "Buncis Segar", qtyOrder: "45 kg", arrivalTime: "07.30"},
+  {category: "Sayur dan Buah", itemName: "Wortel Manis", qtyOrder: "35 kg", arrivalTime: "07.30"},
+  {category: "Sayur dan Buah", itemName: "Semangka Non-Biji", qtyOrder: "180 kg", arrivalTime: "10.00"},
+  {category: "Bumbu", itemName: "Bawang Putih Kating", qtyOrder: "8 kg", arrivalTime: "08.00"},
 ];
 
 const getTodayIso = (): string => {
@@ -1536,6 +1537,35 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
   const findMasterSupplier = (name: string) => masterSuppliers.find((s) => normName(s.name) === normName(name));
 
+  // Pilihan nama bahan dari Master Barang, agar penulisan di PO sama dengan nama di gudang.
+  // Nilai opsi = nama barang, karena baris PO menyimpan nama, bukan ID.
+  const poItemOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return inventoryItems
+      .filter((it) => it.isActive !== false && it.itemType !== "EQUIPMENT")
+      .filter((it) => {
+        const k = normName(it.name);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name))
+      .map((it) => ({value: it.name, label: it.name, group: it.category, hint: it.baseUnit}));
+  }, [inventoryItems]);
+
+  const findMasterItem = (name: string) => inventoryItems.find((it) => normName(it.name) === normName(name));
+
+  // Kategori Master Barang lebih rinci dari pilihan kategori PO; null berarti kategori PO dibiarkan.
+  const poCategoryFromMaster = (masterCategory: string): string | null => {
+    const c = masterCategory.toLowerCase();
+    if (["protein", "unggas", "telur", "ikan", "daging"].some((k) => c.includes(k))) return "Protein";
+    if (["bumbu", "rempah"].some((k) => c.includes(k))) return "Bumbu";
+    if (c.includes("sayur")) return "Sayur";
+    if (c.includes("buah")) return "Buah";
+    if (["sembako", "beras", "minyak", "tepung", "pemanis", "bahan kering", "karbohidrat"].some((k) => c.includes(k))) return "Sembako";
+    return null;
+  };
+
   type PoFormRow = (typeof poFormRows)[number];
   type IndexedPoRow = {row: PoFormRow; idx: number};
   // Isian lama dari versi sebelumnya, bukan nama supplier sungguhan.
@@ -1543,7 +1573,17 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
   // Supplier kosong ditebak sekali saat daftar dimuat, bukan saat mengetik, agar baris tidak pindah kelompok di tengah ketikan.
   const withSuggestedSuppliers = (rows: PoFormRow[]): PoFormRow[] =>
-    rows.map((r) => ({...r, supplier: cleanSupplier(r.supplier) || resolveSupplierForItem(r.category, r.itemName, "", masterSuppliers)}));
+    rows.map((r) => ({
+      ...r,
+      supplier:
+        cleanSupplier(r.supplier) ||
+        resolveSupplierForItem(
+          r.category,
+          r.itemName,
+          "",
+          masterSuppliers.filter((s) => s.isActive !== false),
+        ),
+    }));
 
   // Daftar bahan tetap satu array datar; kelompok per supplier hanya cara menampilkannya.
   const poGroups = (() => {
@@ -1909,7 +1949,11 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   const handleApplyPoTemplate = () => {
     setPoFocusRow(null);
     // Jumlah datang dikosongkan: baru terisi setelah barang diterima dan ditimbang.
-    setPoFormRows(withSuggestedSuppliers(STANDARD_PO_TEMPLATES.map((t) => ({...t, qtyArrived: "", notes: ""}))));
+    setPoFormRows(
+      withSuggestedSuppliers(
+        STANDARD_PO_TEMPLATES.map((t) => ({...t, supplier: "", qtyArrived: "", pic: currentUser.name, notes: ""})),
+      ),
+    );
   };
 
   const handleDeletePoForOrder = async (orderId?: string) => {
@@ -3661,20 +3705,29 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                           <option value="Bahan Olahan">Bahan Olahan</option>
                           <option value="Lain-lain">Lain-lain</option>
                         </Select>
-                        <div className="col-span-3 sm:col-span-1 order-first sm:order-none">
-                          <input
-                            type="text"
-                            required
+                        <div className="col-span-3 sm:col-span-1 order-first sm:order-none min-w-0">
+                          <SearchPicker
+                            size="sm"
+                            allowCustom
+                            noun="bahan"
                             autoFocus={idx === poFocusRow}
-                            onFocus={() => idx === poFocusRow && setPoFocusRow(null)}
-                            placeholder="Misal: Ayam Potong / Telur Ayam"
                             value={row.itemName}
-                            onChange={(e) => updatePoRow(idx, {itemName: e.target.value})}
-                            aria-label={`Nama bahan baris ${idx + 1}`}
-                            aria-invalid={isDup || undefined}
-                            className={isDup ? TABLE_INPUT.replace("border-slate-300", "border-rose-500") : TABLE_INPUT}
+                            options={poItemOptions}
+                            invalid={isDup}
+                            placeholder="Pilih bahan dari master barang"
+                            searchPlaceholder="Cari bahan, mis. ayam, beras..."
+                            ariaLabel={`Nama bahan baris ${idx + 1}`}
+                            onSelect={(opt, text) => {
+                              if (idx === poFocusRow) setPoFocusRow(null);
+                              const master = opt ? findMasterItem(opt.value) : undefined;
+                              const category = master ? poCategoryFromMaster(master.category) : null;
+                              updatePoRow(idx, {itemName: opt ? opt.value : text, ...(category ? {category} : {})});
+                            }}
                           />
                           {isDup && <p className="mt-1 text-[11px] text-rose-700">Sudah ada di supplier ini. Gabungkan jumlahnya.</p>}
+                          {!isDup && row.itemName.trim() && !findMasterItem(row.itemName) && (
+                            <p className="mt-1 text-[11px] text-amber-800">Belum ada di master barang</p>
+                          )}
                         </div>
                         <input
                           type="text"
