@@ -29,7 +29,7 @@ import {
 import { ReceivingDetailModal } from './ReceivingDetailModal';
 import { DailyChecklistWidget } from './DailyChecklistWidget';
 import { localDateIso } from '../utils/localDate';
-import { isAwaitingDelivery, isMenuPurchaseOrder } from '../utils/poSupplier';
+import { isAwaitingDelivery, isMenuPurchaseOrder, poDateForMenu } from '../utils/poSupplier';
 
 interface DashboardViewProps {
   onNavigate: (tab: string) => void;
@@ -132,6 +132,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
   const todaysMenu = menuOrders.find(m => m.date === today) || menuOrders[0];
   const isMenuToday = !!todaysMenu && todaysMenu.date === today;
 
+  // Menu yang pesanan PO-nya terbentuk / dijadwalkan hari ini (dipesan H-1 untuk menu besok)
+  const menuWithPoToday = useMemo(() => {
+    return menuOrders.find(m => m.poDate === today || poDateForMenu(m.date) === today);
+  }, [menuOrders, today]);
+
   // School Beneficiaries
   const schools = useMemo(() => {
     return warehouseDb.getSchoolBeneficiaries();
@@ -207,44 +212,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
     const list: TodayPoItemTrack[] = [];
     const itemKeySet = new Set<string>();
 
-    // 1. Dari Rencana Menu hari ini (poArrivalItems)
-    if (isMenuToday && todaysMenu.poArrivalItems && todaysMenu.poArrivalItems.length > 0) {
-      todaysMenu.poArrivalItems.forEach((p, idx) => {
-        const rawOrder = (p.qtyOrder || '').trim();
-        const rawArrived = (p.qtyArrived || '').trim();
-        const numOrder = parseFloat(rawOrder) || 0;
-        const numArrived = parseFloat(rawArrived) || 0;
-
-        let status: 'ARRIVED' | 'PENDING' | 'PARTIAL' = 'PENDING';
-        if (numArrived > 0 && numArrived >= numOrder && numOrder > 0) {
-          status = 'ARRIVED';
-        } else if (numArrived > 0 && numArrived < numOrder) {
-          status = 'PARTIAL';
-        } else if (rawArrived && rawArrived !== '-' && rawArrived !== '0' && rawArrived.toLowerCase() !== 'belum') {
-          status = 'ARRIVED';
-        }
-
-        const key = `${p.itemName.toLowerCase()}_${(p.supplier || '').toLowerCase()}`;
-        itemKeySet.add(key);
-
-        list.push({
-          id: `menu-po-${idx}`,
-          itemName: p.itemName,
-          category: p.category || 'Bahan makanan',
-          supplier: p.supplier || undefined,
-          qtyOrder: rawOrder || '-',
-          qtyArrived: rawArrived || '-',
-          status,
-          expectedTime: p.arrivalTime || undefined,
-          notes: p.notes,
-        });
-      });
-    }
-
-    // 2. Dari Dokumen Purchase Order resmi untuk hari ini
+    // 1. Dari Dokumen Purchase Order resmi yang tanggal PO / tanggal kedatangannya hari ini (prioritas utama)
     const todaysPos = purchaseOrders.filter(
-      // Hanya pesanan dari menu; nota dari penerimaan/belanja yang sudah terjadi bukan barang yang ditunggu
-      po => isMenuPurchaseOrder(po) && (po.deliveryDate === today || po.date === today)
+      po => isMenuPurchaseOrder(po) && (po.date === today || po.deliveryDate === today)
     );
 
     todaysPos.forEach(po => {
@@ -271,8 +241,43 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
       });
     });
 
+    // 2. Dari Rencana Menu yang PO-nya terbentuk hari ini (dipesan H-1 untuk menu besok) bila belum ada PO resmi
+    if (menuWithPoToday && menuWithPoToday.poArrivalItems && menuWithPoToday.poArrivalItems.length > 0) {
+      menuWithPoToday.poArrivalItems.forEach((p, idx) => {
+        const key = `${p.itemName.toLowerCase()}_${(p.supplier || '').toLowerCase()}`;
+        if (!itemKeySet.has(key)) {
+          itemKeySet.add(key);
+          const rawOrder = (p.qtyOrder || '').trim();
+          const rawArrived = (p.qtyArrived || '').trim();
+          const numOrder = parseFloat(rawOrder) || 0;
+          const numArrived = parseFloat(rawArrived) || 0;
+
+          let status: 'ARRIVED' | 'PENDING' | 'PARTIAL' = 'PENDING';
+          if (numArrived > 0 && numArrived >= numOrder && numOrder > 0) {
+            status = 'ARRIVED';
+          } else if (numArrived > 0 && numArrived < numOrder) {
+            status = 'PARTIAL';
+          } else if (rawArrived && rawArrived !== '-' && rawArrived !== '0' && rawArrived.toLowerCase() !== 'belum') {
+            status = 'ARRIVED';
+          }
+
+          list.push({
+            id: `menu-po-${idx}`,
+            itemName: p.itemName,
+            category: p.category || 'Bahan makanan',
+            supplier: p.supplier || undefined,
+            qtyOrder: rawOrder || '-',
+            qtyArrived: rawArrived || '-',
+            status,
+            expectedTime: p.arrivalTime || undefined,
+            notes: p.notes,
+          });
+        }
+      });
+    }
+
     return list;
-  }, [todaysMenu, isMenuToday, purchaseOrders, today]);
+  }, [purchaseOrders, menuWithPoToday, today]);
 
   const pendingPoItems = useMemo(
     () => todayPoItems.filter(i => i.status === 'PENDING' || i.status === 'PARTIAL'),
