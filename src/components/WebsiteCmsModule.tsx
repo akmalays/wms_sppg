@@ -562,7 +562,7 @@ export const WebsiteCmsModule: React.FC = () => {
   const todayIso = localDateIso();
   const todayOrders = useMemo(
     () => warehouseDb.getMenuOrders()
-      .filter(o => o.date === todayIso)
+      .filter(o => o.date === todayIso && o.status !== 'CANCELLED')
       .sort((a, b) => SESSION_ORDER[a.mealSession] - SESSION_ORDER[b.mealSession]),
     [todayIso]
   );
@@ -1472,7 +1472,7 @@ export const WebsiteCmsModule: React.FC = () => {
                 <h3 className="text-sm font-bold text-slate-900">Ambil dari Rekap Order Menu</h3>
                 {selectedOrder ? (
                   <p className="text-xs text-slate-600 mt-0.5">
-                    Menu {selectedOrder.mealSession.toLowerCase()} hari ini:{' '}
+                    Menu {todayOrders.length > 1 ? `${selectedOrder.mealSession.toLowerCase()} ` : ''}hari ini:{' '}
                     <span className="font-semibold text-slate-900">{selectedOrder.menuTitle}</span>
                     {' · '}{(selectedOrder.keyIngredients?.length || selectedOrder.poArrivalItems?.length || 0)} bahan
                   </p>

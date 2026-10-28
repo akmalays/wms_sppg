@@ -162,6 +162,43 @@ const isArrivalConfirmed = (menuOrderId: string): boolean => {
   return pos.length === 0 || pos.some((po) => warehouseDb.isPurchaseOrderLocked(po));
 };
 
+// Bahan dipesan untuk datang H-1. Tanggal datang diambil dari PO yang sudah terbit (bisa diubah manual),
+// bila belum ada PO dari tanggal PO di menu, bila kosong dihitung H-1 dari tanggal menu.
+type PoProgressState = "NONE" | "WAITING" | "PARTIAL" | "DONE";
+const menuPoProgress = (order: MenuOrder): {arrivalDate: string; poCount: number; received: number; state: PoProgressState} => {
+  const pos = warehouseDb.getPurchaseOrdersByMenuOrderId(order.id);
+  const plannedDate = /^\d{4}-\d{2}-\d{2}$/.test(order.poDate || "") ? order.poDate! : poDateForMenu(order.date);
+  const arrivalDate = pos.length > 0 ? pos[0].deliveryDate || pos[0].date : plannedDate;
+  const received = pos.filter((po) => warehouseDb.isPurchaseOrderLocked(po)).length;
+  const state: PoProgressState = pos.length === 0 ? "NONE" : received === 0 ? "WAITING" : received < pos.length ? "PARTIAL" : "DONE";
+  return {arrivalDate, poCount: pos.length, received, state};
+};
+
+const addDaysIso = (iso: string, days: number) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return localDateIso(new Date(y, m - 1, d + days));
+};
+
+/** "Sel, 27 Okt" ditambah "kemarin" / "hari ini" / "besok" bila dekat dengan hari ini. */
+const formatArrivalDay = (iso: string, today: string): string => {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  const label = new Date(y, m - 1, d).toLocaleDateString("id-ID", {weekday: "short", day: "numeric", month: "short"});
+  const rel = iso === today ? "hari ini" : iso === addDaysIso(today, -1) ? "kemarin" : iso === addDaysIso(today, 1) ? "besok" : "";
+  return rel ? `${label} (${rel})` : label;
+};
+
+const poProgressLabel = (p: ReturnType<typeof menuPoProgress>, today: string): {text: string; tone: string} => {
+  if (p.state === "DONE") return {text: "sudah diterima", tone: "bg-emerald-50 text-emerald-800 border-emerald-200"};
+  if (p.state === "PARTIAL") return {text: `${p.received} dari ${p.poCount} PO diterima`, tone: "bg-amber-50 text-amber-900 border-amber-200"};
+  if (p.state === "WAITING") {
+    return p.arrivalDate < today
+      ? {text: "belum diterima", tone: "bg-amber-50 text-amber-900 border-amber-200"}
+      : {text: "menunggu kedatangan", tone: "bg-white text-slate-700 border-slate-200"};
+  }
+  return {text: "PO belum dibuat", tone: "bg-amber-50 text-amber-900 border-amber-200"};
+};
+
 /** Baris dengan bahan dan supplier yang sama dalam satu daftar PO. */
 function findDuplicatePoRows(items: MenuPoArrivalItem[]): string[] {
   const seen = new Set<string>();
@@ -244,6 +281,15 @@ interface ParsedDish {
   name: string;
   category: string;
 }
+
+// Label pendek kategori olahan untuk kartu menu
+const DISH_CATEGORY_LABEL: Record<string, string> = {
+  "Karbohidrat Pokok": "Makanan pokok",
+  "Lauk Protein Hewani": "Lauk hewani",
+  "Lauk Protein Nabati": "Lauk nabati",
+  "Sayuran Berserat": "Sayur",
+  "Buah Segar": "Buah",
+};
 
 function parseDishItems(menuStr: string): ParsedDish[] {
   if (!menuStr) return [];
@@ -364,8 +410,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   const [selectedMonth, setSelectedMonth] = useState<string>(todayStr.slice(0, 7)); // YYYY-MM
 
   // Filters for Tab 1 (Menu Orders)
-  const [selectedSession, setSelectedSession] = useState<string>("ALL");
-  const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
+  // Status menu tidak diisi manual lagi; yang dipakai hanya "Dibatalkan", disembunyikan kecuali diminta
+  const [showCancelled, setShowCancelled] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Filters for Tab 2 (Penerima Manfaat)
@@ -419,6 +465,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
   // Expandable cards state for Menu Order items
   const [expandedOrderIds, setExpandedOrderIds] = useState<Record<string, boolean>>({});
+  // Rincian per bahan di kartu menu; bawaannya ringkasan per supplier agar kartu tidak memanjang
+  const [poDetailOpen, setPoDetailOpen] = useState<Record<string, boolean>>({});
 
 
   // Action Dropdowns
@@ -589,8 +637,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
         }
 
         // 2. Session & Status filter
-        if (selectedSession !== "ALL" && ord.mealSession !== selectedSession) return false;
-        if (selectedStatus !== "ALL" && ord.status !== selectedStatus) return false;
+        if (!showCancelled && ord.status === "CANCELLED") return false;
 
         // 3. Search query
         if (searchQuery.trim()) {
@@ -611,7 +658,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
         const db = parseMenuDate(b.date)?.getTime() || 0;
         return da - db;
       });
-  }, [orders, effectiveDateRange, selectedSession, selectedStatus, searchQuery]);
+  }, [orders, effectiveDateRange, showCancelled, searchQuery]);
 
   // Distinct dates in the active filtered orders
   const activeOrderDates = useMemo(() => {
@@ -629,22 +676,22 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
   // Operational metrics for active period
   const stats = useMemo(() => {
-    let totalOrders = filteredOrders.length;
+    // Menu dibatalkan tidak dihitung; hari ini / akan datang / sudah lewat dihitung dari tanggal masak
+    const activeOrders = filteredOrders.filter((o) => o.status !== "CANCELLED");
+    let totalOrders = activeOrders.length;
     let totalPortionsPlanned = 0;
-    let totalPortionsDistributed = 0;
-    let inCooking = 0;
+    let pastPortions = 0;
+    let todayCount = 0;
+    let upcomingCount = 0;
     let totalPOItemsCount = 0;
     let totalEstimatedCost = 0;
     let arrivedItemsCount = 0;
 
-    filteredOrders.forEach((o) => {
+    activeOrders.forEach((o) => {
       totalPortionsPlanned += o.targetPortions || 0;
-      if (o.status === "DISTRIBUTED" || o.status === "COMPLETED") {
-        totalPortionsDistributed += o.targetPortions || 0;
-      }
-      if (o.status === "COOKING" || o.status === "PREPPING") {
-        inCooking++;
-      }
+      if (o.date < todayStr) pastPortions += o.targetPortions || 0;
+      else if (o.date === todayStr) todayCount++;
+      else upcomingCount++;
       if (o.poArrivalItems) {
         const arrivalConfirmed = isArrivalConfirmed(o.id);
         totalPOItemsCount += o.poArrivalItems.length;
@@ -658,13 +705,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     return {
       totalOrders,
       totalPortionsPlanned,
-      totalPortionsDistributed,
-      inCooking,
+      pastPortions,
+      todayCount,
+      upcomingCount,
       totalPOItemsCount,
       totalEstimatedCost,
       arrivedItemsCount,
     };
-  }, [filteredOrders]);
+  }, [filteredOrders, todayStr]);
 
   // Master schools & beneficiary categories list (sourced from reactive beneficiaries state)
   const masterSchools = beneficiaries;
@@ -867,7 +915,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   const [recapPasteText, setRecapPasteText] = useState<string | null>(null);
   const [recapReportedTotal, setRecapReportedTotal] = useState<number | undefined>(undefined);
   const dayOrders = useMemo(
-    () => orders.filter((o) => o.date === beneficiarySelectedDate).sort(sortBySession),
+    () => orders.filter((o) => o.date === beneficiarySelectedDate && o.status !== "CANCELLED").sort(sortBySession),
     [orders, beneficiarySelectedDate],
   );
   const beneficiaryOrder = dayOrders.find((o) => o.id === beneficiaryOrderId) ?? dayOrders[0];
@@ -1398,8 +1446,15 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   // HANDLERS FOR MODAL 1: INPUT & EDIT MENU HARI INI
   // =========================================================================
   const handleOpenCreateMenuModal = (overrideDate?: string | React.MouseEvent) => {
-    setEditingMenuOrderId(null);
     const targetDate = typeof overrideDate === "string" && overrideDate ? overrideDate : selectedDailyDate || todayStr;
+    // Satu tanggal satu menu (dikirim sekali sehari): bila sudah ada, buka menu itu untuk diubah
+    const existingForDate = orders.find((o) => o.date === targetDate && o.status !== "CANCELLED");
+    if (existingForDate) {
+      toast.info(`${formatIndonesianDate(targetDate)} sudah punya menu. Menu itu dibuka untuk diubah.`, "Menu Sudah Ada");
+      handleOpenEditMenuModal(existingForDate);
+      return;
+    }
+    setEditingMenuOrderId(null);
     setMenuFormDate(targetDate);
 
     // Auto H-1
@@ -1472,6 +1527,13 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     e.preventDefault();
     if (!menuFormTitle.trim()) {
       toast.error("Menu reguler wajib diisi.", "Form Belum Lengkap");
+      return;
+    }
+
+    // Tanggal menu bisa diganti di form; jangan sampai menabrak menu lain di tanggal itu
+    const clash = orders.find((o) => o.date === menuFormDate && o.id !== editingMenuOrderId && o.status !== "CANCELLED");
+    if (clash) {
+      toast.error(`${formatIndonesianDate(menuFormDate)} sudah punya menu "${clash.menuTitle}". Satu tanggal hanya satu menu; ubah menu itu atau pilih tanggal lain.`, "Menu Sudah Ada");
       return;
     }
 
@@ -2070,6 +2132,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
       return;
     }
 
+    // Daftar bahan menu ikut PO yang sudah terbit; draf tidak boleh menimpanya (bisa beda dengan PO di supplier)
+    if (warehouseDb.getPurchaseOrdersByMenuOrderId(selectedPoOrderId).length > 0) {
+      toast.warning("Menu ini sudah punya PO terbit. Ubah PO lewat tombol Ubah di Barang Masuk, atau batalkan PO dulu.", "PO Sudah Terbit");
+      return;
+    }
+
     try {
       const validItems: MenuPoArrivalItem[] = poFormRows
         .filter((r) => r.itemName.trim())
@@ -2090,10 +2158,6 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
         });
 
       if (validItems.length === 0) {
-        if (warehouseDb.getPurchaseOrdersByMenuOrderId(selectedPoOrderId).length > 0) {
-          toast.warning("Menu ini sudah punya PO terbit. Pakai tombol Batalkan PO untuk menghapusnya.", "PO Sudah Terbit");
-          return;
-        }
         const updatedOrder: MenuOrder = {
           ...targetOrder,
           poDate: poFormDate.trim() || targetOrder.poDate,
@@ -2142,29 +2206,27 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   };
 
   // Quick Status Change
-  const handleQuickStatusChange = (orderId: string, newStatus: MenuOrderStatus) => {
-    try {
-      warehouseDb.updateMenuOrderStatus(orderId, newStatus, currentUser);
-      refreshOrders();
-      toast.success(`Status menu order berhasil diperbarui.`);
-    } catch (err: any) {
-      toast.error(err.message || "Gagal memperbarui status order.", "Gagal Update Status");
+  // Batal tidak menghapus menu: tetap tersimpan sebagai riwayat, tapi tidak ikut poster, Barang Keluar, dan Hari ini
+  const handleToggleCancelOrder = async (order: MenuOrder) => {
+    const cancelling = order.status !== "CANCELLED";
+    if (cancelling) {
+      const hasPo = warehouseDb.getPurchaseOrdersByMenuOrderId(order.id).length > 0;
+      const ok = await askConfirm({
+        title: `Batalkan menu "${order.menuTitle}"?`,
+        message: hasPo
+          ? "Menu disembunyikan dari daftar dan tidak dimasak. PO-nya tidak ikut batal: batalkan lewat menu PO bila bahan tidak jadi dipesan."
+          : "Menu disembunyikan dari daftar dan tidak dimasak. Bisa diaktifkan lagi lewat Tampilkan menu dibatalkan.",
+        confirmText: "Batalkan menu",
+        variant: "danger",
+      });
+      if (!ok) return;
     }
-  };
-
-  const getStatusBadge = (status: MenuOrderStatus) => {
-    switch (status) {
-      case "PLANNED":
-        return {label: "Direncanakan", class: "bg-slate-100 text-slate-700 border-slate-300"};
-      case "PREPPING":
-        return {label: "Persiapan Bahan", class: "bg-amber-50 text-amber-800 border-amber-300"};
-      case "COOKING":
-        return {label: "Sedang Dimasak", class: "bg-orange-50 text-orange-800 border-orange-300"};
-      case "DISTRIBUTED":
-      case "COMPLETED":
-        return {label: "Terdistribusi Selesai", class: "bg-emerald-50 text-emerald-800 border-emerald-300"};
-      case "CANCELLED":
-        return {label: "Dibatalkan", class: "bg-rose-50 text-rose-800 border-rose-300"};
+    try {
+      warehouseDb.updateMenuOrderStatus(order.id, cancelling ? "CANCELLED" : "PLANNED", currentUser);
+      refreshOrders();
+      toast.success(cancelling ? `Menu ${order.menuTitle} dibatalkan.` : `Menu ${order.menuTitle} aktif lagi.`);
+    } catch (err: any) {
+      toast.error(err.message || "Gagal mengubah menu.", "Gagal Menyimpan");
     }
   };
 
@@ -2339,6 +2401,114 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
       {/* ========================================================================= */}
       {activeSubTab === "MENU_ORDERS" && (
         <div className="space-y-4">
+          {/* Hari ini: dapur memasak menu hari ini, gudang menerima bahan untuk menu besok (PO datang H-1) */}
+          {(() => {
+            const cookingToday = orders.filter((o) => o.date === todayStr && o.status !== "CANCELLED");
+            const arrivingToday = orders
+              .filter((o) => o.status !== "CANCELLED")
+              .map((o) => ({order: o, progress: menuPoProgress(o)}))
+              .filter((x) => x.progress.arrivalDate === todayStr);
+            const tomorrowStr = addDaysIso(todayStr, 1);
+            return (
+              <section aria-label="Hari ini" className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-200">
+                  <h2 className="text-sm font-semibold text-slate-900">Hari ini, {formatIndonesianDate(todayStr)}</h2>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Bahan datang sehari sebelum dimasak. Jadi hari ini dapur memasak menu hari ini, sementara gudang menerima bahan untuk menu besok.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 md:divide-x divide-y md:divide-y-0 divide-slate-200">
+                  <div className="p-4 space-y-2.5">
+                    <h3 className="text-xs font-semibold text-slate-700">Dimasak hari ini</h3>
+                    {cookingToday.length === 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-xs text-slate-600">Belum ada menu untuk hari ini.</p>
+                        <button type="button" onClick={() => handleOpenCreateMenuModal(todayStr)} className={BTN_SECONDARY}>
+                          <Plus className="w-3.5 h-3.5" />
+                          Catat menu hari ini
+                        </button>
+                      </div>
+                    ) : (
+                      cookingToday.map((o) => {
+                        const progress = menuPoProgress(o);
+                        const label = poProgressLabel(progress, todayStr);
+                        return (
+                          <div key={o.id} className="space-y-1">
+                            <p className="text-sm font-semibold text-slate-900">
+                              {o.menuTitle}
+                              <span className="font-normal text-slate-600"> · {cookingToday.length > 1 && `${o.mealSession} · `}{(o.totalBeneficiaries || o.targetPortions).toLocaleString("id-ID")} porsi</span>
+                            </p>
+                            <p className="text-xs text-slate-600">
+                              Bahan datang {formatArrivalDay(progress.arrivalDate, todayStr)}:{" "}
+                              <span className={`px-1.5 py-0.5 rounded-md border ${label.tone}`}>{label.text}</span>
+                            </p>
+                          </div>
+                        );
+                      })
+                    )}
+                    {cookingToday.length > 0 && (periodType !== "DAILY" || selectedDailyDate !== todayStr) && (
+                      <button type="button" onClick={handleJumpToToday} className="text-xs font-medium text-emerald-800 hover:underline cursor-pointer min-h-[44px] sm:min-h-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
+                        Lihat rincian menu hari ini
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="p-4 space-y-2.5">
+                    <h3 className="text-xs font-semibold text-slate-700">Bahan datang hari ini</h3>
+                    {arrivingToday.length === 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-xs text-slate-600">
+                          Tidak ada bahan yang dijadwalkan datang hari ini. Menu besok ({formatArrivalDay(tomorrowStr, todayStr).replace(" (besok)", "")}) belum dicatat atau
+                          PO-nya diatur datang di hari lain.
+                        </p>
+                        {!orders.some((o) => o.date === tomorrowStr) && (
+                          <button type="button" onClick={() => handleOpenCreateMenuModal(tomorrowStr)} className={BTN_SECONDARY}>
+                            <Plus className="w-3.5 h-3.5" />
+                            Catat menu besok
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      arrivingToday.map(({order: o, progress}) => {
+                        const label = poProgressLabel(progress, todayStr);
+                        return (
+                          <div key={o.id} className="space-y-1.5">
+                            <p className="text-sm font-semibold text-slate-900">
+                              Untuk {o.menuTitle}
+                              <span className="font-normal text-slate-600"> · dimasak {formatArrivalDay(o.date, todayStr)}</span>
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <span className={`px-1.5 py-0.5 rounded-md border ${label.tone}`}>
+                                {progress.poCount > 0 ? `${progress.poCount} PO · ${label.text}` : label.text}
+                              </span>
+                              {progress.state === "NONE" && (
+                                <button type="button" onClick={() => handleOpenPoModal(o.id)} className={BTN_PRIMARY}>
+                                  <PackagePlus className="w-3.5 h-3.5" />
+                                  Buat PO
+                                </button>
+                              )}
+                              {(progress.state === "WAITING" || progress.state === "PARTIAL") && onNavigate && (
+                                <button type="button" onClick={() => onNavigate("receiving")} className={BTN_PRIMARY}>
+                                  Timbang di Barang Masuk
+                                </button>
+                              )}
+                              {progress.poCount > 0 && onPrintPoSheet && (
+                                <button type="button" onClick={() => onPrintPoSheet(todayStr)} className={BTN_SECONDARY}>
+                                  <Printer className="w-3.5 h-3.5" />
+                                  Cetak form PO
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </section>
+            );
+          })()}
+
           {/* Filter Control Box: Standardized Period Filter */}
           <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
             {/* Row 1: Period Mode Selector & Date Controls */}
@@ -2491,12 +2661,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
             <div className="p-3.5 rounded-xl bg-white border border-slate-200">
               <div className="text-xs text-slate-600">Sesi menu</div>
               <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">{stats.totalOrders}</div>
-              <div className="text-[11px] text-slate-600 mt-0.5">{stats.inCooking} sedang disiapkan atau dimasak</div>
+              <div className="text-[11px] text-slate-600 mt-0.5">
+                {stats.todayCount} hari ini · {stats.upcomingCount} akan datang
+              </div>
             </div>
             <div className="p-3.5 rounded-xl bg-white border border-slate-200">
               <div className="text-xs text-slate-600">Porsi direncanakan</div>
               <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">{stats.totalPortionsPlanned.toLocaleString("id-ID")}</div>
-              <div className="text-[11px] text-slate-600 mt-0.5">{stats.totalPortionsDistributed.toLocaleString("id-ID")} sudah tersalurkan</div>
+              <div className="text-[11px] text-slate-600 mt-0.5">{stats.pastPortions.toLocaleString("id-ID")} dari menu yang sudah lewat</div>
             </div>
             <div className="p-3.5 rounded-xl bg-white border border-slate-200">
               <div className="text-xs text-slate-600">Bahan sudah datang</div>
@@ -2515,15 +2687,15 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
           {/* Search & Filter Controls */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Select size="sm"
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}>
-                <option value="ALL">Semua Status</option>
-                <option value="PLANNED">Direncanakan</option>
-                <option value="PREPPING">Persiapan Bahan</option>
-                <option value="COOKING">Sedang Dimasak</option>
-                <option value="DISTRIBUTED">Terdistribusi Selesai</option>
-              </Select>
+              <label className="inline-flex items-center gap-2 text-xs text-slate-800 cursor-pointer min-h-[44px] sm:min-h-0">
+                <input
+                  type="checkbox"
+                  checked={showCancelled}
+                  onChange={(e) => setShowCancelled(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 text-emerald-700 cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-600"
+                />
+                Tampilkan menu dibatalkan
+              </label>
             </div>
 
             <div className="relative">
@@ -2569,36 +2741,41 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                 const isExpanded = expandedOrderIds[order.id] ?? true;
                 const poItems = order.poArrivalItems || [];
                 const arrivalConfirmed = isArrivalConfirmed(order.id);
-                const statusMeta = getStatusBadge(order.status);
+                const isCancelled = order.status === "CANCELLED";
                 const regularDishes = parseDishItems(order.menuTitle);
                 const b3Dishes = order.specialDietB3 ? parseDishItems(order.specialDietB3) : [];
 
                 return (
-                  <div key={order.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden transition-all">
+                  <div key={order.id} className={`bg-white rounded-xl border overflow-hidden transition-all ${isCancelled ? "border-rose-200" : "border-slate-200"}`}>
                     {/* Header Kartu Harian */}
                     <div className="p-4 bg-slate-50/90 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-sm font-bold text-slate-900">{formatIndonesianDate(order.date)}</h3>
-                          <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-white text-slate-700 border border-slate-200">{order.mealSession}</span>
-                          {order.poDate && (
-                            <span className="text-xs px-2 py-0.5 rounded-md bg-white text-slate-700 border border-slate-200">PO {formatShortDate(order.poDate)}</span>
+                          {/* Menu dikirim sekali sehari; sesi hanya tampil bila data lama punya lebih dari satu menu di tanggal ini */}
+                          {orders.filter((o) => o.date === order.date && o.status !== "CANCELLED").length > 1 && (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-white text-slate-700 border border-slate-200">{order.mealSession}</span>
                           )}
-                          <div className="relative inline-flex items-center">
-                            <Select size="sm"
-                              tone={statusMeta.class}
-                              value={order.status}
-                              onChange={(e) => handleQuickStatusChange(order.id, e.target.value as MenuOrderStatus)}
-                              aria-label={`Status menu ${formatIndonesianDate(order.date)}`}
-                              title="Klik untuk ubah status pengerjaan menu">
-                              <option value="PLANNED">Direncanakan</option>
-                              <option value="PREPPING">Persiapan Bahan</option>
-                              <option value="COOKING">Sedang Dimasak</option>
-                              <option value="DISTRIBUTED">Terdistribusi Selesai</option>
-                              <option value="CANCELLED">Dibatalkan</option>
-                            </Select>
-                            <ChevronDown className="w-3 h-3 absolute right-1.5 pointer-events-none opacity-60" />
-                          </div>
+                          {(() => {
+                            const progress = menuPoProgress(order);
+                            const label = poProgressLabel(progress, todayStr);
+                            return (
+                              <span className={`text-xs px-2 py-0.5 rounded-md border ${label.tone}`}>
+                                Bahan datang {formatArrivalDay(progress.arrivalDate, todayStr)} · {label.text}
+                              </span>
+                            );
+                          })()}
+                          {(() => {
+                            // Label dari tanggal masak, bukan isian manual
+                            const timing = isCancelled
+                              ? {text: "Dibatalkan", tone: "bg-rose-50 text-rose-800 border-rose-200"}
+                              : order.date === todayStr
+                                ? {text: "Hari ini", tone: "bg-emerald-50 text-emerald-800 border-emerald-200"}
+                                : order.date > todayStr
+                                  ? {text: "Akan datang", tone: "bg-white text-slate-700 border-slate-200"}
+                                  : {text: "Sudah lewat", tone: "bg-slate-100 text-slate-600 border-slate-200"};
+                            return <span className={`text-xs font-medium px-2 py-0.5 rounded-md border ${timing.tone}`}>{timing.text}</span>;
+                          })()}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 mt-1.5">
@@ -2631,15 +2808,20 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                           Ubah menu
                         </button>
 
-                        {/* Kelola PO Bahan */}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenPoModal(order.id)}
-                          className={poItems.length > 0 ? BTN_SECONDARY : BTN_PRIMARY}
-                          title="Kelola daftar bahan PO & supplier">
-                          <PackagePlus className="w-3.5 h-3.5" />
-                          {poItems.length > 0 ? `PO (${poItems.length})` : "Buat PO"}
-                        </button>
+                        {/* PO bahan: setelah terbit hanya bisa dilihat, supaya tidak terbit dua kali */}
+                        {(() => {
+                          const issuedCount = warehouseDb.getPurchaseOrdersByMenuOrderId(order.id).length;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPoModal(order.id)}
+                              className={issuedCount > 0 ? BTN_SECONDARY : BTN_PRIMARY}
+                              title={issuedCount > 0 ? "Lihat PO yang sudah terbit" : "Susun bahan dan terbitkan PO ke supplier"}>
+                              <PackagePlus className="w-3.5 h-3.5" />
+                              {issuedCount > 0 ? `Lihat PO (${issuedCount})` : poItems.length > 0 ? "Lanjutkan PO" : "Buat PO"}
+                            </button>
+                          );
+                        })()}
 
                         {/* Menu Tindakan Lainnya (...) */}
                         <div className="relative order-action-menu-container">
@@ -2672,7 +2854,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                                   <span>Cetak form PO</span>
                                 </button>
                               )}
-                              {poItems.length > 0 && (
+                              {warehouseDb.getPurchaseOrdersByMenuOrderId(order.id).length > 0 && (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -2684,6 +2866,16 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                                   <span>Batalkan PO</span>
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenOrderMenuId(null);
+                                  handleToggleCancelOrder(order);
+                                }}
+                                className="w-full text-left px-3 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer">
+                                {isCancelled ? <RotateCcw className="w-3.5 h-3.5 text-slate-500 shrink-0" /> : <X className="w-3.5 h-3.5 text-slate-500 shrink-0" />}
+                                <span>{isCancelled ? "Aktifkan lagi" : "Batalkan menu"}</span>
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -2714,91 +2906,122 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                     {/* Konten Kartu */}
                     {isExpanded && (
                       <div className="p-4 sm:p-5 space-y-4">
-                        {/* SEKSI 1: KOMPOSISI OLAHAN MENU */}
-                        <div className="bg-slate-50/70 rounded-xl p-4 border border-slate-200/80 space-y-3">
-                          <span className="text-xs font-bold text-slate-900">Menu reguler</span>
-
-                          {/* Komposisi Menu Reguler Cards */}
-                          {regularDishes.length > 0 ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                              {regularDishes.map((dish, dIdx) => (
-                                <div key={dIdx} className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col justify-between">
-                                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tight">{dish.category}</span>
-                                  <span className="text-xs font-bold text-slate-900 mt-1 capitalize">{dish.name}</span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-xs text-slate-500 italic">Belum ada menu reguler diinput.</div>
-                          )}
-
-                          {/* Menu Diet Khusus Balita & Bumil (B3) */}
-                          <div className="pt-3 border-t border-slate-200/80">
-                            <div className="text-xs font-semibold text-slate-700 mb-2">Menu balita & ibu hamil (B3)</div>
-                            {order.specialDietB3 ? (
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                                {b3Dishes.map((dish, bIdx) => (
-                                  <div key={bIdx} className="p-2.5 bg-white rounded-lg border border-slate-200 text-xs text-slate-800 font-medium capitalize">
-                                    {dish.name}
-                                  </div>
-                                ))}
+                        {/* SEKSI 1: MENU REGULER DAN B3 berdampingan, satu baris per olahan */}
+                        <div className="rounded-xl border border-slate-200">
+                          <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-200">
+                            {([
+                              {title: "Menu reguler", dishes: regularDishes, empty: "Belum ada menu reguler."},
+                              {
+                                title: "Balita & ibu hamil (B3)",
+                                dishes: b3Dishes,
+                                empty: "Sama dengan menu reguler, porsi disesuaikan untuk balita dan ibu hamil.",
+                              },
+                            ] as const).map((col) => (
+                              <div key={col.title} className="p-3.5 space-y-2">
+                                <h4 className="text-xs font-semibold text-slate-700">{col.title}</h4>
+                                {col.dishes.length > 0 ? (
+                                  <dl className="space-y-1 text-xs">
+                                    {col.dishes.map((dish, dIdx) => (
+                                      <div key={dIdx} className="flex gap-3">
+                                        <dt className="w-24 shrink-0 text-slate-500">{DISH_CATEGORY_LABEL[dish.category] || dish.category}</dt>
+                                        <dd className="font-medium text-slate-900 first-letter:uppercase">{dish.name}</dd>
+                                      </div>
+                                    ))}
+                                  </dl>
+                                ) : (
+                                  <p className="text-xs text-slate-600">{col.empty}</p>
+                                )}
                               </div>
-                            ) : (
-                              <div className="text-xs text-slate-500 italic">Mengikuti menu reguler dengan penyesuaian porsi balita & ibu hamil.</div>
-                            )}
+                            ))}
                           </div>
-
                           {order.notes && (
-                            <div className="text-xs text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200">
-                              <span className="font-semibold text-slate-700">Catatan Khusus:</span> {order.notes}
-                            </div>
+                            <p className="px-3.5 py-2.5 border-t border-slate-200 text-xs text-slate-700">
+                              <span className="font-semibold">Catatan:</span> {order.notes}
+                            </p>
                           )}
                         </div>
 
                         {/* SEKSI 2: RINCIAN BAHAN PO */}
                         <div className="space-y-2.5">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-slate-900">Rincian Bahan PO</span>
-                            <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">{poItems.length} Bahan</span>
+                            <span className="text-xs font-bold text-slate-900">Bahan PO</span>
+                            <span className="text-xs text-slate-600">
+                              {poItems.length} bahan · datang {formatArrivalDay(menuPoProgress(order).arrivalDate, todayStr)}, sehari sebelum dimasak
+                            </span>
                           </div>
 
-                          {/* List Bahan Table (Clean & Focused) */}
                           {poItems.length === 0 ? (
                             <div className="py-5 px-4 text-center rounded-xl bg-slate-50 border border-slate-200/80">
-                              <p className="text-xs text-slate-500">Belum ada rincian bahan PO yang tercatat untuk menu ini.</p>
+                              <p className="text-xs text-slate-600">Belum ada bahan PO untuk menu ini.</p>
                             </div>
-                          ) : (
-                            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                              <table className="w-full text-left text-xs border-collapse">
-                                <thead>
-                                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold">
-                                    <th className="py-2.5 px-3 w-12 text-center">No</th>
-                                    <th className="py-2.5 px-3 w-36">Kategori</th>
-                                    <th className="py-2.5 px-4">Nama Bahan</th>
-                                    <th className="py-2.5 px-4 w-52">Supplier / Rekanan</th>
-                                    <th className="py-2.5 px-4 w-28 text-right">Dipesan</th>
-                                    <th className="py-2.5 px-4 w-28 text-right">Datang</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                  {poItems.map((item, pIdx) => (
-                                    <tr key={pIdx} className="hover:bg-slate-50/70 transition-colors">
-                                      <td className="py-2.5 px-3 text-center text-slate-500 font-mono">{pIdx + 1}</td>
-                                      <td className="py-2.5 px-3 text-slate-600 font-medium">{item.category}</td>
-                                      <td className="py-2.5 px-4 font-semibold text-slate-900">{item.itemName}</td>
-                                      <td className="py-2.5 px-4 text-slate-700 font-medium">
-                                        {item.supplier || <span className="text-amber-800">Belum dipilih</span>}
-                                      </td>
-                                      <td className="py-2.5 px-4 text-right font-mono font-semibold text-slate-900 tabular-nums">{item.qtyOrder || "-"}</td>
-                                      <td className="py-2.5 px-4 text-right font-mono tabular-nums">
-                                        {arrivalConfirmed && item.qtyArrived ? <span className="font-semibold text-slate-900">{item.qtyArrived}</span> : <span className="text-slate-500 font-sans">Belum</span>}
-                                      </td>
-                                    </tr>
+                          ) : (() => {
+                            // Kelompok per supplier sesuai urutan di daftar; bahan tanpa supplier di kelompok terakhir
+                            const groups = new Map<string, MenuPoArrivalItem[]>();
+                            poItems.forEach((it) => {
+                              const key = (it.supplier || "").trim() || PENDING_SUPPLIER_NAME;
+                              groups.set(key, [...(groups.get(key) || []), it]);
+                            });
+                            const groupList = [...groups.entries()].sort(
+                              ([a], [b]) => Number(a === PENDING_SUPPLIER_NAME) - Number(b === PENDING_SUPPLIER_NAME),
+                            );
+                            const detailOpen = !!poDetailOpen[order.id];
+                            return (
+                              <div className="space-y-2">
+                                <ul className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+                                  {groupList.map(([supplier, items]) => (
+                                    <li key={supplier} className="px-3 py-2.5">
+                                      <div className="flex items-baseline justify-between gap-3">
+                                        <span className={`text-xs font-semibold ${supplier === PENDING_SUPPLIER_NAME ? "text-amber-800" : "text-slate-900"}`}>
+                                          {supplier}
+                                        </span>
+                                        <span className="text-[11px] text-slate-600 shrink-0">{items.length} bahan</span>
+                                      </div>
+                                      {detailOpen ? (
+                                        <table className="w-full text-xs mt-1.5">
+                                          <thead className="sr-only">
+                                            <tr>
+                                              <th>Bahan</th>
+                                              <th>Dipesan</th>
+                                              <th>Datang</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-slate-50">
+                                            {items.map((item, iIdx) => (
+                                              <tr key={`${item.itemName}-${iIdx}`}>
+                                                <td className="py-1 pr-3 text-slate-800">
+                                                  {item.itemName}
+                                                  {item.category && <span className="text-slate-500"> · {item.category}</span>}
+                                                </td>
+                                                <td className="py-1 px-2 w-24 text-right font-mono tabular-nums text-slate-900">{item.qtyOrder || "-"}</td>
+                                                <td className="py-1 pl-2 w-24 text-right font-mono tabular-nums">
+                                                  {arrivalConfirmed && item.qtyArrived ? (
+                                                    <span className="text-slate-900">{item.qtyArrived}</span>
+                                                  ) : (
+                                                    <span className="text-slate-500 font-sans">belum</span>
+                                                  )}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      ) : (
+                                        <p className="mt-0.5 text-xs text-slate-700 line-clamp-2">
+                                          {items.map((it) => (it.qtyOrder ? `${it.itemName} ${it.qtyOrder}` : it.itemName)).join(", ")}
+                                        </p>
+                                      )}
+                                    </li>
                                   ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
+                                </ul>
+                                <button
+                                  type="button"
+                                  onClick={() => setPoDetailOpen((prev) => ({...prev, [order.id]: !detailOpen}))}
+                                  aria-expanded={detailOpen}
+                                  className={`text-xs font-medium text-emerald-800 hover:underline cursor-pointer rounded-md min-h-[44px] sm:min-h-0 ${FOCUS_RING}`}>
+                                  {detailOpen ? "Ringkas lagi" : "Lihat rincian per bahan (jumlah dipesan dan datang)"}
+                                </button>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     )}
@@ -2817,7 +3040,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
         <div className="space-y-4">
           {/* Pilih tampilan */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div role="tablist" aria-label="Tampilan porsi" className="inline-flex gap-1 p-1 bg-slate-200/70 rounded-lg text-xs w-fit">
+            <div role="tablist" aria-label="Tampilan porsi" className="inline-flex gap-1 p-1 bg-slate-100 border border-slate-200 rounded-lg text-xs w-fit">
               {([
                 {id: "DETAIL_HARIAN", label: "Porsi hari ini"},
                 {id: "REKAP_HARIAN", label: "Rekap periode"},
@@ -2829,129 +3052,95 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                   aria-selected={beneficiaryViewMode === v.id}
                   onClick={() => setBeneficiaryViewMode(v.id)}
                   className={`px-3 rounded-md whitespace-nowrap cursor-pointer min-h-[44px] sm:min-h-[30px] ${FOCUS_RING} ${
-                    beneficiaryViewMode === v.id ? "bg-white text-slate-900 font-semibold shadow-xs" : "text-slate-700 hover:text-slate-900 font-medium"
+                    beneficiaryViewMode === v.id ? "bg-white text-slate-900 font-semibold shadow-xs" : "text-slate-600 hover:text-slate-900 font-medium"
                   }`}>
                   {v.label}
                 </button>
               ))}
             </div>
 
-            {beneficiaryViewMode === "REKAP_HARIAN" && (
-              <div className="flex flex-wrap items-center gap-2">
-                <button type="button" onClick={handleExportBeneficiaryDailyRecap} className={BTN_SECONDARY} title="Unduh rekap porsi ke Excel">
-                  <FileSpreadsheet className="w-4 h-4" />
-                  Ekspor Excel
-                </button>
-                <button type="button" onClick={() => setIsBeneficiaryPrintModalOpen(true)} className={BTN_SECONDARY} title="Cetak rekap dengan kop surat SPPG">
-                  <Printer className="w-4 h-4" />
-                  Cetak rekap
-                </button>
-              </div>
-            )}
           </div>
 
           {/* MODE 1: REKAP MATRIKS HARIAN */}
           {beneficiaryViewMode === "REKAP_HARIAN" && (
             <div className="space-y-4">
-              {/* Filter Tanggal & Kategori Bar */}
-              <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              {/* Filter, aksi, dan ringkasan dalam satu kartu */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Select size="sm"
+                    <Select
                       aria-label="Periode rekap"
                       value={beneficiaryPeriodPreset}
-                      onChange={(e) => {
-                        const val = e.target.value as any;
-                        setBeneficiaryPeriodPreset(val);
-                      }}>
+                      onChange={(e) => setBeneficiaryPeriodPreset(e.target.value as typeof beneficiaryPeriodPreset)}>
                       <option value="ALL_ORDERS">Semua tanggal tercatat</option>
                       <option value="LAST_7_DAYS">7 hari terakhir</option>
                       <option value="THIS_MONTH">Bulan ini</option>
                       <option value="CUSTOM">Pilih rentang…</option>
                     </Select>
-
                     {beneficiaryPeriodPreset === "CUSTOM" && (
                       <div className="flex items-center gap-1.5 text-xs">
                         <input
                           type="date"
+                          aria-label="Dari tanggal"
                           value={beneficiaryStartDate}
                           onChange={(e) => setBeneficiaryStartDate(e.target.value)}
-                          className="px-2.5 py-1 border border-slate-300 rounded-lg text-slate-800 bg-white font-mono"
+                          className={`${FIELD_INPUT} w-auto`}
                         />
-                        <span className="text-slate-500">s/d</span>
+                        <span className="text-slate-600">sampai</span>
                         <input
                           type="date"
+                          aria-label="Sampai tanggal"
                           value={beneficiaryEndDate}
                           onChange={(e) => setBeneficiaryEndDate(e.target.value)}
-                          className="px-2.5 py-1 border border-slate-300 rounded-lg text-slate-800 bg-white font-mono"
+                          className={`${FIELD_INPUT} w-auto`}
                         />
                       </div>
                     )}
-                  </div>
-
-                  <div className="text-xs text-slate-500 font-medium">
-                    Menampilkan <strong className="text-slate-800 font-mono">{dailyBeneficiaryMatrix.dates.length}</strong> tanggal distribusi
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Select size="sm"
-                      value={selectedBeneficiaryCategory}
-                      onChange={(e) => setSelectedBeneficiaryCategory(e.target.value)}>
+                    <Select aria-label="Kategori sekolah" value={selectedBeneficiaryCategory} onChange={(e) => setSelectedBeneficiaryCategory(e.target.value)}>
                       <option value="ALL">Semua kategori</option>
                       {categoryOptions.map((c) => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </Select>
+                    <div className="relative w-full sm:w-60">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" aria-hidden />
+                      <input
+                        type="search"
+                        aria-label="Cari sekolah"
+                        placeholder="Cari sekolah, kontak, PIC"
+                        value={schoolSearchQuery}
+                        onChange={(e) => setSchoolSearchQuery(e.target.value)}
+                        className={`${FIELD_INPUT} pl-8`}
+                      />
+                    </div>
                   </div>
-
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
-                    <input
-                      type="text"
-                      placeholder="Cari nama sekolah, kontak, PIC..."
-                      value={schoolSearchQuery}
-                      onChange={(e) => setSchoolSearchQuery(e.target.value)}
-                      className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1.5 w-64 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <button type="button" onClick={handleExportBeneficiaryDailyRecap} className={BTN_SECONDARY} title="Unduh rekap porsi ke Excel">
+                      <FileSpreadsheet className="w-4 h-4" />
+                      Ekspor Excel
+                    </button>
+                    <button type="button" onClick={() => setIsBeneficiaryPrintModalOpen(true)} className={BTN_SECONDARY} title="Cetak rekap dengan kop surat SPPG">
+                      <Printer className="w-4 h-4" />
+                      Cetak rekap
+                    </button>
                   </div>
                 </div>
-              </div>
 
-              {/* Summary Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-                  <div className="text-[11px] font-semibold text-slate-500">Total Porsi Periode Ini</div>
-                  <div className="text-xl font-bold text-blue-900 mt-1 font-mono tabular-nums">
-                    {dailyBeneficiaryMatrix.grandTotal.toLocaleString("id-ID")} <span className="text-xs font-normal text-slate-500">porsi</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">Akumulasi seluruh sekolah</div>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-                  <div className="text-[11px] font-semibold text-slate-500">Rata-rata Porsi per Hari</div>
-                  <div className="text-xl font-bold text-emerald-800 mt-1 font-mono tabular-nums">
-                    {Math.round(dailyBeneficiaryMatrix.avgDailyTotal).toLocaleString("id-ID")} <span className="text-xs font-normal text-slate-500">porsi/hari</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">Rata-rata kebutuhan dapur SPPG</div>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-                  <div className="text-[11px] font-semibold text-slate-500">Lembaga Terdaftar</div>
-                  <div className="text-xl font-bold text-slate-800 mt-1 font-mono tabular-nums">
-                    {dailyBeneficiaryMatrix.schoolCount} <span className="text-xs font-normal text-slate-500">titik</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">Sekolah dasar, SMP, PAUD, posyandu</div>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-                  <div className="text-[11px] font-semibold text-slate-500">Hari Distribusi Aktif</div>
-                  <div className="text-xl font-bold text-slate-800 mt-1 font-mono tabular-nums">
-                    {dailyBeneficiaryMatrix.activeDateCount} <span className="text-xs font-normal text-slate-500">hari</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">Tersedia jadwal menu operasional</div>
-                </div>
+                <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 pt-3 border-t border-slate-200">
+                  {([
+                    ["Total porsi", dailyBeneficiaryMatrix.grandTotal, "porsi"],
+                    ["Rata-rata per hari", Math.round(dailyBeneficiaryMatrix.avgDailyTotal), "porsi"],
+                    ["Hari distribusi", dailyBeneficiaryMatrix.activeDateCount, "hari"],
+                    ["Sekolah terdaftar", dailyBeneficiaryMatrix.schoolCount, "sekolah"],
+                  ] as const).map(([label, value, unit]) => (
+                    <div key={label}>
+                      <dt className="text-xs text-slate-600">{label}</dt>
+                      <dd className="mt-0.5 text-lg font-bold text-slate-900 tabular-nums">
+                        {value.toLocaleString("id-ID")} <span className="text-xs font-normal text-slate-600">{unit}</span>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
 
               {/* Matriks Table */}
@@ -3088,14 +3277,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                           </button>
                         )}
                         {distinctDatesWithOrders.length > 0 && (
-                          <Select className="w-auto max-w-[260px]"
+                          <Select className="w-48"
                             aria-label="Lompat ke tanggal bermenu"
                             value={distinctDatesWithOrders.includes(beneficiarySelectedDate) ? beneficiarySelectedDate : ""}
                             onChange={(e) => e.target.value && changeBeneficiaryDate(e.target.value)}>
-                            <option value="">Lompat ke tanggal bermenu…</option>
+                            <option value="">Tanggal bermenu…</option>
                             {distinctDatesWithOrders.map((d) => (
                               <option key={d} value={d}>
-                                {formatShortDate(d)} · {orders.find((o) => o.date === d)?.menuTitle}
+                                {formatIndonesianDate(d)}
                               </option>
                             ))}
                           </Select>
@@ -3119,25 +3308,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                         )}
                       </div>
 
-                      {/* Alat ubah angka dipisah garis dari Hapus/Simpan agar tombol yang mengubah data tersimpan tidak tertukar */}
+                      {/* Hanya aksi yang menyimpan/menghapus data di sini; alat ubah angka ada di atas tabel */}
                       <div className="flex flex-wrap items-center gap-2">
-                        <button type="button" onClick={() => setRecapPasteText("")} className={BTN_SECONDARY} title="Tempel rekap penerima manfaat dari WhatsApp atau Excel">
-                          <ClipboardPaste className="w-4 h-4" />
-                          Tempel rekap
-                        </button>
-                        <button type="button" onClick={handleScaleDailyPortionsProportional} className={BTN_SECONDARY} title="Ubah total porsi, tiap sekolah ikut menyesuaikan">
-                          Sesuaikan total
-                        </button>
-                        <button type="button" onClick={handleResetDailyAllocationsToMaster} className={BTN_SECONDARY} title="Kembalikan porsi tiap sekolah ke porsi standar">
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          Porsi standar
-                        </button>
-                        <div className="flex items-center gap-2 sm:pl-2 sm:border-l sm:border-slate-200">
+                        <div className="flex items-center gap-2">
                           {(savedRecap || dayOrders.some((o) => o.beneficiaryAllocations?.length || o.targetPortions)) && (
                             <button
                               type="button"
                               onClick={handleDeleteDailyPortions}
-                              className={`inline-flex whitespace-nowrap items-center justify-center gap-1.5 px-3 min-h-[44px] sm:min-h-[32px] rounded-lg border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-medium cursor-pointer ${FOCUS_RING}`}
+                              className={`${BTN_SECONDARY} border-transparent bg-transparent hover:bg-rose-50 text-rose-700`}
                               title="Hapus porsi yang sudah tersimpan untuk tanggal ini (mis. salah input)">
                               <Trash2 className="w-3.5 h-3.5" />
                               Hapus
@@ -3156,7 +3334,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                         <div className="text-sm font-bold text-slate-900">{formatIndonesianDate(beneficiarySelectedDate)}</div>
                         {currentOrder ? (
                           <div className="text-xs text-slate-600 mt-0.5 truncate">
-                            {currentOrder.mealSession} · {currentOrder.menuTitle}
+                            {dayOrders.length > 1 && `${currentOrder.mealSession} · `}
+                            {currentOrder.menuTitle}
                           </div>
                         ) : (
                           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-700">
@@ -3205,9 +3384,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
                   {/* Daily School Allocation Table */}
                   <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                    <div className="p-3 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
+                    <div className="p-3 border-b border-slate-200 bg-slate-50 flex flex-col lg:flex-row lg:items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Select size="sm"
+                          aria-label="Kategori sekolah"
                           value={selectedBeneficiaryCategory}
                           onChange={(e) => setSelectedBeneficiaryCategory(e.target.value)}>
                           <option value="ALL">Semua kategori ({masterSchools.length})</option>
@@ -3215,17 +3395,32 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                             <option key={c} value={c}>{c}</option>
                           ))}
                         </Select>
+                        <div className="relative w-full sm:w-56">
+                          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" aria-hidden />
+                          <input
+                            type="search"
+                            aria-label="Cari sekolah"
+                            placeholder="Cari sekolah"
+                            value={schoolSearchQuery}
+                            onChange={(e) => setSchoolSearchQuery(e.target.value)}
+                            className={`${TABLE_INPUT} pl-8`}
+                          />
+                        </div>
                       </div>
 
-                      <div className="relative">
-                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
-                        <input
-                          type="text"
-                          placeholder="Cari sekolah..."
-                          value={schoolSearchQuery}
-                          onChange={(e) => setSchoolSearchQuery(e.target.value)}
-                          className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1 w-52 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
+                      {/* Alat ubah angka di tabel; hasilnya baru tersimpan setelah Simpan */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button type="button" onClick={() => setRecapPasteText("")} className={BTN_SECONDARY} title="Tempel rekap penerima manfaat dari WhatsApp atau Excel">
+                          <ClipboardPaste className="w-4 h-4" />
+                          Tempel rekap
+                        </button>
+                        <button type="button" onClick={handleScaleDailyPortionsProportional} className={BTN_SECONDARY} title="Ubah total porsi, tiap sekolah ikut menyesuaikan">
+                          Sesuaikan total
+                        </button>
+                        <button type="button" onClick={handleResetDailyAllocationsToMaster} className={BTN_SECONDARY} title="Kembalikan porsi tiap sekolah ke porsi standar">
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Porsi standar
+                        </button>
                       </div>
                     </div>
 
@@ -3642,17 +3837,54 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
       {/* ========================================================================= */}
       {/* MODAL 2: INPUT & BUAT PO HARI INI                                         */}
       {/* ========================================================================= */}
-      {isPoModalOpen && (
+      {isPoModalOpen && (() => {
+        // PO yang sudah terbit untuk menu terpilih: dialog jadi tampilan saja, tombol terbitkan disembunyikan
+        const issuedPos = selectedPoOrderId ? warehouseDb.getPurchaseOrdersByMenuOrderId(selectedPoOrderId) : [];
+        const hasIssued = issuedPos.length > 0;
+        const allLocked = hasIssued && issuedPos.every((po) => warehouseDb.isPurchaseOrderLocked(po));
+        return (
         <DialogShell
           size="xl"
-          title="PO bahan"
-          description="Daftar bahan yang dipesan ke supplier H-1 untuk menu terpilih."
+          title={hasIssued ? "PO bahan (sudah terbit)" : "PO bahan"}
+          description={
+            hasIssued
+              ? "PO untuk menu ini sudah dikirim ke supplier. Perubahan jumlah atau supplier dilakukan lewat Ubah di Barang Masuk."
+              : "Daftar bahan yang dipesan ke supplier untuk datang sehari sebelum menu dimasak."
+          }
           onClose={() => setIsPoModalOpen(false)}
           onSubmit={handleSavePoForm}
           footer={
+            hasIssued ? (
+              <>
+                {!allLocked && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePoForOrder(selectedPoOrderId)}
+                    className={`${BTN_SECONDARY} border-transparent bg-transparent hover:bg-rose-50 text-rose-700 mr-auto`}
+                    title="Batalkan PO yang belum diterima, lalu PO bisa disusun dan diterbitkan ulang">
+                    <Trash2 className="w-4 h-4" />
+                    Batalkan PO
+                  </button>
+                )}
+                <button type="button" onClick={() => setIsPoModalOpen(false)} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
+                  Tutup
+                </button>
+                {onNavigate && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsPoModalOpen(false);
+                      onNavigate("receiving");
+                    }}
+                    className={BTN_PRIMARY}>
+                    Buka di Barang Masuk
+                  </button>
+                )}
+              </>
+            ) : (
             <>
               {/* Batalkan PO dipisah ke kiri: aksi merusak, jauh dari tombol terbitkan */}
-              {selectedPoOrderId && (
+              {selectedPoOrderId && poFormRows.length > 0 && (
                 <button
                   type="button"
                   onClick={() => handleDeletePoForOrder(selectedPoOrderId)}
@@ -3676,6 +3908,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                 Terbitkan PO
               </button>
             </>
+            )
           }>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
@@ -3721,6 +3954,39 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                   </div>
                 </div>
 
+                {hasIssued ? (
+                  <div className="space-y-3">
+                    {issuedPos.map((po) => {
+                      const locked = warehouseDb.isPurchaseOrderLocked(po);
+                      return (
+                        <section key={po.id} className="border border-slate-200 rounded-xl overflow-hidden">
+                          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span className="font-semibold text-slate-900">
+                              {po.supplierName} <span className="font-mono font-normal text-slate-600">· {po.poNumber}</span>
+                            </span>
+                            <span
+                              className={`px-1.5 py-0.5 rounded-md border ${
+                                locked ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-white text-slate-700 border-slate-200"
+                              }`}>
+                              {locked ? "Sudah diterima" : `Datang ${formatIndonesianDate(po.deliveryDate || po.date)}`}
+                            </span>
+                          </div>
+                          <ul className="divide-y divide-slate-100 text-xs">
+                            {po.items.map((it) => (
+                              <li key={it.id} className="px-3 py-1.5 flex justify-between gap-3">
+                                <span className="text-slate-800">{it.name}</span>
+                                <span className="font-mono tabular-nums text-slate-900">
+                                  {Number(it.quantity).toLocaleString("id-ID")} {it.unit}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </section>
+                      );
+                    })}
+                  </div>
+                ) : (
+                <>
                 <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-semibold text-slate-800">Bahan per supplier</h3>
@@ -3941,8 +4207,11 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                     />
                   </div>
                 </div>
+                </>
+                )}
         </DialogShell>
-      )}
+        );
+      })()}
       {/* ========================================================================= */}
       {/* MODAL 3: INPUT & EDIT DATA PENERIMA MANFAAT                                */}
       {/* ========================================================================= */}

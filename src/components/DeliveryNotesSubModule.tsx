@@ -4,8 +4,6 @@ import { DateStepper } from './common/DateStepper';
 import {
   Printer,
   Search,
-  Clock,
-  Phone,
   User,
   Plus,
   Trash2,
@@ -18,7 +16,7 @@ import { MenuOrder, SchoolBeneficiaryAllocation } from '../types/warehouse';
 import logoSppgImg from '../assets/logo sppg.png';
 import {localDateIso} from "../utils/localDate";
 import { useConfirm } from '../context/ConfirmContext';
-import { BTN_PRIMARY, BTN_SECONDARY, FIELD_INPUT, FOCUS_RING } from './common/FormDialog';
+import { BTN_PRIMARY, BTN_SECONDARY, FIELD_INPUT, FOCUS_RING, TABLE_INPUT } from './common/FormDialog';
 import { warehouseDb, APP_SETTINGS_CHANGED_EVENT } from '../db/storage';
 import { useAuth } from '../context/AuthContext';
 import { SPPG_ADDRESS } from './common/KopText';
@@ -175,22 +173,6 @@ function formatIndonesianDate(dateStr?: string): string {
   return dateStr;
 }
 
-function formatShortDate(dateStr: string): string {
-  if (!dateStr) return '';
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-  try {
-    const parts = dateStr.slice(0, 10).split('-');
-    if (parts.length === 3) {
-      const day = parseInt(parts[2], 10);
-      const monthIdx = parseInt(parts[1], 10) - 1;
-      return `${day} ${months[monthIdx]} ${parts[0]}`;
-    }
-  } catch {
-    // fallback
-  }
-  return dateStr;
-}
-
 const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 
 function dayNameOf(iso: string): string {
@@ -302,11 +284,11 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [isOfficerModalOpen, editingSchoolForClass, isPrintModalOpen]);
 
-  // Satu tanggal bisa punya beberapa sesi makan (Pagi/Siang/Snack).
+  // Menu dikirim sekali sehari; beberapa sesi di satu tanggal hanya ada di data lama.
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const dayOrders = useMemo(
     () => orders
-      .filter(o => o.date === selectedDate)
+      .filter(o => o.date === selectedDate && o.status !== 'CANCELLED')
       .sort((a, b) => ['Pagi', 'Siang', 'Snack'].indexOf(a.mealSession) - ['Pagi', 'Siang', 'Snack'].indexOf(b.mealSession)),
     [orders, selectedDate]
   );
@@ -518,14 +500,14 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <DateStepper ariaLabel="Tanggal distribusi" value={selectedDate} onChange={changeDate} />
             {distinctOrderDates.length > 0 && (
-              <Select className="w-auto max-w-[260px]"
+              <Select className="w-48"
                 aria-label="Lompat ke tanggal bermenu"
                 value={distinctOrderDates.includes(selectedDate) ? selectedDate : ''}
                 onChange={e => e.target.value && changeDate(e.target.value)}>
-                <option value="">Lompat ke tanggal bermenu…</option>
+                <option value="">Tanggal bermenu…</option>
                 {distinctOrderDates.map(d => (
                   <option key={d} value={d}>
-                    {formatShortDate(d)} · {orders.find(o => o.date === d)?.menuTitle}
+                    {formatIndonesianDate(d)}
                   </option>
                 ))}
               </Select>
@@ -560,10 +542,10 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
               onClick={handlePrintAllSchools}
               disabled={schoolsToPrint.length === 0 || !currentOrder}
               className={BTN_PRIMARY}
-              title="Surat jalan, berita acara alat, dan form uji organoleptik untuk tiap sekolah"
+              title={currentOrder ? 'Dokumen pengiriman untuk semua sekolah yang tampil di daftar' : 'Catat menu tanggal ini dulu di tab Menu & PO'}
             >
               <Printer className="w-4 h-4" />
-              Cetak semua ({schoolsToPrint.length} sekolah)
+              Cetak {schoolsToPrint.length} sekolah
             </button>
           </div>
         </div>
@@ -572,7 +554,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
           <div className="min-w-0">
             <div className="text-sm font-bold text-slate-900">{formatIndonesianDate(selectedDate)}</div>
             <div className={`text-xs mt-0.5 truncate ${currentOrder ? 'text-slate-600' : 'text-amber-800'}`}>
-              {currentOrder ? `${currentOrder.mealSession} · ${currentOrder.menuTitle}` : 'Belum ada menu untuk tanggal ini. Catat menunya dulu di tab Menu & PO.'}
+              {currentOrder ? `${dayOrders.length > 1 ? `${currentOrder.mealSession} · ` : ''}${currentOrder.menuTitle}` : 'Belum ada menu untuk tanggal ini. Catat menunya dulu di tab Menu & PO.'}
             </div>
           </div>
           <div className="flex items-end gap-5 shrink-0 text-right">
@@ -598,8 +580,12 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <Select className="w-auto"
+      </div>
+
+      {/* 2. Daftar sekolah: porsi, jadwal, PIC, kelas, dan cetak per sekolah */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="p-3 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center gap-2">
+          <Select size="sm"
             aria-label="Kategori sekolah"
             value={selectedCategory}
             onChange={e => setSelectedCategory(e.target.value)}>
@@ -608,111 +594,84 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
               <option key={c} value={c}>{c}</option>
             ))}
           </Select>
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" aria-hidden />
             <input
               type="search"
               aria-label="Cari sekolah"
-              placeholder="Cari sekolah, PIC, catatan..."
+              placeholder="Cari sekolah, PIC, catatan"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className={`${FIELD_INPUT} pl-8 w-full sm:w-64`}
+              className={`${TABLE_INPUT} pl-8`}
             />
           </div>
         </div>
-      </div>
-
-      {/* 2. Daftar Sekolah & Status Dokumen Pengiriman */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        {filteredSchools.length === 0 ? (
+          <p className="px-4 py-8 text-center text-xs text-slate-600">
+            {schoolAllocationsForDate.length === 0 ? 'Belum ada data sekolah. Tambahkan di tab Data Sekolah.' : 'Tidak ada sekolah yang cocok dengan filter.'}
+          </p>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold">
-                <th className="py-2.5 px-3 w-10 text-center">No</th>
-                <th className="py-2.5 px-4 min-w-[200px]">Nama Sekolah / Lembaga</th>
-                <th className="py-2.5 px-3 w-28">Kategori</th>
-                <th className="py-2.5 px-3 w-32 text-right">Porsi Hari Ini</th>
-                <th className="py-2.5 px-3 w-28">Jadwal Kirim</th>
-                <th className="py-2.5 px-4 w-44">PIC & Kontak</th>
-                <th className="py-2.5 px-3 min-w-[140px]">Kelas</th>
-                <th className="py-2.5 px-3 w-28 text-center">Dokumen</th>
+              <tr className="bg-slate-50 border-b border-slate-200 text-slate-700">
+                <th className="py-2 px-4 font-semibold min-w-[220px]">Sekolah</th>
+                <th className="py-2 px-3 font-semibold w-28 text-right">Porsi</th>
+                <th className="py-2 px-3 font-semibold w-24">Jam kirim</th>
+                <th className="py-2 px-3 font-semibold w-44">PIC</th>
+                <th className="py-2 px-3 font-semibold w-36">Kelas</th>
+                <th className="py-2 px-3 font-semibold w-24"><span className="sr-only">Cetak</span></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredSchools.map((s, idx) => {
+              {filteredSchools.map(s => {
                 const breakdown = getSchoolClassBreakdown(s.id, s.category, s.dailyPortion, s.schoolName);
-                const classCount = breakdown.length;
-                const hasCustom = Boolean(
-                  customClassBreakdowns[`${s.id}_${selectedDate}`] || customClassBreakdowns[s.id]
-                );
+                const hasCustom = Boolean(customClassBreakdowns[`${s.id}_${selectedDate}`] || customClassBreakdowns[s.id]);
+                const notSent = !!s.skipReason || s.dailyPortion <= 0;
 
                 return (
-                  <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-3 text-center text-slate-500 font-mono">{idx + 1}</td>
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-slate-900">{s.schoolName}</div>
-                      {s.notes && (
-                        <div className="text-[10px] text-slate-500 truncate max-w-xs">{s.notes}</div>
-                      )}
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
+                  <tr key={s.id} className={notSent ? 'bg-slate-50/60' : 'hover:bg-slate-50/80'}>
+                    <td className="py-2.5 px-4">
+                      <div className={`font-semibold ${notSent ? 'text-slate-500' : 'text-slate-900'}`}>{s.schoolName}</div>
+                      <div className="text-[11px] text-slate-600 truncate max-w-xs">
                         {s.category}
-                      </span>
+                        {s.notes ? ` · ${s.notes}` : ''}
+                      </div>
                     </td>
-                    <td className="py-3 px-3 text-right">
+                    <td className="py-2.5 px-3 text-right tabular-nums">
                       {s.skipReason ? (
-                        <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-medium">
-                          Tidak kirim · {SKIP_REASON_LABEL[s.skipReason]}
-                        </span>
+                        <span className="text-[11px] text-slate-600">Tidak kirim · {SKIP_REASON_LABEL[s.skipReason]}</span>
                       ) : (
-                        <>
-                          <span className="font-mono font-bold text-emerald-800 text-sm tabular-nums">
-                            {s.dailyPortion.toLocaleString('id-ID')}
-                          </span>
-                          <span className="text-[11px] text-slate-500 ml-1">porsi</span>
-                        </>
+                        <span className={`font-semibold ${s.dailyPortion > 0 ? 'text-slate-900' : 'text-slate-500'}`}>
+                          {s.dailyPortion.toLocaleString('id-ID')}
+                        </span>
                       )}
                     </td>
-                    <td className="py-3 px-3 text-slate-600 font-mono text-[11px]">
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-slate-500" />
-                        <span>{s.deliveryTime || '-'}</span>
-                      </div>
+                    <td className="py-2.5 px-3 text-slate-700 tabular-nums">{s.deliveryTime || '-'}</td>
+                    <td className="py-2.5 px-3">
+                      <div className="text-slate-900">{s.contactPerson || '-'}</div>
+                      {s.phone && <div className="text-[11px] text-slate-600 tabular-nums">{s.phone}</div>}
                     </td>
-                    <td className="py-3 px-4 text-slate-700 text-[11px]">
-                      <div className="font-semibold text-slate-900">{s.contactPerson || '-'}</div>
-                      <div className="text-slate-500 font-mono flex items-center gap-1 mt-0.5">
-                        <Phone className="w-2.5 h-2.5 text-slate-500" />
-                        <span>{s.phone || '-'}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 text-[11px]">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-slate-600 font-medium">
-                          {classCount} kelas
-                        </span>
-                        {hasCustom && (
-                          <span className="px-1.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-                            Diatur
-                          </span>
-                        )}
-                      </div>
+                    <td className="py-2.5 px-3">
                       <button
                         type="button"
                         onClick={() => handleOpenClassEditor(s)}
-                        className={`text-[11px] text-emerald-800 hover:underline font-semibold mt-0.5 cursor-pointer block text-left rounded ${FOCUS_RING}`}
+                        className={`text-left rounded-md cursor-pointer min-h-[44px] sm:min-h-0 hover:underline ${FOCUS_RING}`}
+                        title="Atur jumlah porsi per kelas di surat jalan"
                       >
-                        Atur kelas
+                        <span className="text-slate-800">{breakdown.length} kelas</span>
+                        <span className={hasCustom ? 'text-slate-600' : 'text-emerald-800 font-medium'}>
+                          {hasCustom ? ' · diatur' : ' · atur'}
+                        </span>
                       </button>
                     </td>
-                    <td className="py-3 px-3 text-center">
+                    <td className="py-2.5 px-3 text-right">
                       <button
                         type="button"
                         onClick={() => handlePrintSingleSchool(s)}
-                        disabled={!currentOrder || s.dailyPortion <= 0}
+                        disabled={!currentOrder || notSent}
                         className={`${BTN_SECONDARY} disabled:opacity-50 disabled:cursor-not-allowed`}
-                        title="Pratinjau & cetak surat jalan, berita acara alat, dan form organoleptik"
+                        title="Pratinjau dan cetak dokumen pengiriman sekolah ini"
                       >
                         <Printer className="w-3.5 h-3.5" />
                         Cetak
@@ -723,20 +682,17 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
               })}
             </tbody>
             <tfoot>
-              <tr className="bg-slate-100/90 border-t-2 border-slate-300 font-bold text-slate-900">
-                <td colSpan={3} className="py-3 px-4 text-right text-xs">
-                  Total Alokasi Seluruh Sekolah:
-                </td>
-                <td className="py-3 px-3 text-right font-mono font-bold text-emerald-800 text-sm tabular-nums">
-                  {totalPortionsForDay.toLocaleString('id-ID')} <span className="text-xs font-normal">porsi</span>
-                </td>
-                <td colSpan={4} className="py-3 px-4 text-xs text-slate-500 font-normal">
-                  Tiap sekolah 3 lembar: surat jalan per kelas, berita acara alat, form uji organoleptik.
+              <tr className="bg-slate-50 border-t border-slate-200 font-semibold text-slate-900">
+                <td className="py-2.5 px-4 text-right">Total</td>
+                <td className="py-2.5 px-3 text-right tabular-nums">{totalPortionsForDay.toLocaleString('id-ID')}</td>
+                <td colSpan={4} className="py-2.5 px-3 text-[11px] font-normal text-slate-600">
+                  Jumlah lembar per sekolah mengikuti format yang dipilih di jendela cetak.
                 </td>
               </tr>
             </tfoot>
           </table>
         </div>
+        )}
       </div>
 
       {/* ========================================================================= */}
@@ -1112,7 +1068,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                   </h3>
                   <p className="text-xs text-slate-600 mt-0.5">
                     {formatIndonesianDate(selectedDate)}
-                    {currentOrder ? ` · ${currentOrder.mealSession}` : ''} · {printSchoolsQueue.length} sekolah ·{' '}
+                    {currentOrder && dayOrders.length > 1 ? ` · ${currentOrder.mealSession}` : ''} · {printSchoolsQueue.length} sekolah ·{' '}
                     <span className="font-semibold text-slate-800">{printPageCount} halaman A4</span>
                   </p>
                 </div>

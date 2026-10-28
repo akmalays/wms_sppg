@@ -34,7 +34,6 @@ import {
   ChevronRight,
   ChevronDown,
   X,
-  CalendarRange,
   Receipt,
   Printer,
   Building2,
@@ -52,7 +51,7 @@ import {
 } from 'lucide-react';
 import { SignaturePad } from './SignaturePad';
 import { SearchPicker, PickerOption } from './common/SearchPicker';
-import { FormDialog, FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY } from './common/FormDialog';
+import { FormDialog, FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST, FOCUS_RING, TABLE_INPUT } from './common/FormDialog';
 import { generateAutoSku, WarehouseSkuType, WAREHOUSE_SKU_DEFINITIONS } from '../utils/skuGenerator';
 import { buildItemReference, describePriceSource } from '../utils/itemReference';
 import { ReceivingDetailModal } from './ReceivingDetailModal';
@@ -227,6 +226,9 @@ function parseExpenseDate(dateStr: string): Date | null {
   const parsed = new Date(dateStr);
   return isNaN(parsed.getTime()) ? null : parsed;
 }
+
+// Isian tanggal di bar filter: lebar tetap (TABLE_INPUT bawaannya w-full) agar Dari/sampai sebaris
+const DATE_INPUT = `${TABLE_INPUT.replace('w-full ', '')} w-[150px]`;
 
 export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, onPrintReceiving }) => {
   const { currentUser, can } = useAuth();
@@ -2182,271 +2184,186 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
         /* MAIN LIST VIEW WITH STANDARD FILTER BAR */
         /* ========================================================================= */
         <div className="space-y-4">
-          {/* Filter Control Box: Period (Minggu, Bulan, Hari) & Categories */}
-          <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
-            {/* Row 1: Period Mode Selector & Date Controls */}
-            <div className="px-4 py-3 border-b border-slate-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="hidden sm:flex text-xs font-medium text-slate-600 items-center gap-1.5 shrink-0">
-                  <CalendarRange className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Periode</span>
-                </span>
-
-                {/* Period Segmented Control */}
-                <div className="inline-flex bg-slate-100/80 p-0.5 rounded-lg border border-slate-200/50 text-xs">
+          {/* Filter: baris 1 periode dan tanggal, baris 2 tampilan, kategori, sumber, supplier, cari */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div role="group" aria-label="Periode" className="inline-flex w-fit bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
+                {([
+                  ['DAILY', 'Harian', () => setPeriodType('DAILY')],
+                  ['WEEKLY', 'Mingguan', handleSetThisWeek],
+                  ['MONTHLY', 'Bulanan', () => setPeriodType('MONTHLY')],
+                  ['CUSTOM', 'Rentang', () => setPeriodType('CUSTOM')],
+                ] as const).map(([id, label, onClick]) => (
                   <button
+                    key={id}
                     type="button"
-                    onClick={() => setPeriodType('DAILY')}
-                    className={`h-7 px-2.5 rounded-md text-xs transition-all cursor-pointer ${
-                      periodType === 'DAILY' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
+                    onClick={onClick}
+                    aria-pressed={periodType === id}
+                    className={`min-h-[44px] sm:min-h-[26px] px-3 rounded-md cursor-pointer ${FOCUS_RING} ${
+                      periodType === id ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
                     }`}
                   >
-                    Harian
+                    {label}
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSetThisWeek}
-                    className={`h-7 px-2.5 rounded-md text-xs transition-all cursor-pointer ${
-                      periodType === 'WEEKLY' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
-                    }`}
-                  >
-                    Mingguan
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPeriodType('MONTHLY')}
-                    className={`h-7 px-2.5 rounded-md text-xs transition-all cursor-pointer ${
-                      periodType === 'MONTHLY' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
-                    }`}
-                  >
-                    Bulanan
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPeriodType('CUSTOM')}
-                    className={`h-7 px-2.5 rounded-md text-xs transition-all cursor-pointer ${
-                      periodType === 'CUSTOM' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
-                    }`}
-                  >
-                    Kustom
-                  </button>
-                </div>
+                ))}
               </div>
 
-              {/* Date Range Inputs */}
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 {periodType === 'DAILY' && (
-                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-8">
-                    <span className="text-slate-500 text-[11px]">Tanggal:</span>
+                  <input
+                    type="date"
+                    aria-label="Tanggal"
+                    value={selectedDailyDate}
+                    onChange={e => setSelectedDailyDate(e.target.value)}
+                    className={DATE_INPUT}
+                  />
+                )}
+                {(periodType === 'WEEKLY' || periodType === 'CUSTOM') && (
+                  <>
                     <input
                       type="date"
-                      value={selectedDailyDate}
-                      onChange={e => setSelectedDailyDate(e.target.value)}
-                      className="text-xs font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                      aria-label="Dari tanggal"
+                      value={startDate}
+                      onChange={e => setStartDate(e.target.value)}
+                      className={DATE_INPUT}
                     />
-                  </div>
-                )}
-
-                {(periodType === 'WEEKLY' || periodType === 'CUSTOM') && (
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-8">
-                      <span className="text-slate-500 text-[11px]">Dari</span>
-                      <input
-                        type="date"
-                        value={startDate}
-                        onChange={e => setStartDate(e.target.value)}
-                        className="text-xs font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
-                      />
-                      <span className="text-slate-500">s/d</span>
-                      <input
-                        type="date"
-                        value={endDate}
-                        onChange={e => setEndDate(e.target.value)}
-                        className="text-xs font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
-                      />
-                    </div>
-
-                    {periodType === 'WEEKLY' && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={handleSetThisWeek}
-                          className="h-8 px-2.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer transition-colors"
-                        >
-                          Minggu Ini
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleSetLastWeek}
-                          className="h-8 px-2.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer transition-colors"
-                        >
-                          Minggu Lalu
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {periodType === 'MONTHLY' && (
-                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 h-8">
-                    <span className="text-slate-500 text-[11px]">Bulan:</span>
+                    <span className="text-slate-600">sampai</span>
                     <input
-                      type="month"
-                      value={selectedMonth}
-                      onChange={e => setSelectedMonth(e.target.value)}
-                      className="text-xs font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                      type="date"
+                      aria-label="Sampai tanggal"
+                      value={endDate}
+                      onChange={e => setEndDate(e.target.value)}
+                      className={DATE_INPUT}
                     />
+                  </>
+                )}
+                {periodType === 'WEEKLY' && (
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={handleSetThisWeek} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
+                      Minggu ini
+                    </button>
+                    <button type="button" onClick={handleSetLastWeek} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
+                      Minggu lalu
+                    </button>
                   </div>
+                )}
+                {periodType === 'MONTHLY' && (
+                  <input
+                    type="month"
+                    aria-label="Bulan"
+                    value={selectedMonth}
+                    onChange={e => setSelectedMonth(e.target.value)}
+                    className={DATE_INPUT}
+                  />
                 )}
               </div>
             </div>
 
-            {/* Row 2: Unified Category Tabs, Supplier Select, Search, & View Toggle */}
-            <div className="p-3.5 bg-slate-50/50 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-              {/* Filter kategori (sama dengan Master Barang) + sub-kategori */}
-              <div className="space-y-2 min-w-0">
-                <div className="flex flex-wrap items-center gap-1">
-                  {[
-                    { id: 'ALL', label: 'Semua kategori', count: sourceRecords.length },
-                    ...STANDARD_CATEGORIES.map(cat => ({ id: cat, label: cat, count: categoryCounts[cat] || 0 })),
-                  ]
-                    .filter(tab => tab.id === 'ALL' || tab.count > 0 || tab.id === selectedCategoryTab)
-                    .map(tab => {
-                      const isActive = selectedCategoryTab === tab.id;
-                      return (
-                        <button
-                          key={tab.id}
-                          type="button"
-                          aria-pressed={isActive}
-                          onClick={() => {
-                            setSelectedCategoryTab(tab.id as 'ALL' | StandardCategory);
-                            setSelectedSubcategory('ALL');
-                          }}
-                          className={`h-8 px-3 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
-                            isActive
-                              ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                              : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200/70'
-                          }`}
-                        >
-                          <span>{tab.label}</span>
-                          {tab.count > 0 && (
-                            <span
-                              className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
-                                isActive ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-500'
-                              }`}
-                            >
-                              {tab.count}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                </div>
-
-                {subcategoryCounts.length > 1 && (
-                  <div className="flex flex-wrap items-center gap-1" role="group" aria-label={`Sub-kategori ${selectedCategoryTab}`}>
-                    <span className="text-[11px] text-slate-500 mr-1">Sub-kategori:</span>
-                    {[{ label: 'ALL', count: 0 }, ...subcategoryCounts].map(sub => {
-                      const isActive = selectedSubcategory === sub.label;
-                      return (
-                        <button
-                          key={sub.label}
-                          type="button"
-                          aria-pressed={isActive}
-                          onClick={() => setSelectedSubcategory(sub.label)}
-                          className={`h-7 px-2.5 rounded-md text-[11px] font-medium cursor-pointer flex items-center gap-1 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
-                            isActive
-                              ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-semibold'
-                              : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
-                          }`}
-                        >
-                          <span>{sub.label === 'ALL' ? 'Semua' : sub.label}</span>
-                          {sub.label !== 'ALL' && <span className="font-mono text-[10px] text-slate-500">{sub.count}</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+            <div className="px-4 py-3 bg-slate-50/60 flex flex-wrap items-center gap-2">
+              <div role="group" aria-label="Tampilan" className="inline-flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs shrink-0">
+                {([
+                  { mode: 'TABLE', label: 'Tabel', icon: TableProperties, title: 'Tampilan tabel biasa' },
+                  { mode: 'SUPPLIER_GROUPS', label: 'Per supplier', icon: LayoutGrid, title: 'Kelompokkan barang per supplier lalu per tanggal' },
+                ] as const).map(({ mode, label, icon: Icon, title }) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setViewMode(mode)}
+                    aria-pressed={viewMode === mode}
+                    title={title}
+                    className={`min-h-[44px] sm:min-h-[26px] px-2.5 rounded-md flex items-center gap-1.5 cursor-pointer ${FOCUS_RING} ${
+                      viewMode === mode ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                  </button>
+                ))}
               </div>
 
-              {/* Right Side: View Mode Toggle, Supplier Select, & Search Box */}
-              <div className="flex flex-wrap items-center gap-2">
-                {/* View Mode Toggle: Tabel vs Per Supplier */}
-                <div role="group" aria-label="Tampilan" className="inline-flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs shrink-0">
-                  {([
-                    { mode: 'TABLE', label: 'Tabel', icon: TableProperties, title: 'Tampilan tabel biasa' },
-                    { mode: 'SUPPLIER_GROUPS', label: 'Per supplier', icon: LayoutGrid, title: 'Kelompokkan barang per supplier lalu per tanggal' },
-                  ] as const).map(({ mode, label, icon: Icon, title }) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setViewMode(mode)}
-                      aria-pressed={viewMode === mode}
-                      title={title}
-                      className={`min-h-[44px] sm:min-h-[28px] px-2.5 rounded-md flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
-                        viewMode === mode ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
-                      }`}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                      {label}
-                    </button>
-                  ))}
-                </div>
+              <Select
+                size="sm"
+                className="w-full sm:w-44"
+                aria-label="Kategori"
+                value={selectedCategoryTab}
+                onChange={e => {
+                  setSelectedCategoryTab(e.target.value as 'ALL' | StandardCategory);
+                  setSelectedSubcategory('ALL');
+                }}
+              >
+                <option value="ALL">Semua kategori ({sourceRecords.length})</option>
+                {STANDARD_CATEGORIES.filter(cat => (categoryCounts[cat] || 0) > 0 || cat === selectedCategoryTab).map(cat => (
+                  <option key={cat} value={cat}>
+                    {cat} ({categoryCounts[cat] || 0})
+                  </option>
+                ))}
+              </Select>
 
-                {/* Sumber catatan: surat jalan/PO yang menambah stok vs belanja yang dicatat langsung */}
+              {subcategoryCounts.length > 1 && (
                 <Select
                   size="sm"
                   className="w-full sm:w-44"
-                  aria-label="Filter sumber catatan"
-                  value={sourceFilter}
-                  onChange={e => setSourceFilter(e.target.value as 'ALL' | UnifiedRecord['source'])}
+                  aria-label={`Sub-kategori ${selectedCategoryTab}`}
+                  value={selectedSubcategory}
+                  onChange={e => setSelectedSubcategory(e.target.value)}
                 >
-                  <option value="ALL">Semua sumber</option>
-                  <option value="DELIVERY_ORDER">Masuk stok (surat jalan)</option>
-                  <option value="EXPENSE_INPUT">Belanja langsung</option>
+                  <option value="ALL">Semua sub-kategori</option>
+                  {subcategoryCounts.map(sub => (
+                    <option key={sub.label} value={sub.label}>
+                      {sub.label} ({sub.count})
+                    </option>
+                  ))}
                 </Select>
+              )}
 
-                {/* Supplier Filter Dropdown */}
-                <div className="w-full sm:w-52">
-                  <SearchPicker
-                    value={selectedSupplierFilter}
-                    options={[
-                      { value: 'ALL', label: `Semua supplier${uniqueSuppliers.length > 0 ? ` (${uniqueSuppliers.length})` : ''}` },
-                      ...uniqueSuppliers.map(s => ({ value: s.name, label: s.name, hint: `${s.count} catatan` })),
-                    ]}
-                    onSelect={opt => opt && setSelectedSupplierFilter(opt.value)}
-                    searchPlaceholder="Cari supplier..."
-                    ariaLabel="Filter supplier"
-                    noun="supplier"
-                    size="sm"
-                  />
-                </div>
+              {/* Sumber catatan: surat jalan/PO yang menambah stok vs belanja yang dicatat langsung */}
+              <Select
+                size="sm"
+                className="w-full sm:w-44"
+                aria-label="Sumber catatan"
+                value={sourceFilter}
+                onChange={e => setSourceFilter(e.target.value as 'ALL' | UnifiedRecord['source'])}
+              >
+                <option value="ALL">Semua sumber</option>
+                <option value="DELIVERY_ORDER">Masuk stok (surat jalan)</option>
+                <option value="EXPENSE_INPUT">Belanja langsung</option>
+              </Select>
 
-                {/* Search Box */}
-                <div className="relative w-full sm:w-52">
-                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-                  <input
-                    type="text"
-                    placeholder="Cari barang, supplier, PIC"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    className="w-full h-8 pl-8 pr-7 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 placeholder:text-slate-500 hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-600 transition-colors shadow-2xs"
-                  />
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded flex items-center justify-center text-slate-500 hover:text-slate-800 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                      title="Hapus pencarian"
-                      aria-label="Hapus pencarian"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
+              <div className="w-full sm:w-48">
+                <SearchPicker
+                  value={selectedSupplierFilter}
+                  options={[
+                    { value: 'ALL', label: `Semua supplier${uniqueSuppliers.length > 0 ? ` (${uniqueSuppliers.length})` : ''}` },
+                    ...uniqueSuppliers.map(s => ({ value: s.name, label: s.name, hint: `${s.count} catatan` })),
+                  ]}
+                  onSelect={opt => opt && setSelectedSupplierFilter(opt.value)}
+                  searchPlaceholder="Cari supplier..."
+                  ariaLabel="Filter supplier"
+                  noun="supplier"
+                  size="sm"
+                />
+              </div>
+
+              <div className="relative w-full sm:w-auto sm:flex-1 sm:min-w-[200px]">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" aria-hidden />
+                <input
+                  type="search"
+                  aria-label="Cari barang, supplier, PIC"
+                  placeholder="Cari barang, supplier, PIC"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className={`${TABLE_INPUT} pl-8 pr-8`}
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className={`absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 rounded flex items-center justify-center text-slate-500 hover:text-slate-800 cursor-pointer ${FOCUS_RING}`}
+                    aria-label="Hapus pencarian"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
           </div>

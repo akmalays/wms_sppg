@@ -47,7 +47,7 @@ import {
   Sliders
 } from 'lucide-react';
 import { exportToExcel } from '../lib/excelExport';
-import { BTN_PRIMARY, BTN_SECONDARY } from './common/FormDialog';
+import { BTN_PRIMARY, BTN_SECONDARY, TABLE_INPUT } from './common/FormDialog';
 import { SppgLogo } from './SppgLogo';
 import { useToast } from '../context/ToastContext';
 import { localDateIso } from '../utils/localDate';
@@ -111,6 +111,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<SppgCategory>('Semua Kategori');
+  // Kategori untuk tombol opname per kategori di tab Stock Opname
+  const [opnameLaunchCategory, setOpnameLaunchCategory] = useState<SppgCategory>('Semua Kategori');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [successNotice, setSuccessNotice] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -1311,30 +1313,23 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div className="p-3.5 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-1">
-                {SPPG_STOCK_CATEGORIES.map(cat => {
-                  const count = stockMetrics.categoryItemCounts[cat] || 0;
-                  const isSelected = selectedCategoryTab === cat;
-                  return (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setSelectedCategoryTab(cat)}
-                      aria-pressed={isSelected}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs cursor-pointer flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
-                        isSelected
-                          ? 'bg-slate-900 text-white font-semibold'
-                          : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 font-medium'
-                      }`}
-                    >
-                      {cat === 'Semua Kategori' ? 'Semua' : cat}
-                      <span className={`text-[11px] font-mono ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>{count}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="relative w-full lg:w-64 shrink-0">
+            <div className="p-3 border-b border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center gap-2">
+              <Select
+                size="sm"
+                className="w-full sm:w-56"
+                aria-label="Kategori"
+                value={selectedCategoryTab}
+                onChange={e => setSelectedCategoryTab(e.target.value as SppgCategory)}
+              >
+                {SPPG_STOCK_CATEGORIES.filter(
+                  cat => cat === 'Semua Kategori' || (stockMetrics.categoryItemCounts[cat] || 0) > 0 || cat === selectedCategoryTab
+                ).map(cat => (
+                  <option key={cat} value={cat}>
+                    {cat === 'Semua Kategori' ? 'Semua kategori' : cat} ({stockMetrics.categoryItemCounts[cat] || 0})
+                  </option>
+                ))}
+              </Select>
+              <div className="relative w-full sm:w-72">
                 <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
                 <input
                   type="search"
@@ -1342,7 +1337,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                   aria-label="Cari barang"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-500 min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  className={`${TABLE_INPUT} pl-8`}
                 />
               </div>
             </div>
@@ -1605,232 +1600,170 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
           {/* Master Barang Table Container */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
             {/* Filter Bar */}
-            <div className="px-5 pt-4 pb-3 border-b border-slate-200 bg-slate-50/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-1.5">
+            <div className="p-3 border-b border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center gap-2">
+              <Select
+                size="sm"
+                className="w-full sm:w-56"
+                aria-label="Kategori"
+                value={masterCategoryFilter}
+                onChange={e => setMasterCategoryFilter(e.target.value as SppgCategory)}
+              >
                 {SPPG_STOCK_CATEGORIES.map(cat => {
-                  const isSelected = masterCategoryFilter === cat;
-                  const count = cat === 'Semua Kategori'
-                    ? items.length
-                    : items.filter(i => getDetailedItemCategory(i) === cat).length;
+                  const count = cat === 'Semua Kategori' ? items.length : items.filter(i => getDetailedItemCategory(i) === cat).length;
                   return (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setMasterCategoryFilter(cat)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                        isSelected
-                          ? 'bg-emerald-700 text-white shadow-2xs'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {cat} ({count})
-                    </button>
+                    <option key={cat} value={cat}>
+                      {cat === 'Semua Kategori' ? 'Semua kategori' : cat} ({count})
+                    </option>
                   );
                 })}
-              </div>
-
-              {/* Status and Search Filter */}
-              <div className="flex items-center gap-2">
-                <Select
-                  value={masterStatusFilter}
-                  onChange={e => setMasterStatusFilter(e.target.value as 'ALL' | 'ACTIVE' | 'INACTIVE')}>
-                  <option value="ALL">Semua Status</option>
-                  <option value="ACTIVE">Aktif Saja</option>
-                  <option value="INACTIVE">Nonaktif Saja</option>
-                </Select>
-
-                <div className="relative w-64">
-                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
-                  <input
-                    type="text"
-                    placeholder="Cari SKU, nama, lokasi, catatan..."
-                    value={masterSearchQuery}
-                    onChange={e => setMasterSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
+              </Select>
+              <Select
+                size="sm"
+                className="w-full sm:w-36"
+                aria-label="Status barang"
+                value={masterStatusFilter}
+                onChange={e => setMasterStatusFilter(e.target.value as 'ALL' | 'ACTIVE' | 'INACTIVE')}>
+                <option value="ALL">Semua status</option>
+                <option value="ACTIVE">Aktif</option>
+                <option value="INACTIVE">Nonaktif</option>
+              </Select>
+              <div className="relative w-full sm:w-72">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+                <input
+                  type="search"
+                  aria-label="Cari barang"
+                  placeholder="Cari SKU, nama, lokasi, catatan"
+                  value={masterSearchQuery}
+                  onChange={e => setMasterSearchQuery(e.target.value)}
+                  className={`${TABLE_INPUT} pl-8`}
+                />
               </div>
             </div>
 
-            {/* Table */}
+            {/* Table: satu baris per barang; SKU dan catatan di bawah nama, minimum di bawah stok */}
+            {filteredMasterItems.length === 0 ? (
+              items.length === 0 ? (
+                <div className="py-12 px-4 text-center space-y-2">
+                  <p className="text-sm font-semibold text-slate-800">Master barang masih kosong.</p>
+                  <p className="text-xs text-slate-600">Daftarkan barang satu per satu atau sekaligus dari Excel.</p>
+                  {can('MANAGE_ITEMS') && (
+                    <button type="button" onClick={handleOpenNewSingleItem} className={BTN_PRIMARY}>
+                      <Plus className="w-4 h-4" />
+                      Tambah barang pertama
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="py-10 px-4 text-center text-xs text-slate-600">Tidak ada barang yang cocok dengan filter.</p>
+              )
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
                   <tr>
-                    <th className="py-3 px-3 w-10 text-center">#</th>
-                    <th className="py-3 px-3 w-28">Kode SKU</th>
-                    <th className="py-3 px-3 min-w-[220px]">Nama Barang & Spesifikasi</th>
-                    <th className="py-3 px-3 w-36">Kategori Standar</th>
-                    <th className="py-3 px-3 w-20 text-center">Satuan</th>
-                    <th className="py-3 px-3 w-28 text-right">Min. Stok</th>
-                    <th className="py-3 px-3 w-28 text-right">Saldo Saat Ini</th>
-                    <th className="py-3 px-3 w-36">Lokasi Gudang</th>
-                    <th className="py-3 px-3 w-28 text-right">Harga Satuan</th>
-                    <th className="py-3 px-3 w-20 text-center">Status</th>
-                    <th className="py-3 px-3 w-28 text-center">Aksi Master</th>
+                    <th className="py-2 px-4 font-semibold min-w-[240px]">Barang</th>
+                    <th className="py-2 px-3 font-semibold whitespace-nowrap">Kategori</th>
+                    <th className="py-2 px-3 font-semibold text-right whitespace-nowrap">Stok</th>
+                    <th className="py-2 px-3 font-semibold whitespace-nowrap">Lokasi</th>
+                    <th className="py-2 px-3 font-semibold text-right whitespace-nowrap">Harga satuan</th>
+                    {can('MANAGE_ITEMS') && (
+                      <th className="py-2 px-3">
+                        <span className="sr-only">Aksi</span>
+                      </th>
+                    )}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {filteredMasterItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={11} className="py-12 text-center text-slate-500">
-                        {items.length === 0 ? (
-                          <div className="max-w-md mx-auto space-y-3">
-                            <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
-                              <Package className="w-6 h-6" />
-                            </div>
-                            <div className="font-bold text-slate-800 text-sm">
-                              Katalog Master Barang Masih Kosong
-                            </div>
-                            <p className="text-xs text-slate-500 leading-relaxed">
-                              Data barang telah dikosongkan. Anda dapat mulai mendaftarkan barang baru dari awal, baik satuan maupun secara masal (Excel).
-                            </p>
-                            {can('MANAGE_ITEMS') && (
-                              <div className="flex items-center justify-center gap-2 pt-1">
-                                <button
-                                  type="button"
-                                  onClick={handleOpenNewSingleItem}
-                                  className={BTN_PRIMARY}
-                                >
-                                  <Plus className="w-4 h-4" />
-                                  Tambah barang pertama
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="italic text-slate-500">
-                            Tidak ada data master barang yang sesuai dengan filter dan pencarian saat ini.
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredMasterItems.map((item, idx) => {
-                      const cat = getDetailedItemCategory(item);
-                      const unitPrice = getItemEstimatedUnitPrice(item.name, cat, item.estimatedPrice);
-                      const isActive = item.isActive !== false;
+                <tbody className="divide-y divide-slate-100">
+                  {filteredMasterItems.map(item => {
+                    const cat = getDetailedItemCategory(item);
+                    const unitPrice = getItemEstimatedUnitPrice(item.name, cat, item.estimatedPrice);
+                    const isActive = item.isActive !== false;
+                    const rackSpec = getStorageLocationDetails(item.location);
+                    const lowStock = isActive && item.currentStock < item.minimumStock;
 
-                      return (
-                        <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3 px-3 text-center text-slate-500 font-mono text-[11px]">
-                            {idx + 1}
-                          </td>
-                          <td className="py-3 px-3 font-mono font-semibold text-slate-700">
-                            {item.id}
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="font-bold text-slate-900">{item.name}</div>
-                            {item.notes && (
-                              <div className="text-[10px] text-slate-500 mt-0.5 italic">
-                                {item.notes}
-                              </div>
+                    return (
+                      <tr key={item.id} className={isActive ? 'hover:bg-slate-50/80' : 'bg-slate-50/60'}>
+                        <td className="py-2.5 px-4">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className={`font-semibold ${isActive ? 'text-slate-900' : 'text-slate-500'}`}>{item.name}</span>
+                            {!isActive && (
+                              <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-slate-200 text-slate-700">Nonaktif</span>
                             )}
-                          </td>
-                          <td className="py-3 px-3">
-                            <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold border bg-slate-50 border-slate-200 text-slate-700">
-                              {cat}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 text-center font-mono font-semibold text-slate-700">
-                            {item.baseUnit}
-                          </td>
-                          <td className="py-3 px-3 text-right font-mono text-slate-600">
-                            {item.minimumStock} {item.baseUnit}
-                          </td>
-                          <td className="py-3 px-3 text-right">
-                            <span className="font-mono font-bold text-slate-900">
-                              {item.currentStock.toLocaleString('id-ID')}
-                            </span>{' '}
-                            <span className="text-slate-500 font-normal">{item.baseUnit}</span>
-                          </td>
-                          <td className="py-3 px-3">
-                            {(() => {
-                              const rackSpec = getStorageLocationDetails(item.location);
-                              return (
-                                <div className="flex flex-col gap-0.5 max-w-xs">
-                                  <div className="text-slate-800 text-[11px] font-semibold flex items-center gap-1.5">
-                                    <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
-                                      {rackSpec.rackCode}
-                                    </span>
-                                    <span className="truncate">{rackSpec.shortName}</span>
-                                  </div>
-                                  <div className="text-[10px] text-slate-500 line-clamp-1" title={rackSpec.commodityDetail}>
-                                    {rackSpec.commodityDetail}
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </td>
-                          <td className="py-3 px-3 text-right font-mono text-slate-700">
-                            {unitPrice > 0 ? `Rp ${unitPrice.toLocaleString('id-ID')}` : <span className="font-sans text-[11px] text-slate-600">Belum diisi</span>}
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            {isActive ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                <Check className="w-3 h-3" /> Aktif
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                                Nonaktif
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              {can('MANAGE_ITEMS') && isActive && (
+                          </div>
+                          <div className="text-[11px] text-slate-600 mt-0.5">
+                            <span className="font-mono">{item.id}</span>
+                            {item.notes && <span> · {item.notes}</span>}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-700">{cat}</td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          <div className={`tabular-nums font-semibold ${lowStock ? 'text-amber-800' : 'text-slate-900'}`}>
+                            {item.currentStock.toLocaleString('id-ID')} <span className="font-normal text-slate-600">{item.baseUnit}</span>
+                          </div>
+                          <div className="text-[11px] text-slate-600 tabular-nums">min {item.minimumStock.toLocaleString('id-ID')}</div>
+                        </td>
+                        <td className="py-2.5 px-3" title={rackSpec.commodityDetail}>
+                          <div className="text-slate-800 whitespace-nowrap">{rackSpec.rackCode}</div>
+                          <div className="text-[11px] text-slate-600 truncate max-w-[180px]">{rackSpec.shortName}</div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right tabular-nums whitespace-nowrap">
+                          {unitPrice > 0 ? (
+                            <span className="text-slate-900">Rp {unitPrice.toLocaleString('id-ID')}</span>
+                          ) : (
+                            <span className="text-[11px] text-slate-600">Belum diisi</span>
+                          )}
+                        </td>
+                        {can('MANAGE_ITEMS') && (
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center justify-end gap-0.5">
+                              {isActive && (
                                 <button
                                   type="button"
                                   onClick={() => handleOpenAdjust(item)}
-                                  className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors cursor-pointer"
+                                  className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[30px] sm:min-h-[30px] rounded-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 text-emerald-700 hover:bg-emerald-50"
                                   title="Koreksi stok"
                                   aria-label={`Koreksi stok ${item.name}`}
                                 >
                                   <RefreshCw className="w-3.5 h-3.5" />
                                 </button>
                               )}
-                              {can('MANAGE_ITEMS') && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenEditItem(item)}
-                                  className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
-                                  title="Edit data barang"
-                                  aria-label={`Edit ${item.name}`}
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
-                              {can('MANAGE_ITEMS') && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleActive(item)}
-                                  className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors cursor-pointer"
-                                  title={isActive ? 'Nonaktifkan barang ini' : 'Aktifkan kembali barang ini'}
-                                  aria-label={isActive ? `Nonaktifkan ${item.name}` : `Aktifkan ${item.name}`}
-                                >
-                                  {isActive ? <Minus className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
-                                </button>
-                              )}
-                              {can('MANAGE_ITEMS') && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteItem(item)}
-                                  className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
-                                  title="Hapus barang dari master"
-                                  aria-label={`Hapus ${item.name}`}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditItem(item)}
+                                className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[30px] sm:min-h-[30px] rounded-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                                title="Ubah data barang"
+                                aria-label={`Ubah ${item.name}`}
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleActive(item)}
+                                className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[30px] sm:min-h-[30px] rounded-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 text-slate-600 hover:text-amber-800 hover:bg-amber-50"
+                                title={isActive ? 'Nonaktifkan barang ini' : 'Aktifkan kembali barang ini'}
+                                aria-label={isActive ? `Nonaktifkan ${item.name}` : `Aktifkan ${item.name}`}
+                              >
+                                {isActive ? <Minus className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteItem(item)}
+                                className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[30px] sm:min-h-[30px] rounded-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 text-slate-600 hover:text-rose-700 hover:bg-rose-50"
+                                title="Hapus barang dari master"
+                                aria-label={`Hapus ${item.name}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </td>
-                        </tr>
-                      );
-                    })
-                  )}
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         </div>
       )}
@@ -1860,30 +1793,27 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
             </div>
           </div>
 
-          {/* Opname Category Quick Launch Pills */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-            <div className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Opname per kategori:</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {SPPG_STOCK_CATEGORIES.map(cat => {
-                const count = stockMetrics.categoryItemCounts[cat] || 0;
-                return (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => handleOpenCreateOpname(cat)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-200 transition-colors cursor-pointer"
-                  >
-                    <span>{cat}</span>
-                    <span className="font-mono text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full">
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+          {/* Opname satu kategori: pilih lalu mulai */}
+          <div className="bg-white px-4 py-3 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center gap-2">
+            <label htmlFor="opname-category" className="text-xs font-medium text-slate-700 shrink-0">
+              Opname per kategori
+            </label>
+            <Select
+              id="opname-category"
+              size="sm"
+              className="w-full sm:w-64"
+              value={opnameLaunchCategory}
+              onChange={e => setOpnameLaunchCategory(e.target.value as SppgCategory)}
+            >
+              {SPPG_STOCK_CATEGORIES.filter(cat => cat === 'Semua Kategori' || (stockMetrics.categoryItemCounts[cat] || 0) > 0).map(cat => (
+                <option key={cat} value={cat}>
+                  {cat === 'Semua Kategori' ? 'Semua kategori' : cat} ({stockMetrics.categoryItemCounts[cat] || 0} barang)
+                </option>
+              ))}
+            </Select>
+            <button type="button" onClick={() => handleOpenCreateOpname(opnameLaunchCategory)} className={BTN_SECONDARY}>
+              Mulai opname kategori ini
+            </button>
           </div>
 
           {/* Opname History Table */}
@@ -1895,19 +1825,20 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                   value={opnameStatusFilter}
                   onChange={e => setOpnameStatusFilter(e.target.value as any)}>
                   <option value="ALL">Semua Status</option>
-                  <option value="PENDING_APPROVAL">Menunggu Otorisasi (Pending)</option>
-                  <option value="APPROVED">Telah Disetujui (Approved)</option>
+                  <option value="PENDING_APPROVAL">Menunggu persetujuan</option>
+                  <option value="APPROVED">Disetujui</option>
                 </Select>
               </div>
 
               <div className="relative w-64">
-                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
                 <input
                   type="text"
-                  placeholder="Cari no sesi, area, atau pemeriksa..."
+                  aria-label="Cari opname"
+                  placeholder="Cari no sesi, area, atau pemeriksa"
                   value={opnameSearchQuery}
                   onChange={e => setOpnameSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className={`${TABLE_INPUT} pl-8`}
                 />
               </div>
             </div>
