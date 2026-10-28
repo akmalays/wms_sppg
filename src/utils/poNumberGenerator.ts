@@ -2,8 +2,8 @@
  * Generator dan Formatter Nomor Nota Pesanan (PO) SPPG
  * Format standar resmi Badan Gizi Nasional:
  * NO. NP/SPPG/{nomor}/{bulan_romawi}/{tahun}
- * Contoh: NO. NP/SPPG/144/IX/2026
- * Start sequence default: 134
+ * Contoh: NO. NP/SPPG/168/X/2026
+ * Satu nomor per tanggal nota (lihat PO_NUMBER_ANCHOR).
  */
 
 export const ROMAN_MONTHS: readonly string[] = [
@@ -20,8 +20,6 @@ export const ROMAN_MONTHS: readonly string[] = [
   'XI',   // November (11)
   'XII',  // Desember (12)
 ];
-
-export const DEFAULT_PO_START_NUMBER = 134;
 
 /**
  * Mengubah angka bulan (1-12) atau objek Date / ISO string tanggal menjadi angka romawi.
@@ -77,47 +75,38 @@ export function extractPoSequenceNumber(poNumber?: string): number | null {
 }
 
 /**
- * Generate nomor PO berikutnya secara otomatis berurutan dari 134 dst.
- * - Mengekstrak nomor urut tertinggi dari purchase orders yang sudah ada
- * - Jika belum ada atau tertinggi < 134, mulai dari 134
- * - Jika sudah ada, nomor berikutnya adalah (max + 1)
- * - Bulan otomatis dikonversi ke Romawi (contoh September = IX, Oktober = X)
- * - Tahun otomatis diambil 4 digit
+ * Satu nomor untuk semua nota di tanggal yang sama. Patokan: 28 Oktober 2026 = 168.
+ * Nomor naik/turun satu per tanggal yang punya nota; tanggal tanpa nota dilewati.
  */
-export function generateNextPoNumber(
-  existingOrders: { poNumber?: string }[] = [],
-  targetDate?: Date | string
-): string {
-  let maxSeq = 0;
+export const PO_NUMBER_ANCHOR = { date: '2026-10-28', seq: 168 } as const;
 
-  for (const order of existingOrders) {
-    const seq = extractPoSequenceNumber(order.poNumber);
-    if (seq !== null && seq > maxSeq) {
-      maxSeq = seq;
-    }
-  }
+const isoDay = (date?: Date | string): string => {
+  if (!date) return localIsoDay(new Date());
+  if (typeof date === 'string') return /^\d{4}-\d{2}-\d{2}/.test(date) ? date.slice(0, 10) : localIsoDay(new Date(date));
+  return localIsoDay(date);
+};
 
-  const nextSeq = maxSeq < DEFAULT_PO_START_NUMBER ? DEFAULT_PO_START_NUMBER : maxSeq + 1;
-  const romanMonth = getRomanMonth(targetDate);
-  const year = getYearFromDate(targetDate);
+const localIsoDay = (d: Date): string =>
+  isNaN(d.getTime()) ? localIsoDay(new Date()) : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-  return formatPoNumber(nextSeq, romanMonth, year, true);
+/** Nomor urut untuk tanggal itu, dihitung dari daftar tanggal yang punya nota. */
+export function poSequenceForDate(date: Date | string, notaDates: Iterable<string>): number {
+  const day = isoDay(date);
+  const days = [...new Set([...Array.from(notaDates, d => isoDay(d)), day, PO_NUMBER_ANCHOR.date])].sort();
+  return PO_NUMBER_ANCHOR.seq + days.indexOf(day) - days.indexOf(PO_NUMBER_ANCHOR.date);
 }
 
-/**
- * Sinkronisasi bulan Romawi dan tahun pada nomor PO saat tanggal nota diubah oleh pengguna.
- * Jika format nomor PO adalah standar NP/SPPG/{no}/{bulan}/{tahun}, bulan & tahun otomatis diperbarui.
- */
-export function syncPoNumberWithDate(poNumber: string, newDate: Date | string): string {
-  if (!poNumber) return poNumber;
-  const match = poNumber.match(/^(\s*(?:NO\.\s*)?NP\/SPPG\/)(\d+)(?:\/([IVXLCDM]+))?(?:\/(\d{4}))?(\s*)$/i);
-  if (!match) return poNumber;
+/** Nomor nota lengkap untuk tanggal itu, mis. NO. NP/SPPG/168/X/2026. */
+export function poNumberForDate(date: Date | string, notaDates: Iterable<string>): string {
+  const day = isoDay(date);
+  const [year, month] = day.split('-').map(Number);
+  return formatPoNumber(poSequenceForDate(day, notaDates), getRomanMonth(month), year, true);
+}
 
-  const prefix = match[1];
-  const seqNum = match[2];
-  const newRoman = getRomanMonth(newDate);
-  const newYear = getYearFromDate(newDate);
-
-  const cleanPrefix = prefix.toUpperCase().includes('NO.') ? 'NO. NP/SPPG/' : 'NO. NP/SPPG/';
-  return `${cleanPrefix}${seqNum}/${newRoman}/${newYear}`;
+/** Nomor untuk nota baru di targetDate; nota yang sudah ada di tanggal itu memakai nomor yang sama. */
+export function generateNextPoNumber(
+  existingOrders: { date?: string }[] = [],
+  targetDate?: Date | string
+): string {
+  return poNumberForDate(targetDate || new Date(), existingOrders.map(o => o.date || '').filter(Boolean));
 }

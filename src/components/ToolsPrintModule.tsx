@@ -103,7 +103,7 @@ const formatLongDate = (iso: string) => {
 };
 
 const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
-  { id: 'DAILY_PO_SHEET', label: 'Form PO Harian', hint: 'Satu lembar berisi semua bahan PO yang datang di satu tanggal (untuk menu besok), per supplier. Hasil timbang, pengantar, tanda tangan supplier dan penerima, serta bahan tambahan di luar PO diisi tangan.' },
+  { id: 'DAILY_PO_SHEET', label: 'Form PO Harian', hint: 'Semua PO yang datang di satu tanggal (untuk menu besok), satu blok per PO. Supplier, hasil timbang, pengirim, jam, dan tanda tangan diisi tangan; QR di tiap blok membuka timbang PO itu di Barang Masuk.' },
   { id: 'RECEIVING_FORM', label: 'BA Penerimaan', hint: 'Berita acara serah terima barang dari supplier.' },
   { id: 'OPNAME_SHEET', label: 'Lembar Opname', hint: 'Lembar hitung fisik stok per lokasi.' },
   { id: 'BIN_CARD', label: 'Kartu Stok', hint: 'Kartu gantung di rak untuk mencatat keluar-masuk satu barang.' },
@@ -3005,21 +3005,10 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
         {/* Log pengambilan non-food: kolomnya sama dengan layar "Input dari form kertas" di Barang Keluar,
             jadi penyalinan cukup baris demi baris. Daftar barang di bawah agar nama yang ditulis cocok dengan master. */}
         {activeForm === 'NONFOOD_ISSUE_FORM' && (
-          <div className="space-y-4 text-xs">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-1">
-                <h2 className="text-sm font-bold text-slate-900">Form Pengambilan Barang Non-Food</h2>
-                <p className="text-xs text-slate-700">Barang operasional yang diambil dari gudang</p>
-                <div className="pt-1.5">
-                  <Field label="Tanggal" value={formatLongDate(printDate)} />
-                </div>
-              </div>
-              <div className="flex flex-col items-center shrink-0 border border-slate-900 rounded-md p-1.5 bg-white text-center">
-                <QrSvg value={buildScanUrl(NONFOOD_ISSUE_CODE)} className="w-14 h-14" />
-                <span className="text-[8px] font-semibold text-slate-900 mt-1">Pindai QR</span>
-                <span className="text-[7.5px] text-slate-600 leading-tight">Input Pengeluaran<br />Operasional</span>
-              </div>
-            </div>
+          <div className="space-y-5 text-xs">
+            <DocTitle title="Form Pengambilan Barang Non-Food" subtitle="Barang operasional yang diambil dari gudang" />
+
+            <Field label="Tanggal" value={formatLongDate(printDate)} />
 
             <table className="w-full border-collapse border border-slate-300 table-print">
               <thead className="bg-slate-100 text-slate-800 font-semibold">
@@ -3045,11 +3034,14 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               </tbody>
             </table>
 
+            {/* QR di samping catatan, sama seperti Form Rekapitulasi Limbah */}
             <div className="flex items-start justify-between gap-4 break-inside-avoid">
               <div className="text-[10px] text-slate-700 leading-snug space-y-0.5">
-                <p>• Catat setiap pengambilan barang operasional (tisu, sabun, ATK, gas, kemasan, dll.) dari gudang.</p>
-                <p>• Tulis nama barang sesuai daftar resmi di bawah agar sesuai dengan Master Barang di aplikasi.</p>
-                <p>• Pindai QR di pojok kanan atas untuk langsung input pengeluaran operasional di aplikasi (Barang Keluar &gt; Operasional).</p>
+                <p>Pindai QR di samping untuk langsung menyalin form ini di aplikasi (Barang Keluar &gt; Operasional).</p>
+              </div>
+              <div className="flex flex-col items-center shrink-0 border border-slate-900 rounded-md p-1">
+                <QrSvg value={buildScanUrl(NONFOOD_ISSUE_CODE)} className="w-16 h-16" />
+                <span className="text-[8px] font-semibold text-slate-900 mt-0.5">Input form</span>
               </div>
             </div>
 

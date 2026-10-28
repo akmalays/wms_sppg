@@ -46,26 +46,26 @@ const parseQty = (q: number | string): number => {
 };
 
 export interface DailyFlowModuleProps {
-  initialSection?: 'DAPUR' | 'OPERASIONAL';
+  /** Naik setiap kali QR Form Pengambilan Non-Food dipindai: buka tab Operasional lalu dialog form kertas. */
   openPaperFormRequest?: number;
 }
 
-export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({
-  initialSection = 'DAPUR',
-  openPaperFormRequest = 0,
-}) => {
+export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({ openPaperFormRequest = 0 }) => {
   const { currentUser, can } = useAuth();
   const today = localDateIso();
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [dataVersion, setDataVersion] = useState(0);
   const [scope, setScope] = useState<Scope>('ALL');
   // Bahan dapur: pemakaian bahan masak harian. Operasional: tisu, sabun, ATK, gas, kemasan.
-  const [section, setSection] = useState<'DAPUR' | 'OPERASIONAL'>(initialSection);
+  const [section, setSection] = useState<'DAPUR' | 'OPERASIONAL'>(() => (openPaperFormRequest > 0 ? 'OPERASIONAL' : 'DAPUR'));
   const [scanNote, setScanNote] = useState('');
+  // Permintaan dari QR dipakai sekali; dikosongkan setelah dialog terbuka agar tidak terbuka lagi saat pindah tab Dapur ↔ Operasional.
+  const [pendingPaperOpen, setPendingPaperOpen] = useState(openPaperFormRequest > 0);
 
   useEffect(() => {
-    if (openPaperFormRequest && openPaperFormRequest > 0) {
+    if (openPaperFormRequest > 0) {
       setSection('OPERASIONAL');
+      setPendingPaperOpen(true);
     }
   }, [openPaperFormRequest]);
 
@@ -344,7 +344,8 @@ export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({
         <OperationalIssuePanel
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
-          autoOpenPaperRequest={openPaperFormRequest}
+          autoOpenPaper={pendingPaperOpen}
+          onAutoOpenHandled={() => setPendingPaperOpen(false)}
         />
       ) : (
       <>

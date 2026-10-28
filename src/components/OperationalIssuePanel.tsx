@@ -22,11 +22,13 @@ const fmt = (n: number) => n.toLocaleString('id-ID', { maximumFractionDigits: 2 
 export const OperationalIssuePanel: React.FC<{
   selectedDate: string;
   onSelectDate: (date: string) => void;
-  autoOpenPaperRequest?: number;
+  autoOpenPaper?: boolean;
+  onAutoOpenHandled?: () => void;
 }> = ({
   selectedDate,
   onSelectDate,
-  autoOpenPaperRequest = 0,
+  autoOpenPaper = false,
+  onAutoOpenHandled,
 }) => {
   const { currentUser, can } = useAuth();
   const today = localDateIso();
@@ -38,14 +40,14 @@ export const OperationalIssuePanel: React.FC<{
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
   const [isPaperOpen, setIsPaperOpen] = useState(false);
-  const lastHandledRef = React.useRef(0);
 
+  // Dibuka dari QR Form Pengambilan Non-Food; sama seperti tombolnya, hanya untuk yang boleh mencatat pemakaian.
   useEffect(() => {
-    if (autoOpenPaperRequest && autoOpenPaperRequest > lastHandledRef.current) {
-      lastHandledRef.current = autoOpenPaperRequest;
-      setIsPaperOpen(true);
-    }
-  }, [autoOpenPaperRequest]);
+    if (!autoOpenPaper) return;
+    if (can('RECORD_CONSUMPTION')) setIsPaperOpen(true);
+    onAutoOpenHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenPaper]);
 
   useEffect(() => {
     const onSync = () => setDataVersion(v => v + 1);

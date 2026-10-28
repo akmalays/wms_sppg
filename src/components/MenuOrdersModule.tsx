@@ -34,7 +34,8 @@ import {
   MoreHorizontal,
   Save,
   RotateCcw,
-  ClipboardPaste
+  ClipboardPaste,
+  FileText
 } from "lucide-react";
 import {exportMultiSheetExcel, exportToExcel} from "../lib/excelExport";
 import {localDateIso} from "../utils/localDate";
@@ -190,6 +191,9 @@ const formatArrivalDay = (iso: string, today: string): string => {
   const rel = iso === today ? "hari ini" : iso === addDaysIso(today, -1) ? "kemarin" : iso === addDaysIso(today, 1) ? "besok" : "";
   return rel ? `${label} (${rel})` : label;
 };
+
+// Aksi pendamping yang tampil sebagai tautan, agar tombol utama di sebelahnya tetap jadi fokus.
+const LINK_ACTION = `inline-flex items-center gap-1.5 px-2.5 min-h-[44px] sm:min-h-[32px] rounded-lg text-xs font-semibold text-emerald-800 hover:bg-emerald-50 cursor-pointer ${FOCUS_RING}`;
 
 const poProgressLabel = (p: ReturnType<typeof menuPoProgress>, today: string): {text: string; tone: string} => {
   if (p.state === "DONE") return {text: "sudah diterima", tone: "bg-emerald-50 text-emerald-800 border-emerald-200"};
@@ -588,7 +592,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   useEffect(() => {
     if (!anyFormModalOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      // Dialog Ubah PO menumpuk di atas daftar PO; Escape cukup menutup dialog teratas (ditangani DialogShell).
+      if (e.key !== "Escape" || poBeingEdited) return;
       setIsMenuModalOpen(false);
       setIsPoModalOpen(false);
       setIsBeneficiaryModalOpen(false);
@@ -596,7 +601,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [anyFormModalOpen]);
+  }, [anyFormModalOpen, poBeingEdited]);
 
   const refreshOrders = () => {
     setOrders(warehouseDb.getMenuOrders());
@@ -2211,6 +2216,22 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
       return;
     }
 
+    // Bahan yang sudah ada di PO lain untuk menu ini diubah lewat Ubah PO, agar tidak dipesan dua kali.
+    const issuedNames = new Map(
+      warehouseDb
+        .getPurchaseOrdersByMenuOrderId(targetOrder.id)
+        .flatMap((p) => p.items.map((it) => [it.name.trim().toLowerCase(), p] as const)),
+    );
+    const alreadyOrdered = validRows.find((r) => issuedNames.has(r.itemName.trim().toLowerCase()));
+    if (alreadyOrdered) {
+      const po = issuedNames.get(alreadyOrdered.itemName.trim().toLowerCase())!;
+      toast.error(
+        `${alreadyOrdered.itemName} sudah dipesan di ${po.poNumber} (${po.supplierName}). Pakai Ubah PO di PO tersebut untuk mengganti jumlah atau supplier.`,
+        "Bahan Sudah Dipesan",
+      );
+      return;
+    }
+
     try {
       const existingPOs = warehouseDb.getPurchaseOrders();
       const poTargetDate = /^\d{4}-\d{2}-\d{2}$/.test(newPoDeliveryDate.trim())
@@ -2656,39 +2677,53 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                     ) : (
                       arrivingToday.map(({order: o, progress}) => {
                         const label = poProgressLabel(progress, todayStr);
+                        // Status cukup teks berwarna di baris info, bukan lencana; warnanya dari nada label
+                        const statusColor = label.tone.includes("emerald")
+                          ? "text-emerald-800"
+                          : label.tone.includes("amber")
+                            ? "text-amber-800"
+                            : "text-slate-700";
+                        const statusText =
+                          progress.poCount > 0 && progress.state !== "PARTIAL" ? `${progress.poCount} PO ${label.text}` : label.text;
+                        const canWeigh = (progress.state === "WAITING" || progress.state === "PARTIAL") && onNavigate;
                         return (
-                          <div key={o.id} className="space-y-1.5">
-                            <p className="text-sm font-semibold text-slate-900">
-                              Untuk {o.menuTitle}
-                              <span className="font-normal text-slate-600"> · dimasak {formatArrivalDay(o.date, todayStr)}</span>
-                            </p>
-                            <div className="flex flex-wrap items-center gap-2 text-xs">
-                              <span className={`px-1.5 py-0.5 rounded-md border ${label.tone}`}>
-                                {progress.poCount > 0 ? `${progress.poCount} PO · ${label.text}` : label.text}
-                              </span>
+                          <div key={o.id} className="space-y-2.5">
+                            <div className="space-y-0.5">
+                              <p className="text-sm font-semibold text-slate-900">Untuk {o.menuTitle}</p>
+                              <p className="text-xs text-slate-600">
+                                Dimasak {formatArrivalDay(o.date, todayStr)}
+                                {" · "}
+                                <span className={`font-semibold ${statusColor}`}>{statusText}</span>
+                              </p>
+                            </div>
+                            {/* Satu aksi utama; lihat dan cetak PO cukup tautan agar baris tidak ramai */}
+                            <div className="flex flex-wrap items-center gap-x-1 gap-y-2 text-xs">
                               {progress.state === "NONE" && (
-                                <button type="button" onClick={() => handleOpenPoModal(o.id)} className={BTN_PRIMARY}>
+                                <button type="button" onClick={() => handleOpenPoModal(o.id)} className={`${BTN_PRIMARY} mr-2`}>
                                   <PackagePlus className="w-3.5 h-3.5" />
                                   Buat PO
+                                </button>
+                              )}
+                              {canWeigh && (
+                                <button type="button" onClick={() => onNavigate?.("receiving")} className={`${BTN_PRIMARY} mr-2`}>
+                                  Timbang di Barang Masuk
                                 </button>
                               )}
                               {progress.poCount > 0 && (
                                 <button
                                   type="button"
                                   onClick={() => handleOpenPoModal(o.id)}
-                                  className={BTN_SECONDARY}
+                                  className={LINK_ACTION}
                                   title="Lihat daftar PO terbit, ubah PO, atau tambah supplier">
-                                  <PackagePlus className="w-3.5 h-3.5" />
-                                  Lihat PO ({progress.poCount})
-                                </button>
-                              )}
-                              {(progress.state === "WAITING" || progress.state === "PARTIAL") && onNavigate && (
-                                <button type="button" onClick={() => onNavigate("receiving")} className={BTN_PRIMARY}>
-                                  Timbang di Barang Masuk
+                                  <FileText className="w-3.5 h-3.5" />
+                                  Lihat PO
                                 </button>
                               )}
                               {progress.poCount > 0 && onPrintPoSheet && (
-                                <button type="button" onClick={() => onPrintPoSheet(todayStr)} className={BTN_SECONDARY}>
+                                <button
+                                  type="button"
+                                  onClick={() => onPrintPoSheet(todayStr)}
+                                  className={LINK_ACTION}>
                                   <Printer className="w-3.5 h-3.5" />
                                   Cetak form PO
                                 </button>
@@ -4387,6 +4422,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                                           <button
                                             type="button"
                                             onClick={() => handleRemoveNewPoRow(r.id)}
+                                            aria-label={`Hapus baris ${r.itemName || rIdx + 1}`}
                                             className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer">
                                             <Trash2 className="w-3.5 h-3.5" />
                                           </button>

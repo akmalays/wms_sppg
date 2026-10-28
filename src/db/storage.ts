@@ -39,7 +39,7 @@ import {
   REAL_EMPLOYEES,
   REAL_ATTENDANCE_LOGS,
 } from './realSeedData';
-import { getRomanMonth, getYearFromDate, generateNextPoNumber } from '../utils/poNumberGenerator';
+import { getRomanMonth, getYearFromDate, generateNextPoNumber, poNumberForDate } from '../utils/poNumberGenerator';
 import { isPendingSupplierPo, PENDING_SUPPLIER_NAME } from '../utils/poSupplier';
 import { angkaTerbilang } from '../utils/numberToWords';
 import { removeFromPrintPool } from '../utils/poPrintPool';
@@ -2395,6 +2395,7 @@ class WarehouseDatabase {
         .order('date', { ascending: false });
       if (!poErr && dbPos) {
         this.purchaseOrders = dbPos.map(mapSupabaseToPo);
+        this.renumberPurchaseOrders();
       }
 
       // 4. Pengeluaran Belanja / Non-Food Expenses
@@ -2740,6 +2741,7 @@ class WarehouseDatabase {
         } else if (payload.eventType === 'DELETE') {
           this.purchaseOrders = this.purchaseOrders.filter(p => p.id !== payload.old.id);
         }
+        this.renumberPurchaseOrders();
         this.notifyAllChanged();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'non_food_expenses' }, (payload) => {
@@ -4126,9 +4128,13 @@ class WarehouseDatabase {
       this.purchaseOrders.unshift(updatedPoData);
     }
 
+    // Tanggal baru atau pindah tanggal bisa menggeser nomor nota hari lain; nota lain yang berubah disimpan di sini
+    const renumbered = this.renumberPurchaseOrders(updatedPoData.id);
+    const saved = renumbered.get(updatedPoData.id) || updatedPoData;
+
     // Direct save to Supabase Cloud
     if (isSupabaseConfigured()) {
-      upsertPurchaseOrderRow(updatedPoData).then(({ error }) => {
+      upsertPurchaseOrderRow(saved).then(({ error }) => {
         if (error) console.error('Supabase PO upsert error:', error);
       });
     }
@@ -4141,10 +4147,37 @@ class WarehouseDatabase {
         idx >= 0 ? 'PO_UPDATED' : 'PO_CREATED',
         'RECEIVING',
         order.id,
-        `Nota Pesanan / PO ${order.poNumber} untuk ${order.supplierName} total Rp ${order.grandTotal.toLocaleString('id-ID')}`
+        `Nota Pesanan / PO ${saved.poNumber} untuk ${order.supplierName} total Rp ${order.grandTotal.toLocaleString('id-ID')}`
       );
     }
-    return updatedPoData;
+    return saved;
+  }
+
+  /**
+   * Samakan nomor semua nota dengan tanggalnya (satu nomor per hari, lihat poNumberForDate).
+   * Nota yang nomornya berubah disimpan ke cloud, kecuali skipPushId yang disimpan sendiri oleh pemanggil.
+   * Mengembalikan nota yang berubah, per id.
+   */
+  private renumberPurchaseOrders(skipPushId?: string): Map<string, PurchaseOrderNota> {
+    const dates = this.purchaseOrders.map(po => po.date).filter(Boolean);
+    const changed = new Map<string, PurchaseOrderNota>();
+    this.purchaseOrders = this.purchaseOrders.map(po => {
+      if (!po.date) return po;
+      const poNumber = poNumberForDate(po.date, dates);
+      if (po.poNumber === poNumber) return po;
+      const next = { ...po, poNumber };
+      changed.set(po.id, next);
+      return next;
+    });
+    if (changed.size > 0 && isSupabaseConfigured()) {
+      changed.forEach(po => {
+        if (po.id === skipPushId) return;
+        upsertPurchaseOrderRow(po).then(({ error }) => {
+          if (error) console.error('Supabase PO renumber error:', error);
+        });
+      });
+    }
+    return changed;
   }
 
   /**
@@ -4181,7 +4214,8 @@ class WarehouseDatabase {
       removeFromPrintPool(deleted.poNumber);
     } catch {}
 
-    // Persist to local storage
+    // Tanggal yang kini tanpa nota tidak lagi dihitung, jadi nomor hari sesudahnya bergeser
+    this.renumberPurchaseOrders();
     setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
 
     // If this PO was linked to a MenuOrder, sync back and remove its arrival items
@@ -4194,11 +4228,7 @@ class WarehouseDatabase {
           mOrder.poArrivalItems = mOrder.poArrivalItems.filter(it => poItemNames.has(it.itemName.trim().toLowerCase()));
         }
         setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
-        if (isSupabaseConfigured()) {
-          supabase.from('menu_orders').upsert({ id: mOrder.id, data: mOrder }).then(({ error }) => {
-            if (error) console.error('Supabase Menu Order update error:', error);
-          });
-        }
+        this.pushMenuOrder(mOrder);
       }
     }
 
@@ -4850,6 +4880,7 @@ class WarehouseDatabase {
 
     if (removedPos.length > 0) {
       this.purchaseOrders = this.purchaseOrders.filter(po => !removedIds.has(po.id));
+      this.renumberPurchaseOrders();
       removedPos.forEach(po => {
         try {
           removeFromPrintPool(po.id);

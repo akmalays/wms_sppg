@@ -14,7 +14,7 @@ import logoSppgImg from '../assets/logo sppg.png';
 import ttdRizkyImg from '../assets/ttd rizky.png';
 import { buildItemReference } from '../utils/itemReference';
 import { normalizeToStandardCategory } from '../utils/categoryStandards';
-import { syncPoNumberWithDate, extractPoSequenceNumber, getYearFromDate } from '../utils/poNumberGenerator';
+import { poNumberForDate } from '../utils/poNumberGenerator';
 import { deliveryTimeNoteFor, deriveReceivedTimeNote } from '../utils/notaDelivery';
 import { useToast } from '../context/ToastContext';
 import { warehouseDb } from '../db/storage';
@@ -164,24 +164,17 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
         [field]: value,
       };
       if (field === 'date' && value) {
-        next.poNumber = syncPoNumberWithDate(prev.poNumber, value);
+        // Nomor mengikuti tanggal: sama untuk semua nota di hari itu
+        next.poNumber = poNumberForDate(
+          value,
+          warehouseDb.getPurchaseOrders().filter(po => po.id !== prev.id).map(po => po.date)
+        );
       }
       return next;
     });
   };
 
   const receivedTimeNote = useMemo(() => deriveReceivedTimeNote(formData), [formData]);
-
-  const currentSeq = extractPoSequenceNumber(formData.poNumber);
-  const duplicateNota =
-    currentSeq !== null
-      ? warehouseDb.getPurchaseOrders().find(
-          po =>
-            po.id !== formData.id &&
-            extractPoSequenceNumber(po.poNumber) === currentSeq &&
-            getYearFromDate(po.date) === getYearFromDate(formData.date)
-        )
-      : undefined;
 
   const handleSupplierSelect = (supplierId: string) => {
     const found = suppliers.find(s => s.id === supplierId);
@@ -384,15 +377,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
               } font-semibold text-black mt-0.5 flex items-center justify-center gap-1`}
             >
               {!formData.poNumber?.trim().toUpperCase().startsWith('NO.') && <span className="font-mono font-bold">NO.</span>}
-              <input
-                type="text"
-                value={formData.poNumber}
-                onChange={e => handleFieldChange('poNumber', e.target.value)}
-                aria-label="Nomor nota"
-                title="Seluruh nomor nota bisa diubah"
-                style={{ width: `${Math.max((formData.poNumber || '').length, 12) + 1}ch` }}
-                className="font-mono font-bold text-black text-center bg-transparent border-b border-dashed border-slate-500 print:border-0 rounded-none focus:outline-none focus-visible:bg-emerald-50"
-              />
+              <span className="font-mono font-bold text-black">{formData.poNumber}</span>
             </div>
           </div>
 
@@ -929,14 +914,9 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
               <div>
                 <span className="text-xs font-semibold text-slate-700 block mb-1">Nomor nota</span>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  Klik nomor di bawah judul nota untuk mengubahnya, termasuk kode, angka urut, bulan, dan tahun. Mengganti
-                  tanggal nota menyesuaikan bulan dan tahun. Nota berikutnya melanjutkan dari nomor tertinggi.
+                  Otomatis dari tanggal nota: semua nota di hari yang sama memakai nomor yang sama, dan nomornya naik satu
+                  untuk tiap hari yang ada nota. Mengganti tanggal nota ikut mengganti nomornya.
                 </p>
-                {duplicateNota && (
-                  <p role="alert" className="mt-2 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
-                    Nomor {currentSeq} sudah dipakai nota {duplicateNota.supplierName} ({formatDateIndonesian(duplicateNota.date)}).
-                  </p>
-                )}
               </div>
 
               <div className="h-px bg-slate-200" />

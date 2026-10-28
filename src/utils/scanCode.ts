@@ -25,13 +25,21 @@ export const WASTE_ENTRY_CODE = 'FORM-LIMBAH';
 export const isWasteEntryTarget = (target: ScanTarget | null): boolean =>
   Boolean(target && target.code.trim().toUpperCase() === WASTE_ENTRY_CODE);
 
-/** QR di Form Pengambilan Barang Non-Food: dipindai langsung membuka isian pengeluaran operasional / form kertas. */
+/** QR di Form Pengambilan Barang Non-Food: dipindai langsung membuka Input dari form kertas di Barang Keluar > Operasional. */
 export const NONFOOD_ISSUE_CODE = 'FORM-NONFOOD';
 
-export const isNonFoodIssueTarget = (target: ScanTarget | null): boolean => {
-  if (!target) return false;
-  const c = target.code.trim().toUpperCase();
-  return c === NONFOOD_ISSUE_CODE || c === 'FORM-PENGAMBILAN-NONFOOD';
+export const isNonFoodIssueTarget = (target: ScanTarget | null): boolean =>
+  Boolean(target && target.code.trim().toUpperCase() === NONFOOD_ISSUE_CODE);
+
+/** QR per PO di Form PO & Penerimaan Bahan: dipindai langsung membuka timbang PO itu di Barang Masuk. */
+const PO_RECEIVE_PREFIX = 'TERIMA-';
+
+export const poReceiveCode = (poId: string): string => `${PO_RECEIVE_PREFIX}${poId}`;
+
+/** Id PO bila kode berasal dari QR Form PO & Penerimaan Bahan, selain itu null. */
+export const poIdFromScanTarget = (target: ScanTarget | null): string | null => {
+  const code = target?.code.trim() || '';
+  return code.toUpperCase().startsWith(PO_RECEIVE_PREFIX) ? code.slice(PO_RECEIVE_PREFIX.length) || null : null;
 };
 
 export interface ScanTarget {

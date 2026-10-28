@@ -97,6 +97,9 @@ interface ReceivingModuleProps {
   onRefreshData?: () => void;
   onNavigate?: (tab: string) => void;
   onPrintReceiving?: (receivingId: string) => void;
+  /** PO dari QR Form PO & Penerimaan Bahan: dialog timbangnya dibuka sekali, lalu onPoWeighingOpened dipanggil. */
+  openPoWeighingId?: string | null;
+  onPoWeighingOpened?: () => void;
 }
 
 export const INPUT_CATEGORIES = STANDARD_CATEGORIES;
@@ -230,7 +233,7 @@ function parseExpenseDate(dateStr: string): Date | null {
 // Isian tanggal di bar filter: lebar tetap (TABLE_INPUT bawaannya w-full) agar Dari/sampai sebaris
 const DATE_INPUT = `${TABLE_INPUT.replace('w-full ', '')} w-[150px]`;
 
-export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, onPrintReceiving }) => {
+export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, onPrintReceiving, openPoWeighingId, onPoWeighingOpened }) => {
   const { currentUser, can } = useAuth();
   const canDeleteRecords = can('RECEIVE_GOODS');
   const toast = useToast();
@@ -362,6 +365,25 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
     setSelectedPoForWeighing(po);
     setIsWeighModalOpen(true);
   };
+
+  // Dibuka dari QR blok PO di Form PO & Penerimaan Bahan.
+  useEffect(() => {
+    if (!openPoWeighingId) return;
+    onPoWeighingOpened?.();
+    if (!can('RECEIVE_GOODS')) {
+      toast.warning('Akun ini tidak bisa mencatat penerimaan barang.', 'Tidak Ada Akses');
+      return;
+    }
+    const po = warehouseDb.getPurchaseOrders().find(p => p.id === openPoWeighingId);
+    if (!po) {
+      toast.error('PO dari QR ini tidak ditemukan. Mungkin sudah dibatalkan; cetak ulang Form PO.', 'PO Tidak Ditemukan');
+    } else if (warehouseDb.isPurchaseOrderLocked(po)) {
+      toast.info(`PO ${po.poNumber} (${po.supplierName}) sudah diterima.`, 'Sudah Diterima');
+    } else {
+      handleOpenWeighModal(po);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openPoWeighingId]);
 
   // Pool Antrean Cetak Nota (Batch Print) state
   const [isBatchPrintModalOpen, setIsBatchPrintModalOpen] = useState(false);
@@ -1171,8 +1193,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
         await new Promise(r => setTimeout(r, 200));
         warehouseDb.deletePurchaseOrder(nota.id, currentUser);
         handleRemoveFromPool(nota.id);
-        handleRemoveFromPool(nota.poNumber);
-        if (activeNota && (activeNota.id === nota.id || activeNota.poNumber === nota.poNumber)) {
+        // Nomor nota dipakai bersama semua nota di hari itu, jadi pencocokan lewat id saja
+        if (activeNota?.id === nota.id) {
           setIsNotaModalOpen(false);
           setActiveNota(null);
         }
@@ -2434,7 +2456,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
 
                                   <div className="flex flex-wrap items-center gap-2">
                                     {dateMatchingNotas.map(nota => {
-                                      const inPool = poolNotaIds.includes(nota.id) || poolNotaIds.includes(nota.poNumber);
+                                      const inPool = poolNotaIds.includes(nota.id);
                                       return (
                                         <div key={nota.id} role="group" aria-label={`Nota ${nota.poNumber}`} className="flex flex-wrap items-center gap-1.5">
                                           <button
@@ -3083,7 +3105,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
           suppliers={suppliers}
           currentUser={currentUser}
           onSupplierAdded={() => refreshAll()}
-          isInPool={poolNotaIds.includes(activeNota.id) || poolNotaIds.includes(activeNota.poNumber)}
+          isInPool={poolNotaIds.includes(activeNota.id)}
           onTogglePool={(id) => handleTogglePool(id)}
           onOpenBatchPool={() => {
             setIsNotaModalOpen(false);

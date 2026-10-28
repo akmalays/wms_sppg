@@ -119,7 +119,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
   const poolNotas: PurchaseOrderNota[] = React.useMemo(() => {
     return poolNotaIds
       .map(id => {
-        const found = allAvailableNotas.find(n => n.id === id || n.poNumber === id);
+        const found = allAvailableNotas.find(n => n.id === id);
         if (found) return found;
         try {
           const directFromDb = warehouseDb.getPurchaseOrderById(id);
@@ -134,7 +134,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
 
   // Nota-nota yang belum ada di pool untuk opsi penambahan cepat
   const availableToAdd = allAvailableNotas.filter(
-    n => !poolNotaIds.includes(n.id) && !poolNotaIds.includes(n.poNumber)
+    n => !poolNotaIds.includes(n.id)
   );
 
   // Kelompokkan nota menjadi pasangan 2 nota per lembar kertas A4

@@ -27,7 +27,7 @@ import { DailyMenuPublicPage } from './components/DailyMenuPublicPage';
 import { HedonicRecapModule } from './components/HedonicRecapModule';
 import { ScanResultModule } from './components/ScanResultModule';
 import { QrScannerDialog } from './components/common/QrScannerDialog';
-import { SCAN_PATH, ScanTarget, scanTargetFromLocation, isWasteEntryTarget, isNonFoodIssueTarget } from './utils/scanCode';
+import { SCAN_PATH, ScanTarget, scanTargetFromLocation, isWasteEntryTarget, isNonFoodIssueTarget, poIdFromScanTarget } from './utils/scanCode';
 
 export type AppRouteType = 'DASHBOARD' | 'MENU_TODAY' | 'LANDING';
 
@@ -71,19 +71,22 @@ const MainLayout: React.FC = () => {
   // Dibaca sekali saat aplikasi dibuka dari tautan QR, dan tetap tersimpan selama proses login.
   const [scanTarget, setScanTarget] = useState<ScanTarget | null>(() => {
     const t = scanTargetFromLocation();
-    return isWasteEntryTarget(t) || isNonFoodIssueTarget(t) ? null : t;
+    return isWasteEntryTarget(t) || isNonFoodIssueTarget(t) || poIdFromScanTarget(t) ? null : t;
   });
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>(() => {
     const t = scanTargetFromLocation();
     if (isWasteEntryTarget(t)) return 'waste_logs';
     if (isNonFoodIssueTarget(t)) return 'daily_flow';
+    if (poIdFromScanTarget(t)) return 'receiving';
     return t ? 'scan' : 'dashboard';
   });
   // Naik setiap kali QR Form Rekapitulasi Limbah dipindai; Rekap Limbah lalu membuka isian sisa makanan.
   const [wasteEntryRequest, setWasteEntryRequest] = useState(() => (isWasteEntryTarget(scanTargetFromLocation()) ? 1 : 0));
   // Naik setiap kali QR Form Pengambilan Non-Food dipindai; Barang Keluar > Operasional lalu membuka dialog form kertas.
   const [nonFoodIssueRequest, setNonFoodIssueRequest] = useState(() => (isNonFoodIssueTarget(scanTargetFromLocation()) ? 1 : 0));
+  // PO dari QR Form PO & Penerimaan Bahan; Barang Masuk membuka timbangnya lalu mengosongkan ini.
+  const [poReceiveRequest, setPoReceiveRequest] = useState<string | null>(() => poIdFromScanTarget(scanTargetFromLocation()));
   const [currentRoute, setCurrentRoute] = useState<AppRouteType>(getAppRoute);
   const [dataVersion, setDataVersion] = useState<number>(0);
   // Form yang dibuka saat pindah ke Cetak Form dari halaman lain (nota supplier, label aset).
@@ -95,6 +98,7 @@ const MainLayout: React.FC = () => {
     if (activeTab !== 'tools_forms') setPrintTarget(undefined);
     if (activeTab !== 'waste_logs') setWasteEntryRequest(0);
     if (activeTab !== 'daily_flow') setNonFoodIssueRequest(0);
+    if (activeTab !== 'receiving') setPoReceiveRequest(null);
   }, [activeTab]);
 
   // Sync state when browser URL changes (back/forward navigation or hash change)
@@ -168,6 +172,12 @@ const MainLayout: React.FC = () => {
     if (isNonFoodIssueTarget(target)) {
       setNonFoodIssueRequest(n => n + 1);
       setActiveTab('daily_flow');
+      return;
+    }
+    const poId = poIdFromScanTarget(target);
+    if (poId) {
+      setPoReceiveRequest(poId);
+      setActiveTab('receiving');
       return;
     }
     setScanTarget(target);
@@ -293,6 +303,8 @@ const MainLayout: React.FC = () => {
               onRefreshData={handleRefresh}
               onNavigate={setActiveTab}
               onPrintReceiving={receivingId => openPrintForm({ form: 'RECEIVING_FORM', receivingId })}
+              openPoWeighingId={poReceiveRequest}
+              onPoWeighingOpened={() => setPoReceiveRequest(null)}
             />
           )}
 

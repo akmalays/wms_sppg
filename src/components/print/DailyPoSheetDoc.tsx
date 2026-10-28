@@ -6,15 +6,16 @@ import { warehouseDb, signerName } from '../../db/storage';
 import { PurchaseOrderNota } from '../../types/warehouse';
 import { isPendingSupplierPo, isMenuPurchaseOrder } from '../../utils/poSupplier';
 import { localDateIso } from '../../utils/localDate';
+import { buildScanUrl, poReceiveCode } from '../../utils/scanCode';
+import { QrSvg } from '../common/QrSvg';
 
-// Form PO harian: satu lembar berisi semua bahan PO yang datang di satu tanggal (biasanya untuk menu besok),
-// dikelompokkan per supplier. Dipegang petugas saat barang datang: hasil timbang, nama pengantar, serta
-// tanda tangan supplier dan penerima ditulis tangan, lalu disalin ke Terima bahan PO di Barang Masuk.
+// Form PO harian: semua PO yang barangnya datang di satu tanggal (biasanya untuk menu besok), satu blok per PO.
+// Dipegang petugas saat barang datang: supplier pengirim, hasil timbang, pengirim, jam, dan tanda tangan ditulis
+// tangan. QR di tiap blok membuka timbang PO itu di Barang Masuk agar hasil timbang langsung diinput.
 
 const BLANK_LINE = <span className="block border-b border-dotted border-slate-400 h-4" />;
-const COLUMN_COUNT = 9;
 // Baris kosong untuk bahan yang ikut datang padahal tidak ada di PO (tambahan mendadak dari dapur)
-const EXTRA_ROW_COUNT = 4;
+const EXTRA_ROW_COUNT = 3;
 
 const formatLongDate = (iso: string) => {
   const [y, m, d] = (iso || '').split('-').map(Number);
@@ -30,6 +31,9 @@ interface DailyPoSheetDocProps {
 export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, onCountChange }) => {
   const [date, setDate] = useState(initialDate || localDateIso());
   const [version, setVersion] = useState(0);
+  // Tegak: blok supplier bertumpuk. Mendatar: info supplier di panel kiri, tabel bahan di kanan.
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
+  const landscape = orientation === 'landscape';
 
   useEffect(() => {
     if (initialDate) setDate(initialDate);
@@ -50,7 +54,7 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
         // Hanya pesanan dari menu (juga yang sudah diterima). Nota yang dibuat dari penerimaan atau belanja
         // yang sudah terjadi bukan pesanan, jadi tidak ikut.
         .filter(isMenuPurchaseOrder)
-        // Supplier yang sudah pasti di atas, "Supplier menyusul" paling bawah untuk diisi saat datang
+        // Urutan mengikuti supplier rencana (tidak dicetak) agar PO supplier yang sama berdekatan
         .sort((a, b) => Number(isPendingSupplierPo(a)) - Number(isPendingSupplierPo(b)) || a.supplierName.localeCompare(b.supplierName, 'id')),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [date, version]
@@ -68,32 +72,31 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
     onCountChange(pos.length > 0 ? 1 : 0);
   }, [pos.length, onCountChange]);
 
-  // Supplier di PO hanya rencana: dicetak kecil, garis di bawahnya untuk supplier yang benar-benar mengirim.
-  // PO yang sudah diterima mencatat supplier pengirimnya, jadi dicetak apa adanya.
   const isReceived = (po: PurchaseOrderNota) => po.status === 'SELESAI';
-  const renderSupplierCell = (po: PurchaseOrderNota) =>
-    isReceived(po) ? (
-      <span className="font-semibold">{po.supplierName}</span>
-    ) : isPendingSupplierPo(po) ? (
-      BLANK_LINE
-    ) : (
-      <>
-        <span className="block text-[10px] text-slate-600">Rencana: {po.supplierName}</span>
-        {BLANK_LINE}
-      </>
-    );
-
-  let rowNo = 0;
+  const cookDays = [...new Set(menus.map(m => formatLongDate(m.date)))].join(', ');
+  const portions = menus.reduce((sum, m) => sum + (m.targetPortions || 0), 0);
 
   return (
     <div className="space-y-4">
-      {/* Tabel lebar (8 kolom): dicetak mendatar */}
-      <style>{'@media print { @page { size: A4 landscape; margin: 8mm; } .po-sheet-table tr { break-inside: avoid; page-break-inside: avoid; } }'}</style>
+      {/* Satu kolom lebar penuh agar mudah dibaca; blok PO tidak dipotong di tengah halaman */}
+      <style>{`@media print { @page { size: A4 ${orientation}; margin: ${landscape ? '8mm' : '10mm'}; } .po-block { break-inside: avoid; page-break-inside: avoid; } }`}</style>
 
-      <div className="no-print grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+      <div className="no-print grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
         <div>
           <label htmlFor="po-sheet-date" className={FIELD_LABEL}>Tanggal barang datang</label>
           <input id="po-sheet-date" type="date" value={date} onChange={e => setDate(e.target.value || localDateIso())} className={FIELD_INPUT} />
+        </div>
+        <div>
+          <label htmlFor="po-sheet-orientation" className={FIELD_LABEL}>Orientasi kertas</label>
+          <select
+            id="po-sheet-orientation"
+            value={orientation}
+            onChange={e => setOrientation(e.target.value as 'portrait' | 'landscape')}
+            className={FIELD_INPUT}
+          >
+            <option value="portrait">Tegak (A4 portrait)</option>
+            <option value="landscape">Mendatar (A4 landscape)</option>
+          </select>
         </div>
         <p className="sm:col-span-2 sm:pt-5 text-slate-700">
           {pos.length > 0 ? (
@@ -108,106 +111,116 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
       </div>
 
       {pos.length > 0 && (
-        <div className="bg-white text-slate-900 text-xs space-y-3">
-          <div className="border-b-2 border-slate-900 pb-2 flex items-center gap-3">
-            <SppgLogo size="lg" variant="color" showText={false} />
+        <div className="bg-white text-slate-900 text-xs space-y-4">
+          <div className="border-b-2 border-slate-900 pb-1.5 flex items-center gap-3">
+            <SppgLogo size="md" variant="color" showText={false} />
             <KopText />
           </div>
 
-          <div className="text-center">
-            <h2 className="text-sm font-bold uppercase tracking-wide">Form PO &amp; Penerimaan Bahan</h2>
-            <p className="text-xs text-slate-700">Barang datang {formatLongDate(date)}</p>
+          <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-1">
+            <div>
+              <h2 className="text-base font-bold">Form PO &amp; Penerimaan Bahan</h2>
+              {/* Satu nomor nota untuk semua PO di tanggal yang sama */}
+              <p className="text-slate-700">
+                <span className="font-mono font-semibold text-slate-900">{pos[0].poNumber.replace(/^NO\.\s*/i, '')}</span>
+                {' · '}barang datang {formatLongDate(date)}
+              </p>
+            </div>
+            {menus.length > 0 && (
+              <p className="text-[11px] text-slate-700 text-right">
+                Untuk menu <span className="font-semibold text-slate-900">{menus.map(m => m.menuTitle).join(', ')}</span>
+                <br />
+                dimasak {cookDays} · {portions.toLocaleString('id-ID')} porsi
+              </p>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 text-[11px]">
-            <p className="col-span-2">
-              <span className="text-slate-600">No. PO: </span>
-              {pos.map(p => p.poNumber.replace(/^NO\.\s*/i, '')).join(', ')}
-            </p>
-            <p>
-              <span className="text-slate-600">Untuk menu: </span>
-              <span className="font-semibold">{menus.length ? menus.map(m => m.menuTitle).join(', ') : '-'}</span>
-            </p>
-            <p>
-              <span className="text-slate-600">Dimasak: </span>
-              <span className="font-semibold">
-                {menus.length ? [...new Set(menus.map(m => formatLongDate(m.date)))].join(', ') : '-'}
-                {menus.length > 0 && ` · ${menus.reduce((s, m) => s + (m.targetPortions || 0), 0).toLocaleString('id-ID')} porsi`}
+          {pos.map(po => {
+            const received = isReceived(po);
+            const status = (
+              <span className="text-[11px] text-slate-600">
+                {po.items.length} bahan{received && <span className="font-semibold text-slate-900"> · sudah diterima</span>}
               </span>
+            );
+
+            if (landscape) {
+              return (
+                // Mendatar: panel kiri berisi semua isian tulis tangan, kanan tabel bahan selebar sisa kertas
+                <section key={po.id} className="po-block grid grid-cols-1 sm:grid-cols-[17rem_1fr] print:grid-cols-[17rem_1fr] gap-x-6 gap-y-3 border-t-2 border-slate-800 pt-2">
+                  <div className="space-y-2.5">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-end gap-2">
+                          <span className="text-sm font-bold shrink-0">Supplier</span>
+                          <span className="flex-1 border-b border-slate-500 h-6" />
+                        </div>
+                        {status}
+                      </div>
+                      {!received && <PoQr poId={po.id} />}
+                    </div>
+                    <div className="space-y-2 text-[11px] text-slate-600">
+                      <FillLine label="Pengirim" />
+                      <div className="flex gap-3">
+                        <FillLine label="Jam" />
+                        <FillLine label="Penerima" grow={2} />
+                      </div>
+                    </div>
+                    <div className="text-center text-[11px] text-slate-600">
+                      <span className="block border-b border-slate-500 h-10" />
+                      <span>TTD supplier</span>
+                    </div>
+                  </div>
+                  <ItemsTable po={po} />
+                </section>
+              );
+            }
+
+            return (
+              <section key={po.id} className="po-block space-y-1.5">
+                {/* Supplier ditulis tangan oleh petugas: yang dicatat adalah supplier yang benar-benar mengirim */}
+                <div className="flex items-end gap-3">
+                  <div className="flex-1 min-w-0 flex items-end gap-2">
+                    <span className="text-sm font-bold shrink-0">Supplier</span>
+                    <span className="flex-1 border-b border-slate-500 h-6" />
+                    <span className="shrink-0">{status}</span>
+                  </div>
+                  {!received && <PoQr poId={po.id} />}
+                </div>
+
+                <ItemsTable po={po} />
+
+                {/* Satu baris isian; TTD supplier di ujung kanan dengan ruang tanda tangan */}
+                <div className="flex flex-wrap items-end gap-x-4 gap-y-2 pt-1 text-[11px] text-slate-600">
+                  <FillLine label="Pengirim" grow={2} />
+                  <FillLine label="Jam" />
+                  <FillLine label="Penerima" grow={2} />
+                  <div className="shrink-0 w-40 text-center">
+                    <span className="block border-b border-slate-500 h-9" />
+                    <span>TTD supplier</span>
+                  </div>
+                </div>
+              </section>
+            );
+          })}
+
+          <section className="po-block border-t-2 border-slate-800 pt-2 space-y-1.5">
+            <p className="font-semibold">
+              Bahan tambahan di luar PO
+              <span className="font-normal text-slate-600"> · tulis tangan, lalu catat di Barang Masuk</span>
             </p>
-          </div>
+            {Array.from({ length: EXTRA_ROW_COUNT }, (_, i) => (
+              <div key={i} className="flex items-end gap-2 text-[11px] text-slate-600">
+                <span className="w-4 text-right">{i + 1}.</span>
+                <span className="flex-[3] border-b border-slate-400 h-5" />
+                <span>jumlah</span>
+                <span className="flex-1 border-b border-slate-400 h-5" />
+                <span>supplier</span>
+                <span className="flex-[2] border-b border-slate-400 h-5" />
+              </div>
+            ))}
+          </section>
 
-          <table className="po-sheet-table w-full border-collapse border border-slate-500 table-print text-[11px]">
-            <thead className="bg-slate-100">
-              <tr>
-                <th className="border border-slate-500 p-1.5 w-8">No</th>
-                <th className="border border-slate-500 p-1.5 text-left whitespace-nowrap">Nama bahan</th>
-                <th className="border border-slate-500 p-1.5 w-[9%] whitespace-nowrap">Dipesan</th>
-                <th className="border border-slate-500 p-1.5 w-[11%] whitespace-nowrap">Hasil timbang</th>
-                <th className="border border-slate-500 p-1.5 text-left w-[13%] whitespace-nowrap">Supplier</th>
-                <th className="border border-slate-500 p-1.5 text-left w-[12%] whitespace-nowrap">Nama pengantar</th>
-                <th className="border border-slate-500 p-1.5 w-[9%] whitespace-nowrap">TTD supplier</th>
-                <th className="border border-slate-500 p-1.5 text-left w-[11%] whitespace-nowrap">Penerima</th>
-                <th className="border border-slate-500 p-1.5 w-[9%] whitespace-nowrap">TTD penerima</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pos.map(po => (
-                <React.Fragment key={po.id}>
-                  {/* Judul kelompok per supplier: supplier menyusul ditulis tangan per baris */}
-                  <tr className="bg-slate-50">
-                    <td colSpan={COLUMN_COUNT} className="border border-slate-500 px-1.5 py-1 font-semibold">
-                      {isReceived(po)
-                        ? `${po.supplierName} (sudah diterima)`
-                        : isPendingSupplierPo(po)
-                          ? 'Supplier menyusul (tulis supplier tiap bahan saat datang)'
-                          : `Rencana: ${po.supplierName} (tulis supplier lain bila yang mengirim berbeda)`}
-                      <span className="font-normal text-slate-600"> · {po.poNumber.replace(/^NO\.\s*/i, '')}</span>
-                    </td>
-                  </tr>
-                  {po.items.map(it => {
-                    rowNo += 1;
-                    return (
-                      <tr key={it.id} className="align-middle">
-                        <td className="border border-slate-500 p-1.5 text-center">{rowNo}</td>
-                        <td className="border border-slate-500 p-1.5 font-semibold">{it.name}</td>
-                        <td className="border border-slate-500 p-1.5 text-center whitespace-nowrap font-mono">
-                          {Number(it.quantity).toLocaleString('id-ID')} {it.unit}
-                        </td>
-                        <td className="border border-slate-500 p-1.5">
-                          <div className="flex items-end gap-1">
-                            <span className="flex-1 border-b border-dotted border-slate-400 h-5" />
-                            <span className="text-slate-600">{it.unit}</span>
-                          </div>
-                        </td>
-                        <td className="border border-slate-500 p-1.5">{renderSupplierCell(po)}</td>
-                        <td className="border border-slate-500 p-1.5">{BLANK_LINE}</td>
-                        <td className="border border-slate-500 p-1.5 h-9" />
-                        <td className="border border-slate-500 p-1.5">{BLANK_LINE}</td>
-                        <td className="border border-slate-500 p-1.5 h-9" />
-                      </tr>
-                    );
-                  })}
-                </React.Fragment>
-              ))}
-              <tr className="bg-slate-50">
-                <td colSpan={COLUMN_COUNT} className="border border-slate-500 px-1.5 py-1 font-semibold">
-                  Bahan tambahan di luar PO
-                  <span className="font-normal text-slate-600"> · tulis tangan, lalu catat di Barang Masuk</span>
-                </td>
-              </tr>
-              {Array.from({ length: EXTRA_ROW_COUNT }, (_, i) => (
-                <tr key={`extra-${i}`} className="align-middle">
-                  <td className="border border-slate-500 p-1.5 text-center">{rowNo + i + 1}</td>
-                  {Array.from({ length: COLUMN_COUNT - 1 }, (_, c) => (
-                    <td key={c} className="border border-slate-500 p-1.5 h-9" />
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div className="grid grid-cols-3 gap-6 pt-2 text-[11px]">
+          <div className="po-block grid grid-cols-3 gap-6 text-[11px]">
             <div className="space-y-1">
               <p className="font-semibold">Catatan:</p>
               {BLANK_LINE}
@@ -216,13 +229,13 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
             <div className="text-center">
               <p>Diperiksa oleh,</p>
               <p className="text-slate-600">Asisten Lapangan</p>
-              <div className="h-14" />
+              <div className="h-10" />
               <p className="font-bold underline underline-offset-2">{signerName('ASLAP')}</p>
             </div>
             <div className="text-center">
               <p>Mengetahui,</p>
               <p className="text-slate-600">Kepala SPPG</p>
-              <div className="h-14" />
+              <div className="h-10" />
               <p className="font-bold underline underline-offset-2">{signerName('KEPALA_SPPG')}</p>
             </div>
           </div>
@@ -231,3 +244,52 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
     </div>
   );
 };
+
+const PoQr: React.FC<{ poId: string }> = ({ poId }) => (
+  <div className="flex items-center gap-1.5 shrink-0">
+    <span className="text-[9px] font-semibold leading-tight text-right">
+      Pindai untuk
+      <br />
+      input timbang
+    </span>
+    <QrSvg value={buildScanUrl(poReceiveCode(poId))} className="w-14 h-14" />
+  </div>
+);
+
+/** Hanya garis mendatar: mata mengikuti baris dari nama bahan ke garis timbang. */
+const ItemsTable: React.FC<{ po: PurchaseOrderNota }> = ({ po }) => (
+  <table className="w-full self-start border-collapse">
+    <thead>
+      <tr className="border-b-2 border-slate-800 text-[11px] text-slate-600">
+        <th className="w-7 py-1 text-right font-semibold">#</th>
+        <th className="py-1 pl-3 text-left font-semibold">Bahan</th>
+        <th className="w-24 py-1 text-right font-semibold">Pesan</th>
+        <th className="w-36 py-1 pl-6 text-left font-semibold">Timbang</th>
+      </tr>
+    </thead>
+    <tbody>
+      {po.items.map((it, idx) => (
+        <tr key={it.id} className="border-b border-slate-300">
+          <td className="py-1.5 text-right text-slate-500 tabular-nums">{idx + 1}</td>
+          <td className="py-1.5 pl-3 font-semibold">{it.name}</td>
+          <td className="py-1.5 text-right font-mono whitespace-nowrap">
+            {Number(it.quantity).toLocaleString('id-ID')} {it.unit}
+          </td>
+          <td className="py-1.5 pl-6">
+            <span className="flex items-end gap-1">
+              <span className="flex-1 border-b border-dotted border-slate-500 h-4" />
+              <span className="text-slate-600">{it.unit}</span>
+            </span>
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+);
+
+const FillLine: React.FC<{ label: string; grow?: number }> = ({ label, grow = 1 }) => (
+  <div className="flex items-end gap-1 min-w-[6rem]" style={{ flexGrow: grow, flexBasis: 0 }}>
+    <span className="shrink-0">{label}</span>
+    <span className="flex-1 border-b border-slate-500 h-4" />
+  </div>
+);

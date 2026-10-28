@@ -59,6 +59,8 @@ export const PoEditModal: React.FC<PoEditModalProps> = ({ po, onClose, onSaved }
   const supplierOptions = useMemo(() => warehouseDb.getSuppliers().filter(s => s.isActive !== false).map(s => s.name), []);
   const masterItems = useMemo(() => warehouseDb.getItems().filter(i => i.isActive), []);
   const originalById = useMemo(() => new Map(po.items.map(it => [it.id, it])), [po]);
+  // null bila supplier tiap bahan berbeda, agar isian "semua bahan" tidak menampilkan nilai yang menyesatkan.
+  const sharedSupplier = rows.length > 0 && rows.every(r => r.supplier === rows[0].supplier) ? rows[0].supplier : rows.length ? null : '';
   const total = rows.reduce((sum, r) => sum + parseNum(r.qty) * parseNum(r.price), 0);
 
   const updateRow = (id: string, patch: Partial<Row>) => setRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
@@ -162,34 +164,32 @@ export const PoEditModal: React.FC<PoEditModalProps> = ({ po, onClose, onSaved }
 
         <section className="space-y-2.5">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
-            <p className="text-[11px] text-slate-600">
-              Ganti supplier bila bahan dipesan ke supplier lain; bahan itu dipindah ke PO supplier tersebut. Kosongkan supplier untuk
-              “{PENDING_SUPPLIER_NAME}”.
-            </p>
+            <div className="space-y-1">
+              <label htmlFor="po-edit-all-supplier" className={FIELD_LABEL}>
+                Supplier semua bahan
+              </label>
+              <input
+                id="po-edit-all-supplier"
+                type="text"
+                list="po-edit-supplier-options"
+                value={sharedSupplier ?? ''}
+                placeholder={sharedSupplier === null ? 'Berbeda per bahan' : PENDING_SUPPLIER_NAME}
+                onChange={e => {
+                  const supplier = e.target.value;
+                  setRows(prev => prev.map(r => ({ ...r, supplier })));
+                }}
+                className={`${TABLE_INPUT} w-full sm:w-60`}
+              />
+            </div>
             <button type="button" onClick={handleAddRow} className={`${BTN_SECONDARY} self-start sm:self-auto`}>
               <Plus className="w-3.5 h-3.5 text-slate-500" />
               Tambah bahan
             </button>
           </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold text-slate-700">Ubah supplier seluruh PO:</span>
-              <input
-                type="text"
-                list="po-edit-supplier-options"
-                defaultValue={plannedSupplier}
-                placeholder={PENDING_SUPPLIER_NAME}
-                aria-label="Ubah supplier seluruh PO"
-                className={`${TABLE_INPUT} w-52 bg-white`}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setRows(prev => prev.map(r => ({ ...r, supplier: val })));
-                }}
-              />
-            </div>
-            <span className="text-[11px] text-slate-500">Mengubah nama supplier di semua baris bahan di bawah sekaligus.</span>
-          </div>
+          <p className="text-[11px] text-slate-600">
+            Isi di atas untuk memindah seluruh PO, atau ganti supplier per bahan di tabel; bahan itu dipindah ke PO supplier tersebut.
+            Kosongkan supplier untuk “{PENDING_SUPPLIER_NAME}”.
+          </p>
 
           <div className="border border-slate-200 rounded-xl overflow-x-auto">
             <table className="w-full text-left text-xs">

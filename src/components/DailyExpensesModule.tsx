@@ -640,31 +640,25 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {onNavigate && can('RECORD_CONSUMPTION') && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (onOpenNonFoodIssue) {
-                    onOpenNonFoodIssue();
-                  } else {
-                    onNavigate('daily_flow');
-                  }
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
-                title="Input barang keluar non-food dari form kertas atau langsung"
-              >
-                <PackageMinus className="w-4 h-4" />
-                Catat Pengeluaran Operasional
-              </button>
-            )}
             {onNavigate && can('RECEIVE_GOODS') && (
               <button
                 type="button"
                 onClick={() => onNavigate('receiving')}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
               >
                 <Plus className="w-4 h-4" />
                 Terima Barang
+              </button>
+            )}
+            {onOpenNonFoodIssue && can('RECORD_CONSUMPTION') && (
+              <button
+                type="button"
+                onClick={onOpenNonFoodIssue}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                title="Salin Form Pengambilan Barang Non-Food ke Barang Keluar > Operasional"
+              >
+                <PackageMinus className="w-4 h-4 text-slate-500" />
+                Input Form Non-Food
               </button>
             )}
             <button

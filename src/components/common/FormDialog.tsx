@@ -146,12 +146,17 @@ interface DialogShellProps {
 // Kerangka dialog lebar (tabel, banyak kolom) dengan header, isi bergulir, dan footer yang sama dengan FormDialog.
 export const DialogShell: React.FC<DialogShellProps> = ({ title, description, badges, onClose, footer, onSubmit, size = 'xl', children }) => {
   const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
+  // Bila dialog bertumpuk (mis. Ubah PO di atas daftar PO), Escape hanya menutup yang paling atas.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current();
+      if (e.key !== 'Escape') return;
+      const dialogs = document.querySelectorAll('[role="dialog"]');
+      if (dialogs[dialogs.length - 1] !== dialogRef.current) return;
+      onCloseRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -167,6 +172,7 @@ export const DialogShell: React.FC<DialogShellProps> = ({ title, description, ba
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/60">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
