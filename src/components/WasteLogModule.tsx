@@ -301,6 +301,20 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [periodLogs]);
 
+  // Hari kerja (Senin-Jumat) di periode ini yang belum punya timbangan sisa makanan, sampai hari ini.
+  // Hari libur ikut tampil; petugas cukup mengabaikannya.
+  const missingDays = useMemo(() => {
+    if (filterMode === 'ALL' || rangeInvalid || !activeRange.start) return [];
+    const recorded = new Set(dailyRows.map(d => d.date));
+    const last = activeRange.end < today ? activeRange.end : today;
+    const days: string[] = [];
+    for (let d = parseIso(activeRange.start); localDateIso(d) <= last; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+      const iso = localDateIso(d);
+      if (d.getDay() >= 1 && d.getDay() <= 5 && !recorded.has(iso)) days.push(iso);
+    }
+    return days;
+  }, [filterMode, rangeInvalid, activeRange, dailyRows, today]);
+
   const matrix = useMemo(() => {
     const dates = Array.from(new Set(periodLogs.filter(l => toKg(l) !== null).map(l => l.date))).sort();
     const otherCats = Array.from(
@@ -901,36 +915,78 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
           )}
         </div>
 
-        {/* RINGKASAN */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="p-4 rounded-xl bg-white border border-slate-200 col-span-2 sm:col-span-3 lg:col-span-1">
-            <div className="text-xs font-medium text-slate-600">Total limbah</div>
+        {/* RINGKASAN: total di kiri, komposisi per kategori sebagai satu batang bertumpuk di kanan */}
+        <div className="bg-white border border-slate-200 rounded-xl grid grid-cols-1 lg:grid-cols-[16rem_1fr] divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+          <div className="p-4">
+            <div className="text-xs font-medium text-slate-600">Total limbah · {activeRange.label}</div>
             <div className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">
               {formatKg(stats.totalKg)} <span className="text-sm font-medium text-slate-600">kg</span>
             </div>
-            <div className="text-xs text-slate-600 mt-0.5">
-              {stats.totalKg > 0 ? `${stats.circularRate}% jadi pakan, kompos, atau daur ulang` : `${matrix.dates.length} hari tercatat`}
+            <div className="text-xs text-slate-600 mt-1">
+              {stats.totalKg > 0
+                ? `${stats.circularRate}% jadi pakan, kompos, atau daur ulang`
+                : `${dailyRows.length} hari tercatat`}
             </div>
           </div>
-          {NUTRITION.map(n => (
-            <div key={n.key} className="p-4 rounded-xl bg-white border border-slate-200">
-              <div className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
-                <span className={`w-2 h-2 rounded-full ${n.dot}`} aria-hidden="true" />
-                {n.label}
-              </div>
-              <div className="text-lg font-bold text-slate-900 mt-1 tabular-nums">
-                {formatKg(round2(stats.byNutrition[n.key]))} <span className="text-xs font-medium text-slate-600">kg</span>
-              </div>
-              <div className="text-xs text-slate-600 mt-0.5">
-                {stats.totalKg > 0 ? Math.round((stats.byNutrition[n.key] / stats.totalKg) * 100) : 0}% dari total
-              </div>
-            </div>
-          ))}
+
+          <div className="p-4 space-y-3">
+            <h2 className="text-xs font-semibold text-slate-700">Komposisi sisa makanan</h2>
+            {stats.totalKg > 0 ? (
+              <>
+                <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100" aria-hidden="true">
+                  {NUTRITION.map(n =>
+                    stats.byNutrition[n.key] > 0 ? (
+                      <span key={n.key} className={n.dot} style={{ width: `${(stats.byNutrition[n.key] / stats.totalKg) * 100}%` }} />
+                    ) : null
+                  )}
+                  {stats.otherKg > 0 && <span className="bg-slate-400" style={{ width: `${(stats.otherKg / stats.totalKg) * 100}%` }} />}
+                </div>
+                <dl className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-x-4 gap-y-2 text-xs">
+                  {[
+                    ...NUTRITION.map(n => ({ key: n.key, label: n.label, dot: n.dot, kg: stats.byNutrition[n.key] })),
+                    ...(stats.otherKg > 0 ? [{ key: 'other', label: 'Limbah dapur lain', dot: 'bg-slate-400', kg: stats.otherKg }] : []),
+                  ].map(row => (
+                    <div key={row.key}>
+                      <dt className="flex items-center gap-1.5 text-slate-700">
+                        <span className={`w-2 h-2 rounded-full ${row.dot}`} aria-hidden="true" />
+                        {row.label}
+                      </dt>
+                      <dd className="mt-0.5 font-mono tabular-nums text-slate-900">
+                        <span className="font-semibold">{formatKg(round2(row.kg))} kg</span>
+                        <span className="text-slate-600"> · {Math.round((row.kg / stats.totalKg) * 100)}%</span>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </>
+            ) : (
+              <p className="text-xs text-slate-600">Belum ada timbangan pada periode ini.</p>
+            )}
+          </div>
         </div>
 
-        {(stats.otherKg > 0 || stats.nonWeightCount > 0) && (
+        {canRecord && missingDays.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3.5 py-2.5">
+            <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <span className="font-semibold">Sisa makanan belum dicatat:</span>
+            {missingDays.slice(0, 10).map(d => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => openDailyModal(d)}
+                title={`Catat sisa makanan ${formatDate(d)}`}
+                className="px-2 rounded-md bg-white border border-amber-300 hover:bg-amber-100 font-medium cursor-pointer min-h-[44px] sm:min-h-[28px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+              >
+                {dayName(d)}, {formatSheetDate(d)}
+              </button>
+            ))}
+            {missingDays.length > 10 && <span>dan {missingDays.length - 10} hari lain</span>}
+            <span className="text-amber-800">· abaikan bila hari libur</span>
+          </div>
+        )}
+
+        {stats.nonWeightCount > 0 && (
           <div className="text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 space-y-1">
-            {stats.otherKg > 0 && <p>Total sudah termasuk {formatKg(stats.otherKg)} kg limbah dapur lain (kupasan, bahan rusak, kemasan).</p>}
             {stats.nonWeightCount > 0 && (
               <p>{stats.nonWeightCount} catatan memakai satuan Pcs atau Liter, jadi tidak ikut dijumlahkan ke kg. Lihat di Semua catatan.</p>
             )}

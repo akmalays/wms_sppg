@@ -13,7 +13,7 @@ type Scope = 'ALL' | 'FOOD_DAILY_FLOW' | 'FOOD_CARRYING_STOCK';
 
 const SCOPE_TABS: { id: Scope; label: string }[] = [
   { id: 'ALL', label: 'Semua' },
-  { id: 'FOOD_DAILY_FLOW', label: 'Bahan segar' },
+  { id: 'FOOD_DAILY_FLOW', label: 'Bahan basah' },
   { id: 'FOOD_CARRYING_STOCK', label: 'Bahan kering' },
 ];
 

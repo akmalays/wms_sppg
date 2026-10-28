@@ -52,6 +52,7 @@ import { SppgLogo } from './SppgLogo';
 import { useToast } from '../context/ToastContext';
 import { localDateIso } from '../utils/localDate';
 import { suggestDryLocation } from '../utils/warehouseRacks';
+import { RestockPanel } from './RestockPanel';
 
 import {
   STANDARD_CATEGORIES,
@@ -69,7 +70,7 @@ import {
 
 interface InventoryModuleProps {
   onRefreshData?: () => void;
-  initialTab?: 'stock' | 'master' | 'opname';
+  initialTab?: 'stock' | 'restock' | 'master' | 'opname';
 }
 
 export const SPPG_STOCK_CATEGORIES = [
@@ -96,7 +97,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
   const askConfirm = useConfirm();
 
   // Top level active tab: 'stock' (Data Stok Keseluruhan) vs 'master' (Master Barang) vs 'opname' (Stok Opname Fisik)
-  const [activeMainTab, setActiveMainTab] = useState<'stock' | 'master' | 'opname'>(initialTab);
+  const [activeMainTab, setActiveMainTab] = useState<'stock' | 'restock' | 'master' | 'opname'>(initialTab);
 
   useEffect(() => {
     if (initialTab) setActiveMainTab(initialTab);
@@ -107,6 +108,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
   const items = useMemo(() => warehouseDb.getItems(), [dataVersion]);
   // Deactivated items stay in the master list but are not stock to count, report or reorder
   const activeItems = useMemo(() => items.filter(i => i.isActive !== false), [items]);
+  // Barang non-food di batas minimum atau kurang: jumlahnya jadi lencana tab Perlu Restock
+  const restockCount = useMemo(
+    () => activeItems.filter(i => i.itemType === 'OPERATIONAL_CONSUMABLE' && i.minimumStock > 0 && i.currentStock <= i.minimumStock).length,
+    [activeItems]
+  );
   const opnames = useMemo(() => warehouseDb.getOpnames(), [dataVersion]);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -1210,13 +1216,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Stok Barang</h1>
           <p className="text-xs text-slate-600 mt-0.5">
-            Saldo stok tiap barang, data master barang, dan stok opname.
+            Saldo stok tiap barang, restock barang non-food, data master barang, dan stok opname.
           </p>
         </div>
 
         <div role="tablist" aria-label="Bagian halaman stok" className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg text-xs self-start lg:self-auto">
           {([
             { id: 'stock', label: 'Saldo Stok', badge: null },
+            { id: 'restock', label: 'Perlu Restock', badge: restockCount > 0 ? restockCount : null },
             { id: 'master', label: 'Master Barang', badge: items.length },
             { id: 'opname', label: 'Stok Opname', badge: opnames.filter(o => o.status === 'PENDING_APPROVAL').length > 0 ? `${opnames.filter(o => o.status === 'PENDING_APPROVAL').length} menunggu` : null },
           ] as const).map(tab => (
@@ -1234,7 +1241,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
               {tab.badge !== null && (
                 <span
                   className={`text-[11px] font-mono px-1.5 rounded-md ${
-                    tab.id === 'opname' ? 'bg-indigo-50 text-indigo-700 font-sans font-semibold' : 'bg-slate-200 text-slate-700'
+                    tab.id === 'opname'
+                      ? 'bg-indigo-50 text-indigo-700 font-sans font-semibold'
+                      : tab.id === 'restock'
+                      ? 'bg-amber-100 text-amber-900 font-semibold'
+                      : 'bg-slate-200 text-slate-700'
                   }`}
                 >
                   {tab.badge}
@@ -1503,6 +1514,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
           </div>
         </div>
       )}
+
+      {activeMainTab === 'restock' && <RestockPanel items={items} />}
 
       {/* ========================================================================= */}
       {/* VIEW 2: MASTER BARANG (KATALOG & CUSTOM ITEM) */}

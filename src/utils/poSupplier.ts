@@ -18,11 +18,20 @@ export function poDateForMenu(menuDate: string): string {
 const MENU_PO_NOTE_PREFIX = 'PO dibuat otomatis dari Perencanaan Menu:';
 
 /**
- * Pesanan ke supplier hanya terbit dari Perencanaan Menu. Nota lain dibuat dari penerimaan atau belanja
+ * PO bahan menu terbit dari Perencanaan Menu. Nota lain dibuat dari penerimaan atau belanja
  * yang sudah terjadi, jadi bukan barang yang ditunggu. PO lama yang tautan menunya hilang dikenali dari catatannya.
  */
 export const isMenuPurchaseOrder = (po: Pick<PurchaseOrderNota, 'relatedMenuOrderId' | 'notes'>) =>
   Boolean(po.relatedMenuOrderId) || (po.notes || '').startsWith(MENU_PO_NOTE_PREFIX);
 
+/** Catatan awal PO restock barang non-menu (APD, plastik, sabun, gas, ATK) yang dibuat dari halaman Stok. */
+export const RESTOCK_PO_NOTE_PREFIX = 'PO restock stok gudang';
+
+export const isRestockPurchaseOrder = (po: Pick<PurchaseOrderNota, 'notes'>) => (po.notes || '').startsWith(RESTOCK_PO_NOTE_PREFIX);
+
+/** Pesanan yang barangnya ditunggu dari supplier: PO menu dan PO restock. */
+export const isOrderedPurchaseOrder = (po: Pick<PurchaseOrderNota, 'relatedMenuOrderId' | 'notes'>) =>
+  isMenuPurchaseOrder(po) || isRestockPurchaseOrder(po);
+
 export const isAwaitingDelivery = (po: PurchaseOrderNota) =>
-  isMenuPurchaseOrder(po) && po.status !== 'SELESAI' && !po.relatedReceivingId;
+  isOrderedPurchaseOrder(po) && po.status !== 'SELESAI' && !po.relatedReceivingId;

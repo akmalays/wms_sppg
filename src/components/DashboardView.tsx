@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { normalizeToStandardCategory } from '../utils/categoryStandards';
 import { Select } from './common/Select';
 import { warehouseDb, APP_SETTINGS_CHANGED_EVENT } from '../db/storage';
 import { getBeneficiaryRecap } from '../utils/beneficiaryRecap';
@@ -29,7 +30,7 @@ import {
 import { ReceivingDetailModal } from './ReceivingDetailModal';
 import { DailyChecklistWidget } from './DailyChecklistWidget';
 import { localDateIso } from '../utils/localDate';
-import { isAwaitingDelivery, isMenuPurchaseOrder, poDateForMenu } from '../utils/poSupplier';
+import { isAwaitingDelivery, isOrderedPurchaseOrder, poDateForMenu } from '../utils/poSupplier';
 
 interface DashboardViewProps {
   onNavigate: (tab: string) => void;
@@ -153,7 +154,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
       const matchSearch = item.name.toLowerCase().includes(q) ||
         item.location.toLowerCase().includes(q) ||
         item.id.toLowerCase().includes(q);
-      const matchCat = stockCategoryFilter === 'ALL' || item.category === stockCategoryFilter;
+      // Kategori lama dari PO ("Protein", "Sayur") ikut terbaca sebagai Bahan Basah
+      const matchCat = stockCategoryFilter === 'ALL' || normalizeToStandardCategory(item.category, item.name) === stockCategoryFilter;
       return matchSearch && matchCat;
     });
   }, [outOfStockItems, lowStockItems, stockSearchQuery, stockCategoryFilter]);
@@ -214,7 +216,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
 
     // 1. Dari Dokumen Purchase Order resmi yang tanggal PO / tanggal kedatangannya hari ini (prioritas utama)
     const todaysPos = purchaseOrders.filter(
-      po => isMenuPurchaseOrder(po) && (po.date === today || po.deliveryDate === today)
+      // PO restock barang non-menu ikut, karena sama-sama barang yang ditunggu datang hari ini
+      po => isOrderedPurchaseOrder(po) && (po.date === today || po.deliveryDate === today)
     );
 
     todaysPos.forEach(po => {
@@ -622,7 +625,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
           <div className="py-10 px-4 text-center">
             <p className="text-xs font-semibold text-slate-800">Belum ada pesanan bahan untuk hari ini.</p>
             <p className="text-[11px] text-slate-600 mt-1 max-w-md mx-auto">
-              Buat PO di halaman Menu, atau terima barang tanpa PO di Barang Masuk.
+              Buat PO di halaman Menu, atau catat Belanja Non-Menu di Barang Masuk.
             </p>
           </div>
         ) : (
@@ -937,7 +940,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
           <div>
             <h2 className="text-sm font-semibold text-slate-800">Neraca Bahan Harian</h2>
             <p className="text-[11px] text-slate-600 mt-0.5">
-              Bahan segar (protein, sayur, buah) dalam kg.
+              Bahan basah (protein, sayur, buah) dalam kg.
               {nonKgFlowCount > 0 && ` ${nonKgFlowCount} bahan bersatuan selain kg tidak ikut dijumlah.`}
             </p>
           </div>
@@ -947,7 +950,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
         </div>
 
         {kgFlow.length === 0 ? (
-          <p className="py-8 px-4 text-center text-xs text-slate-600">Belum ada bahan segar yang dicatat di Barang Keluar.</p>
+          <p className="py-8 px-4 text-center text-xs text-slate-600">Belum ada bahan basah yang dicatat di Barang Keluar.</p>
         ) : (
           <dl className="grid grid-cols-2 md:grid-cols-4 text-xs">
             {[

@@ -40,13 +40,14 @@ import {
   REAL_ATTENDANCE_LOGS,
 } from './realSeedData';
 import { getRomanMonth, getYearFromDate, generateNextPoNumber, poNumberForDate } from '../utils/poNumberGenerator';
-import { isPendingSupplierPo, PENDING_SUPPLIER_NAME } from '../utils/poSupplier';
+import { isPendingSupplierPo, isRestockPurchaseOrder, PENDING_SUPPLIER_NAME } from '../utils/poSupplier';
 import { angkaTerbilang } from '../utils/numberToWords';
 import { removeFromPrintPool } from '../utils/poPrintPool';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { reportCloudWriteError } from '../lib/cloudEvents';
 import { localDateIso, localTimestamp } from '../utils/localDate';
 import { convertQty, unitKey } from '../utils/unitConversion';
+import { placeNewItem } from '../utils/itemPlacement';
 
 const MAX_AUDIT_LOGS = 2000;
 
@@ -1544,6 +1545,9 @@ function setStored<T>(key: string, data: T): void {
 // SUPABASE CLOUD MAPPING HELPERS
 // ==============================================================================
 
+/** Lokasi bawaan lama untuk barang yang dibuat otomatis dari timbang PO. */
+const LEGACY_AUTO_ITEM_LOCATION = 'Gudang Utama SPPG';
+
 export function mapItemToSupabase(item: ItemMaster) {
   return {
     id: item.id,
@@ -2377,6 +2381,7 @@ class WarehouseDatabase {
         .order('name', { ascending: true });
       if (!itemsErr && dbItems) {
         this.items = dbItems.map(mapSupabaseToItem);
+        this.repairAutoCreatedItems();
       }
 
       // 2. Master Rekanan Supplier
@@ -3431,6 +3436,30 @@ class WarehouseDatabase {
     return updatedSession;
   }
 
+  /**
+   * Barang yang dulu dibuat otomatis saat timbang PO tersimpan di "Gudang Utama SPPG" dengan kategori PO mentah,
+   * sehingga semuanya terbaca bahan kering. Kategori, jenis, dan raknya dihitung ulang lalu disimpan ke cloud.
+   */
+  private repairAutoCreatedItems(): void {
+    const fixed: ItemMaster[] = [];
+    this.items = this.items.map(item => {
+      if (item.location !== LEGACY_AUTO_ITEM_LOCATION) return item;
+      const placement = placeNewItem(item.category, item.name);
+      const next = { ...item, category: placement.category, itemType: placement.itemType, location: placement.location };
+      fixed.push(next);
+      return next;
+    });
+    // Hanya kolom yang dibetulkan, agar stok yang berubah dari perangkat lain tidak tertimpa
+    fixed.forEach(item => {
+      this.pushCloud(`rapikan lokasi ${item.name}`, () =>
+        supabase
+          .from('item_master')
+          .update({ category: item.category, item_type: item.itemType, location_id: item.location })
+          .eq('id', item.id)
+      );
+    });
+  }
+
   // --- ITEM MASTER MANAGEMENT ---
   public saveItem(item: ItemMaster, user: User, isNew: boolean): ItemMaster {
     if (!item.name || !item.id || !item.baseUnit) {
@@ -4181,7 +4210,7 @@ class WarehouseDatabase {
   }
 
   /**
-   * Tutup PO yang barangnya sudah dicatat lewat jalur lain (Terima Barang manual, belanja langsung) atau tidak
+   * Tutup PO yang barangnya sudah dicatat lewat jalur lain (Belanja Non-Menu, belanja langsung) atau tidak
    * jadi datang. Status jadi SELESAI tanpa menambah stok atau pengeluaran, supaya tidak lagi ditunggu.
    */
   public closePurchaseOrdersWithoutReceiving(ids: string[], reason: string, user: User): number {
@@ -4524,7 +4553,7 @@ class WarehouseDatabase {
     if (po.status === 'SELESAI') {
       return { success: false, message: `PO ${po.poNumber} sudah diterima sebelumnya. Penerimaan tidak bisa disimpan dua kali.` };
     }
-    // Nota yang dibuat dari dokumen penerimaan: barangnya sudah masuk stok lewat Terima Barang.
+    // Nota yang dibuat dari dokumen penerimaan: barangnya sudah masuk stok lewat Belanja Non-Menu.
     if (po.relatedReceivingId) {
       return {
         success: false,
@@ -4601,16 +4630,18 @@ class WarehouseDatabase {
         let itemToUpdate: ItemMaster;
         if (!targetItem) {
           const newSku = receivingLines[idx].itemId;
+          // Kategori PO ("Protein", "Sayur") dinormalkan agar bahan basah masuk tab Bahan basah dan rak yang benar
+          const placement = placeNewItem(itemInput.category, itemInput.name);
           itemToUpdate = {
             id: newSku,
             name: itemInput.name,
-            category: itemInput.category as any,
+            category: placement.category,
             currentStock: 0,
             baseUnit: (itemInput.unit as any) || 'Kg',
             minimumStock: 5,
             reorderPoint: 10,
-            location: 'Gudang Utama SPPG',
-            itemType: itemInput.category === 'Bahan Basah' ? 'FOOD_DAILY_FLOW' : 'FOOD_CARRYING_STOCK',
+            location: placement.location,
+            itemType: placement.itemType,
             expiryTrackingEnabled: false,
             isActive: true,
             createdAt: nowIso,
@@ -4686,7 +4717,7 @@ class WarehouseDatabase {
           recipient: po.supplierName,
           receiptRef: po.poNumber,
           // Penanda [GR: id] menautkan belanja ini ke dokumen penerimaannya agar riwayat tidak dobel.
-          notes: `[GR: ${receivingDoc.id}] Belanja bahan PO ${po.poNumber} (${po.supplierName}). ${itemInput.notes || ''}`.trim(),
+          notes: `[GR: ${receivingDoc.id}] Belanja ${isRestockPurchaseOrder(po) ? 'restock' : 'bahan'} PO ${po.poNumber} (${po.supplierName}). ${itemInput.notes || ''}`.trim(),
           createdAt: nowIso,
         };
         expenseIds.push(expId);

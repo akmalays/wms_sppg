@@ -87,6 +87,8 @@ const MainLayout: React.FC = () => {
   const [nonFoodIssueRequest, setNonFoodIssueRequest] = useState(() => (isNonFoodIssueTarget(scanTargetFromLocation()) ? 1 : 0));
   // PO dari QR Form PO & Penerimaan Bahan; Barang Masuk membuka timbangnya lalu mengosongkan ini.
   const [poReceiveRequest, setPoReceiveRequest] = useState<string | null>(() => poIdFromScanTarget(scanTargetFromLocation()));
+  // Dari Laporan Pengeluaran: Barang Masuk langsung membuka form Belanja Non-Menu.
+  const [nonMenuFormRequest, setNonMenuFormRequest] = useState(false);
   const [currentRoute, setCurrentRoute] = useState<AppRouteType>(getAppRoute);
   const [dataVersion, setDataVersion] = useState<number>(0);
   // Form yang dibuka saat pindah ke Cetak Form dari halaman lain (nota supplier, label aset).
@@ -98,7 +100,10 @@ const MainLayout: React.FC = () => {
     if (activeTab !== 'tools_forms') setPrintTarget(undefined);
     if (activeTab !== 'waste_logs') setWasteEntryRequest(0);
     if (activeTab !== 'daily_flow') setNonFoodIssueRequest(0);
-    if (activeTab !== 'receiving') setPoReceiveRequest(null);
+    if (activeTab !== 'receiving') {
+      setPoReceiveRequest(null);
+      setNonMenuFormRequest(false);
+    }
   }, [activeTab]);
 
   // Sync state when browser URL changes (back/forward navigation or hash change)
@@ -246,6 +251,10 @@ const MainLayout: React.FC = () => {
           {activeTab === 'daily_expenses' && (
             <DailyExpensesModule
               onNavigate={setActiveTab}
+              onOpenNonMenuPurchase={() => {
+                setNonMenuFormRequest(true);
+                setActiveTab('receiving');
+              }}
               onOpenNonFoodIssue={() => {
                 setNonFoodIssueRequest(n => n + 1);
                 setActiveTab('daily_flow');
@@ -305,6 +314,8 @@ const MainLayout: React.FC = () => {
               onPrintReceiving={receivingId => openPrintForm({ form: 'RECEIVING_FORM', receivingId })}
               openPoWeighingId={poReceiveRequest}
               onPoWeighingOpened={() => setPoReceiveRequest(null)}
+              openNonMenuForm={nonMenuFormRequest}
+              onNonMenuFormOpened={() => setNonMenuFormRequest(false)}
             />
           )}
 

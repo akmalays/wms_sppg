@@ -67,7 +67,8 @@ import { LoadingOverlay } from './common/LoadingOverlay';
 import { ActionDropdown } from './common/ActionDropdown';
 import { angkaTerbilang } from './ToolsPrintModule';
 import { generateNextPoNumber } from '../utils/poNumberGenerator';
-import { isAwaitingDelivery, isMenuPurchaseOrder } from '../utils/poSupplier';
+import { placeNewItem, PACKAGING_NAME_PATTERN, PPE_NAME_PATTERN } from '../utils/itemPlacement';
+import { isAwaitingDelivery, isOrderedPurchaseOrder, isRestockPurchaseOrder } from '../utils/poSupplier';
 import { useConfirm } from '../context/ConfirmContext';
 import { localDateIso } from '../utils/localDate';
 import { isCountableUnit, normalizeQtyForUnit } from '../utils/unitConversion';
@@ -100,6 +101,9 @@ interface ReceivingModuleProps {
   /** PO dari QR Form PO & Penerimaan Bahan: dialog timbangnya dibuka sekali, lalu onPoWeighingOpened dipanggil. */
   openPoWeighingId?: string | null;
   onPoWeighingOpened?: () => void;
+  /** Dibuka dari halaman lain (Laporan Pengeluaran): langsung tampilkan form Belanja Non-Menu sekali. */
+  openNonMenuForm?: boolean;
+  onNonMenuFormOpened?: () => void;
 }
 
 export const INPUT_CATEGORIES = STANDARD_CATEGORIES;
@@ -110,8 +114,6 @@ function autoDetectCategory(itemName: string): InputCategoryType {
   return normalizeToStandardCategory(undefined, itemName);
 }
 
-const PACKAGING_NAME_PATTERN = /plastik|kresek|mika|thinwall|kemasan|kantong|kotak makan|styrofoam|klip|cling|wrap|tisu|tissue/i;
-const PPE_NAME_PATTERN = /masker|sarung tangan|glove|apd|celemek|apron|nurse cap|hairnet|penutup kepala|sepatu boot|face shield/i;
 
 // Unit pemakai di laporan pengeluaran, mengikuti kategori standar barang.
 function expenseDepartmentFor(category: InputCategoryType, itemName: string): NonFoodDepartment {
@@ -122,18 +124,6 @@ function expenseDepartmentFor(category: InputCategoryType, itemName: string): No
   return 'Dapur Pengolahan Utama';
 }
 
-// Rak gudang untuk barang baru, sama dengan pembagian rak di Gudang Non-Food.
-function suggestQuickItemLocation(category: InputCategoryType, itemName: string): string | undefined {
-  const racks = WAREHOUSE_SKU_DEFINITIONS.GUDANG_NONFOOD.suggestedLocations;
-  if (category === 'P3K & Obat-obatan') return racks[3];
-  if (category === 'Sanitasi, Kemasan & APD') {
-    if (PPE_NAME_PATTERN.test(itemName)) return racks[2];
-    if (PACKAGING_NAME_PATTERN.test(itemName)) return racks[1];
-    return racks[0];
-  }
-  if (category === 'Operasional & Keperluan Lain') return 'Area Logistik Operasional';
-  return undefined;
-}
 
 
 export interface UnifiedRecord {
@@ -233,7 +223,7 @@ function parseExpenseDate(dateStr: string): Date | null {
 // Isian tanggal di bar filter: lebar tetap (TABLE_INPUT bawaannya w-full) agar Dari/sampai sebaris
 const DATE_INPUT = `${TABLE_INPUT.replace('w-full ', '')} w-[150px]`;
 
-export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, onPrintReceiving, openPoWeighingId, onPoWeighingOpened }) => {
+export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, onPrintReceiving, openPoWeighingId, onPoWeighingOpened, openNonMenuForm, onNonMenuFormOpened }) => {
   const { currentUser, can } = useAuth();
   const canDeleteRecords = can('RECEIVE_GOODS');
   const toast = useToast();
@@ -328,7 +318,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
   // jadi tidak ikut antrean timbang supaya stok tidak bertambah dua kali.
   // Antrean hanya berisi pesanan dari menu. Nota yang dibuat dari penerimaan atau belanja yang sudah terjadi
   // bukan barang yang ditunggu, jadi tidak boleh muncul sebagai "Terlambat".
-  const menuPOs = useMemo(() => purchaseOrders.filter(isMenuPurchaseOrder), [purchaseOrders]);
+  // Antrean PO: PO bahan menu dan PO restock barang non-menu dari halaman Stok.
+  const menuPOs = useMemo(() => purchaseOrders.filter(isOrderedPurchaseOrder), [purchaseOrders]);
   const pendingPOs = useMemo(() => purchaseOrders.filter(isAwaitingDelivery), [purchaseOrders]);
   const askConfirm = useConfirm();
 
@@ -345,7 +336,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
     const ok = await askConfirm({
       title: pos.length === 1 ? `Tutup PO ${pos[0].poNumber}?` : `Tutup ${pos.length} PO yang lewat jadwal?`,
       message:
-        'Pakai ini bila barangnya sudah dicatat lewat Terima Barang atau belanja langsung, atau memang tidak jadi datang. ' +
+        'Pakai ini bila barangnya sudah dicatat lewat Belanja Non-Menu, atau memang tidak jadi datang. ' +
         'PO ditandai selesai tanpa menambah stok dan pengeluaran, dan tidak lagi muncul di antrean.' +
         (pos.length > 1 ? `\n\n${pos.map(p => `- ${p.poNumber} · ${p.supplierName}`).join('\n')}` : ''),
       confirmText: 'Tutup PO',
@@ -523,7 +514,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
     [suppliers]
   );
 
-  // Pilihan barang Terima Barang: hanya barang gudang, dikelompokkan per kategori.
+  // Pilihan barang Belanja Non-Menu: hanya barang gudang, dikelompokkan per kategori.
   const receivingItemOptions = useMemo<PickerOption[]>(
     () =>
       [...items]
@@ -577,8 +568,15 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
     setIsCreatingDeliveryOrder(true);
   };
 
+  useEffect(() => {
+    if (!openNonMenuForm) return;
+    onNonMenuFormOpened?.();
+    if (can('RECEIVE_GOODS')) handleOpenDeliveryOrder();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openNonMenuForm]);
+
   // ----------------------------------------------------
-  // Barang baru: daftar ke Master Barang langsung dari form Terima Barang
+  // Barang baru: daftar ke Master Barang langsung dari form Belanja Non-Menu
   // ----------------------------------------------------
   // categoryTouched: kategori dipilih sendiri, jadi tidak lagi ditebak dari nama barang.
   const [quickItem, setQuickItem] = useState<{ lineIndex: number | null; name: string; category: InputCategoryType; unit: string; categoryTouched: boolean } | null>(null);
@@ -598,13 +596,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
     });
   };
 
-  // Kategori input menentukan gudang (awalan SKU) dan jenis barang, sama dengan aturan di Master Barang.
-  const QUICK_ITEM_WAREHOUSE: Record<string, WarehouseSkuType> = {
-    'Bahan Basah': 'GUDANG_BASAH',
-    'Bahan Kering': 'GUDANG_KERING',
-    'ATK & Administrasi': 'OPERASIONAL_ATK',
-    'Operasional & Keperluan Lain': 'OPERASIONAL_ATK',
-  };
 
   const handleSaveQuickItem = (e: React.FormEvent) => {
     e.preventDefault();
@@ -621,26 +612,19 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
       setQuickItemError(`"${dup.name}" sudah ada di Master Barang. Pilih dari daftar barang.`);
       return;
     }
-    const warehouse = QUICK_ITEM_WAREHOUSE[quickItem.category] || 'GUDANG_NONFOOD';
+    // Gudang (awalan SKU), jenis barang, dan rak mengikuti aturan yang sama dengan barang baru dari PO
+    const placement = placeNewItem(quickItem.category, name);
     const now = new Date().toISOString();
     const newItem: ItemMaster = {
-      id: generateAutoSku(warehouse, allItems),
+      id: generateAutoSku(placement.warehouse, allItems),
       name,
-      itemType:
-        quickItem.category === 'Bahan Kering'
-          ? 'FOOD_CARRYING_STOCK'
-          : quickItem.category === 'Bahan Basah'
-          ? 'FOOD_DAILY_FLOW'
-          : 'OPERATIONAL_CONSUMABLE',
+      itemType: placement.itemType,
       category: quickItem.category,
       baseUnit: unit,
       minimumStock: 0,
       reorderPoint: 0,
       currentStock: 0,
-      location:
-        (warehouse === 'GUDANG_KERING' ? suggestDryLocation(name) : suggestQuickItemLocation(quickItem.category, name)) ||
-        WAREHOUSE_SKU_DEFINITIONS[warehouse]?.defaultLocation ||
-        'Gudang Utama',
+      location: placement.location,
       expiryTrackingEnabled:
         quickItem.category === 'Bahan Basah' || quickItem.category === 'Bahan Kering' || quickItem.category === 'P3K & Obat-obatan',
       isActive: true,
@@ -782,7 +766,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
             address: '',
             supplyCategory: 'Toko / Belanja Langsung',
             isActive: true,
-            notes: 'Didaftarkan dari Terima Barang (tanpa PO).',
+            notes: 'Didaftarkan dari Belanja Non-Menu (tanpa PO).',
           },
           currentUser,
           true
@@ -1548,7 +1532,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
           <div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight">Barang Masuk</h1>
             <p className="text-xs text-slate-600 mt-0.5 max-w-2xl">
-              Semua barang yang dibeli masuk stok gudang, dan belanjanya tercatat di laporan pengeluaran.
+              Bahan menu diterima lewat PO di bawah. APD, plastik, sabun, gas, dan ATK dicatat lewat Belanja Non-Menu.
+              Semua masuk stok gudang dan tercatat di laporan pengeluaran.
             </p>
           </div>
 
@@ -1558,9 +1543,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                 <button
                   type="button"
                   onClick={handleOpenDeliveryOrder}
+                  title="Barang di luar menu tanpa PO: APD, plastik, sabun, gas, ATK, obat"
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold transition-colors cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
                 >
-                  Terima Barang
+                  Catat Belanja Non-Menu
                 </button>
               )}
               <button
@@ -1649,7 +1635,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                   <div className="py-8 text-center">
                     <p className="text-xs font-semibold text-slate-800">Belum ada PO.</p>
                     <p className="text-[11px] text-slate-600 mt-1 max-w-md mx-auto">
-                      PO dibuat dari rencana menu. Barang tanpa PO tetap bisa dicatat lewat Terima Barang.
+                      PO dibuat dari rencana menu atau dari Perlu Restock di halaman Stok. Barang di luar menu yang dibeli mendadak dicatat lewat Belanja Non-Menu.
                     </p>
                     {onNavigate && (
                       <button
@@ -1679,7 +1665,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-950">
                     <p>
                       <span className="font-semibold">{latePOs.length} PO sudah lewat jadwal kirim.</span> Bila barangnya sudah dicatat
-                      lewat Terima Barang atau tidak jadi datang, tutup supaya tidak ditunggu lagi.
+                      lewat Belanja Non-Menu atau tidak jadi datang, tutup supaya tidak ditunggu lagi.
                     </p>
                     <button type="button" onClick={() => handleClosePos(latePOs)} className={`${BTN_SECONDARY} shrink-0`}>
                       Tutup {latePOs.length} PO lewat jadwal
@@ -1747,6 +1733,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                                 Menu: {cleanMenuName}
                               </p>
                             )}
+                            {isRestockPurchaseOrder(po) && <p className="text-[11px]">Restock barang non-menu</p>}
                             {revisionCount > 0 && (
                               <p className="text-[11px] text-amber-800">
                                 Direvisi {revisionCount} kali. Pastikan supplier memegang PO terbaru.
@@ -1864,10 +1851,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                 <ArrowLeft className="w-4 h-4" />
               </button>
               <div>
-                <h2 className="text-sm font-semibold text-slate-800">Terima Barang (tanpa PO)</h2>
+                <h2 className="text-sm font-semibold text-slate-800">Belanja Non-Menu</h2>
                 <p className="text-[11px] text-slate-600 max-w-2xl">
-                  Untuk barang di luar menu: plastik dan kemasan, obat, APD, sabun, gas, ATK. Stok gudang bertambah dan
-                  belanjanya masuk laporan pengeluaran. Bahan menu yang sudah ada PO-nya diterima lewat daftar PO.
+                  Barang di luar menu yang dibeli tanpa PO: plastik dan kemasan, obat, APD, sabun, gas, ATK. Stok gudang
+                  bertambah dan belanjanya masuk laporan pengeluaran. Bahan menu yang ada PO-nya diterima lewat daftar PO.
                 </p>
               </div>
             </div>
@@ -2399,7 +2386,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                     ? 'Tidak ada catatan yang cocok dengan filter.'
                     : 'Belum ada barang masuk di periode ini.'}
                 </h4>
-                <p className="text-[11px] text-slate-600 mt-1">Ubah periode atau filter, atau terima barang baru.</p>
+                <p className="text-[11px] text-slate-600 mt-1">Ubah periode atau filter, atau catat belanja baru.</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -2585,16 +2572,16 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                       : 'Belum ada barang masuk di periode ini.'}
                   </h4>
                   <p className="text-[11px] text-slate-600 mt-1">
-                    Ubah periode atau filter, atau terima barang baru.
+                    Ubah periode atau filter, atau catat belanja baru.
                   </p>
                   <div className="mt-3 flex flex-wrap justify-center gap-2">
                     {can('RECEIVE_GOODS') && (
                       <button
                         type="button"
                         onClick={handleOpenDeliveryOrder}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px]"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
                       >
-                        Terima Barang
+                        Catat Belanja Non-Menu
                       </button>
                     )}
                   </div>

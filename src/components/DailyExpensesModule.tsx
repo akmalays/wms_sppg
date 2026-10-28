@@ -8,6 +8,8 @@ import { Printer, Search, CheckCircle2, FileSpreadsheet, Trash2, Plus, X, Packag
 import { exportMultiSheetExcel } from '../lib/excelExport';
 import { SppgLogo } from './SppgLogo';
 import { localDateIso } from '../utils/localDate';
+import { Select } from './common/Select';
+import { useToast } from '../context/ToastContext';
 
 type PeriodType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM';
 
@@ -114,11 +116,13 @@ interface ItemAgg {
 export interface DailyExpensesModuleProps {
   onNavigate?: (tab: string) => void;
   onOpenNonFoodIssue?: () => void;
+  onOpenNonMenuPurchase?: () => void;
 }
 
-export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavigate, onOpenNonFoodIssue }) => {
+export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavigate, onOpenNonFoodIssue, onOpenNonMenuPurchase }) => {
   const { currentUser, can } = useAuth();
   const askConfirm = useConfirm();
+  const toast = useToast();
   const today = localDateIso();
 
   const [periodType, setPeriodType] = useState<PeriodType>('WEEKLY');
@@ -345,16 +349,6 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
     return result;
   }, [filteredExpenses]);
 
-  const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = { ALL: 0, ...emptyByCategory(() => 0) };
-    periodExpenses.forEach(e => {
-      if (kindFilter !== 'ALL' && e.kind !== kindFilter) return;
-      counts.ALL += 1;
-      counts[e.category] = (counts[e.category] || 0) + 1;
-    });
-    return counts;
-  }, [periodExpenses, kindFilter]);
-
   const kindCounts = useMemo(() => {
     const counts: Record<string, number> = { ALL: 0, BELANJA: 0, PENGAMBILAN: 0, DAPUR: 0 };
     periodExpenses.forEach(e => {
@@ -366,6 +360,27 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
   }, [periodExpenses, categoryFilter]);
 
   const visibleCategories = categoryFilter === 'ALL' ? CATEGORIES : [categoryFilter];
+
+  // Daftar "Per kategori" sekaligus jadi filter kategori, jadi angkanya tidak ikut tersaring kategori yang dipilih.
+  const categoryBreakdown = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const byCategory = emptyByCategory(() => 0);
+    const counts = emptyByCategory(() => 0);
+    let total = 0;
+    periodExpenses.forEach(e => {
+      if (kindFilter !== 'ALL' && e.kind !== kindFilter) return;
+      if (q && !`${e.itemName} ${e.takenBy} ${e.recordedBy} ${e.notes || ''}`.toLowerCase().includes(q)) return;
+      counts[e.category] += 1;
+      if (e.kind === 'BELANJA' && e.nominal) {
+        byCategory[e.category] += e.nominal;
+        total += e.nominal;
+      }
+    });
+    const rows = CATEGORIES.map(cat => ({ cat, amount: byCategory[cat], count: counts[cat] }))
+      .filter(r => r.count > 0 || r.cat === categoryFilter)
+      .sort((a, b) => b.amount - a.amount || b.count - a.count);
+    return { rows, total };
+  }, [periodExpenses, kindFilter, searchQuery, categoryFilter]);
 
   const handleDeleteManual = async (id: string, name: string) => {
     if (!(await askConfirm({
@@ -381,7 +396,7 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
 
   const handleExportExcel = () => {
     if (filteredExpenses.length === 0) {
-      alert('Tidak ada catatan pada periode dan filter ini.');
+      toast.warning('Tidak ada catatan pada periode dan filter ini.', 'Belum Ada Data');
       return;
     }
     const detailRows = filteredExpenses.map((item, idx) => ({
@@ -435,13 +450,6 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
       {label}
     </button>
   );
-
-  const chipClass = (selected: boolean) =>
-    `px-2.5 py-1.5 rounded-lg text-xs cursor-pointer inline-flex items-center gap-1.5 min-h-[44px] sm:min-h-[32px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
-      selected
-        ? 'bg-slate-900 text-white font-semibold'
-        : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 font-medium'
-    }`;
 
   const dateInputClass =
     'px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 min-h-[44px] sm:min-h-[34px] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600';
@@ -640,14 +648,15 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {onNavigate && can('RECEIVE_GOODS') && (
+            {onOpenNonMenuPurchase && can('RECEIVE_GOODS') && (
               <button
                 type="button"
-                onClick={() => onNavigate('receiving')}
+                onClick={onOpenNonMenuPurchase}
+                title="APD, plastik, sabun, gas, ATK yang dibeli tanpa PO"
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
               >
                 <Plus className="w-4 h-4" />
-                Terima Barang
+                Catat Belanja Non-Menu
               </button>
             )}
             {onOpenNonFoodIssue && can('RECORD_CONSUMPTION') && (
@@ -731,6 +740,14 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
                   >
                     Mundur seminggu
                   </button>
+                  <button
+                    type="button"
+                    disabled={endDate >= today}
+                    onClick={() => { setStartDate(shiftDays(startDate, 7)); setEndDate(shiftDays(endDate, 7)); }}
+                    className="px-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-medium text-slate-700 cursor-pointer min-h-[44px] sm:min-h-[34px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+                  >
+                    Maju seminggu
+                  </button>
                 </div>
               )}
             </div>
@@ -740,27 +757,65 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
           )}
         </div>
 
-        {/* RINGKASAN */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <div className="p-4 rounded-xl bg-white border border-slate-200">
-            <div className="text-xs font-medium text-slate-600">Total belanja · {range.label}</div>
+        {/* RINGKASAN: total di kiri, rincian per kategori di kanan yang sekaligus menyaring daftar */}
+        <div className="bg-white border border-slate-200 rounded-xl grid grid-cols-1 lg:grid-cols-[18rem_1fr] divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+          <div className="p-4">
+            <div className="text-xs font-medium text-slate-600">
+              Total belanja{categoryFilter !== 'ALL' && <> · {categoryFilter}</>}
+            </div>
             <div className="text-2xl font-bold text-slate-900 mt-1 tabular-nums">{formatRp(totals.belanja)}</div>
-            <div className="text-xs text-slate-600 mt-1">
+            <div className="text-xs text-slate-600 mt-1">{range.label}</div>
+            <div className="text-xs text-slate-600 mt-2">
               {totals.belanjaCount} belanja · {totals.pengambilanCount} pengambilan · {totals.dapurCount} barang keluar
             </div>
           </div>
-          {CATEGORIES.map(cat => (
-            <div key={cat} className="p-4 rounded-xl bg-white border border-slate-200">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-slate-700">{cat}</span>
-                <span className="text-[11px] font-mono text-slate-600">
-                  {totals.belanja > 0 ? Math.round((totals.byCategory[cat] / totals.belanja) * 100) : 0}%
-                </span>
-              </div>
-              <div className="text-lg font-bold text-slate-900 mt-1 tabular-nums">{formatRp(totals.byCategory[cat])}</div>
-              <div className="text-xs text-slate-600 mt-0.5">{categoryItems[cat].length} jenis barang</div>
+
+          <div className="p-4 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-xs font-semibold text-slate-700">Per kategori</h2>
+              {categoryFilter !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setCategoryFilter('ALL')}
+                  className="text-xs font-semibold text-emerald-800 hover:underline cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                >
+                  Tampilkan semua kategori
+                </button>
+              )}
             </div>
-          ))}
+            {categoryBreakdown.rows.length === 0 ? (
+              <p className="text-xs text-slate-600 py-2">Belum ada catatan pada periode ini.</p>
+            ) : (
+              <ul className="space-y-0.5">
+                {categoryBreakdown.rows.map(({ cat, amount, count }) => {
+                  const pct = categoryBreakdown.total > 0 ? Math.round((amount / categoryBreakdown.total) * 100) : 0;
+                  const selected = categoryFilter === cat;
+                  return (
+                    <li key={cat}>
+                      <button
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => setCategoryFilter(selected ? 'ALL' : cat)}
+                        title={selected ? 'Klik lagi untuk menampilkan semua kategori' : `Tampilkan ${cat} saja`}
+                        className={`w-full grid grid-cols-[minmax(0,10rem)_1fr_auto] sm:grid-cols-[12rem_1fr_8rem_2.5rem] items-center gap-3 px-2 rounded-lg text-left text-xs cursor-pointer min-h-[44px] sm:min-h-[34px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+                          selected ? 'bg-emerald-50 ring-1 ring-emerald-300' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className={`truncate ${selected ? 'font-semibold text-emerald-900' : 'font-medium text-slate-800'}`}>
+                          {cat} <span className="text-slate-500 font-normal">· {count}</span>
+                        </span>
+                        <span className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                          <span className="block h-full rounded-full bg-emerald-600" style={{ width: `${pct}%` }} />
+                        </span>
+                        <span className="font-mono tabular-nums text-right text-slate-900">{amount > 0 ? formatRp(amount) : '-'}</span>
+                        <span className="hidden sm:block font-mono tabular-nums text-right text-slate-600">{pct}%</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         </div>
 
         {(totals.pengambilanCount > 0 || unreadableDateCount > 0) && (
@@ -801,38 +856,46 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
                   </button>
                 ))}
               </div>
-              <div className="relative w-full lg:w-64">
-                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
-                <input
-                  type="search"
-                  aria-label="Cari catatan"
-                  placeholder="Cari barang, relawan, petugas"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 text-xs border border-slate-300 rounded-lg text-slate-800 min-h-[44px] sm:min-h-[34px] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                />
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full lg:w-auto">
+                <Select
+                  size="sm"
+                  aria-label="Jenis catatan"
+                  value={kindFilter}
+                  onChange={e => setKindFilter(e.target.value as 'ALL' | ExpenseKind)}
+                  className="w-full sm:w-48"
+                >
+                  <option value="ALL">Semua jenis ({kindCounts.ALL})</option>
+                  {(['BELANJA', 'PENGAMBILAN', 'DAPUR'] as ExpenseKind[]).map(kind => (
+                    <option key={kind} value={kind}>
+                      {KIND_LABEL[kind]} ({kindCounts[kind]})
+                    </option>
+                  ))}
+                </Select>
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+                  <input
+                    type="search"
+                    aria-label="Cari catatan"
+                    placeholder="Cari barang, relawan, petugas"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-3 py-2 text-xs border border-slate-300 rounded-lg text-slate-800 min-h-[44px] sm:min-h-[34px] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  />
+                </div>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-1">
-              <button type="button" aria-pressed={categoryFilter === 'ALL'} onClick={() => setCategoryFilter('ALL')} className={chipClass(categoryFilter === 'ALL')}>
-                Semua kategori <span className="font-mono text-[11px] opacity-75">{categoryCounts.ALL}</span>
-              </button>
-              {CATEGORIES.map(cat => (
-                <button key={cat} type="button" aria-pressed={categoryFilter === cat} onClick={() => setCategoryFilter(cat)} className={chipClass(categoryFilter === cat)}>
-                  {cat} <span className="font-mono text-[11px] opacity-75">{categoryCounts[cat] || 0}</span>
+            {categoryFilter !== 'ALL' && (
+              <p className="text-xs text-slate-700">
+                Hanya kategori <span className="font-semibold text-slate-900">{categoryFilter}</span>.{' '}
+                <button
+                  type="button"
+                  onClick={() => setCategoryFilter('ALL')}
+                  className="font-semibold text-emerald-800 hover:underline cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                >
+                  Tampilkan semua
                 </button>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-1">
-              <button type="button" aria-pressed={kindFilter === 'ALL'} onClick={() => setKindFilter('ALL')} className={chipClass(kindFilter === 'ALL')}>
-                Semua jenis <span className="font-mono text-[11px] opacity-75">{kindCounts.ALL}</span>
-              </button>
-              {(['BELANJA', 'PENGAMBILAN', 'DAPUR'] as ExpenseKind[]).map(kind => (
-                <button key={kind} type="button" aria-pressed={kindFilter === kind} onClick={() => setKindFilter(kind)} className={chipClass(kindFilter === kind)}>
-                  {KIND_LABEL[kind]} <span className="font-mono text-[11px] opacity-75">{kindCounts[kind]}</span>
-                </button>
-              ))}
-            </div>
+              </p>
+            )}
           </div>
 
           {filteredExpenses.length === 0 ? (

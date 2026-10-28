@@ -16,6 +16,7 @@ import { QrSvg } from '../common/QrSvg';
 const BLANK_LINE = <span className="block border-b border-dotted border-slate-400 h-4" />;
 // Baris kosong untuk bahan yang ikut datang padahal tidak ada di PO (tambahan mendadak dari dapur)
 const EXTRA_ROW_COUNT = 3;
+const CELL = 'border border-slate-500 px-1.5 py-1';
 
 const formatLongDate = (iso: string) => {
   const [y, m, d] = (iso || '').split('-').map(Number);
@@ -78,8 +79,8 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
 
   return (
     <div className="space-y-4">
-      {/* Satu kolom lebar penuh agar mudah dibaca; blok PO tidak dipotong di tengah halaman */}
-      <style>{`@media print { @page { size: A4 ${orientation}; margin: ${landscape ? '8mm' : '10mm'}; } .po-block { break-inside: avoid; page-break-inside: avoid; } }`}</style>
+      {/* Tabel per kiriman tidak dipotong di tengah halaman */}
+      <style>{`@media print { @page { size: A4 ${orientation}; margin: 8mm; } .po-block { break-inside: avoid; page-break-inside: avoid; } }`}</style>
 
       <div className="no-print grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
         <div>
@@ -111,7 +112,7 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
       </div>
 
       {pos.length > 0 && (
-        <div className="bg-white text-slate-900 text-xs space-y-4">
+        <div className="bg-white text-slate-900 text-xs space-y-2.5">
           <div className="border-b-2 border-slate-900 pb-1.5 flex items-center gap-3">
             <SppgLogo size="md" variant="color" showText={false} />
             <KopText />
@@ -135,90 +136,100 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
             )}
           </div>
 
-          {pos.map(po => {
-            const received = isReceived(po);
-            const status = (
-              <span className="text-[11px] text-slate-600">
-                {po.items.length} bahan{received && <span className="font-semibold text-slate-900"> · sudah diterima</span>}
-              </span>
-            );
-
-            if (landscape) {
+          {/* Satu tabel per kiriman, urut atas ke bawah: kedatangan, timbang, serah terima.
+              Mendatar: dua tabel berdampingan agar hemat kertas. */}
+          <div className={landscape ? 'columns-1 sm:columns-2 print:columns-2 gap-4' : ''}>
+            {pos.map((po, poIdx) => {
+              const received = isReceived(po);
               return (
-                // Mendatar: panel kiri berisi semua isian tulis tangan, kanan tabel bahan selebar sisa kertas
-                <section key={po.id} className="po-block grid grid-cols-1 sm:grid-cols-[17rem_1fr] print:grid-cols-[17rem_1fr] gap-x-6 gap-y-3 border-t-2 border-slate-800 pt-2">
-                  <div className="space-y-2.5">
-                    <div className="flex items-start gap-2">
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-end gap-2">
-                          <span className="text-sm font-bold shrink-0">Supplier</span>
-                          <span className="flex-1 border-b border-slate-500 h-6" />
+                <table key={po.id} className={`po-block w-full border-collapse border border-slate-500 mb-2.5 ${landscape ? 'text-[11px]' : 'text-xs'}`}>
+                  <thead>
+                    <tr className="bg-slate-100">
+                      <th colSpan={5} className={`${CELL} text-left font-normal`}>
+                        <div className="flex flex-wrap items-end gap-x-4 gap-y-1.5">
+                          <span className="font-bold text-slate-900 shrink-0">
+                            Kiriman {poIdx + 1}/{pos.length}
+                            <span className="font-normal text-slate-600"> · {po.items.length} bahan</span>
+                            {received && <span className="text-slate-900"> · sudah diterima</span>}
+                          </span>
+                          {/* Supplier ditulis tangan: yang dicatat adalah supplier yang benar-benar mengirim */}
+                          <FillLine label="Supplier" grow={3} />
+                          <FillLine label="Pengirim" grow={2} />
+                          <FillLine label="Jam" />
                         </div>
-                        {status}
-                      </div>
-                      {!received && <PoQr poId={po.id} />}
-                    </div>
-                    <div className="space-y-2 text-[11px] text-slate-600">
-                      <FillLine label="Pengirim" />
-                      <div className="flex gap-3">
-                        <FillLine label="Jam" />
-                        <FillLine label="Penerima" grow={2} />
-                      </div>
-                    </div>
-                    <div className="text-center text-[11px] text-slate-600">
-                      <span className="block border-b border-slate-500 h-10" />
-                      <span>TTD supplier</span>
-                    </div>
-                  </div>
-                  <ItemsTable po={po} />
-                </section>
+                      </th>
+                    </tr>
+                    <tr className="text-[11px] text-slate-700">
+                      <th className={`${CELL} w-7 text-center font-semibold`}>No</th>
+                      <th className={`${CELL} text-left font-semibold`}>Bahan</th>
+                      <th className={`${CELL} w-20 text-right font-semibold`}>Pesan</th>
+                      <th className={`${CELL} w-28 text-left font-semibold`}>Timbang</th>
+                      <th className={`${CELL} w-[4.5rem] text-left font-semibold`}>Ket.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {po.items.map((it, idx) => (
+                      <tr key={it.id}>
+                        <td className={`${CELL} text-center text-slate-600 tabular-nums`}>{idx + 1}</td>
+                        <td className={`${CELL} font-semibold`}>{it.name}</td>
+                        <td className={`${CELL} text-right font-mono whitespace-nowrap`}>
+                          {Number(it.quantity).toLocaleString('id-ID')} {it.unit}
+                        </td>
+                        <td className={`${CELL} text-right text-slate-600`}>{it.unit}</td>
+                        <td className={CELL} />
+                      </tr>
+                    ))}
+                    {/* Baris tanda tangan cukup tinggi untuk QR, jadi QR tidak menambah tinggi tabel */}
+                    <tr>
+                      <td colSpan={2} className={`${CELL} align-top h-14`}>
+                        <span className="text-[10px] text-slate-600">TTD supplier / pengirim</span>
+                      </td>
+                      <td colSpan={2} className={`${CELL} align-top`}>
+                        <span className="text-[10px] text-slate-600">TTD penerima (gudang)</span>
+                      </td>
+                      <td className={`${CELL} text-center align-middle`}>
+                        {!received && (
+                          <>
+                            <QrSvg value={buildScanUrl(poReceiveCode(po.id))} className="w-11 h-11 mx-auto" />
+                            <span className="block text-[8px] leading-tight text-slate-700">Input timbang</span>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               );
-            }
+            })}
+          </div>
 
-            return (
-              <section key={po.id} className="po-block space-y-1.5">
-                {/* Supplier ditulis tangan oleh petugas: yang dicatat adalah supplier yang benar-benar mengirim */}
-                <div className="flex items-end gap-3">
-                  <div className="flex-1 min-w-0 flex items-end gap-2">
-                    <span className="text-sm font-bold shrink-0">Supplier</span>
-                    <span className="flex-1 border-b border-slate-500 h-6" />
-                    <span className="shrink-0">{status}</span>
-                  </div>
-                  {!received && <PoQr poId={po.id} />}
-                </div>
-
-                <ItemsTable po={po} />
-
-                {/* Satu baris isian; TTD supplier di ujung kanan dengan ruang tanda tangan */}
-                <div className="flex flex-wrap items-end gap-x-4 gap-y-2 pt-1 text-[11px] text-slate-600">
-                  <FillLine label="Pengirim" grow={2} />
-                  <FillLine label="Jam" />
-                  <FillLine label="Penerima" grow={2} />
-                  <div className="shrink-0 w-40 text-center">
-                    <span className="block border-b border-slate-500 h-9" />
-                    <span>TTD supplier</span>
-                  </div>
-                </div>
-              </section>
-            );
-          })}
-
-          <section className="po-block border-t-2 border-slate-800 pt-2 space-y-1.5">
-            <p className="font-semibold">
-              Bahan tambahan di luar PO
-              <span className="font-normal text-slate-600"> · tulis tangan, lalu catat di Barang Masuk</span>
-            </p>
-            {Array.from({ length: EXTRA_ROW_COUNT }, (_, i) => (
-              <div key={i} className="flex items-end gap-2 text-[11px] text-slate-600">
-                <span className="w-4 text-right">{i + 1}.</span>
-                <span className="flex-[3] border-b border-slate-400 h-5" />
-                <span>jumlah</span>
-                <span className="flex-1 border-b border-slate-400 h-5" />
-                <span>supplier</span>
-                <span className="flex-[2] border-b border-slate-400 h-5" />
-              </div>
-            ))}
-          </section>
+          <table className="po-block w-full border-collapse border border-slate-500 text-xs">
+            <thead>
+              <tr className="bg-slate-100">
+                <th colSpan={5} className={`${CELL} text-left`}>
+                  Bahan tambahan di luar PO
+                  <span className="font-normal text-slate-600"> · tulis tangan, lalu catat di Barang Masuk</span>
+                </th>
+              </tr>
+              <tr className="text-[11px] text-slate-700">
+                <th className={`${CELL} w-7 text-center font-semibold`}>No</th>
+                <th className={`${CELL} text-left font-semibold`}>Bahan</th>
+                <th className={`${CELL} w-28 text-left font-semibold`}>Jumlah</th>
+                <th className={`${CELL} w-40 text-left font-semibold`}>Supplier</th>
+                <th className={`${CELL} w-24 text-left font-semibold`}>Paraf</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: EXTRA_ROW_COUNT }, (_, i) => (
+                <tr key={i} className="h-7">
+                  <td className={`${CELL} text-center text-slate-600`}>{i + 1}</td>
+                  <td className={CELL} />
+                  <td className={CELL} />
+                  <td className={CELL} />
+                  <td className={CELL} />
+                </tr>
+              ))}
+            </tbody>
+          </table>
 
           <div className="po-block grid grid-cols-3 gap-6 text-[11px]">
             <div className="space-y-1">
@@ -244,48 +255,6 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
     </div>
   );
 };
-
-const PoQr: React.FC<{ poId: string }> = ({ poId }) => (
-  <div className="flex items-center gap-1.5 shrink-0">
-    <span className="text-[9px] font-semibold leading-tight text-right">
-      Pindai untuk
-      <br />
-      input timbang
-    </span>
-    <QrSvg value={buildScanUrl(poReceiveCode(poId))} className="w-14 h-14" />
-  </div>
-);
-
-/** Hanya garis mendatar: mata mengikuti baris dari nama bahan ke garis timbang. */
-const ItemsTable: React.FC<{ po: PurchaseOrderNota }> = ({ po }) => (
-  <table className="w-full self-start border-collapse">
-    <thead>
-      <tr className="border-b-2 border-slate-800 text-[11px] text-slate-600">
-        <th className="w-7 py-1 text-right font-semibold">#</th>
-        <th className="py-1 pl-3 text-left font-semibold">Bahan</th>
-        <th className="w-24 py-1 text-right font-semibold">Pesan</th>
-        <th className="w-36 py-1 pl-6 text-left font-semibold">Timbang</th>
-      </tr>
-    </thead>
-    <tbody>
-      {po.items.map((it, idx) => (
-        <tr key={it.id} className="border-b border-slate-300">
-          <td className="py-1.5 text-right text-slate-500 tabular-nums">{idx + 1}</td>
-          <td className="py-1.5 pl-3 font-semibold">{it.name}</td>
-          <td className="py-1.5 text-right font-mono whitespace-nowrap">
-            {Number(it.quantity).toLocaleString('id-ID')} {it.unit}
-          </td>
-          <td className="py-1.5 pl-6">
-            <span className="flex items-end gap-1">
-              <span className="flex-1 border-b border-dotted border-slate-500 h-4" />
-              <span className="text-slate-600">{it.unit}</span>
-            </span>
-          </td>
-        </tr>
-      ))}
-    </tbody>
-  </table>
-);
 
 const FillLine: React.FC<{ label: string; grow?: number }> = ({ label, grow = 1 }) => (
   <div className="flex items-end gap-1 min-w-[6rem]" style={{ flexGrow: grow, flexBasis: 0 }}>

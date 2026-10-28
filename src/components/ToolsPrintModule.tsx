@@ -110,8 +110,8 @@ const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
   { id: 'KITCHEN_REQUISITION', label: 'Bon Dapur', hint: 'Bon permintaan bahan dari dapur ke gudang, diisi tangan.' },
   { id: 'NONFOOD_ISSUE_FORM', label: 'Pengambilan Non-Food', hint: 'Log harian barang non-food yang diambil relawan dari gudang. Disalin ke Barang Keluar > Operasional.' },
   { id: 'WASTE_RECAP_FORM', label: 'Rekap Limbah', hint: 'Lembar timbang sisa makanan Senin-Jumat: 5 jenis limbah dan total per hari. Tanggal bisa tercetak otomatis atau diisi tangan.' },
-  { id: 'ITEM_TAG_LABEL', label: 'Tag Bahan Datang', hint: 'Tag kecil untuk wadah: supplier, jam datang, dan batas pakai.' },
   { id: 'EQUIPMENT_LABEL', label: 'Label Barang & Aset', hint: 'Stiker berkode QR untuk barang gudang dan aset dapur.' },
+  { id: 'ITEM_TAG_LABEL', label: 'Tag Bahan Datang', hint: 'Tag sementara untuk wadah bahan yang baru datang: jumlah, supplier, jam datang, dan batas pakai. Ganti tiap kali bahan datang.' },
   { id: 'RACK_LABEL', label: 'Plakat Rak', hint: 'Plakat rak berisi daftar barang dan aturan penyimpanan.' },
   { id: 'RACK_SIGN', label: 'Papan Nama Rak & Kategori', hint: 'Papan nama huruf besar untuk rak dan kategori barang, terbaca dari jauh. Pasang di atas rak; plakat rak tetap di samping setinggi mata.' },
   { id: 'PIC_HANDOVER', label: 'Serah Terima Insentif PIC', hint: 'Kuitansi serah terima insentif PIC sekolah, dibuat sekaligus dari file Excel daftar penerima. File tidak diunggah atau disimpan.' },
@@ -3221,15 +3221,18 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                   const isSelected = !tagHasCustomSelection || tagSelectedKeys.includes(tag.uniqueKey);
                   const isMini = tagGridCols === '4';
                   const isCompact = tagGridCols === '3';
+                  const detail = isMini ? 'text-[9px]' : 'text-[10px]';
+                  const qc = tag.qcStatus.startsWith('Lolos') ? 'Lolos' : tag.qcStatus.startsWith('Karantina') ? 'Karantina, cek ulang' : tag.qcStatus;
 
                   return (
+                    // Tag sementara untuk wadah: berisi data kedatangan ini saja. Batas pakai paling menonjol
+                    // karena itu yang dicek dapur sebelum memakai isi wadah.
                     <div
                       key={tag.uniqueKey}
-                      className={`relative border-2 border-slate-800 rounded-lg p-2.5 bg-white flex flex-col justify-between gap-2 break-inside-avoid ${
+                      className={`relative border border-slate-800 rounded-md ${isMini ? 'p-2' : 'p-2.5'} bg-white flex flex-col gap-1.5 break-inside-avoid ${
                         !isSelected ? 'opacity-40 border-slate-300 no-print' : ''
-                      } print:border-slate-800 print:p-2`}
+                      }`}
                     >
-                      {/* Screen selection checkbox */}
                       <div className="no-print absolute top-1.5 right-1.5 z-10">
                         <input
                           type="checkbox"
@@ -3240,108 +3243,57 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                         />
                       </div>
 
-                      {/* Tag Header */}
-                      <div className="flex items-center justify-between border-b border-slate-200 pb-1 pr-4">
-                        <div className="flex items-center gap-1 min-w-0">
-                          <span className="font-bold text-[8.5px] text-slate-800 truncate">
-                            SPPG Tumpang Jeru
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {tag.totalCopies > 1 && (
-                            <span className="px-1 rounded-md text-[7.5px] font-mono font-bold text-slate-800 border border-slate-400">
-                              Wadah {tag.copyIndex}/{tag.totalCopies}
-                            </span>
-                          )}
-                          <span className="px-1 rounded-md text-[7.5px] font-bold text-slate-800 border border-slate-400">
-                            {tag.warehouseType === 'GUDANG_BASAH' ? 'FEFO' : 'FIFO'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Main Item Name & Lot ID */}
-                      <div className="flex items-start justify-between gap-1.5">
-                        <div className="space-y-0.5 flex-1 min-w-0">
-                          <div className="font-mono font-bold text-[8px] text-slate-600">
-                            {tag.batchLotNo}
-                          </div>
-                          <h4
-                            className={`font-bold text-slate-900 leading-snug line-clamp-2 ${
-                              isMini ? 'text-[11px]' : isCompact ? 'text-xs' : 'text-sm'
-                            }`}
-                          >
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-bold text-slate-900 leading-tight line-clamp-2 ${isMini ? 'text-xs' : isCompact ? 'text-[13px]' : 'text-sm'}`}>
                             {tag.name}
-                          </h4>
-                          <div className="text-[8px] text-slate-600 truncate">
-                            <span className="font-medium text-slate-800">{tag.category}</span>
+                          </p>
+                          <p className={`${detail} text-slate-700 mt-0.5`}>
                             {tag.quantity !== undefined && (
-                              <span className="ml-1 font-mono font-bold text-slate-900">
-                                • {tag.quantity} {tag.unit}
+                              <span className="font-mono font-semibold text-slate-900">
+                                {tag.quantity} {tag.unit}
+                                {' · '}
                               </span>
                             )}
-                          </div>
+                            {tag.category}
+                          </p>
                         </div>
-
-                        {/* High Contrast Compact QR Code */}
-                        <div
-                          className={`flex flex-col items-center justify-center p-0.5 border border-slate-900 rounded bg-white shrink-0 text-center ${
-                            isMini ? 'w-12 h-12' : isCompact ? 'w-14 h-14' : 'w-16 h-16'
-                          }`}
-                        >
-                          <QrSvg value={isMini ? tag.id : buildScanUrl(tag.id, tag.receivingId)} className={isMini ? 'w-9 h-9' : isCompact ? 'w-10 h-10' : 'w-12 h-12'} />
-                          <span className="text-[6.5px] font-mono font-bold text-slate-800 truncate w-full mt-0.2">
-                            {tag.id}
-                          </span>
-                        </div>
+                        <QrSvg value={buildScanUrl(tag.id, tag.receivingId)} className={`shrink-0 ${isMini ? 'w-11 h-11' : isCompact ? 'w-12 h-12' : 'w-14 h-14'}`} />
                       </div>
 
-                      {/* Batas pakai dibuat paling menonjol: itu yang dicek dapur sebelum memakai isi wadah */}
-                      <div className="pt-1 border-t border-slate-300 text-[8.5px] space-y-0.5">
-                        <div className="flex items-center gap-1 text-slate-800 truncate">
-                          <span className="text-slate-600 font-medium">Supplier:</span>
-                          <span className="font-bold text-slate-900 truncate">{tag.supplier || <span className="font-normal text-slate-600">{BLANK}</span>}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-slate-800 truncate">
-                          <span className="text-slate-600 font-medium">Datang:</span>
-                          <span className="font-mono font-bold text-slate-900">{tag.arrivalDateFormatted}</span>
-                          <span className="font-mono font-bold text-slate-900">
-                            {tag.arrivalTime || <span className="font-normal text-slate-600">..:..</span>}
-                          </span>
-                        </div>
-                        <div className="text-[7.5px] text-slate-600 truncate">
-                          Masa simpan: <span className="font-medium text-slate-900">{tag.shelfLifeText}</span>
-                        </div>
-                        <div className="pt-0.5 border-t border-slate-300 flex items-center justify-between">
-                          <span className="text-slate-900 font-bold">Batas pakai</span>
-                          {tag.expiryDate ? (
-                            <span className="font-mono font-bold text-rose-700 text-[9.5px]">{tag.expiryDate}</span>
-                          ) : (
-                            <span className="font-mono text-slate-600">..../..../........</span>
-                          )}
-                        </div>
+                      <dl className={`grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 ${detail} text-slate-700`}>
+                        <dt>Supplier</dt>
+                        <dd className="font-semibold text-slate-900 truncate">
+                          {tag.supplier || <span className="block border-b border-slate-400 h-3" />}
+                        </dd>
+                        <dt>Datang</dt>
+                        <dd className="font-mono text-slate-900">
+                          {tag.arrivalDateFormatted} {tag.arrivalTime || '..:..'}
+                        </dd>
+                        {/* Catatan kondisi dari penerimaan; nomor wadah sudah tercetak di baris bawah */}
+                        {tag.notes && !tag.notes.startsWith('Wadah') && (
+                          <>
+                            <dt>Kondisi</dt>
+                            <dd className="text-slate-900 truncate">{tag.notes}</dd>
+                          </>
+                        )}
+                      </dl>
+
+                      <div className="flex items-baseline justify-between gap-2 border-t border-slate-800 pt-1">
+                        <span className={`${detail} font-semibold text-slate-900`}>Pakai sebelum</span>
+                        {tag.expiryDate ? (
+                          <span className={`font-mono font-bold text-rose-700 ${isMini ? 'text-[11px]' : 'text-xs'}`}>{tag.expiryDate}</span>
+                        ) : (
+                          <span className="flex-1 max-w-[50%] border-b border-slate-500 h-3.5" />
+                        )}
                       </div>
 
-                      {/* Detail Tambahan: Lokasi, QC & Petugas */}
-                      <div className="grid grid-cols-2 gap-1 text-[7.5px] text-slate-600 pt-0.5 border-t border-slate-300">
-                        <div className="truncate">
-                          <span className="text-slate-600 block text-[6.5px]">Penyimpanan</span>
-                          <span className="font-semibold text-slate-800 truncate block">
-                            {tag.storageTemp}
-                          </span>
-                        </div>
-                        <div className="text-right truncate">
-                          <span className="text-slate-600 block text-[6.5px]">{tag.qcStatus || 'Hasil QC: ..........'}</span>
-                          <span className="font-semibold text-slate-900 truncate block">
-                            {tag.inspector || BLANK}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Area Catatan Lapangan / Paraf Dapur */}
-                      <div className="pt-0.5 border-t border-slate-300 flex items-center justify-between text-[7px] text-slate-700">
-                        <span className="truncate">Catatan: {tag.notes || '..........'}</span>
-                        <span className="shrink-0">Paraf: ..........</span>
-                      </div>
+                      <p className={`${isMini ? 'text-[8px]' : 'text-[9px]'} text-slate-600 leading-snug`}>
+                        {tag.storageTemp} · {tag.warehouseType === 'GUDANG_BASAH' ? 'FEFO' : 'FIFO'}
+                        {tag.totalCopies > 1 && <> · wadah {tag.copyIndex}/{tag.totalCopies}</>}
+                        {' · '}QC {qc || '______'}, {tag.inspector || '______'}
+                        <span className="font-mono"> · {tag.batchLotNo}</span>
+                      </p>
                     </div>
                   );
                 })}
