@@ -4,7 +4,7 @@ import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb, signerName } from '../db/storage';
 import { STANDARD_CATEGORIES, StandardCategory, normalizeToStandardCategory } from '../utils/categoryStandards';
-import { Printer, Search, CheckCircle2, FileSpreadsheet, Trash2, Plus, X } from 'lucide-react';
+import { Printer, Search, CheckCircle2, FileSpreadsheet, Trash2, Plus, X, PackageMinus } from 'lucide-react';
 import { exportMultiSheetExcel } from '../lib/excelExport';
 import { SppgLogo } from './SppgLogo';
 import { localDateIso } from '../utils/localDate';
@@ -113,9 +113,10 @@ interface ItemAgg {
 
 export interface DailyExpensesModuleProps {
   onNavigate?: (tab: string) => void;
+  onOpenNonFoodIssue?: () => void;
 }
 
-export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavigate }) => {
+export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavigate, onOpenNonFoodIssue }) => {
   const { currentUser, can } = useAuth();
   const askConfirm = useConfirm();
   const today = localDateIso();
@@ -639,11 +640,28 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {onNavigate && can('RECORD_CONSUMPTION') && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (onOpenNonFoodIssue) {
+                    onOpenNonFoodIssue();
+                  } else {
+                    onNavigate('daily_flow');
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                title="Input barang keluar non-food dari form kertas atau langsung"
+              >
+                <PackageMinus className="w-4 h-4" />
+                Catat Pengeluaran Operasional
+              </button>
+            )}
             {onNavigate && can('RECEIVE_GOODS') && (
               <button
                 type="button"
                 onClick={() => onNavigate('receiving')}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
               >
                 <Plus className="w-4 h-4" />
                 Terima Barang

@@ -27,7 +27,7 @@ import { DailyMenuPublicPage } from './components/DailyMenuPublicPage';
 import { HedonicRecapModule } from './components/HedonicRecapModule';
 import { ScanResultModule } from './components/ScanResultModule';
 import { QrScannerDialog } from './components/common/QrScannerDialog';
-import { SCAN_PATH, ScanTarget, scanTargetFromLocation, isWasteEntryTarget } from './utils/scanCode';
+import { SCAN_PATH, ScanTarget, scanTargetFromLocation, isWasteEntryTarget, isNonFoodIssueTarget } from './utils/scanCode';
 
 export type AppRouteType = 'DASHBOARD' | 'MENU_TODAY' | 'LANDING';
 
@@ -71,25 +71,30 @@ const MainLayout: React.FC = () => {
   // Dibaca sekali saat aplikasi dibuka dari tautan QR, dan tetap tersimpan selama proses login.
   const [scanTarget, setScanTarget] = useState<ScanTarget | null>(() => {
     const t = scanTargetFromLocation();
-    return isWasteEntryTarget(t) ? null : t;
+    return isWasteEntryTarget(t) || isNonFoodIssueTarget(t) ? null : t;
   });
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>(() => {
     const t = scanTargetFromLocation();
-    return isWasteEntryTarget(t) ? 'waste_logs' : t ? 'scan' : 'dashboard';
+    if (isWasteEntryTarget(t)) return 'waste_logs';
+    if (isNonFoodIssueTarget(t)) return 'daily_flow';
+    return t ? 'scan' : 'dashboard';
   });
   // Naik setiap kali QR Form Rekapitulasi Limbah dipindai; Rekap Limbah lalu membuka isian sisa makanan.
   const [wasteEntryRequest, setWasteEntryRequest] = useState(() => (isWasteEntryTarget(scanTargetFromLocation()) ? 1 : 0));
+  // Naik setiap kali QR Form Pengambilan Non-Food dipindai; Barang Keluar > Operasional lalu membuka dialog form kertas.
+  const [nonFoodIssueRequest, setNonFoodIssueRequest] = useState(() => (isNonFoodIssueTarget(scanTargetFromLocation()) ? 1 : 0));
   const [currentRoute, setCurrentRoute] = useState<AppRouteType>(getAppRoute);
   const [dataVersion, setDataVersion] = useState<number>(0);
   // Form yang dibuka saat pindah ke Cetak Form dari halaman lain (nota supplier, label aset).
   const [printTarget, setPrintTarget] = useState<PrintTarget | undefined>(undefined);
 
   // Target cetak hanya berlaku sekali; dibersihkan begitu pengguna meninggalkan Cetak Form.
-  // Begitu juga permintaan isian limbah dari QR, supaya tidak terbuka lagi saat kembali ke Rekap Limbah.
+  // Begitu juga permintaan isian limbah / form kertas non-food dari QR, supaya tidak terbuka lagi saat kembali.
   React.useEffect(() => {
     if (activeTab !== 'tools_forms') setPrintTarget(undefined);
     if (activeTab !== 'waste_logs') setWasteEntryRequest(0);
+    if (activeTab !== 'daily_flow') setNonFoodIssueRequest(0);
   }, [activeTab]);
 
   // Sync state when browser URL changes (back/forward navigation or hash change)
@@ -160,6 +165,11 @@ const MainLayout: React.FC = () => {
       setActiveTab('waste_logs');
       return;
     }
+    if (isNonFoodIssueTarget(target)) {
+      setNonFoodIssueRequest(n => n + 1);
+      setActiveTab('daily_flow');
+      return;
+    }
     setScanTarget(target);
     setActiveTab('scan');
   }, []);
@@ -224,7 +234,13 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'daily_expenses' && (
-            <DailyExpensesModule onNavigate={setActiveTab} />
+            <DailyExpensesModule
+              onNavigate={setActiveTab}
+              onOpenNonFoodIssue={() => {
+                setNonFoodIssueRequest(n => n + 1);
+                setActiveTab('daily_flow');
+              }}
+            />
           )}
 
           {activeTab === 'inventory' && (
@@ -281,7 +297,7 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'daily_flow' && (
-            <DailyFlowModule />
+            <DailyFlowModule openPaperFormRequest={nonFoodIssueRequest} />
           )}
 
           {activeTab === 'ledger' && <StockMovementModule />}

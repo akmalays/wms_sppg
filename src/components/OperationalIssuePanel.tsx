@@ -19,9 +19,14 @@ const fmt = (n: number) => n.toLocaleString('id-ID', { maximumFractionDigits: 2 
  * dan ikut di Laporan Pengeluaran; kolom lokasi berisi "dipakai untuk".
  */
 /** Tanggal diatur dari header Barang Keluar agar sama dengan tab Bahan dapur. */
-export const OperationalIssuePanel: React.FC<{ selectedDate: string; onSelectDate: (date: string) => void }> = ({
+export const OperationalIssuePanel: React.FC<{
+  selectedDate: string;
+  onSelectDate: (date: string) => void;
+  autoOpenPaperRequest?: number;
+}> = ({
   selectedDate,
   onSelectDate,
+  autoOpenPaperRequest = 0,
 }) => {
   const { currentUser, can } = useAuth();
   const today = localDateIso();
@@ -33,6 +38,14 @@ export const OperationalIssuePanel: React.FC<{ selectedDate: string; onSelectDat
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
   const [isPaperOpen, setIsPaperOpen] = useState(false);
+  const lastHandledRef = React.useRef(0);
+
+  useEffect(() => {
+    if (autoOpenPaperRequest && autoOpenPaperRequest > lastHandledRef.current) {
+      lastHandledRef.current = autoOpenPaperRequest;
+      setIsPaperOpen(true);
+    }
+  }, [autoOpenPaperRequest]);
 
   useEffect(() => {
     const onSync = () => setDataVersion(v => v + 1);

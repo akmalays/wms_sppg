@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, Package, Warehouse, Wrench, FileText, MapP
 import { useAuth } from '../context/AuthContext';
 import { warehouseDb, APP_SETTINGS_CHANGED_EVENT } from '../db/storage';
 import { EquipmentCondition, EquipmentStatus, ItemMaster } from '../types/warehouse';
-import { resolveScan, ScanTarget } from '../utils/scanCode';
+import { resolveScan, ScanTarget, isNonFoodIssueTarget } from '../utils/scanCode';
 import { BASE_RACKS_CONFIG, matchItemToRackId } from '../utils/warehouseRacks';
 import { ScanButton } from './common/QrScannerDialog';
 
@@ -86,7 +86,28 @@ export const ScanResultModule: React.FC<ScanResultModuleProps> = ({ target, onTa
           <p className="text-xs text-slate-700">Belum ada kode yang dipindai.</p>
         </Card>
       )}
-      {resolved?.type === 'unknown' && (
+      {resolved?.type === 'unknown' && isNonFoodIssueTarget({ code: resolved.code }) ? (
+        <Card className="border-emerald-200 bg-emerald-50">
+          <div className="flex items-start gap-3">
+            <span className="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+              <ClipboardCheck className="w-5 h-5" />
+            </span>
+            <div className="space-y-2 flex-1">
+              <h2 className="text-sm font-bold text-slate-900">Form Pengambilan Barang Non-Food</h2>
+              <p className="text-xs text-slate-700">
+                Kode QR ini ditujukan untuk membuka formulir penyalinan form kertas pengambilan barang operasional (tisu, sabun, ATK, gas, dll.) ke aplikasi.
+              </p>
+              <button
+                type="button"
+                onClick={() => onNavigate('daily_flow')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold cursor-pointer ${FOCUS}`}
+              >
+                Buka Barang Keluar &gt; Operasional
+              </button>
+            </div>
+          </div>
+        </Card>
+      ) : resolved?.type === 'unknown' ? (
         <Card className="border-amber-200 bg-amber-50">
           <p className="flex items-start gap-2 text-xs text-amber-900">
             <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
@@ -96,7 +117,7 @@ export const ScanResultModule: React.FC<ScanResultModuleProps> = ({ target, onTa
             </span>
           </p>
         </Card>
-      )}
+      ) : null}
       {resolved?.type === 'item' && <ItemView key={resolved.item.id} item={resolved.item} receivingId={resolved.receiving?.id} onDone={refresh} onNavigate={onNavigate} />}
       {resolved?.type === 'rack' && (
         <Card>

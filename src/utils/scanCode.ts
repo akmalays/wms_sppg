@@ -25,6 +25,15 @@ export const WASTE_ENTRY_CODE = 'FORM-LIMBAH';
 export const isWasteEntryTarget = (target: ScanTarget | null): boolean =>
   Boolean(target && target.code.trim().toUpperCase() === WASTE_ENTRY_CODE);
 
+/** QR di Form Pengambilan Barang Non-Food: dipindai langsung membuka isian pengeluaran operasional / form kertas. */
+export const NONFOOD_ISSUE_CODE = 'FORM-NONFOOD';
+
+export const isNonFoodIssueTarget = (target: ScanTarget | null): boolean => {
+  if (!target) return false;
+  const c = target.code.trim().toUpperCase();
+  return c === NONFOOD_ISSUE_CODE || c === 'FORM-PENGAMBILAN-NONFOOD';
+};
+
 export interface ScanTarget {
   code: string;
   /** Nomor penerimaan (GR) bila dipindai dari Tag Bahan Datang. */

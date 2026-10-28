@@ -45,15 +45,29 @@ const parseQty = (q: number | string): number => {
   return match ? parseFloat(match[0]) : 0;
 };
 
-export const DailyFlowModule: React.FC = () => {
+export interface DailyFlowModuleProps {
+  initialSection?: 'DAPUR' | 'OPERASIONAL';
+  openPaperFormRequest?: number;
+}
+
+export const DailyFlowModule: React.FC<DailyFlowModuleProps> = ({
+  initialSection = 'DAPUR',
+  openPaperFormRequest = 0,
+}) => {
   const { currentUser, can } = useAuth();
   const today = localDateIso();
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [dataVersion, setDataVersion] = useState(0);
   const [scope, setScope] = useState<Scope>('ALL');
   // Bahan dapur: pemakaian bahan masak harian. Operasional: tisu, sabun, ATK, gas, kemasan.
-  const [section, setSection] = useState<'DAPUR' | 'OPERASIONAL'>('DAPUR');
+  const [section, setSection] = useState<'DAPUR' | 'OPERASIONAL'>(initialSection);
   const [scanNote, setScanNote] = useState('');
+
+  useEffect(() => {
+    if (openPaperFormRequest && openPaperFormRequest > 0) {
+      setSection('OPERASIONAL');
+    }
+  }, [openPaperFormRequest]);
 
   // Pindai label di modal: hapus filter lalu fokuskan isian bahan yang dipindai.
   const handleModalScan = ({ code }: ScanTarget) => {
@@ -327,7 +341,11 @@ export const DailyFlowModule: React.FC = () => {
       )}
 
       {section === 'OPERASIONAL' ? (
-        <OperationalIssuePanel selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+        <OperationalIssuePanel
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+          autoOpenPaperRequest={openPaperFormRequest}
+        />
       ) : (
       <>
 
