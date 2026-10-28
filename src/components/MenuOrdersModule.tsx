@@ -45,6 +45,9 @@ import {ActionDropdown} from "./common/ActionDropdown";
 import {DateStepper} from "./common/DateStepper";
 import {SppgLogo} from "./SppgLogo";
 import {DeliveryNotesSubModule} from "./DeliveryNotesSubModule";
+import {PoEditModal} from "./PoEditModal";
+
+const PO_UNIT_OPTIONS = ["Kg", "Gram", "Liter", "Pcs", "Pack", "Dus", "Ikat", "Butir", "Roll", "Botol", "Jerigen", "Pouch", "Rim"];
 
 type PeriodType = "WEEKLY" | "MONTHLY" | "DAILY" | "ALL" | "PRESET_SAMPLE";
 type SubTabType = "MENU_ORDERS" | "BENEFICIARIES" | "DELIVERY_NOTES" | "MASTER_BENEFICIARIES";
@@ -563,7 +566,25 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   // Baris yang baru ditambahkan lewat kelompok supplier, agar kursor langsung ke nama bahan.
   const [poFocusRow, setPoFocusRow] = useState<number | null>(null);
 
-  const anyFormModalOpen = isMenuModalOpen || isPoModalOpen || isBeneficiaryModalOpen || isBeneficiaryPrintModalOpen;
+  // PO Edit modal (revisi PO satuan sebelum barang datang)
+  const [poBeingEdited, setPoBeingEdited] = useState<PurchaseOrderNota | null>(null);
+
+  // Form tambah PO / supplier baru untuk menu yang sudah punya PO terbit
+  const [isAddingNewPo, setIsAddingNewPo] = useState(false);
+  const [newPoSupplier, setNewPoSupplier] = useState("");
+  const [newPoDeliveryDate, setNewPoDeliveryDate] = useState("");
+  const [newPoRows, setNewPoRows] = useState<
+    Array<{
+      id: string;
+      itemName: string;
+      category: string;
+      qtyOrder: string;
+      unit: string;
+      price: string;
+    }>
+  >([]);
+
+  const anyFormModalOpen = isMenuModalOpen || isPoModalOpen || isBeneficiaryModalOpen || isBeneficiaryPrintModalOpen || !!poBeingEdited;
   useEffect(() => {
     if (!anyFormModalOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -1632,6 +1653,9 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
       setPoFormRows([]);
     }
 
+    setIsAddingNewPo(false);
+    setNewPoSupplier("");
+    setNewPoRows([]);
     setIsPoModalOpen(true);
   };
 
@@ -2119,6 +2143,167 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     }
   };
 
+  const handleDeleteSinglePo = async (po: PurchaseOrderNota) => {
+    const ok = await askConfirm({
+      title: `Batalkan PO ${po.poNumber}?`,
+      message: `PO untuk supplier "${po.supplierName}" (${po.items.length} bahan) akan dihapus dari sistem. PO supplier lain untuk menu ini tidak terpengaruh.`,
+      confirmText: "Batalkan PO ini",
+      variant: "danger",
+    });
+    if (!ok) return;
+
+    warehouseDb.deletePurchaseOrder(po.id, currentUser);
+    refreshOrders();
+    toast.success(`PO ${po.poNumber} untuk ${po.supplierName} berhasil dibatalkan.`);
+  };
+
+  const handleAddNewPoRow = () => {
+    setNewPoRows((prev) => [
+      ...prev,
+      {
+        id: `POI-ADD-${Date.now()}-${prev.length}`,
+        itemName: "",
+        category: "Bahan Makanan",
+        qtyOrder: "",
+        unit: "Kg",
+        price: "",
+      },
+    ]);
+  };
+
+  const handleUpdateNewPoRow = (
+    id: string,
+    patch: Partial<{itemName: string; category: string; qtyOrder: string; unit: string; price: string}>,
+  ) => {
+    setNewPoRows((prev) => prev.map((r) => (r.id === id ? {...r, ...patch} : r)));
+  };
+
+  const handleRemoveNewPoRow = (id: string) => {
+    setNewPoRows((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const handleCreateAdditionalPo = async () => {
+    if (!selectedPoOrderId) return;
+    const targetOrder = orders.find((o) => o.id === selectedPoOrderId);
+    if (!targetOrder) return;
+
+    const supplierClean = newPoSupplier.trim();
+    if (!supplierClean) {
+      toast.warning("Pilih atau ketik nama supplier terlebih dahulu.", "Supplier Belum Dipilih");
+      return;
+    }
+
+    const validRows = newPoRows.filter((r) => r.itemName.trim() && parseNumericQuantity(r.qtyOrder) > 0);
+    if (validRows.length === 0) {
+      toast.warning("Lengkapi minimal 1 bahan dengan nama dan jumlah lebih dari 0.", "Bahan Belum Lengkap");
+      return;
+    }
+
+    const seen = new Set<string>();
+    const dup = validRows.find((r) => {
+      const k = r.itemName.trim().toLowerCase();
+      if (seen.has(k)) return true;
+      seen.add(k);
+      return false;
+    });
+    if (dup) {
+      toast.error(`${dup.itemName} tercatat lebih dari sekali. Gabungkan jumlahnya di satu baris.`, "Bahan Dobel");
+      return;
+    }
+
+    try {
+      const existingPOs = warehouseDb.getPurchaseOrders();
+      const poTargetDate = /^\d{4}-\d{2}-\d{2}$/.test(newPoDeliveryDate.trim())
+        ? newPoDeliveryDate.trim()
+        : (targetOrder.poDate || poDateForMenu(targetOrder.date));
+
+      let suppObj = findMasterSupplier(supplierClean);
+      if (!suppObj && supplierClean !== PENDING_SUPPLIER_NAME) {
+        suppObj = warehouseDb.quickAddSupplier(supplierClean, currentUser);
+        setSupplierListVersion((v) => v + 1);
+      }
+
+      const nextPoNum = generateNextPoNumber(existingPOs, poTargetDate);
+
+      const poItems: PurchaseOrderItem[] = validRows.map((r, idx) => {
+        const master = findMasterItem(r.itemName);
+        const unitStr = r.unit?.trim() || master?.baseUnit || "Kg";
+        const numQty = normalizeQtyForUnit(parseNumericQuantity(r.qtyOrder) || 1, unitStr);
+        const unitPrice = parseFloat((r.price || "").replace(",", ".")) || estimatePrice(r.itemName);
+        const subtotal = Math.round(numQty * unitPrice);
+
+        return {
+          id: `POI-${Date.now()}-${idx}`,
+          itemId: master?.id,
+          name: r.itemName.trim(),
+          category: r.category || master?.category || "Bahan Makanan",
+          quantity: numQty,
+          unit: unitStr,
+          unitPrice: unitPrice,
+          subtotal: subtotal,
+        };
+      });
+
+      const grandTotal = poItems.reduce((acc, it) => acc + (it.subtotal || 0), 0);
+
+      const newNota: PurchaseOrderNota = {
+        id: `PO-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        poNumber: nextPoNum,
+        date: poTargetDate,
+        deliveryDate: poTargetDate,
+        supplierId: suppObj?.id,
+        supplierName: suppObj?.name || supplierClean,
+        supplierContact: suppObj?.phone ? `${suppObj.phone} (${suppObj.contactPerson || "PIC"})` : "",
+        supplierAddress: suppObj?.address || (supplierClean === PENDING_SUPPLIER_NAME ? "" : "Malang, Jawa Timur"),
+        paymentMethod: "TRANSFER",
+        bankInfo: suppObj ? `Transfer Bank Rekening Resmi ${suppObj.name}` : "",
+        status: "DISETUJUI",
+        items: poItems,
+        subtotal: grandTotal,
+        discount: 0,
+        tax: 0,
+        grandTotal: grandTotal,
+        terbilang: angkaTerbilang(grandTotal),
+        notes: `PO dibuat otomatis dari Perencanaan Menu: ${targetOrder.menuTitle} (${targetOrder.targetPortions} porsi). (PO tambahan: ${suppObj?.name || supplierClean})`,
+        deliveryTerms: "Pengiriman langsung ke Satuan Pelayanan Pemenuhan Gizi (SPPG) MLG TUMPANG JERU (Jam 12.00-15.00).",
+        createdBy: currentUser.name,
+        createdByRole: currentUser.role === "ADMIN" ? "Admin Logistik" : currentUser.role,
+        approvedBy: warehouseDb.getSppgHeadName(),
+        approvedByRole: "Kepala SPPG",
+        supplierPic: suppObj?.contactPerson || "Pihak Rekanan",
+        relatedMenuOrderId: targetOrder.id,
+        createdAt: new Date().toISOString(),
+      };
+
+      warehouseDb.savePurchaseOrder(newNota, currentUser);
+
+      const newArrivalItems: MenuPoArrivalItem[] = poItems.map((pi) => ({
+        category: pi.category || "Bahan Makanan",
+        itemName: pi.name,
+        qtyOrder: `${pi.quantity} ${pi.unit}`,
+        qtyArrived: "",
+        supplier: newNota.supplierName,
+        arrivalTime: "",
+        pic: currentUser.name,
+        totalCost: pi.subtotal,
+      }));
+
+      const updatedOrder: MenuOrder = {
+        ...targetOrder,
+        poArrivalItems: [...(targetOrder.poArrivalItems || []), ...newArrivalItems],
+      };
+      warehouseDb.saveMenuOrder(updatedOrder, currentUser, false);
+
+      refreshOrders();
+      setIsAddingNewPo(false);
+      setNewPoSupplier("");
+      setNewPoRows([]);
+      toast.success(`PO ${nextPoNum} untuk ${newNota.supplierName} berhasil diterbitkan.`);
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menerbitkan PO tambahan.", "Gagal Terbitkan PO");
+    }
+  };
+
   const handleSavePoForm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPoOrderId) {
@@ -2485,6 +2670,16 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                                 <button type="button" onClick={() => handleOpenPoModal(o.id)} className={BTN_PRIMARY}>
                                   <PackagePlus className="w-3.5 h-3.5" />
                                   Buat PO
+                                </button>
+                              )}
+                              {progress.poCount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPoModal(o.id)}
+                                  className={BTN_SECONDARY}
+                                  title="Lihat daftar PO terbit, ubah PO, atau tambah supplier">
+                                  <PackagePlus className="w-3.5 h-3.5" />
+                                  Lihat PO ({progress.poCount})
                                 </button>
                               )}
                               {(progress.state === "WAITING" || progress.state === "PARTIAL") && onNavigate && (
@@ -3838,7 +4033,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
       {/* MODAL 2: INPUT & BUAT PO HARI INI                                         */}
       {/* ========================================================================= */}
       {isPoModalOpen && (() => {
-        // PO yang sudah terbit untuk menu terpilih: dialog jadi tampilan saja, tombol terbitkan disembunyikan
+        // PO yang sudah terbit untuk menu terpilih: dialog menampilkan kartu PO dengan aksi ubah/hapus satuan dan tombol tambah supplier
+        const targetOrder = orders.find((o) => o.id === selectedPoOrderId);
         const issuedPos = selectedPoOrderId ? warehouseDb.getPurchaseOrdersByMenuOrderId(selectedPoOrderId) : [];
         const hasIssued = issuedPos.length > 0;
         const allLocked = hasIssued && issuedPos.every((po) => warehouseDb.isPurchaseOrderLocked(po));
@@ -3848,7 +4044,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
           title={hasIssued ? "PO bahan (sudah terbit)" : "PO bahan"}
           description={
             hasIssued
-              ? "PO untuk menu ini sudah dikirim ke supplier. Perubahan jumlah atau supplier dilakukan lewat Ubah di Barang Masuk."
+              ? "Daftar PO yang sudah terbit ke supplier untuk menu ini. Anda dapat mengubah PO satuan, membatalkan PO yang belum diterima, atau menambah supplier baru."
               : "Daftar bahan yang dipesan ke supplier untuk datang sehari sebelum menu dimasak."
           }
           onClose={() => setIsPoModalOpen(false)}
@@ -3861,9 +4057,9 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                     type="button"
                     onClick={() => handleDeletePoForOrder(selectedPoOrderId)}
                     className={`${BTN_SECONDARY} border-transparent bg-transparent hover:bg-rose-50 text-rose-700 mr-auto`}
-                    title="Batalkan PO yang belum diterima, lalu PO bisa disusun dan diterbitkan ulang">
+                    title="Batalkan semua PO yang belum diterima, lalu PO bisa disusun dan diterbitkan ulang">
                     <Trash2 className="w-4 h-4" />
-                    Batalkan PO
+                    Batalkan semua PO
                   </button>
                 )}
                 <button type="button" onClick={() => setIsPoModalOpen(false)} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
@@ -3891,7 +4087,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                   className={`${BTN_SECONDARY} border-transparent bg-transparent hover:bg-rose-50 text-rose-700 mr-auto`}
                   title="Batalkan dan hapus PO resmi untuk menu ini">
                   <Trash2 className="w-4 h-4" />
-                  Batalkan PO
+                  Batalkan semua PO
                 </button>
               )}
               <button type="button" onClick={() => setIsPoModalOpen(false)} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
@@ -3955,35 +4151,272 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                 </div>
 
                 {hasIssued ? (
-                  <div className="space-y-3">
-                    {issuedPos.map((po) => {
-                      const locked = warehouseDb.isPurchaseOrderLocked(po);
-                      return (
-                        <section key={po.id} className="border border-slate-200 rounded-xl overflow-hidden">
-                          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
-                            <span className="font-semibold text-slate-900">
-                              {po.supplierName} <span className="font-mono font-normal text-slate-600">· {po.poNumber}</span>
-                            </span>
-                            <span
-                              className={`px-1.5 py-0.5 rounded-md border ${
-                                locked ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-white text-slate-700 border-slate-200"
-                              }`}>
-                              {locked ? "Sudah diterima" : `Datang ${formatIndonesianDate(po.deliveryDate || po.date)}`}
-                            </span>
-                          </div>
-                          <ul className="divide-y divide-slate-100 text-xs">
-                            {po.items.map((it) => (
-                              <li key={it.id} className="px-3 py-1.5 flex justify-between gap-3">
-                                <span className="text-slate-800">{it.name}</span>
-                                <span className="font-mono tabular-nums text-slate-900">
-                                  {Number(it.quantity).toLocaleString("id-ID")} {it.unit}
+                  <div className="space-y-4">
+                    <div className="space-y-3">
+                      {issuedPos.map((po) => {
+                        const locked = warehouseDb.isPurchaseOrderLocked(po);
+                        return (
+                          <section key={po.id} className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                            <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-semibold text-slate-900">{po.supplierName}</span>
+                                <span className="font-mono text-slate-600">· {po.poNumber}</span>
+                                <span
+                                  className={`px-1.5 py-0.5 rounded-md border ${
+                                    locked ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-white text-slate-700 border-slate-200"
+                                  }`}>
+                                  {locked ? "Sudah diterima" : `Datang ${formatIndonesianDate(po.deliveryDate || po.date)}`}
                                 </span>
-                              </li>
-                            ))}
-                          </ul>
-                        </section>
-                      );
-                    })}
+                              </div>
+                              {!locked && (
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setPoBeingEdited(po)}
+                                    className={`${BTN_SECONDARY} py-1 px-2.5 text-xs inline-flex items-center gap-1.5`}
+                                    title={`Ubah bahan, jumlah, harga, atau ganti supplier untuk PO ${po.poNumber}`}>
+                                    <Edit2 className="w-3.5 h-3.5 text-slate-600" />
+                                    Ubah PO
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteSinglePo(po)}
+                                    className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                                    title={`Batalkan PO ${po.poNumber} (${po.supplierName})`}>
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span className="sr-only">Batalkan PO {po.poNumber}</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <ul className="divide-y divide-slate-100 text-xs">
+                              {po.items.map((it) => (
+                                <li key={it.id} className="px-3.5 py-2 flex justify-between items-center gap-3">
+                                  <span className="text-slate-800">
+                                    {it.name}
+                                    {it.category && <span className="text-slate-400 ml-1.5 text-[11px]">({it.category})</span>}
+                                  </span>
+                                  <span className="font-mono tabular-nums text-slate-900 font-medium">
+                                    {Number(it.quantity).toLocaleString("id-ID")} {it.unit}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </section>
+                        );
+                      })}
+                    </div>
+
+                    {!isAddingNewPo ? (
+                      <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-200">
+                        <div className="text-xs text-slate-600">
+                          Kelupaan supplier atau butuh pesan bahan tambahan untuk menu ini?
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddingNewPo(true);
+                            setNewPoSupplier("");
+                            const defaultDelivery =
+                              issuedPos[0]?.deliveryDate ||
+                              issuedPos[0]?.date ||
+                              poFormDate ||
+                              (targetOrder ? poDateForMenu(targetOrder.date) : todayStr);
+                            setNewPoDeliveryDate(defaultDelivery);
+                            setNewPoRows([
+                              {
+                                id: `POI-ADD-${Date.now()}-0`,
+                                itemName: "",
+                                category: "Bahan Makanan",
+                                qtyOrder: "",
+                                unit: "Kg",
+                                price: "",
+                              },
+                            ]);
+                          }}
+                          className={`${BTN_PRIMARY} self-start sm:self-auto`}>
+                          <Plus className="w-3.5 h-3.5" />
+                          Tambah supplier / PO
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="border border-emerald-300 rounded-xl bg-emerald-50/20 p-4 space-y-4">
+                        <div className="flex items-center justify-between gap-2 border-b border-emerald-100 pb-2">
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-900">Tambah PO supplier baru</h4>
+                            <p className="text-[11px] text-slate-600">Terbitkan PO untuk supplier yang kelupaan atau pesanan tambahan menu ini.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIsAddingNewPo(false)}
+                            aria-label="Tutup form tambah PO"
+                            className="text-slate-500 hover:text-slate-700 p-1 cursor-pointer">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="sm:col-span-2">
+                            <label className={FIELD_LABEL}>Supplier / Rekanan</label>
+                            <SearchPicker
+                              value={newPoSupplier}
+                              options={supplierOptions}
+                              placeholder="Pilih atau ketik nama supplier..."
+                              searchPlaceholder="Cari atau ketik nama supplier baru..."
+                              ariaLabel="Pilih supplier baru"
+                              noun="supplier"
+                              onSelect={(opt, text) => setNewPoSupplier(opt ? opt.value : text)}
+                            />
+                          </div>
+                          <div>
+                            <label className={FIELD_LABEL}>Tanggal Kedatangan</label>
+                            <input
+                              type="date"
+                              value={newPoDeliveryDate}
+                              onChange={(e) => setNewPoDeliveryDate(e.target.value)}
+                              className={FIELD_INPUT}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className={FIELD_LABEL}>Bahan yang Dipesan</label>
+                            <button
+                              type="button"
+                              onClick={handleAddNewPoRow}
+                              className={`${BTN_SECONDARY} py-1 px-2.5 text-xs`}>
+                              <Plus className="w-3 h-3 text-slate-500" />
+                              Tambah baris bahan
+                            </button>
+                          </div>
+
+                          <div className="border border-slate-200 rounded-xl overflow-x-auto bg-white">
+                            <table className="w-full text-left text-xs">
+                              <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
+                                <tr>
+                                  <th className="py-2 px-3 font-semibold min-w-[180px]">Nama bahan</th>
+                                  <th className="py-2 px-3 font-semibold w-28">Kategori</th>
+                                  <th className="py-2 px-3 font-semibold w-28 text-right">Jumlah</th>
+                                  <th className="py-2 px-3 font-semibold w-24">Satuan</th>
+                                  <th className="py-2 px-3 font-semibold w-28 text-right">Est. Harga</th>
+                                  <th className="py-2 px-3 w-10"><span className="sr-only">Hapus</span></th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {newPoRows.map((r, rIdx) => {
+                                  const masterItem = findMasterItem(r.itemName);
+                                  const masterUnit = masterItem?.baseUnit;
+                                  return (
+                                    <tr key={r.id} className="align-top">
+                                      <td className="py-2 px-3">
+                                        <SearchPicker
+                                          value={r.itemName}
+                                          options={poItemOptions}
+                                          placeholder="Pilih atau ketik bahan..."
+                                          searchPlaceholder="Cari master bahan..."
+                                          ariaLabel={`Nama bahan baris ${rIdx + 1}`}
+                                          noun="bahan"
+                                          onSelect={(opt, typed) => {
+                                            const val = opt ? opt.value : typed;
+                                            const m = findMasterItem(val);
+                                            const cat = m?.category ? poCategoryFromMaster(m.category) : null;
+                                            handleUpdateNewPoRow(r.id, {
+                                              itemName: val,
+                                              category: cat || r.category,
+                                              unit: m?.baseUnit || r.unit,
+                                            });
+                                          }}
+                                        />
+                                        {masterItem && (
+                                          <div className="mt-1 text-[10px] text-emerald-800 font-medium">
+                                            Master: {masterItem.name} ({masterUnit || "Kg"})
+                                          </div>
+                                        )}
+                                      </td>
+                                      <td className="py-2 px-3">
+                                        <Select
+                                          size="sm"
+                                          className="w-full"
+                                          aria-label="Kategori bahan"
+                                          value={r.category}
+                                          onChange={(e) => handleUpdateNewPoRow(r.id, { category: e.target.value })}>
+                                          <option value="Protein">Protein</option>
+                                          <option value="Sembako">Sembako</option>
+                                          <option value="Sayur">Sayur</option>
+                                          <option value="Buah">Buah</option>
+                                          <option value="Bumbu">Bumbu</option>
+                                          <option value="Bahan Makanan">Lainnya</option>
+                                        </Select>
+                                      </td>
+                                      <td className="py-2 px-3">
+                                        <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          placeholder="0"
+                                          value={r.qtyOrder}
+                                          onChange={(e) => handleUpdateNewPoRow(r.id, { qtyOrder: e.target.value })}
+                                          onBlur={() => {
+                                            const formatted = formatStandardQty(r.qtyOrder, masterUnit);
+                                            if (formatted) handleUpdateNewPoRow(r.id, { qtyOrder: formatted });
+                                          }}
+                                          className={`${TABLE_INPUT} text-right tabular-nums`}
+                                        />
+                                      </td>
+                                      <td className="py-2 px-3">
+                                        <input
+                                          type="text"
+                                          list="menu-po-unit-options"
+                                          value={r.unit}
+                                          onChange={(e) => handleUpdateNewPoRow(r.id, { unit: e.target.value })}
+                                          className={TABLE_INPUT}
+                                        />
+                                      </td>
+                                      <td className="py-2 px-3">
+                                        <input
+                                          type="text"
+                                          inputMode="numeric"
+                                          placeholder="0"
+                                          value={r.price}
+                                          onChange={(e) => handleUpdateNewPoRow(r.id, { price: e.target.value })}
+                                          className={`${TABLE_INPUT} text-right tabular-nums`}
+                                        />
+                                      </td>
+                                      <td className="py-2 px-3 text-center">
+                                        {newPoRows.length > 1 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRemoveNewPoRow(r.id)}
+                                            className="p-1 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer">
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsAddingNewPo(false)}
+                            className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
+                            Batal
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCreateAdditionalPo}
+                            className={BTN_PRIMARY}>
+                            <Plus className="w-3.5 h-3.5" />
+                            Terbitkan PO supplier ini
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                 <>
@@ -4212,6 +4645,24 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
         </DialogShell>
         );
       })()}
+
+      {poBeingEdited && (
+        <PoEditModal
+          po={poBeingEdited}
+          onClose={() => setPoBeingEdited(null)}
+          onSaved={() => {
+            setPoBeingEdited(null);
+            refreshOrders();
+          }}
+        />
+      )}
+
+      <datalist id="menu-po-unit-options">
+        {PO_UNIT_OPTIONS.map((u) => (
+          <option key={u} value={u} />
+        ))}
+      </datalist>
+
       {/* ========================================================================= */}
       {/* MODAL 3: INPUT & EDIT DATA PENERIMA MANFAAT                                */}
       {/* ========================================================================= */}

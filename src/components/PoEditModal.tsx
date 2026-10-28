@@ -160,7 +160,7 @@ export const PoEditModal: React.FC<PoEditModalProps> = ({ po, onClose, onSaved }
           </p>
         )}
 
-        <section className="space-y-2">
+        <section className="space-y-2.5">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
             <p className="text-[11px] text-slate-600">
               Ganti supplier bila bahan dipesan ke supplier lain; bahan itu dipindah ke PO supplier tersebut. Kosongkan supplier untuk
@@ -170,6 +170,25 @@ export const PoEditModal: React.FC<PoEditModalProps> = ({ po, onClose, onSaved }
               <Plus className="w-3.5 h-3.5 text-slate-500" />
               Tambah bahan
             </button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold text-slate-700">Ubah supplier seluruh PO:</span>
+              <input
+                type="text"
+                list="po-edit-supplier-options"
+                defaultValue={plannedSupplier}
+                placeholder={PENDING_SUPPLIER_NAME}
+                aria-label="Ubah supplier seluruh PO"
+                className={`${TABLE_INPUT} w-52 bg-white`}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setRows(prev => prev.map(r => ({ ...r, supplier: val })));
+                }}
+              />
+            </div>
+            <span className="text-[11px] text-slate-500">Mengubah nama supplier di semua baris bahan di bawah sekaligus.</span>
           </div>
 
           <div className="border border-slate-200 rounded-xl overflow-x-auto">

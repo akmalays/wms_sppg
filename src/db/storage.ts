@@ -4181,14 +4181,24 @@ class WarehouseDatabase {
       removeFromPrintPool(deleted.poNumber);
     } catch {}
 
+    // Persist to local storage
+    setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
+
     // If this PO was linked to a MenuOrder, sync back and remove its arrival items
     if (deleted.relatedMenuOrderId) {
       const mOrder = this.menuOrders.find(m => m.id === deleted.relatedMenuOrderId);
-      if (mOrder && mOrder.poArrivalItems) {
-        const poItemNames = deleted.items.map(it => it.name.trim().toLowerCase());
-        mOrder.poArrivalItems = mOrder.poArrivalItems.filter(
-          it => !poItemNames.includes(it.itemName.trim().toLowerCase())
-        );
+      if (mOrder) {
+        const remainingPos = this.getPurchaseOrdersByMenuOrderId(deleted.relatedMenuOrderId);
+        const poItemNames = new Set(remainingPos.flatMap(p => p.items.map(it => it.name.trim().toLowerCase())));
+        if (mOrder.poArrivalItems) {
+          mOrder.poArrivalItems = mOrder.poArrivalItems.filter(it => poItemNames.has(it.itemName.trim().toLowerCase()));
+        }
+        setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+        if (isSupabaseConfigured()) {
+          supabase.from('menu_orders').upsert({ id: mOrder.id, data: mOrder }).then(({ error }) => {
+            if (error) console.error('Supabase Menu Order update error:', error);
+          });
+        }
       }
     }
 
