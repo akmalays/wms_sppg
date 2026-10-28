@@ -27,9 +27,6 @@ import {
   ClipboardPaste,
   PlusCircle,
   ShoppingBag,
-  Store,
-  Calendar,
-  Clock,
   DollarSign,
   Tag,
   Filter,
@@ -51,7 +48,7 @@ import {
   RotateCcw,
   Edit3,
   Scale,
-  PackageSearch,
+  Pencil,
 } from 'lucide-react';
 import { SignaturePad } from './SignaturePad';
 import { SearchPicker, PickerOption } from './common/SearchPicker';
@@ -64,6 +61,7 @@ import { exportToExcel } from '../lib/excelExport';
 import { NotaPesananModal } from './NotaPesananModal';
 import { BatchPrintNotaModal } from './BatchPrintNotaModal';
 import { PoReceivingWeighingModal } from './PoReceivingWeighingModal';
+import { PoEditModal } from './PoEditModal';
 import { useToast } from '../context/ToastContext';
 import { ConfirmationModal, ConfirmationItemSummary } from './common/ConfirmationModal';
 import { LoadingOverlay } from './common/LoadingOverlay';
@@ -317,6 +315,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
 
   // PO Physical Receiving & Weighing state (1-Flow Supply Chain)
   const [isWeighModalOpen, setIsWeighModalOpen] = useState(false);
+  const [poBeingEdited, setPoBeingEdited] = useState<PurchaseOrderNota | null>(null);
   const [selectedPoForWeighing, setSelectedPoForWeighing] = useState<PurchaseOrderNota | null>(null);
   const [showAllPoQueue, setShowAllPoQueue] = useState(false);
 
@@ -1419,6 +1418,34 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
     });
   }, [periodRecords, selectedCategoryTab, selectedSubcategory, sourceFilter, selectedSupplierFilter, searchQuery]);
 
+  // Tampilan per supplier memakai hasil filter yang sama dengan tabel, dikelompokkan per supplier lalu per tanggal
+  const supplierGroups = useMemo(() => {
+    const map = new Map<string, { name: string; total: number; byDate: Map<string, UnifiedRecord[]> }>();
+    filteredRecords.forEach(r => {
+      const name = r.supplierOrStore && r.supplierOrStore !== '-' ? r.supplierOrStore : 'Belanja Rutin';
+      const group = map.get(name) || { name, total: 0, byDate: new Map<string, UnifiedRecord[]>() };
+      group.total += r.nominal;
+      const date = r.date || 'Tanpa tanggal';
+      group.byDate.set(date, [...(group.byDate.get(date) || []), r]);
+      map.set(name, group);
+    });
+    return Array.from(map.values())
+      .map(g => ({
+        name: g.name,
+        total: g.total,
+        count: Array.from(g.byDate.values()).reduce((sum, list) => sum + list.length, 0),
+        dates: Array.from(g.byDate.entries()).sort(([a], [b]) => b.localeCompare(a)),
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [filteredRecords]);
+
+  // Supplier terpilih yang tidak ada lagi di periode ini (mis. periode diganti) dikembalikan ke semua supplier
+  useEffect(() => {
+    if (selectedSupplierFilter !== 'ALL' && !uniqueSuppliers.some(s => s.name === selectedSupplierFilter)) {
+      setSelectedSupplierFilter('ALL');
+    }
+  }, [uniqueSuppliers, selectedSupplierFilter]);
+
   // Baris yang sudah punya nota tidak bisa dipilih lagi, supaya tidak terbit nota ganda
   const selectableRecords = filteredRecords.filter(r => !getMatchingNotaForRecord(r));
   const allFilteredSelected = selectableRecords.length > 0 && selectableRecords.every(r => selectedRecordIds.includes(r.id));
@@ -1645,8 +1672,10 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                       ? Math.round((new Date(today).getTime() - new Date(targetDeliveryDate).getTime()) / 86400000)
                       : 0;
                     // Only PO generated from a menu plan carries the menu name in its notes
-                    const menuMatch = po.notes?.match(/^PO dibuat otomatis dari Perencanaan Menu:\s*(.+)$/i);
+                    // Baris pertama catatan berisi nama menu; baris berikutnya bisa berupa catatan revisi
+                    const menuMatch = po.notes?.match(/^PO dibuat otomatis dari Perencanaan Menu:[ \t]*(.+)/i);
                     const cleanMenuName = menuMatch ? menuMatch[1].trim() : '';
+                    const revisionCount = po.notes?.match(/^Revisi \d+/gm)?.length || 0;
 
                     return (
                       <div
@@ -1692,6 +1721,11 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                             {cleanMenuName && (
                               <p className="text-[11px] truncate" title={cleanMenuName}>
                                 Menu: {cleanMenuName}
+                              </p>
+                            )}
+                            {revisionCount > 0 && (
+                              <p className="text-[11px] text-amber-800">
+                                Direvisi {revisionCount} kali. Pastikan supplier memegang PO terbaru.
                               </p>
                             )}
                           </div>
@@ -1744,6 +1778,17 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                               <FileText className="w-4 h-4 text-slate-500" />
                               Lihat nota
                             </button>
+                            {!isFinished && (
+                              <button
+                                type="button"
+                                onClick={() => setPoBeingEdited(po)}
+                                title="Ubah jumlah, bahan, harga, atau supplier sebelum barang datang"
+                                className={`${BTN_SECONDARY} flex-1`}
+                              >
+                                <Pencil className="w-4 h-4 text-slate-500" />
+                                Ubah
+                              </button>
+                            )}
                             {isLate && (
                               <button
                                 type="button"
@@ -2330,38 +2375,25 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
               {/* Right Side: View Mode Toggle, Supplier Select, & Search Box */}
               <div className="flex flex-wrap items-center gap-2">
                 {/* View Mode Toggle: Tabel vs Per Supplier */}
-                <div className="inline-flex bg-slate-100 p-0.5 rounded-lg border border-slate-200/70 text-xs shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('TABLE')}
-                    className={`h-7 px-2.5 rounded-md font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
-                      viewMode === 'TABLE'
-                        ? 'bg-white text-slate-900 font-semibold shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                    title="Tampilan tabel biasa"
-                  >
-                    <TableProperties className="w-3.5 h-3.5" />
-                    <span>Tabel</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('SUPPLIER_GROUPS')}
-                    className={`h-7 px-2.5 rounded-md font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
-                      viewMode === 'SUPPLIER_GROUPS'
-                        ? 'bg-white text-slate-900 font-semibold shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                    title="Kelompokkan barang per supplier"
-                  >
-                    <LayoutGrid className="w-3.5 h-3.5" />
-                    <span>Per Supplier</span>
-                    {uniqueSuppliers.length > 0 && (
-                      <span className="text-[10px] font-mono bg-slate-100 px-1 rounded">
-                        {uniqueSuppliers.length}
-                      </span>
-                    )}
-                  </button>
+                <div role="group" aria-label="Tampilan" className="inline-flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs shrink-0">
+                  {([
+                    { mode: 'TABLE', label: 'Tabel', icon: TableProperties, title: 'Tampilan tabel biasa' },
+                    { mode: 'SUPPLIER_GROUPS', label: 'Per supplier', icon: LayoutGrid, title: 'Kelompokkan barang per supplier lalu per tanggal' },
+                  ] as const).map(({ mode, label, icon: Icon, title }) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setViewMode(mode)}
+                      aria-pressed={viewMode === mode}
+                      title={title}
+                      className={`min-h-[44px] sm:min-h-[28px] px-2.5 rounded-md flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+                        viewMode === mode ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-600 hover:text-slate-900 font-medium'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {label}
+                    </button>
+                  ))}
                 </div>
 
                 {/* Sumber catatan: surat jalan/PO yang menambah stok vs belanja yang dicatat langsung */}
@@ -2407,10 +2439,11 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-600 text-xs p-0.5 cursor-pointer"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded flex items-center justify-center text-slate-500 hover:text-slate-800 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                       title="Hapus pencarian"
+                      aria-label="Hapus pencarian"
                     >
-                      ✕
+                      <X className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
@@ -2420,90 +2453,38 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
 
           {/* VIEW: Kelompokkan Per Supplier & Per Tanggal */}
           {viewMode === 'SUPPLIER_GROUPS' ? (
-            uniqueSuppliers.length === 0 ? (
-              <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-                <div className="max-w-sm mx-auto space-y-2">
-                  <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center mx-auto">
-                    <PackageSearch className="w-5 h-5" />
-                  </div>
-                  <h4 className="text-xs font-semibold text-slate-800">
-                    Tidak Ada Data Supplier pada Periode Ini
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    Belum ada catatan transaksi belanja atau penerimaan barang per-supplier pada rentang tanggal yang dipilih.
-                  </p>
-                </div>
+            supplierGroups.length === 0 ? (
+              <div className="bg-white rounded-xl border border-slate-200 py-12 px-4 text-center">
+                <h4 className="text-xs font-semibold text-slate-800">
+                  {searchQuery || selectedCategoryTab !== 'ALL' || sourceFilter !== 'ALL' || selectedSupplierFilter !== 'ALL'
+                    ? 'Tidak ada catatan yang cocok dengan filter.'
+                    : 'Belum ada barang masuk di periode ini.'}
+                </h4>
+                <p className="text-[11px] text-slate-600 mt-1">Ubah periode atau filter, atau terima barang baru.</p>
               </div>
             ) : (
-              <div className="space-y-5">
-                {uniqueSuppliers
-                  .filter(s => selectedSupplierFilter === 'ALL' || s.name === selectedSupplierFilter)
-                  .map(supplier => {
-                    const matchingRecords = supplier.records.filter(r => {
-                      if (!matchesCategoryFilters(r)) return false;
-                      if (searchQuery.trim()) {
-                        const q = searchQuery.toLowerCase();
-                        const matchName = r.itemName.toLowerCase().includes(q);
-                        const matchPic = r.picOrUser.toLowerCase().includes(q);
-                        const matchNotes = (r.notes || '').toLowerCase().includes(q);
-                        if (!matchName && !matchPic && !matchNotes) return false;
-                      }
-                      return true;
-                    });
-
-                    if (matchingRecords.length === 0) return null;
-
-                    const groupSubtotal = matchingRecords.reduce((sum, r) => sum + r.nominal, 0);
-
-                    // Pisahkan data per tanggal untuk supplier ini
-                    const dateMap = new Map<string, UnifiedRecord[]>();
-                    matchingRecords.forEach(r => {
-                      const d = r.date || 'Tanpa Tanggal';
-                      if (!dateMap.has(d)) dateMap.set(d, []);
-                      dateMap.get(d)!.push(r);
-                    });
-
-                    // Urutkan tanggal dari yang terbaru
-                    const sortedDates = Array.from(dateMap.keys()).sort((a, b) => b.localeCompare(a));
+              <div className="space-y-4">
+                {supplierGroups.map(supplier => {
+                    const supplierKey = supplier.name.toLowerCase().trim();
 
                     return (
-                      <div key={supplier.name} className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden transition-all hover:border-slate-300">
-                        {/* Supplier Card Header */}
-                        <div className="px-5 py-3.5 bg-slate-50/90 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                              <Store className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-bold text-slate-900 text-sm">{supplier.name}</h3>
-                                <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-white text-slate-700 border border-slate-200">
-                                  {matchingRecords.length} Macam Barang
-                                </span>
-                                <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200/80">
-                                  {sortedDates.length} Tanggal Transaksi
-                                </span>
-                              </div>
-                              <div className="text-xs text-slate-600 mt-0.5 flex items-center gap-2">
-                                <span>Total Belanja:</span>
-                                <span className="font-mono font-bold text-slate-900">
-                                  Rp {groupSubtotal.toLocaleString('id-ID')}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
+                      <section key={supplier.name} aria-label={`Supplier ${supplier.name}`} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                        <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                          <h3 className="text-sm font-semibold text-slate-900">{supplier.name}</h3>
+                          <p className="text-xs text-slate-600">
+                            {supplier.count} barang · {supplier.dates.length} tanggal ·{' '}
+                            <span className="font-mono font-semibold text-slate-900 tabular-nums">Rp {supplier.total.toLocaleString('id-ID')}</span>
+                          </p>
                         </div>
 
-                        {/* List of Date Sections */}
                         <div className="divide-y divide-slate-200">
-                          {sortedDates.map(dateKey => {
-                            const dateRecords = dateMap.get(dateKey)!;
+                          {supplier.dates.map(([dateKey, dateRecords]) => {
                             const dateSubtotal = dateRecords.reduce((sum, r) => sum + r.nominal, 0);
 
-                            // Cari nota PO yang cocok khusus untuk supplier dan tanggal ini
+                            // Nota untuk barang di tanggal ini: yang tertaut ke barisnya, ditambah nota lain atas nama
+                            // supplier yang sama di tanggal itu. PO yang barangnya belum datang bukan nota, jadi tidak ikut.
                             const dateMatchingNotas: PurchaseOrderNota[] = [];
                             const seenPoIds = new Set<string>();
-
                             dateRecords.forEach(r => {
                               const nota = getMatchingNotaForRecord(r);
                               if (nota && !seenPoIds.has(nota.id)) {
@@ -2511,177 +2492,137 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                                 dateMatchingNotas.push(nota);
                               }
                             });
-
-                            const sName = supplier.name.toLowerCase().trim();
                             purchaseOrders.forEach(po => {
-                              const poDate = po.date ? po.date.slice(0, 10) : '';
-                              const poDelivery = po.deliveryDate ? po.deliveryDate.slice(0, 10) : '';
-                              const isDateMatch = poDate === dateKey || poDelivery === dateKey;
-                              if (isDateMatch && !seenPoIds.has(po.id)) {
-                                const poSupp = (po.supplierName || '').toLowerCase().trim();
-                                if (poSupp && sName && (poSupp.includes(sName) || sName.includes(poSupp))) {
-                                  seenPoIds.add(po.id);
-                                  dateMatchingNotas.push(po);
-                                }
+                              if (seenPoIds.has(po.id) || isAwaitingDelivery(po)) return;
+                              const isDateMatch = (po.date || '').slice(0, 10) === dateKey || (po.deliveryDate || '').slice(0, 10) === dateKey;
+                              if (isDateMatch && (po.supplierName || '').toLowerCase().trim() === supplierKey) {
+                                seenPoIds.add(po.id);
+                                dateMatchingNotas.push(po);
                               }
                             });
 
                             const unassignedRecords = dateRecords.filter(r => !getMatchingNotaForRecord(r));
 
                             return (
-                              <div key={dateKey} className="bg-white">
-                                {/* Sub-header pertanggal */}
-                                <div className="px-5 py-3 bg-slate-50/80 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                                  <div className="flex items-center gap-2.5">
-                                    <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/60 flex items-center justify-center shrink-0">
-                                      <Calendar className="w-4 h-4" />
-                                    </div>
-                                    <div>
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-bold text-slate-800 text-xs">
-                                          {formatIndonesianDateWithDay(dateKey)}
-                                        </span>
-                                        <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-white text-slate-700 border border-slate-200">
-                                          {dateRecords.length} Barang
-                                        </span>
-                                      </div>
-                                      <div className="text-[11px] text-slate-500 mt-0.5">
-                                        Subtotal: <span className="font-mono font-bold text-slate-800">Rp {dateSubtotal.toLocaleString('id-ID')}</span>
-                                      </div>
-                                    </div>
-                                  </div>
+                              <div key={dateKey}>
+                                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-2">
+                                  <p className="text-xs text-slate-600">
+                                    <span className="font-semibold text-slate-900">
+                                      {dateKey === 'Tanpa tanggal' ? dateKey : formatIndonesianDateWithDay(dateKey)}
+                                    </span>
+                                    {' · '}
+                                    {dateRecords.length} barang ·{' '}
+                                    <span className="font-mono text-slate-900 tabular-nums">Rp {dateSubtotal.toLocaleString('id-ID')}</span>
+                                  </p>
 
-                                  {/* Action PO khusus tanggal ini */}
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    {dateMatchingNotas.map(nota => (
-                                      <div key={nota.id} className="flex items-center gap-1.5 flex-wrap">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleOpenExistingNota(nota)}
-                                          className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-600/20 transition-all cursor-pointer "
-                                          title={`Lihat & Cetak Nota PO: ${nota.poNumber}`}
-                                        >
-                                          <Receipt className="w-3.5 h-3.5" />
-                                          <span>{dateMatchingNotas.length > 1 ? `Lihat Nota ${nota.poNumber}` : 'Lihat Nota'}</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleTogglePool(nota.id)}
-                                          className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer shadow-2xs  ${
-                                            poolNotaIds.includes(nota.id) || poolNotaIds.includes(nota.poNumber)
-                                              ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                                              : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-600'
-                                          }`}
-                                          title={
-                                            poolNotaIds.includes(nota.id) || poolNotaIds.includes(nota.poNumber)
-                                              ? 'Keluarkan nota ini dari pool antrean cetak'
-                                              : 'Tampung nota ini ke pool antrean cetak (gabung 2 nota per lembar A4)'
-                                          }
-                                        >
-                                          <Layers className="w-3.5 h-3.5 text-emerald-600" />
-                                          <span>
-                                            {poolNotaIds.includes(nota.id) || poolNotaIds.includes(nota.poNumber)
-                                              ? 'Di antrean cetak'
-                                              : 'Tambah ke antrean cetak'}
-                                          </span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleDeleteNota(nota)}
-                                          className="px-3 py-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs "
-                                          title={`Hapus Nota PO: ${nota.poNumber}`}
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                          <span>Hapus Nota</span>
-                                        </button>
-                                      </div>
-                                    ))}
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    {dateMatchingNotas.map(nota => {
+                                      const inPool = poolNotaIds.includes(nota.id) || poolNotaIds.includes(nota.poNumber);
+                                      return (
+                                        <div key={nota.id} role="group" aria-label={`Nota ${nota.poNumber}`} className="flex flex-wrap items-center gap-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleOpenExistingNota(nota)}
+                                            className={BTN_SECONDARY}
+                                            title={`Lihat dan cetak nota ${nota.poNumber}`}
+                                          >
+                                            <Receipt className="w-3.5 h-3.5 text-slate-500" />
+                                            Lihat nota{dateMatchingNotas.length > 1 ? ` ${nota.poNumber}` : ''}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleTogglePool(nota.id)}
+                                            aria-pressed={inPool}
+                                            className={`inline-flex whitespace-nowrap items-center justify-center gap-1.5 px-3 min-h-[44px] sm:min-h-[32px] rounded-lg border text-xs font-medium cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
+                                              inPool
+                                                ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                                                : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'
+                                            }`}
+                                            title={inPool ? 'Keluarkan dari antrean cetak' : 'Masukkan ke antrean cetak (2 nota per lembar A4)'}
+                                          >
+                                            <Layers className="w-3.5 h-3.5" />
+                                            {inPool ? 'Di antrean cetak' : 'Antrean cetak'}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteNota(nota)}
+                                            aria-label={`Hapus nota ${nota.poNumber}`}
+                                            title={`Hapus nota ${nota.poNumber}`}
+                                            className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[32px] sm:min-h-[32px] rounded-lg text-rose-700 hover:bg-rose-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
 
                                     {dateMatchingNotas.length === 0 ? (
                                       <button
                                         type="button"
                                         onClick={() => handleCreateCombinedNotaForSupplier(supplier.name, dateRecords, dateKey)}
-                                        className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer min-h-[36px]"
+                                        className={BTN_PRIMARY}
                                         title="Buat nota gabungan untuk barang pada tanggal ini. Nota bisa diedit sebelum dicetak."
                                       >
-                                        <Receipt className="w-3.5 h-3.5" />
-                                        <span>Buat Nota</span>
+                                        <FilePlus className="w-3.5 h-3.5" />
+                                        Buat nota
                                       </button>
                                     ) : unassignedRecords.length > 0 ? (
                                       <button
                                         type="button"
                                         onClick={() => handleCreateCombinedNotaForSupplier(supplier.name, unassignedRecords, dateKey)}
-                                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer "
-                                        title="Buat PO untuk barang yang belum masuk nota pada tanggal ini"
+                                        className={BTN_PRIMARY}
+                                        title="Buat nota untuk barang yang belum masuk nota pada tanggal ini"
                                       >
                                         <FilePlus className="w-3.5 h-3.5" />
-                                        <span>Buat Nota ({unassignedRecords.length} barang belum masuk nota)</span>
+                                        Buat nota ({unassignedRecords.length} belum ada nota)
                                       </button>
                                     ) : null}
                                   </div>
                                 </div>
 
-                                {/* Table of items for this date */}
                                 <div className="overflow-x-auto">
                                   <table className="w-full text-left text-xs">
-                                    <thead className="bg-slate-50/40 text-slate-500 font-semibold border-b border-slate-100">
+                                    <thead className="text-slate-700 font-semibold border-b border-slate-200">
                                       <tr>
-                                        <th className="py-2.5 px-3 w-10 text-center">#</th>
-                                        <th className="py-2.5 px-3 w-28">Jam</th>
-                                        <th className="py-2.5 px-3 w-32">Kategori</th>
-                                        <th className="py-2.5 px-3 min-w-[200px]">Nama Barang & Keterangan</th>
-                                        <th className="py-2.5 px-3 w-28 text-right">Jumlah & Satuan</th>
-                                        <th className="py-2.5 px-3 w-32 text-right">Nilai</th>
-                                        <th className="py-2.5 px-3 w-28">PIC Petugas</th>
+                                        <th className="py-2 px-4 w-20">Jam</th>
+                                        <th className="py-2 px-3 min-w-[200px]">Barang</th>
+                                        <th className="py-2 px-3 w-28 text-right">Jumlah</th>
+                                        <th className="py-2 px-3 w-32 text-right">Nilai</th>
+                                        <th className="py-2 px-3 w-32">Petugas</th>
                                       </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100 font-medium">
-                                      {dateRecords.map((r, itemIdx) => {
-                                        const badgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
-
-                                        return (
-                                          <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
-                                            <td className="py-2.5 px-3 text-center text-slate-500 font-mono text-[11px]">
-                                              {itemIdx + 1}
-                                            </td>
-                                            <td className="py-2.5 px-3 text-slate-700">
-                                              <div className="text-[11px] font-medium text-slate-600 flex items-center gap-1">
-                                                <Clock className="w-3 h-3 text-slate-500" />
-                                                <span>{r.time ? `${r.time} WIB` : '-'}</span>
-                                              </div>
-                                            </td>
-                                            <td className="py-2.5 px-3">
-                                              <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold border ${badgeColor}`}>
-                                                {r.displayCategory || r.category}
-                                              </span>
-                                            </td>
-                                            <td className="py-2.5 px-3">
-                                              <div className="font-bold text-slate-900">{r.itemName}</div>
-                                              {r.notes && (
-                                                <div className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
-                                                  {r.notes}
-                                                </div>
-                                              )}
-                                            </td>
-                                            <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
-                                              {r.quantity} {r.unit}
-                                            </td>
-                                            <td className="py-2.5 px-3 text-right">
-                                              <div className="font-mono font-bold text-slate-900">
-                                                {r.source === 'DELIVERY_ORDER' ? '-' : `Rp ${r.nominal.toLocaleString('id-ID')}`}
-                                              </div>
-                                              {r.unitPrice > 0 && (
-                                                <div className="text-[10px] text-slate-500 font-mono">
-                                                  @ Rp {r.unitPrice.toLocaleString('id-ID')}
-                                                </div>
-                                              )}
-                                            </td>
-                                            <td className="py-2.5 px-3 text-slate-700">
-                                              <div className="font-semibold truncate max-w-[120px]">{r.picOrUser}</div>
-                                            </td>
-                                          </tr>
-                                        );
-                                      })}
+                                    <tbody className="divide-y divide-slate-100">
+                                      {dateRecords.map(r => (
+                                        <tr key={r.id} className="hover:bg-slate-50 align-top">
+                                          <td className="py-2.5 px-4 text-slate-600 font-mono tabular-nums whitespace-nowrap">{r.time || '-'}</td>
+                                          <td className="py-2.5 px-3">
+                                            <div className="font-semibold text-slate-900">{r.itemName}</div>
+                                            <div className="text-[11px] text-slate-600">
+                                              {r.source === 'DELIVERY_ORDER' ? 'Masuk stok' : 'Belanja'} · {r.displayCategory || r.category}
+                                            </div>
+                                            {r.notes && <div className="text-[11px] text-slate-600 line-clamp-1">{r.notes}</div>}
+                                          </td>
+                                          <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-900 whitespace-nowrap">
+                                            {formatRecordQty(r.quantity)} {r.unit}
+                                          </td>
+                                          <td className="py-2.5 px-3 text-right">
+                                            {/* Penerimaan lama tanpa belanja tertaut tidak punya harga. */}
+                                            {r.nominal <= 0 ? (
+                                              <span className="text-slate-600" title="Harga belum tercatat">-</span>
+                                            ) : (
+                                              <>
+                                                <div className="font-mono font-semibold text-slate-900">Rp {r.nominal.toLocaleString('id-ID')}</div>
+                                                {r.unitPrice > 0 && (
+                                                  <div className="text-[11px] text-slate-600 font-mono">@ Rp {r.unitPrice.toLocaleString('id-ID')}</div>
+                                                )}
+                                              </>
+                                            )}
+                                          </td>
+                                          <td className="py-2.5 px-3 text-slate-700">
+                                            <div className="truncate max-w-[120px]">{r.picOrUser}</div>
+                                          </td>
+                                        </tr>
+                                      ))}
                                     </tbody>
                                   </table>
                                 </div>
@@ -2689,7 +2630,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                             );
                           })}
                         </div>
-                      </div>
+                      </section>
                     );
                   })}
               </div>
@@ -3264,6 +3205,17 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
           }}
           po={selectedPoForWeighing}
           onSuccess={() => {
+            refreshAll();
+          }}
+        />
+      )}
+
+      {poBeingEdited && (
+        <PoEditModal
+          po={poBeingEdited}
+          onClose={() => setPoBeingEdited(null)}
+          onSaved={() => {
+            setPoBeingEdited(null);
             refreshAll();
           }}
         />

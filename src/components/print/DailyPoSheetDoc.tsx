@@ -68,9 +68,13 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
     onCountChange(pos.length > 0 ? 1 : 0);
   }, [pos.length, onCountChange]);
 
-  // Supplier di PO hanya rencana: dicetak kecil, garis di bawahnya untuk supplier yang benar-benar mengirim
+  // Supplier di PO hanya rencana: dicetak kecil, garis di bawahnya untuk supplier yang benar-benar mengirim.
+  // PO yang sudah diterima mencatat supplier pengirimnya, jadi dicetak apa adanya.
+  const isReceived = (po: PurchaseOrderNota) => po.status === 'SELESAI';
   const renderSupplierCell = (po: PurchaseOrderNota) =>
-    isPendingSupplierPo(po) ? (
+    isReceived(po) ? (
+      <span className="font-semibold">{po.supplierName}</span>
+    ) : isPendingSupplierPo(po) ? (
       BLANK_LINE
     ) : (
       <>
@@ -153,9 +157,11 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
                   {/* Judul kelompok per supplier: supplier menyusul ditulis tangan per baris */}
                   <tr className="bg-slate-50">
                     <td colSpan={COLUMN_COUNT} className="border border-slate-500 px-1.5 py-1 font-semibold">
-                      {isPendingSupplierPo(po)
-                        ? 'Supplier menyusul (tulis supplier tiap bahan saat datang)'
-                        : `Rencana: ${po.supplierName} (tulis supplier lain bila yang mengirim berbeda)`}
+                      {isReceived(po)
+                        ? `${po.supplierName} (sudah diterima)`
+                        : isPendingSupplierPo(po)
+                          ? 'Supplier menyusul (tulis supplier tiap bahan saat datang)'
+                          : `Rencana: ${po.supplierName} (tulis supplier lain bila yang mengirim berbeda)`}
                       <span className="font-normal text-slate-600"> · {po.poNumber.replace(/^NO\.\s*/i, '')}</span>
                     </td>
                   </tr>

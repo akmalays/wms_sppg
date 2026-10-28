@@ -16,6 +16,7 @@ import {
   UserRole,
   NonFoodExpense,
   MenuOrder,
+  MenuPoArrivalItem,
   WasteLog,
   DisposalMethod,
   DailyTodoItem,
@@ -39,7 +40,7 @@ import {
   REAL_ATTENDANCE_LOGS,
 } from './realSeedData';
 import { getRomanMonth, getYearFromDate, generateNextPoNumber } from '../utils/poNumberGenerator';
-import { isPendingSupplierPo } from '../utils/poSupplier';
+import { isPendingSupplierPo, PENDING_SUPPLIER_NAME } from '../utils/poSupplier';
 import { angkaTerbilang } from '../utils/numberToWords';
 import { removeFromPrintPool } from '../utils/poPrintPool';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -4277,6 +4278,194 @@ class WarehouseDatabase {
         `: ${result.map(r => `${r.poNumber} ${r.supplierName}`).join(', ')}`
     );
     return { success: true, message: '', pos: result };
+  }
+
+  /**
+   * Revisi PO yang barangnya belum datang: jumlah, satuan, harga, bahan, dan supplier per bahan. Nomor PO tetap;
+   * revisi dicatat di catatan PO (kolom yang ikut tersimpan ke cloud). Bahan yang pindah supplier masuk ke PO
+   * supplier itu untuk menu dan tanggal yang sama bila sudah ada, selain itu dibuatkan PO baru. Bila seluruh bahan
+   * pindah ke satu supplier yang belum punya PO, PO ini cukup diganti suppliernya.
+   */
+  public revisePurchaseOrder(
+    poId: string,
+    rows: { item: PurchaseOrderItem; supplierName: string }[],
+    reason: string,
+    user: User
+  ): { success: boolean; message: string; pos?: PurchaseOrderNota[]; changed?: boolean } {
+    const po = this.purchaseOrders.find(p => p.id === poId);
+    if (!po) return { success: false, message: 'PO tidak ditemukan.' };
+    if (this.isPurchaseOrderLocked(po)) {
+      return { success: false, message: `PO ${po.poNumber} sudah diterima atau dibayar. Koreksi lewat catatan Barang Masuk.` };
+    }
+    if (rows.length === 0) return { success: false, message: 'PO minimal berisi satu bahan. Untuk membatalkan PO, pakai Hapus.' };
+
+    const norm = (s: string) => s.trim().toLowerCase();
+    const supplierOf = (name: string) => name.trim() || PENDING_SUPPLIER_NAME;
+    const fmtQty = (it: PurchaseOrderItem) => `${Number(it.quantity).toLocaleString('id-ID')} ${it.unit}`;
+    const fmtQtyName = (it: PurchaseOrderItem) => `${it.name} ${fmtQty(it)}`;
+    const withSubtotal = (it: PurchaseOrderItem): PurchaseOrderItem => ({ ...it, subtotal: Math.round(it.quantity * it.unitPrice) });
+    // Diambil sebelum PO diubah: menghapus PO ikut membuang bahannya dari rencana menu
+    const previousArrivals = po.relatedMenuOrderId ? this.menuOrders.find(m => m.id === po.relatedMenuOrderId)?.poArrivalItems || [] : [];
+
+    // Ringkasan perubahan untuk catatan revisi dan audit
+    const changes: string[] = [];
+    const rowById = new Map(rows.map(r => [r.item.id, r]));
+    po.items.forEach(old => {
+      const row = rowById.get(old.id);
+      if (!row) {
+        changes.push(`${old.name} dihapus`);
+        return;
+      }
+      const it = row.item;
+      if (norm(it.name) !== norm(old.name)) changes.push(`${old.name} jadi ${it.name}`);
+      if (it.quantity !== old.quantity || norm(it.unit) !== norm(old.unit)) changes.push(`${it.name} ${fmtQty(old)} jadi ${fmtQty(it)}`);
+      if (it.unitPrice !== old.unitPrice) changes.push(`harga ${it.name} Rp ${old.unitPrice.toLocaleString('id-ID')} jadi Rp ${it.unitPrice.toLocaleString('id-ID')}`);
+      if (norm(supplierOf(row.supplierName)) !== norm(po.supplierName)) changes.push(`${it.name} pindah ke ${supplierOf(row.supplierName)}`);
+    });
+    rows
+      .filter(r => !po.items.some(old => old.id === r.item.id))
+      .forEach(r => changes.push(`${r.item.name} ${fmtQty(r.item)} ditambah${norm(supplierOf(r.supplierName)) !== norm(po.supplierName) ? ` ke ${supplierOf(r.supplierName)}` : ''}`));
+    if (changes.length === 0) return { success: true, message: 'Tidak ada perubahan.', pos: [po], changed: false };
+
+    const revisionNo = (po.notes?.match(/^Revisi \d+/gm)?.length || 0) + 1;
+    const stamp = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    const revisionLine = `Revisi ${revisionNo} (${stamp}, ${user.name})${reason.trim() ? `: ${reason.trim()}` : ''}. ${changes.join('; ')}.`;
+    const appendNote = (notes: string | undefined, line: string) => (notes ? `${notes}\n${line}` : line);
+    const totals = (items: PurchaseOrderItem[]) => {
+      const subtotal = items.reduce((sum, it) => sum + (it.subtotal || 0), 0);
+      return { subtotal, grandTotal: subtotal, terbilang: angkaTerbilang(subtotal) };
+    };
+    const supplierFields = (name: string) => {
+      if (norm(name) === norm(PENDING_SUPPLIER_NAME)) {
+        return { supplierId: undefined, supplierName: PENDING_SUPPLIER_NAME, supplierContact: '', supplierAddress: '', supplierPic: 'Pihak Rekanan', bankInfo: '' };
+      }
+      const s = this.quickAddSupplier(name, user);
+      return {
+        supplierId: s.id,
+        supplierName: s.name,
+        supplierContact: s.phone ? `${s.phone} (${s.contactPerson || 'PIC'})` : '',
+        supplierAddress: s.address || '',
+        supplierPic: s.contactPerson || 'Pihak Rekanan',
+        bankInfo: `Transfer Bank Rekening Resmi ${s.name}`,
+      };
+    };
+
+    const groups = new Map<string, { name: string; items: PurchaseOrderItem[] }>();
+    rows.forEach(r => {
+      const name = supplierOf(r.supplierName);
+      const g = groups.get(norm(name)) || { name, items: [] };
+      g.items.push(withSubtotal(r.item));
+      groups.set(norm(name), g);
+    });
+
+    const deliveryDay = po.deliveryDate || po.date;
+    // PO lain milik menu dan tanggal kirim yang sama, masih menunggu: tempat bahan pindahan digabung
+    const siblingFor = (key: string) =>
+      po.relatedMenuOrderId
+        ? this.purchaseOrders.find(
+            p =>
+              p.id !== po.id &&
+              p.relatedMenuOrderId === po.relatedMenuOrderId &&
+              (p.deliveryDate || p.date) === deliveryDay &&
+              norm(p.supplierName) === key &&
+              !this.isPurchaseOrderLocked(p)
+          )
+        : undefined;
+
+    const ownKey = norm(po.supplierName);
+    const result: PurchaseOrderNota[] = [];
+    let ownItems = groups.get(ownKey)?.items;
+    let ownSupplier = {};
+    groups.delete(ownKey);
+
+    // Supplier lain: digabung ke PO saudaranya, atau (bila PO ini kosong) PO ini yang berganti supplier
+    const newGroups: { name: string; items: PurchaseOrderItem[] }[] = [];
+    groups.forEach((g, key) => {
+      const sibling = siblingFor(key);
+      if (sibling) {
+        const merged = [...sibling.items];
+        g.items.forEach(it => {
+          const same = merged.findIndex(m => norm(m.name) === norm(it.name) && norm(m.unit) === norm(it.unit));
+          if (same >= 0) merged[same] = withSubtotal({ ...merged[same], quantity: merged[same].quantity + it.quantity });
+          else merged.push(it);
+        });
+        result.push(
+          this.savePurchaseOrder(
+            {
+              ...sibling,
+              items: merged,
+              ...totals(merged),
+              notes: appendNote(sibling.notes, `Tambahan dari revisi ${po.poNumber} (${stamp}, ${user.name}): ${g.items.map(fmtQtyName).join(', ')}.`),
+            },
+            user
+          )
+        );
+      } else if (!ownItems) {
+        ownItems = g.items;
+        ownSupplier = supplierFields(g.name);
+      } else {
+        newGroups.push(g);
+      }
+    });
+
+    if (ownItems) {
+      result.unshift(
+        this.savePurchaseOrder({ ...po, ...ownSupplier, items: ownItems, ...totals(ownItems), notes: appendNote(po.notes, revisionLine) }, user)
+      );
+    } else {
+      // Semua bahan pindah ke PO supplier lain yang sudah ada
+      this.deletePurchaseOrder(po.id, user);
+    }
+
+    const menuLine = (po.notes || '').split('\n')[0];
+    newGroups.forEach(g => {
+      result.push(
+        this.savePurchaseOrder(
+          {
+            ...po,
+            ...supplierFields(g.name),
+            id: uniqueId('PO'),
+            poNumber: generateNextPoNumber(this.purchaseOrders, po.date),
+            items: g.items,
+            ...totals(g.items),
+            notes: appendNote(menuLine, `Dipindah dari ${po.poNumber} saat revisi ${revisionNo} (${stamp}, ${user.name}).`),
+            createdAt: new Date().toISOString(),
+            updatedAt: undefined,
+          },
+          user
+        )
+      );
+    });
+
+    if (po.relatedMenuOrderId) this.syncMenuArrivalItems(po.relatedMenuOrderId, previousArrivals, user);
+
+    this.logAudit(user, 'PO_UPDATED', 'RECEIVING', po.id, `PO ${po.poNumber} direvisi: ${changes.join('; ')}`);
+    return { success: true, message: '', pos: result, changed: true };
+  }
+
+  /** Daftar bahan PO di rencana menu disamakan dengan isi PO terkini (dipakai dashboard, CMS, dan form PO). */
+  private syncMenuArrivalItems(menuOrderId: string, previousItems: MenuPoArrivalItem[], user: User): void {
+    const menu = this.menuOrders.find(m => m.id === menuOrderId);
+    if (!menu) return;
+    const previous = new Map(previousItems.map(it => [it.itemName.trim().toLowerCase(), it]));
+    const poArrivalItems = this.getPurchaseOrdersByMenuOrderId(menuOrderId).flatMap(p =>
+      p.items.map(it => {
+        const prev = previous.get(it.name.trim().toLowerCase());
+        return {
+          category: prev?.category || it.category || 'Bahan Makanan',
+          itemName: it.name,
+          qtyOrder: `${it.quantity} ${it.unit}`,
+          qtyArrived: prev?.qtyArrived || '',
+          supplier: isPendingSupplierPo(p) ? '' : p.supplierName,
+          arrivalTime: prev?.arrivalTime || '',
+          pic: prev?.pic || '',
+          unitPrice: it.unitPrice,
+          totalCost: it.subtotal,
+          notes: prev?.notes,
+        };
+      })
+    );
+    this.saveMenuOrder({ ...menu, poArrivalItems }, user, false);
   }
 
   public receiveAndCompletePurchaseOrder(

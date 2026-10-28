@@ -19,6 +19,7 @@ import { deliveryTimeNoteFor, deriveReceivedTimeNote } from '../utils/notaDelive
 import { useToast } from '../context/ToastContext';
 import { warehouseDb } from '../db/storage';
 import { normalizeQtyForUnit } from '../utils/unitConversion';
+import { isMenuPurchaseOrder } from '../utils/poSupplier';
 
 export interface NotaPesananModalProps {
   isOpen: boolean;
@@ -95,6 +96,11 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
 }) => {
   const toast = useToast();
   const [formData, setFormData] = useState<PurchaseOrderNota>(nota);
+  // Isi bahan PO menu diubah lewat Ubah PO (tercatat sebagai revisi). Nota yang barangnya sudah diterima
+  // mengikuti catatan Barang Masuk: mengubah jumlah di sini tidak mengubah stok, jadi dikunci.
+  const isMenuPo = isMenuPurchaseOrder(nota);
+  const isReceivedNota = warehouseDb.isPurchaseOrderLocked(nota);
+  const itemsReadOnly = isMenuPo || isReceivedNota;
   const [saveToast, setSaveToast] = useState(false);
 
   // Mode layout cetak: SINGLE = 1 lembar A4 standar; DOUBLE = 2 rangkap dalam 1 lembar A4 (hemat kertas)
@@ -414,7 +420,9 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
             <div className="flex items-center">
               <span className={`${isCompact ? 'w-20' : 'w-24'} shrink-0 font-medium`}>Kepada</span>
               <span className="w-3 text-center">:</span>
-              {suppliers.length > 0 ? (
+              {isMenuPo ? (
+                <span className="font-semibold text-black flex-1 min-w-0">{formData.supplierName}</span>
+              ) : suppliers.length > 0 ? (
                 // appearance-none dan tanpa padding: select bawaan memberi jarak kiri sehingga nama supplier
                 // tidak sejajar dengan isian Dari dan Alamat.
                 <select
@@ -559,6 +567,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                           list="nota-item-catalog"
                           value={it.name}
                           onChange={e => handleItemChange(idx, 'name', e.target.value)}
+                          readOnly={itemsReadOnly}
                           placeholder="Nama bahan makanan..."
                           className="w-full bg-transparent text-black font-normal focus:outline-none"
                         />
@@ -574,6 +583,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                           step="any"
                           value={it.quantity || ''}
                           onChange={e => handleItemChange(idx, 'quantity', e.target.value)}
+                          readOnly={itemsReadOnly}
                           className="w-full text-center bg-transparent text-black font-normal focus:outline-none"
                         />
                       </td>
@@ -586,6 +596,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                           type="text"
                           value={it.unit || ''}
                           onChange={e => handleItemChange(idx, 'unit', e.target.value)}
+                          readOnly={itemsReadOnly}
                           className="w-full text-center bg-transparent text-black font-normal focus:outline-none"
                         />
                       </td>
@@ -622,7 +633,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                       </td>
                       {!isSecondCopy && (
                         <td className="border border-black py-0.5 px-1 text-center no-print">
-                          {formData.items.length > 1 && (
+                          {formData.items.length > 1 && !itemsReadOnly && (
                             <button
                               type="button"
                               onClick={() => handleRemoveItem(idx)}
@@ -668,7 +679,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
             </table>
 
             {/* Tombol Tambah Baris (Hanya di Layar, pada salinan pertama) */}
-            {!isSecondCopy && (
+            {!isSecondCopy && !itemsReadOnly && (
               <div className="mt-1 no-print flex justify-end">
                 <button
                   type="button"
@@ -975,6 +986,15 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                 <label className="text-xs font-semibold text-slate-700 block">
                   Aksi Dokumen
                 </label>
+
+                {itemsReadOnly && (
+                  <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700 leading-relaxed">
+                    {isReceivedNota
+                      ? 'Bahan dan jumlah mengikuti barang yang sudah diterima. Bila ada yang salah, koreksi catatannya di Barang Masuk.'
+                      : 'Untuk mengubah bahan, jumlah, atau supplier, pakai tombol Ubah di kartu PO pada Barang Masuk supaya tercatat sebagai revisi.'}{' '}
+                    Harga dan tanggal masih bisa diubah di sini.
+                  </p>
+                )}
 
                 {/* Primary CTA: Cetak Dokumen PO */}
                 <button

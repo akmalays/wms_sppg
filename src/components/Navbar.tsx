@@ -58,6 +58,7 @@ const NAV_GROUPS: { id: 'laporan' | 'lainnya'; label: string; items: NavItem[] }
     items: [
       { id: 'daily_expenses', label: 'Pengeluaran' },
       { id: 'waste_logs', label: 'Rekap Limbah' },
+      { id: 'hedonic_recap', label: 'Rekap Uji Hedonik' },
       { id: 'audit', label: 'Riwayat Aktivitas', permission: 'VIEW_AUDIT' },
     ],
   },

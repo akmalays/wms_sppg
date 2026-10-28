@@ -224,8 +224,8 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
     }
 
     const extras = items.filter(isExtraItem);
-    if (extras.some(it => !it.name.trim() || it.actualQty <= 0)) {
-      toast.error('Bahan di luar PO perlu nama dan jumlah diterima. Hapus barisnya bila tidak jadi.', 'Bahan Tambahan Belum Lengkap');
+    if (extras.some(it => !it.name.trim() || !it.unit.trim() || it.actualQty <= 0)) {
+      toast.error('Bahan di luar PO perlu nama, jumlah diterima, dan satuan. Hapus barisnya bila tidak jadi.', 'Bahan Tambahan Belum Lengkap');
       return;
     }
 
@@ -359,7 +359,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
     }
   };
 
-  const menuName = po.notes?.startsWith(MENU_NOTE_PREFIX) ? po.notes.replace(MENU_NOTE_PREFIX, '').trim() : '';
+  const menuName = po.notes?.startsWith(MENU_NOTE_PREFIX) ? po.notes.split('\n')[0].replace(MENU_NOTE_PREFIX, '').trim() : '';
   const rupiah = (n: number) => `Rp ${n.toLocaleString('id-ID')}`;
 
   return (
