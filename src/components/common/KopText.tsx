@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const SPPG_OFFICIAL_NAME = 'Satuan Pelayanan Pemenuhan Gizi (SPPG) Tumpang Jeru';
+export const SPPG_OFFICIAL_NAME = 'Satuan Pelayanan Pemenuhan Gizi (SPPG) Malang Tumpang Jeru';
 export const SPPG_ADDRESS = 'Jl. Pattimura No. 107, Dsn. Krajan, Ds. Jeru, Kec. Tumpang, Kab. Malang';
 export const SPPG_EMAIL = 'sppg.jeru@gmail.com';
 export const SPPG_PHONE = '0812-3456-7890';

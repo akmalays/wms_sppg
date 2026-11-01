@@ -1,5 +1,8 @@
-import React from 'react';
-import { SchoolBeneficiaryAllocation } from '../../types/warehouse';
+import React from "react";
+import {SchoolBeneficiaryAllocation} from "../../types/warehouse";
+import ttdRizkyImg from "../../assets/ttd rizky.png";
+import ttdEnoImg from "../../assets/ttd eno.png";
+import ttdToniImg from "../../assets/ttd toni.png";
 
 // Tiga lembar dokumen pengiriman per sekolah. Ada dua format:
 // - Legacy: sama dengan format kertas lama SPPG Malang Tumpang Jeru (disimpan untuk jaga-jaga).
@@ -16,6 +19,8 @@ export interface DeliveryDocOfficers {
   consumeBefore: string;
   /** Gambar tanda tangan Kepala SPPG (data URL), dicetak di kotak Mengetahui. */
   headSignature?: string;
+  nutritionistSignature?: string;
+  fieldAssistantSignature?: string;
 }
 
 export interface DeliveryClassRow {
@@ -38,30 +43,28 @@ export interface SheetProps {
   footer: string;
 }
 
-const SHEET = 'bg-white p-7 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-xs';
-const LINE = 'inline-block border-b border-slate-700 align-bottom';
-const CELL = 'border border-slate-800 px-2 py-1.5';
+const SHEET = "bg-white p-7 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-xs";
+const LINE = "inline-block border-b border-slate-700 align-bottom";
+const CELL = "border border-slate-800 px-2 py-1.5";
 
-const Blank: React.FC<{ w: string; value?: string; center?: boolean }> = ({ w, value, center }) => (
-  <span className={`${LINE} ${w} ${center ? 'text-center' : 'px-1'} font-semibold min-h-[1.1em]`}>{value || ' '}</span>
+const Blank: React.FC<{w: string; value?: string; center?: boolean}> = ({w, value, center}) => (
+  <span className={`${LINE} ${w} ${center ? "text-center" : "px-1"} font-semibold min-h-[1.1em]`}>{value || " "}</span>
 );
 
-const SignLine: React.FC<{ name?: string }> = ({ name }) => (
+const SignLine: React.FC<{name?: string}> = ({name}) => (
   <div className="mt-12 flex items-end gap-1 w-56">
     <span>(</span>
-    <span className="flex-1 border-b border-slate-800 text-center font-semibold pb-0.5">{name || ' '}</span>
+    <span className="flex-1 border-b border-slate-800 text-center font-semibold pb-0.5">{name || " "}</span>
     <span>)</span>
   </div>
 );
 
-const Footer: React.FC<{ text: string }> = ({ text }) => (
-  <div className="text-right text-[8.5px] text-slate-400 mt-3 font-mono">{text}</div>
-);
+const Footer: React.FC<{text: string}> = ({text}) => <div className="text-right text-[8.5px] text-slate-400 mt-3 font-mono">{text}</div>;
 
 // ---------------------------------------------------------------------------
 // LEMBAR 1: SURAT JALAN
 // ---------------------------------------------------------------------------
-export const SuratJalanSheetLegacy: React.FC<SheetProps & { docNo: string; deliveryTime?: string; classes: DeliveryClassRow[] }> = ({
+export const SuratJalanSheetLegacy: React.FC<SheetProps & {docNo: string; deliveryTime?: string; classes: DeliveryClassRow[]}> = ({
   school,
   dayName,
   shortDate,
@@ -95,12 +98,14 @@ export const SuratJalanSheetLegacy: React.FC<SheetProps & { docNo: string; deliv
           <tr>
             <td className="pr-3 py-0.5">Hari/Tanggal</td>
             <td className="pr-2">:</td>
-            <td>{dayName} / {shortDate}</td>
+            <td>
+              {dayName} / {shortDate}
+            </td>
           </tr>
           <tr>
             <td className="pr-3 py-0.5">Waktu Pengiriman</td>
             <td className="pr-2">:</td>
-            <td>{deliveryTime ? deliveryTime.replace(/\s*WIB\s*$/i, '') + ' WIB' : <Blank w="w-32" />}</td>
+            <td>{deliveryTime ? deliveryTime.replace(/\s*WIB\s*$/i, "") + " WIB" : <Blank w="w-32" />}</td>
           </tr>
           <tr>
             <td className="pr-3 py-0.5">Driver</td>
@@ -114,11 +119,21 @@ export const SuratJalanSheetLegacy: React.FC<SheetProps & { docNo: string; deliv
     <table className="w-full border-collapse border border-slate-800 text-[12px] mb-8">
       <thead>
         <tr className="font-bold text-center">
-          <th rowSpan={2} className={`${CELL} w-10`}>No.</th>
-          <th rowSpan={2} className={CELL}>Kelas</th>
-          <th rowSpan={2} className={`${CELL} w-20`}>Jumlah Porsi</th>
-          <th colSpan={2} className={CELL}>Jumlah Alat Makan</th>
-          <th rowSpan={2} className={`${CELL} w-36`}>Keterangan</th>
+          <th rowSpan={2} className={`${CELL} w-10`}>
+            No.
+          </th>
+          <th rowSpan={2} className={CELL}>
+            Kelas
+          </th>
+          <th rowSpan={2} className={`${CELL} w-20`}>
+            Jumlah Porsi
+          </th>
+          <th colSpan={2} className={CELL}>
+            Jumlah Alat Makan
+          </th>
+          <th rowSpan={2} className={`${CELL} w-36`}>
+            Keterangan
+          </th>
         </tr>
         <tr className="font-bold text-center">
           <th className={`${CELL} w-24`}>Sebelum</th>
@@ -130,15 +145,17 @@ export const SuratJalanSheetLegacy: React.FC<SheetProps & { docNo: string; deliv
           <tr key={`${c.className}-${i}`} className="h-9">
             <td className={`${CELL} text-center`}>{i + 1}</td>
             <td className={`${CELL} text-center`}>{c.className}</td>
-            <td className={`${CELL} text-center`}>{c.portions !== undefined ? c.portions.toLocaleString('id-ID') : ''}</td>
+            <td className={`${CELL} text-center`}>{c.portions !== undefined ? c.portions.toLocaleString("id-ID") : ""}</td>
             <td className={CELL}></td>
             <td className={CELL}></td>
             <td className={CELL}></td>
           </tr>
         ))}
         <tr className="h-9 font-bold">
-          <td colSpan={2} className={`${CELL} text-center`}>Total</td>
-          <td className={`${CELL} text-center`}>{totalPortions > 0 ? totalPortions.toLocaleString('id-ID') : ''}</td>
+          <td colSpan={2} className={`${CELL} text-center`}>
+            Total
+          </td>
+          <td className={`${CELL} text-center`}>{totalPortions > 0 ? totalPortions.toLocaleString("id-ID") : ""}</td>
           <td className={CELL}></td>
           <td className={CELL}></td>
           <td className={CELL}></td>
@@ -150,14 +167,18 @@ export const SuratJalanSheetLegacy: React.FC<SheetProps & { docNo: string; deliv
       <div className="col-span-2 text-center">Diperiksa Oleh,</div>
       <div>Diterima Oleh,</div>
       <div>
-        <div>Ahli Gizi SPPG,</div>
-        <div className="h-20" />
-        <div className="font-semibold">{officers.nutritionistName || ' '}</div>
+        <div>Ahli Gizi SPPG Malang Tumpang Jeru,</div>
+        <div className="h-20 flex items-center justify-center -my-1">
+          <img src={officers.nutritionistSignature || ttdEnoImg} alt="Tanda tangan Ahli Gizi SPPG" className="h-20 w-auto object-contain" />
+        </div>
+        <div className="font-semibold">{officers.nutritionistName || " "}</div>
       </div>
       <div>
-        <div>Asisten Lapangan,</div>
-        <div className="h-20" />
-        <div className="font-semibold">{officers.fieldAssistantName || ' '}</div>
+        <div>Asisten Lapangan SPPG Malang Tumpang Jeru,</div>
+        <div className="h-20 flex items-center justify-center -my-1">
+          <img src={officers.fieldAssistantSignature || ttdToniImg} alt="Tanda tangan Asisten Lapangan" className="h-20 w-auto object-contain" />
+        </div>
+        <div className="font-semibold">{officers.fieldAssistantName || " "}</div>
       </div>
       <div>
         <div>Pihak Sekolah,</div>
@@ -172,51 +193,42 @@ export const SuratJalanSheetLegacy: React.FC<SheetProps & { docNo: string; deliv
 // ---------------------------------------------------------------------------
 // LEMBAR 2: BERITA ACARA PENERIMAAN PAKET MAKANAN + PENYERAHAN ALAT MAKAN
 // ---------------------------------------------------------------------------
-const HeadSignature: React.FC<{ src?: string; className?: string }> = ({ src, className = 'h-14' }) =>
-  src?.startsWith('data:image') ? (
-    <img src={src} alt="Tanda tangan Kepala SPPG" className={`${className} object-contain`} />
-  ) : (
-    <div className={className} />
-  );
+const HeadSignature: React.FC<{src?: string; className?: string}> = ({src, className = "h-20"}) => {
+  const effectiveSrc = src || ttdRizkyImg;
+  return effectiveSrc ? <img src={effectiveSrc} alt="Tanda tangan Kepala SPPG" className={`${className} object-contain`} /> : <div className={className} />;
+};
 
-const MengetahuiBox: React.FC<{ headName: string; headSignature?: string }> = ({ headName, headSignature }) => (
+const MengetahuiBox: React.FC<{headName: string; headSignature?: string}> = ({headName, headSignature}) => (
   <div className="border border-slate-800 p-3 w-64 text-[11.5px]">
     <div>Mengetahui:</div>
-    <HeadSignature src={headSignature} />
-    <div className="font-semibold underline">{headName || ' '}</div>
-    <div>Kepala SPPG Malang JERU</div>
+    <div className="my-1 flex items-center">
+      <HeadSignature src={headSignature} className="h-20" />
+    </div>
+    <div className="font-semibold underline">{headName || " "}</div>
+    <div>Kepala SPPG Malang Tumpang Jeru</div>
   </div>
 );
 
-const BaTitle: React.FC<{ text: string }> = ({ text }) => (
-  <div className="text-center font-bold uppercase text-[12.5px] text-slate-900 mb-3">{text}</div>
-);
+const BaTitle: React.FC<{text: string}> = ({text}) => <div className="text-center font-bold uppercase text-[12.5px] text-slate-900 mb-3">{text}</div>;
 
-const BaOpening: React.FC<{ dayName: string; shortDate: string; totalPortions: number; kind: 'FOOD' | 'TOOLS' }> = ({
-  dayName,
-  shortDate,
-  totalPortions,
-  kind,
-}) => (
+const BaOpening: React.FC<{dayName: string; shortDate: string; totalPortions: number; kind: "FOOD" | "TOOLS"}> = ({dayName, shortDate, totalPortions, kind}) => (
   <p className="text-[11.5px] leading-7">
-    Pada Hari <Blank w="w-20" value={dayName} center /> tanggal <Blank w="w-28" value={shortDate} center /> jam <Blank w="w-16" />{' '}
-    {kind === 'FOOD' ? (
+    Pada Hari <Blank w="w-20" value={dayName} center /> tanggal <Blank w="w-28" value={shortDate} center /> jam <Blank w="w-16" />{" "}
+    {kind === "FOOD" ? (
       <>
-        telah diterima paket makanan sejumlah :{' '}
-        <Blank w="w-14" value={totalPortions > 0 ? totalPortions.toLocaleString('id-ID') : ''} center /> Paket Makanan Bergizi dari
-        Satuan Pelayanan Pemenuhan Gizi (SPPG) Malang Jeru
+        telah diterima paket makanan sejumlah : <Blank w="w-14" value={totalPortions > 0 ? totalPortions.toLocaleString("id-ID") : ""} center /> Paket Makanan Bergizi dari Satuan
+        Pelayanan Pemenuhan Gizi (SPPG) Malang Tumpang Jeru
       </>
     ) : (
       <>
-        telah diserahkan kembali alat makan sejumlah : <Blank w="w-14" /> dari{' '}
-        <Blank w="w-14" value={totalPortions > 0 ? totalPortions.toLocaleString('id-ID') : ''} center /> set yang dikirim, kepada Satuan
-        Pelayanan Pemenuhan Gizi (SPPG) Malang Jeru
+        telah diserahkan kembali alat makan sejumlah : <Blank w="w-14" /> dari <Blank w="w-14" value={totalPortions > 0 ? totalPortions.toLocaleString("id-ID") : ""} center /> set
+        yang dikirim, kepada Satuan Pelayanan Pemenuhan Gizi (SPPG) Malang Tumpang Jeru
       </>
     )}
   </p>
 );
 
-const PartyRow: React.FC<{ label: string; value?: React.ReactNode }> = ({ label, value }) => (
+const PartyRow: React.FC<{label: string; value?: React.ReactNode}> = ({label, value}) => (
   <tr>
     <td className="py-0.5 pr-3 w-36 align-top">{label}</td>
     <td className="pr-2 align-top">:</td>
@@ -224,7 +236,7 @@ const PartyRow: React.FC<{ label: string; value?: React.ReactNode }> = ({ label,
   </tr>
 );
 
-export const BeritaAcaraSheetLegacy: React.FC<SheetProps> = ({ school, dayName, shortDate, totalPortions, officers, kop, footer }) => (
+export const BeritaAcaraSheetLegacy: React.FC<SheetProps> = ({school, dayName, shortDate, totalPortions, officers, kop, footer}) => (
   <div className={SHEET}>
     {kop}
 
@@ -245,7 +257,15 @@ export const BeritaAcaraSheetLegacy: React.FC<SheetProps> = ({ school, dayName, 
           <table className="text-[11.5px]">
             <tbody>
               <PartyRow label="Diterima oleh" value={<span className="font-semibold">{school.schoolName}</span>} />
-              <PartyRow label="" value={<div><Blank w="w-52" /><div>PIC</div></div>} />
+              <PartyRow
+                label=""
+                value={
+                  <div>
+                    <Blank w="w-52" />
+                    <div>PIC</div>
+                  </div>
+                }
+              />
               <PartyRow label="Nomor Telpon" value={<Blank w="w-44" value={school.phone} />} />
             </tbody>
           </table>
@@ -253,9 +273,7 @@ export const BeritaAcaraSheetLegacy: React.FC<SheetProps> = ({ school, dayName, 
         </div>
         <div className="flex flex-col items-end gap-4">
           <MengetahuiBox headName={officers.headName} headSignature={officers.headSignature} />
-          <div className="text-red-600 font-bold text-[14px] uppercase">
-            Baik dimakan sebelum pukul {officers.consumeBefore || '11:00'}
-          </div>
+          <div className="text-red-600 font-bold text-[14px] uppercase">Baik dimakan sebelum pukul {officers.consumeBefore || "11:00"}</div>
         </div>
       </div>
     </div>
@@ -278,7 +296,15 @@ export const BeritaAcaraSheetLegacy: React.FC<SheetProps> = ({ school, dayName, 
           <SignLine />
           <table className="text-[11.5px] mt-4">
             <tbody>
-              <PartyRow label="Diterima oleh" value={<div><Blank w="w-52" value={officers.driverName} /><div>Driver</div></div>} />
+              <PartyRow
+                label="Diterima oleh"
+                value={
+                  <div>
+                    <Blank w="w-52" value={officers.driverName} />
+                    <div>Driver</div>
+                  </div>
+                }
+              />
               <PartyRow label="Nomor Telpon" value={<Blank w="w-44" />} />
             </tbody>
           </table>
@@ -296,11 +322,11 @@ export const BeritaAcaraSheetLegacy: React.FC<SheetProps> = ({ school, dayName, 
 // ---------------------------------------------------------------------------
 // LEMBAR 3: FORMULIR UJI ORGANOLEPTIK (UJI HEDONIK)
 // ---------------------------------------------------------------------------
-const HEDONIC_CODES = ['MP', 'LH', 'LN', 'S', 'B'];
-const HEDONIC_PARAMS = ['Rasa', 'Warna', 'Aroma', 'Tekstur'];
-const HEDONIC_SCALE = ['Tidak suka', 'Kurang suka', 'Sedikit suka', 'Suka', 'Sangat suka'];
+const HEDONIC_CODES = ["MP", "LH", "LN", "S", "B"];
+const HEDONIC_PARAMS = ["Rasa", "Warna", "Aroma", "Tekstur"];
+const HEDONIC_SCALE = ["Tidak suka", "Kurang suka", "Sedikit suka", "Suka", "Sangat suka"];
 
-export const UjiHedonikSheetLegacy: React.FC<SheetProps> = ({ school, longDate, kop, footer }) => (
+export const UjiHedonikSheetLegacy: React.FC<SheetProps> = ({school, longDate, kop, footer}) => (
   <div className={SHEET}>
     {kop}
     <div className="text-center font-bold uppercase text-[13px] mt-4 mb-5">Formulir Uji Organoleptik (Uji Hedonik)</div>
@@ -315,8 +341,7 @@ export const UjiHedonikSheetLegacy: React.FC<SheetProps> = ({ school, longDate, 
     <ol className="list-decimal pl-14 pr-4 space-y-1 text-[12px] leading-snug mb-5">
       <li>Dihadapan anda telah diajukan 5 macam jenis (makanan pokok, lauk hewani, lauk nabati, sayur, dan buah)</li>
       <li>
-        Nyatakan pilihan anda terhadap <b>rasa, warna, aroma dan tekstur</b> masing masing sampel dengan menuliskan angka
-        yang tertera di keterangan
+        Nyatakan pilihan anda terhadap <b>rasa, warna, aroma dan tekstur</b> masing masing sampel dengan menuliskan angka yang tertera di keterangan
       </li>
     </ol>
 
@@ -324,20 +349,26 @@ export const UjiHedonikSheetLegacy: React.FC<SheetProps> = ({ school, longDate, 
     <table className="w-full border-collapse border border-slate-800 text-[12px] mb-5">
       <thead>
         <tr className="text-center">
-          <th rowSpan={2} className={`${CELL} font-normal w-40`}>Kode</th>
-          <th colSpan={4} className={`${CELL} font-normal`}>Penilaian</th>
+          <th rowSpan={2} className={`${CELL} font-normal w-40`}>
+            Kode
+          </th>
+          <th colSpan={4} className={`${CELL} font-normal`}>
+            Penilaian
+          </th>
         </tr>
         <tr className="text-center">
-          {HEDONIC_PARAMS.map(p => (
-            <th key={p} className={`${CELL} font-normal`}>{p}</th>
+          {HEDONIC_PARAMS.map((p) => (
+            <th key={p} className={`${CELL} font-normal`}>
+              {p}
+            </th>
           ))}
         </tr>
       </thead>
       <tbody>
-        {HEDONIC_CODES.map(code => (
+        {HEDONIC_CODES.map((code) => (
           <tr key={code} className="h-8 text-center">
             <td className={CELL}>{code}</td>
-            {HEDONIC_PARAMS.map(p => (
+            {HEDONIC_PARAMS.map((p) => (
               <td key={p} className={CELL}></td>
             ))}
           </tr>
@@ -349,14 +380,16 @@ export const UjiHedonikSheetLegacy: React.FC<SheetProps> = ({ school, longDate, 
       <span>Keterangan :</span>
       <ol className="space-y-1.5">
         {HEDONIC_SCALE.map((label, i) => (
-          <li key={label}>{i + 1}.{label}</li>
+          <li key={label}>
+            {i + 1}.{label}
+          </li>
         ))}
       </ol>
     </div>
 
     <div className="text-[12px]">
       <div className="mb-3">Kritik &amp; Saran :</div>
-      {Array.from({ length: 4 }).map((_, i) => (
+      {Array.from({length: 4}).map((_, i) => (
         <div key={i} className="border-b border-dotted border-slate-700 h-7" />
       ))}
     </div>

@@ -180,7 +180,7 @@ export const FORM_CATEGORIES: FormCategoryGroup[] = [
   },
 ];
 
-const FORMS_WITH_OWN_SETTINGS: FormType[] = ['RACK_SIGN', 'PIC_HANDOVER', 'EXPENSE_RECEIPT_BATCH', 'PHOTO_DOC', 'DAILY_PO_SHEET'];
+const FORMS_WITH_OWN_SETTINGS: FormType[] = ['RACK_SIGN', 'PIC_HANDOVER', 'EXPENSE_RECEIPT_BATCH', 'PHOTO_DOC', 'DAILY_PO_SHEET', 'NONFOOD_ISSUE_FORM'];
 
 export const getCategoryForForm = (formId: FormType): FormCategory => {
   const cat = FORM_CATEGORIES.find(c => c.forms.includes(formId));
@@ -2097,7 +2097,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 </div>
               )}
             </>
-          ) : activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'PIC_HANDOVER' && activeForm !== 'EXPENSE_RECEIPT_BATCH' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' && activeForm !== 'ITEM_TAG_LABEL' ? (
+          ) : activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'PIC_HANDOVER' && activeForm !== 'EXPENSE_RECEIPT_BATCH' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'NONFOOD_ISSUE_FORM' ? (
             <div>
               <label htmlFor="print-date" className={LABEL_CLS}>{activeForm === 'SOP_STORAGE' || activeForm === 'DO_DONT_POSTER' ? 'Tanggal berlaku' : 'Tanggal dokumen'}</label>
               <input id="print-date" type="date" value={printDate} onChange={e => setPrintDate(e.target.value || localDateIso())} className={INPUT_CLS} />
@@ -3002,18 +3002,16 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           </div>
         )}
 
-        {/* Log pengambilan non-food: kolomnya sama dengan layar "Input dari form kertas" di Barang Keluar,
-            jadi penyalinan cukup baris demi baris. Daftar barang di bawah agar nama yang ditulis cocok dengan master. */}
+        {/* Log pengambilan non-food: daftar barang di bawah agar nama yang ditulis cocok dengan master. */}
         {activeForm === 'NONFOOD_ISSUE_FORM' && (
           <div className="space-y-5 text-xs">
             <DocTitle title="Form Pengambilan Barang Non-Food" subtitle="Barang operasional yang diambil dari gudang" />
-
-            <Field label="Tanggal" value={formatLongDate(printDate)} />
 
             <table className="w-full border-collapse border border-slate-300 table-print">
               <thead className="bg-slate-100 text-slate-800 font-semibold">
                 <tr>
                   <th className="border border-slate-300 p-1.5 w-8 text-center">No</th>
+                  <th className="border border-slate-300 p-1.5 text-center w-24">Tanggal</th>
                   <th className="border border-slate-300 p-1.5 text-left">Nama barang</th>
                   <th className="border border-slate-300 p-1.5 text-right w-14">Qty</th>
                   <th className="border border-slate-300 p-1.5 text-center w-16">Satuan</th>
@@ -3026,7 +3024,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 {Array.from({ length: 20 }).map((_, idx) => (
                   <tr key={idx} className="h-8">
                     <td className="border border-slate-300 p-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
-                    {Array.from({ length: 6 }).map((__, c) => (
+                    {Array.from({ length: 7 }).map((__, c) => (
                       <td key={c} className="border border-slate-300 p-1.5"></td>
                     ))}
                   </tr>

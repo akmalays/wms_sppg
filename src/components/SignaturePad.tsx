@@ -36,7 +36,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 2.5;
 
-    if (initialValue && initialValue.startsWith('data:image')) {
+    if (initialValue) {
       const img = new Image();
       img.onload = () => {
         ctx.drawImage(img, 0, 0, rect.width, rect.height);
