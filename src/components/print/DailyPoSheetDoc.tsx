@@ -8,6 +8,7 @@ import { isPendingSupplierPo, isMenuPurchaseOrder } from '../../utils/poSupplier
 import { localDateIso } from '../../utils/localDate';
 import { buildScanUrl, poReceiveCode } from '../../utils/scanCode';
 import { QrSvg } from '../common/QrSvg';
+import { DocSignatureToggle, OfficerSignatureImg } from '../common/OfficerSignatureImg';
 
 // Form PO harian: semua PO yang barangnya datang di satu tanggal (biasanya untuk menu besok), satu blok per PO.
 // Dipegang petugas saat barang datang: supplier pengirim, hasil timbang, pengirim, jam, dan tanda tangan ditulis
@@ -231,6 +232,7 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
             </tbody>
           </table>
 
+          <DocSignatureToggle doc="po-harian" />
           <div className="po-block grid grid-cols-3 gap-6 text-[11px]">
             <div className="space-y-1">
               <p className="font-semibold">Catatan:</p>
@@ -239,14 +241,14 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
             </div>
             <div className="text-center">
               <p>Diperiksa oleh,</p>
-              <p className="text-slate-600">Asisten Lapangan</p>
-              <div className="h-10" />
+              <p className="text-slate-600">Asisten Lapangan SPPG Malang Tumpang Jeru</p>
+              <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="po-harian" officer="fieldAssistantSignature" /></div>
               <p className="font-bold underline underline-offset-2">{signerName('ASLAP')}</p>
             </div>
             <div className="text-center">
               <p>Mengetahui,</p>
-              <p className="text-slate-600">Kepala SPPG</p>
-              <div className="h-10" />
+              <p className="text-slate-600">Kepala SPPG Malang Tumpang Jeru</p>
+              <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="po-harian" officer="headSignature" /></div>
               <p className="font-bold underline underline-offset-2">{signerName('KEPALA_SPPG')}</p>
             </div>
           </div>

@@ -67,6 +67,7 @@ import {
   generateAutoSku,
   getStorageLocationDetails,
 } from '../utils/skuGenerator';
+import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatureImg';
 
 interface InventoryModuleProps {
   onRefreshData?: () => void;
@@ -639,6 +640,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
 
         {/* Lembar Pengesahan Dokumen / Tanda Tangan */}
         <div className="pt-6 border-t border-slate-300 text-xs mt-8">
+          <DocSignatureToggle doc="opname" className="mb-3" />
           <div className="grid grid-cols-3 gap-6 text-center">
             <div>
               <div className="text-slate-500">Dibuat Oleh,</div>
@@ -650,7 +652,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
 
             <div>
               <div className="text-slate-500">Diverifikasi Oleh,</div>
-              <div className="font-semibold text-slate-800">Akuntan SPPG</div>
+              <div className="font-semibold text-slate-800">Akuntan SPPG Malang Tumpang Jeru</div>
               <div className="h-16 flex items-end justify-center font-bold text-slate-900">
                 ({signerName('AKUNTAN')})
               </div>
@@ -658,8 +660,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
 
             <div>
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
-              <div className="font-semibold text-slate-800">Kepala SPPG MLG TUMPANG JERU</div>
-              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+              <div className="font-semibold text-slate-800">Kepala SPPG Malang Tumpang Jeru</div>
+              <div className="h-24 flex flex-col items-center justify-end font-bold text-slate-900">
+                <OfficerSignatureImg doc="opname" officer="headSignature" className="h-16" />
                 ({signerName('KEPALA_SPPG')})
               </div>
             </div>
@@ -2425,6 +2428,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
 
               {/* Lembar Pengesahan Dokumen Opname (Tampil saat cetak) */}
               <div className="pt-6 border-t border-slate-300 text-xs mt-6 hidden print:block">
+                <DocSignatureToggle doc="opname" className="mb-3" />
                 <div className="grid grid-cols-3 gap-6 text-center">
                   <div>
                     <div className="text-slate-500">Pencatat Fisik,</div>
@@ -2436,7 +2440,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
 
                   <div>
                     <div className="text-slate-500">Diverifikasi Oleh,</div>
-                    <div className="font-semibold text-slate-800">Akuntan SPPG</div>
+                    <div className="font-semibold text-slate-800">Akuntan SPPG Malang Tumpang Jeru</div>
                     <div className="h-16 flex items-end justify-center font-bold text-slate-900">
                       ({signerName('AKUNTAN')})
                     </div>
@@ -2444,8 +2448,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
 
                   <div>
                     <div className="text-slate-500">Otorisasi / Persetujuan,</div>
-                    <div className="font-semibold text-slate-800">Kepala SPPG MLG TUMPANG JERU</div>
-                    <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                    <div className="font-semibold text-slate-800">Kepala SPPG Malang Tumpang Jeru</div>
+                    <div className="h-24 flex flex-col items-center justify-end font-bold text-slate-900">
+                      <OfficerSignatureImg doc="opname" officer="headSignature" className="h-16" />
                       ({viewingOpname.approvedByName && !viewingOpname.approvedByName.includes('Siti Rahma') ? viewingOpname.approvedByName : signerName('KEPALA_SPPG')})
                     </div>
                   </div>

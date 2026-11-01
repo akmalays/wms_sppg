@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { SppgLogo } from './SppgLogo';
 import { localDateIso } from '../utils/localDate';
+import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatureImg';
 
 export type NutritionKey = 'karbohidrat' | 'sayur' | 'protein hewani' | 'protein nabati' | 'buah';
 
@@ -751,16 +752,17 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
 
         <div className="pt-6 border-t border-slate-300 text-xs">
           {/* Penanda tangan sama dengan Form Rekapitulasi Limbah di Cetak Form */}
+          <DocSignatureToggle doc="log-limbah" className="mb-3" />
           <div className="grid grid-cols-2 gap-6 text-center">
             <div>
               <div className="text-slate-600">Mengetahui,</div>
-              <div className="font-semibold text-slate-800">Akuntan SPPG Tumpang Jeru</div>
+              <div className="font-semibold text-slate-800">Akuntan SPPG Malang Tumpang Jeru</div>
               <div className="h-16 flex items-end justify-center font-bold">({signerName('AKUNTAN')})</div>
             </div>
             <div>
               <div className="text-slate-600">Malang, {formatDate(today)}</div>
-              <div className="font-semibold text-slate-800">Asisten Lapangan</div>
-              <div className="h-16 flex items-end justify-center font-bold">({signerName('ASLAP')})</div>
+              <div className="font-semibold text-slate-800">Asisten Lapangan SPPG Malang Tumpang Jeru</div>
+              <div className="h-24 flex flex-col items-center justify-end font-bold"><OfficerSignatureImg doc="log-limbah" officer="fieldAssistantSignature" className="h-16" />({signerName('ASLAP')})</div>
             </div>
           </div>
         </div>

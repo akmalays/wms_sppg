@@ -14,9 +14,6 @@ import {
 } from 'lucide-react';
 import { MenuOrder, SchoolBeneficiaryAllocation } from '../types/warehouse';
 import logoSppgImg from '../assets/logo sppg.png';
-import ttdRizkyImg from '../assets/ttd rizky.png';
-import ttdEnoImg from '../assets/ttd eno.png';
-import ttdToniImg from '../assets/ttd toni.png';
 import {localDateIso} from "../utils/localDate";
 import { useConfirm } from '../context/ConfirmContext';
 import { BTN_PRIMARY, BTN_SECONDARY, FIELD_INPUT, FOCUS_RING, TABLE_INPUT } from './common/FormDialog';
@@ -29,6 +26,17 @@ import { SuratJalanSheetStandard, BeritaAcaraSheetStandard, UjiHedonikSheetStand
 import { SuratJalanBastSheetCompact } from './print/DeliveryDocSheetsCompact';
 import { getRomanMonth } from '../utils/poNumberGenerator';
 import { SignaturePad } from './SignaturePad';
+import {
+  DeliveryOfficerSettings,
+  SETTING_OFFICERS,
+  loadOfficers,
+  officersForPrint,
+  stripDefaultSignatures,
+  toggleSignaturePrint,
+  withDefaultSignatures,
+} from '../utils/officerSignatures';
+
+export type { DeliveryOfficerSettings };
 
 export interface ClassBreakdownItem {
   id: string;
@@ -37,83 +45,112 @@ export interface ClassBreakdownItem {
   notes?: string;
 }
 
-export interface DeliveryOfficerSettings {
-  nutritionistName: string;
-  fieldAssistantName: string;
-  headName: string;
-  /** Kosong = dicetak bergaris untuk ditulis tangan (driver bisa berganti tiap hari). */
-  driverName: string;
-  /** Jam batas makan di Berita Acara Penerimaan, mis. "11:00". */
-  consumeBefore: string;
-  /** Tanda tangan Kepala SPPG (data URL gambar), dicetak di kotak Mengetahui. */
-  headSignature?: string;
-  nutritionistSignature?: string;
-  fieldAssistantSignature?: string;
-  // Field lama, tidak lagi dicetak
-  nutritionistTitle?: string;
-  vehicleNumber?: string;
-  pickupTimeRange?: string;
+// Tanda tangan petugas: unggah foto/scan atau gambar langsung. Kosong = kotak dicetak kosong untuk tanda tangan basah.
+function OfficerSignatureField({ role, value, onChange, printed, onPrintedChange }: {
+  role: string;
+  value?: string;
+  onChange: (v: string) => void;
+  printed: boolean;
+  onPrintedChange: (printed: boolean) => void;
+}) {
+  const [isDrawing, setIsDrawing] = useState(false);
+  // Unggah atau gambar baru berarti ingin dicetak, jadi centangnya ikut dipasang.
+  const setSignature = (v: string) => {
+    onChange(v);
+    if (v) onPrintedChange(true);
+  };
+  return (
+    <div className="mt-2 space-y-2">
+      {value && (
+        <label className="flex min-h-[36px] items-center gap-2 text-[11px] font-semibold text-slate-700 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={printed}
+            onChange={e => onPrintedChange(e.target.checked)}
+            className="w-4 h-4 rounded border-slate-300 text-emerald-700 cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-600"
+          />
+          Cetak tanda tangan {role}
+        </label>
+      )}
+      {isDrawing ? (
+        <SignaturePad
+          label="Gambar tanda tangan"
+          signatoryName={role}
+          allowQuickConfirm={false}
+          onSave={data => {
+            if (data === '' || data.startsWith('data:image')) setSignature(data);
+          }}
+        />
+      ) : (
+        <div className="flex h-16 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2">
+          {value && !printed ? (
+            <span className="text-[11px] text-slate-500">Tidak dicetak. Kotaknya dikosongkan untuk tanda tangan basah.</span>
+          ) : value ? (
+            <img src={value} alt={`Tanda tangan ${role}`} className="h-14 max-w-full object-contain" />
+          ) : (
+            <span className="text-[11px] text-slate-500">Belum ada tanda tangan. Kotaknya dicetak kosong.</span>
+          )}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <label className={`${BTN_SECONDARY} cursor-pointer focus-within:ring-2 focus-within:ring-emerald-600`}>
+          Unggah gambar
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="sr-only"
+            onChange={e => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (!file) return;
+              if (file.size > 500 * 1024) {
+                window.alert('Gambar terlalu besar (maks. 500 KB). Potong atau kecilkan dulu.');
+                return;
+              }
+              const reader = new FileReader();
+              reader.onload = () => {
+                setSignature(String(reader.result || ''));
+                setIsDrawing(false);
+              };
+              reader.readAsDataURL(file);
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => setIsDrawing(d => !d)}
+          className={`min-h-[36px] px-1 text-[11px] font-semibold text-slate-700 hover:underline cursor-pointer rounded-md ${FOCUS_RING}`}
+        >
+          {isDrawing ? 'Selesai menggambar' : 'Gambar langsung'}
+        </button>
+        {value && (
+          <button
+            type="button"
+            onClick={() => {
+              onChange('');
+              setIsDrawing(false);
+            }}
+            className={`min-h-[36px] px-1 text-[11px] font-semibold text-rose-700 hover:underline cursor-pointer rounded-md ${FOCUS_RING}`}
+          >
+            Hapus
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
-
-// Nama sesuai dokumen pengiriman SPPG Malang Tumpang Jeru; bisa diubah lewat tombol Petugas.
-const DEFAULT_OFFICERS: DeliveryOfficerSettings = {
-  nutritionistName: 'Eno Shafira Ramadanti, A.md.Gz',
-  fieldAssistantName: 'Mukhammad Ali Akbar Fathoni, S.Pd',
-  headName: 'Rizky Iman Ramadhan, S.Pd.',
-  driverName: '',
-  consumeBefore: '11:00',
-};
-
-// Tanda tangan bawaan hanya dipakai selama namanya masih nama default, agar tidak tercetak di atas nama orang lain.
-// String kosong berarti sengaja dihapus. URL aset tidak disimpan karena hash-nya berubah tiap build.
-type SignatureKey = 'headSignature' | 'nutritionistSignature' | 'fieldAssistantSignature';
-type NameKey = 'headName' | 'nutritionistName' | 'fieldAssistantName';
-const DEFAULT_SIGNATURES: [SignatureKey, NameKey, string][] = [
-  ['headSignature', 'headName', ttdRizkyImg],
-  ['nutritionistSignature', 'nutritionistName', ttdEnoImg],
-  ['fieldAssistantSignature', 'fieldAssistantName', ttdToniImg],
-];
-
-const withDefaultSignatures = (o: DeliveryOfficerSettings): DeliveryOfficerSettings => {
-  const out = { ...o };
-  for (const [sig, name, img] of DEFAULT_SIGNATURES) {
-    if (out[sig] === undefined && out[name] === DEFAULT_OFFICERS[name]) out[sig] = img;
-  }
-  return out;
-};
-
-const stripDefaultSignatures = (o: DeliveryOfficerSettings): DeliveryOfficerSettings => {
-  const out = { ...o };
-  for (const [sig, , img] of DEFAULT_SIGNATURES) {
-    if (out[sig] === img) out[sig] = undefined;
-  }
-  return out;
-};
 
 // Isian kosong di dokumen cetak dibiarkan bertitik agar diisi tangan, bukan diganti tebakan.
 const BLANK = '....................';
 
 // Disimpan di tabel app_settings (lihat warehouseDb.saveAppSetting) agar sama di semua perangkat.
 const SETTING_CLASSES = 'delivery_class_breakdowns';
-const SETTING_OFFICERS = 'delivery_officers';
 const SETTING_DOC_FORMAT = 'delivery_doc_format';
 // Format ringkas: uji hedonik lewat QR di surat jalan, lembar kertasnya tidak ikut dicetak
 const SETTING_HEDONIC_QR = 'delivery_hedonic_qr';
 // RINGKAS: surat jalan dan berita acara digabung, 2 halaman per sekolah
 type DocFormat = 'STANDARD' | 'LEGACY' | 'RINGKAS';
 
-// Isian petugas yang kosong diisi dari jabatan karyawan aktif.
-const loadOfficers = (): DeliveryOfficerSettings => {
-  const saved = warehouseDb.getAppSetting<Partial<DeliveryOfficerSettings>>(SETTING_OFFICERS, {});
-  return withDefaultSignatures({
-    ...DEFAULT_OFFICERS,
-    ...saved,
-    nutritionistName: saved.nutritionistName || DEFAULT_OFFICERS.nutritionistName,
-    fieldAssistantName: saved.fieldAssistantName || DEFAULT_OFFICERS.fieldAssistantName,
-    headName: saved.headName || DEFAULT_OFFICERS.headName,
-    consumeBefore: saved.consumeBefore || DEFAULT_OFFICERS.consumeBefore,
-  });
-};
 
 // Baris kelas bawaan di surat jalan, mengikuti format kertas SPPG (Kelompok A/B, Guru dan Tendik, PIC).
 export function defaultClassNames(category: string, schoolName: string): string[] {
@@ -730,6 +767,13 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                   placeholder="Nama lengkap & gelar"
                 />
                 <p className="mt-0.5 text-[11px] text-slate-500">Tanda tangan "Diperiksa oleh" di surat jalan.</p>
+                <OfficerSignatureField
+                  role="Ahli Gizi SPPG"
+                  value={officerDraft.nutritionistSignature}
+                  onChange={v => setOfficerDraft(prev => ({ ...prev, nutritionistSignature: v }))}
+                  printed={!officerDraft.hiddenSignatures?.includes('nutritionistSignature')}
+                  onPrintedChange={p => setOfficerDraft(prev => toggleSignaturePrint(prev, 'nutritionistSignature', p))}
+                />
               </div>
               <div>
                 <label htmlFor="officer-fieldAssistantName" className="block font-semibold text-slate-700 mb-1">Asisten Lapangan</label>
@@ -742,6 +786,13 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                   placeholder="Nama lengkap & gelar"
                 />
                 <p className="mt-0.5 text-[11px] text-slate-500">Tanda tangan "Diperiksa oleh" di surat jalan.</p>
+                <OfficerSignatureField
+                  role="Asisten Lapangan"
+                  value={officerDraft.fieldAssistantSignature}
+                  onChange={v => setOfficerDraft(prev => ({ ...prev, fieldAssistantSignature: v }))}
+                  printed={!officerDraft.hiddenSignatures?.includes('fieldAssistantSignature')}
+                  onPrintedChange={p => setOfficerDraft(prev => toggleSignaturePrint(prev, 'fieldAssistantSignature', p))}
+                />
               </div>
               <div>
                 <label htmlFor="officer-headName" className="block font-semibold text-slate-700 mb-1">Kepala SPPG</label>
@@ -754,54 +805,18 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                   placeholder="Nama lengkap & gelar"
                 />
                 <p className="mt-0.5 text-[11px] text-slate-500">Kotak "Mengetahui" di berita acara.</p>
-              </div>
-
-              {/* Tanda tangan Kepala SPPG: digambar langsung atau unggah foto/scan tanda tangan */}
-              <div className="space-y-2">
-                <SignaturePad
-                  label="Tanda tangan Kepala SPPG"
-                  signatoryName={officerDraft.headName || 'Kepala SPPG'}
-                  initialValue={officerDraft.headSignature}
-                  onSave={data => setOfficerDraft(prev => ({ ...prev, headSignature: data.startsWith('data:image') ? data : '' }))}
+                <OfficerSignatureField
+                  role="Kepala SPPG"
+                  value={officerDraft.headSignature}
+                  onChange={v => setOfficerDraft(prev => ({ ...prev, headSignature: v }))}
+                  printed={!officerDraft.hiddenSignatures?.includes('headSignature')}
+                  onPrintedChange={p => setOfficerDraft(prev => toggleSignaturePrint(prev, 'headSignature', p))}
                 />
-                <div className="flex flex-wrap items-center gap-2">
-                  <label className={`${BTN_SECONDARY} cursor-pointer`}>
-                    Unggah gambar tanda tangan
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      className="sr-only"
-                      onChange={e => {
-                        const file = e.target.files?.[0];
-                        e.target.value = '';
-                        if (!file) return;
-                        if (file.size > 500 * 1024) {
-                          window.alert('Gambar terlalu besar (maks. 500 KB). Potong atau kecilkan dulu.');
-                          return;
-                        }
-                        const reader = new FileReader();
-                        reader.onload = () => setOfficerDraft(prev => ({ ...prev, headSignature: String(reader.result || '') }));
-                        reader.readAsDataURL(file);
-                      }}
-                    />
-                  </label>
-                  {officerDraft.headSignature && (
-                    <>
-                      <img src={officerDraft.headSignature} alt="Pratinjau tanda tangan" className="h-10 object-contain border border-slate-200 rounded bg-white px-1" />
-                      <button
-                        type="button"
-                        onClick={() => setOfficerDraft(prev => ({ ...prev, headSignature: '' }))}
-                        className="text-[11px] font-semibold text-rose-700 hover:underline cursor-pointer"
-                      >
-                        Hapus tanda tangan
-                      </button>
-                    </>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Paling rapi memakai foto tanda tangan di kertas putih (PNG latar transparan lebih baik). Dicetak di kotak Mengetahui.
-                </p>
               </div>
+              <p className="text-[11px] text-slate-500">
+                Centang di sini hanya untuk dokumen pengiriman. Dokumen lain (PO, opname, dan lainnya) memakai gambar yang sama, dengan centang tanda tangan sendiri di tiap dokumen.
+                Gambar paling rapi dari foto di kertas putih (PNG latar transparan lebih baik), maks. 500 KB.
+              </p>
               <div>
                 <label htmlFor="officer-driverName" className="block font-semibold text-slate-700 mb-1">Driver</label>
                 <input
@@ -1206,7 +1221,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                           shortDate: shortDocDate(selectedDate),
                           longDate: formatIndonesianDate(selectedDate),
                           totalPortions: dailyP,
-                          officers: officerSettings,
+                          officers: officersForPrint(officerSettings),
                           kop: <DeliveryKop />,
                         };
                         const isStd = docFormat === 'STANDARD';

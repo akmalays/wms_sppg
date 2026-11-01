@@ -27,6 +27,7 @@ import {
   EyeOff,
   Users,
 } from 'lucide-react';
+import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatureImg';
 
 export interface ProfileModuleProps {
   onNavigate?: (tab: string) => void;
@@ -722,6 +723,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
               <strong className="text-slate-900">Pernyataan:</strong> butir tugas di atas telah diperiksa dan dikerjakan sesuai penugasan operasional harian SPPG.
             </p>
 
+            <DocSignatureToggle doc="laporan-tugas" />
             <div className="grid grid-cols-2 gap-8 pt-4 text-center text-xs">
               <div>
                 <p className="text-slate-600">Petugas yang memeriksa,</p>
@@ -731,9 +733,9 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
               </div>
               <div>
                 <p className="text-slate-600">Mengetahui & menyetujui,</p>
-                <div className="h-16" />
+                <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="laporan-tugas" officer="headSignature" /></div>
                 <p className="font-bold text-slate-900 underline">{signerName('KEPALA_SPPG')}</p>
-                <p className="text-[11px] text-slate-600">Kepala SPPG</p>
+                <p className="text-[11px] text-slate-600">Kepala SPPG Malang Tumpang Jeru</p>
               </div>
             </div>
           </div>

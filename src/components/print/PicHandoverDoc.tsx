@@ -23,6 +23,7 @@ import {
 import { signerName } from '../../db/storage';
 import ttdKepalaImg from '../../assets/ttd rizky rapat.png';
 import ttdAkuntanImg from '../../assets/ttd alfiana.png';
+import { OfficerSignatureImg } from '../common/OfficerSignatureImg';
 
 // Kuitansi serah terima insentif PIC sekolah, dibuat massal dari file Excel "Daftar Penerima PIC".
 // File hanya dibaca di browser (tidak diunggah). Kolom dikenali dari judulnya (urutan bebas) dan bisa dipilih manual.
@@ -230,7 +231,7 @@ export const PicHandoverDoc: React.FC<PicHandoverDocProps> = ({ onCountChange })
       <div className="mt-auto pt-3 grid grid-cols-3 gap-3 text-center text-[11px]">
         <div>
           <p>Yang Menyerahkan,</p>
-          <p className="text-slate-600">Akuntan SPPG</p>
+          <p className="text-slate-600">Akuntan SPPG Malang Tumpang Jeru</p>
           <div className="h-16 flex items-center justify-center">
             {withSignatures && <img src={ttdAkuntanImg} alt="Tanda tangan Akuntan" className="h-14 w-auto object-contain" />}
           </div>
@@ -244,9 +245,9 @@ export const PicHandoverDoc: React.FC<PicHandoverDocProps> = ({ onCountChange })
         </div>
         <div>
           <p>Mengetahui,</p>
-          <p className="text-slate-600">Kepala SPPG</p>
+          <p className="text-slate-600">Kepala SPPG Malang Tumpang Jeru</p>
           <div className="h-16 flex items-center justify-center">
-            {withSignatures && <img src={ttdKepalaImg} alt="Tanda tangan Kepala SPPG" className="h-16 w-auto object-contain" />}
+            {withSignatures && <OfficerSignatureImg officer="headSignature" className="h-16" defaultVariant={ttdKepalaImg} />}
           </div>
           <p className="font-bold underline underline-offset-2">{head}</p>
         </div>
@@ -430,7 +431,7 @@ export const PicHandoverDoc: React.FC<PicHandoverDocProps> = ({ onCountChange })
               <div className="mt-6 grid grid-cols-2 gap-6 text-center text-[11px]">
                 <div>
                   <p>Yang Menyerahkan,</p>
-                  <p className="text-slate-600">Akuntan SPPG</p>
+                  <p className="text-slate-600">Akuntan SPPG Malang Tumpang Jeru</p>
                   <div className="h-20 flex items-center justify-center">
                     {withSignatures && <img src={ttdAkuntanImg} alt="Tanda tangan Akuntan" className="h-16 w-auto object-contain" />}
                   </div>
@@ -438,9 +439,9 @@ export const PicHandoverDoc: React.FC<PicHandoverDocProps> = ({ onCountChange })
                 </div>
                 <div>
                   <p>Mengetahui,</p>
-                  <p className="text-slate-600">Kepala SPPG</p>
+                  <p className="text-slate-600">Kepala SPPG Malang Tumpang Jeru</p>
                   <div className="h-20 flex items-center justify-center">
-                    {withSignatures && <img src={ttdKepalaImg} alt="Tanda tangan Kepala SPPG" className="h-20 w-auto object-contain" />}
+                    {withSignatures && <OfficerSignatureImg officer="headSignature" className="h-20" defaultVariant={ttdKepalaImg} />}
                   </div>
                   <p className="font-bold underline underline-offset-2">{head}</p>
                 </div>

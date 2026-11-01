@@ -56,6 +56,7 @@ import { AttendancePosterDialog, AttendancePosterSheet, useAttendanceQr } from '
 import { AttendanceGeofence, GEOFENCE_SETTING_KEY, isValidGeofence } from '../utils/attendanceAction';
 import { BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST, FIELD_INPUT, FIELD_LABEL, TABLE_INPUT, DialogShell, FormDialog } from './common/FormDialog';
 import { WORK_SECTIONS, FLEXIBLE_SCHEDULE, parseSchedule, formatSchedule, lateMinutesFor, formatDuration } from '../utils/attendanceSchedule';
+import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatureImg';
 
 // Bagian kerja SPPG. Data lama dengan departemen lain tetap tampil apa adanya.
 const DEPARTMENTS: EmployeeDepartment[] = [...WORK_SECTIONS];
@@ -1329,6 +1330,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
 
         {/* Lembar Pengesahan Dokumen / Tanda Tangan */}
         <div className="pt-6 border-t border-slate-300 text-xs mt-8 print:mt-6">
+          <DocSignatureToggle doc="absensi" className="mb-3" />
           <div className="grid grid-cols-3 gap-6 text-center">
             <div>
               <div className="text-slate-500">Dibuat Oleh,</div>
@@ -1348,8 +1350,9 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
 
             <div>
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
-              <div className="font-semibold text-slate-800">Kepala SPPG Tumpang Jeru</div>
-              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+              <div className="font-semibold text-slate-800">Kepala SPPG Malang Tumpang Jeru</div>
+              <div className="h-24 flex flex-col items-center justify-end font-bold text-slate-900">
+                <OfficerSignatureImg doc="absensi" officer="headSignature" className="h-16" />
                 ({signerName('KEPALA_SPPG')})
               </div>
             </div>
@@ -1546,6 +1549,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
 
         {/* Lembar Pengesahan Dokumen / Tanda Tangan */}
         <div className="pt-6 border-t border-slate-300 text-xs mt-8 print:mt-6">
+          <DocSignatureToggle doc="absensi" className="mb-3" />
           <div className="grid grid-cols-3 gap-6 text-center">
             <div>
               <div className="text-slate-500">Dibuat Oleh,</div>
@@ -1565,8 +1569,9 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
 
             <div>
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
-              <div className="font-semibold text-slate-800">Kepala SPPG Tumpang Jeru</div>
-              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+              <div className="font-semibold text-slate-800">Kepala SPPG Malang Tumpang Jeru</div>
+              <div className="h-24 flex flex-col items-center justify-end font-bold text-slate-900">
+                <OfficerSignatureImg doc="absensi" officer="headSignature" className="h-16" />
                 ({signerName('KEPALA_SPPG')})
               </div>
             </div>

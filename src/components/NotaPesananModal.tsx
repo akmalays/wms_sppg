@@ -11,7 +11,6 @@ import {
   User,
 } from '../types/warehouse';
 import logoSppgImg from '../assets/logo sppg.png';
-import ttdRizkyImg from '../assets/ttd rizky.png';
 import { buildItemReference } from '../utils/itemReference';
 import { normalizeToStandardCategory } from '../utils/categoryStandards';
 import { poNumberForDate } from '../utils/poNumberGenerator';
@@ -20,6 +19,7 @@ import { useToast } from '../context/ToastContext';
 import { warehouseDb } from '../db/storage';
 import { normalizeQtyForUnit } from '../utils/unitConversion';
 import { isMenuPurchaseOrder } from '../utils/poSupplier';
+import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatureImg';
 
 export interface NotaPesananModalProps {
   isOpen: boolean;
@@ -736,13 +736,9 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                 />
               </div>
 
-              {/* TTD Rizky (Default Signature Image) */}
-              <div className={`my-0.5 ${isCompact ? 'h-16 sm:h-18' : 'h-24 sm:h-28'} flex items-center justify-center`}>
-                <img
-                  src={ttdRizkyImg}
-                  alt="Tanda Tangan Rizky"
-                  className={`${isCompact ? 'h-16 sm:h-18' : 'h-24 sm:h-28'} w-auto object-contain`}
-                />
+              {/* Tanda tangan Kepala SPPG, mengikuti centang di modal Petugas */}
+              <div className={`my-0.5 ${isCompact ? 'h-20' : 'h-24 sm:h-28'} flex items-center justify-center`}>
+                <OfficerSignatureImg doc="po-nota" officer="headSignature" className={isCompact ? 'h-20' : 'h-24 sm:h-28'} />
               </div>
 
               {/* Nama Penandatangan Bergaris Bawah */}
@@ -975,6 +971,8 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                     Harga dan tanggal masih bisa diubah di sini.
                   </p>
                 )}
+
+                <DocSignatureToggle doc="po-nota" />
 
                 {/* Primary CTA: Cetak Dokumen PO */}
                 <button

@@ -6,6 +6,8 @@ interface SignaturePadProps {
   initialValue?: string;
   onSave: (signatureData: string) => void;
   readOnly?: boolean;
+  /** false = sembunyikan "Cukup konfirmasi nama" bila hanya gambar yang dipakai. */
+  allowQuickConfirm?: boolean;
 }
 
 export const SignaturePad: React.FC<SignaturePadProps> = ({
@@ -14,6 +16,7 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
   initialValue,
   onSave,
   readOnly = false,
+  allowQuickConfirm = true,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -174,13 +177,13 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
           >
             Hapus
           </button>
-          <button
+          {allowQuickConfirm && <button
             type="button"
             onClick={handleQuickConfirm}
             className="min-h-[36px] px-2 -mr-2 text-[11px] font-semibold text-emerald-800 hover:underline cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
           >
             Cukup konfirmasi nama
-          </button>
+          </button>}
         </div>
       )}
     </div>

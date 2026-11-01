@@ -4,6 +4,7 @@ import { KopText } from '../common/KopText';
 import { signerName } from '../../db/storage';
 import { PurchaseRequest, purchaseRequestTotal } from '../../utils/purchaseRequests';
 import { angkaTerbilang } from '../../utils/numberToWords';
+import { DocSignatureToggle, OfficerSignatureImg } from '../common/OfficerSignatureImg';
 
 const formatLongDate = (iso: string) => {
   const [y, m, d] = (iso || '').split('-').map(Number);
@@ -108,16 +109,19 @@ export const PurchaseRequestDoc: React.FC<{ request: PurchaseRequest }> = ({ req
         <span className="block border-b border-dotted border-slate-400 h-4" />
       </div>
 
+      <DocSignatureToggle doc="purchase-request" />
       <div className="grid grid-cols-3 gap-6 pt-2 text-center text-[11px] break-inside-avoid">
         {[
           { top: 'Diminta oleh,', role: 'Admin Gudang', name: request.requestedBy },
-          { top: 'Diperiksa oleh,', role: 'Akuntan / Pembelian', name: signerName('AKUNTAN') },
-          { top: 'Disetujui oleh,', role: 'Kepala SPPG', name: signerName('KEPALA_SPPG') },
+          { top: 'Diperiksa oleh,', role: 'Akuntan SPPG Malang Tumpang Jeru', name: signerName('AKUNTAN') },
+          { top: 'Disetujui oleh,', role: 'Kepala SPPG Malang Tumpang Jeru', name: signerName('KEPALA_SPPG'), officer: 'headSignature' as const },
         ].map(sg => (
           <div key={sg.role}>
             <p>{sg.top}</p>
             <p className="text-slate-600">{sg.role}</p>
-            <div className="h-14" />
+            <div className="h-20 flex items-center justify-center">
+              {'officer' in sg && sg.officer && <OfficerSignatureImg doc="purchase-request" officer={sg.officer} />}
+            </div>
             <p className="font-bold underline underline-offset-2">{sg.name}</p>
           </div>
         ))}

@@ -14,8 +14,8 @@ import {
 import { PurchaseOrderNota } from '../types/warehouse';
 import { warehouseDb, signerName } from '../db/storage';
 import logoSppgImg from '../assets/logo sppg.png';
-import ttdRizkyImg from '../assets/ttd rizky.png';
 import { deliveryTimeNoteFor } from '../utils/notaDelivery';
+import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatureImg';
 
 export interface BatchPrintNotaModalProps {
   isOpen: boolean;
@@ -350,15 +350,11 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
                 Malang, {displaySignDate}
               </div>
               <div className="font-bold text-black mt-0.5 leading-tight text-[9px]">
-                <div>Kepala Satuan Pelayanan</div>
-                <div>Pemenuhan Gizi</div>
+                <div>Kepala SPPG</div>
+                <div>Malang Tumpang Jeru</div>
               </div>
-              <div className="my-0.5 h-14 sm:h-16 flex items-center justify-center">
-                <img
-                  src={ttdRizkyImg}
-                  alt="Tanda Tangan Rizky"
-                  className="h-14 sm:h-16 w-auto object-contain"
-                />
+              <div className="my-0.5 h-20 flex items-center justify-center">
+                <OfficerSignatureImg doc="po-nota" officer="headSignature" className="h-20" />
               </div>
               <div className="mt-0.5 font-bold text-black underline underline-offset-2 text-[10px]">
                 {displaySignerName}
@@ -537,6 +533,8 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
                 Kosongkan Pool
               </button>
             )}
+
+            <DocSignatureToggle doc="po-nota" />
 
             <button
               type="button"

@@ -47,6 +47,7 @@ import {DateStepper} from "./common/DateStepper";
 import {SppgLogo} from "./SppgLogo";
 import {DeliveryNotesSubModule} from "./DeliveryNotesSubModule";
 import {PoEditModal} from "./PoEditModal";
+import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatureImg';
 
 const PO_UNIT_OPTIONS = ["Kg", "Gram", "Liter", "Pcs", "Pack", "Dus", "Ikat", "Butir", "Roll", "Botol", "Jerigen", "Pouch", "Rim"];
 
@@ -4978,20 +4979,23 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                 </table>
 
                 {/* Signature Block */}
+                <DocSignatureToggle doc="rekap-porsi" className="mt-6" />
                 <div className="mt-8 grid grid-cols-2 text-center text-xs pt-4 border-t border-slate-200">
-                  <div className="space-y-12">
+                  <div>
                     <div>
                       <div className="text-slate-500 text-[11px]">Mengetahui,</div>
-                      <div className="font-semibold text-slate-800">Kepala SPPG</div>
+                      <div className="font-semibold text-slate-800">Kepala SPPG Malang Tumpang Jeru</div>
                     </div>
+                    <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="rekap-porsi" officer="headSignature" /></div>
                     <div className="font-bold underline text-slate-900">( {signerName("KEPALA_SPPG")} )</div>
                   </div>
 
-                  <div className="space-y-12">
+                  <div>
                     <div>
                       <div className="text-slate-500 text-[11px]">Dibuat oleh,</div>
-                      <div className="font-semibold text-slate-800">Asisten Lapangan</div>
+                      <div className="font-semibold text-slate-800">Asisten Lapangan SPPG Malang Tumpang Jeru</div>
                     </div>
+                    <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="rekap-porsi" officer="fieldAssistantSignature" /></div>
                     <div className="font-bold underline text-slate-900">( {signerName("ASLAP")} )</div>
                   </div>
                 </div>

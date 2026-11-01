@@ -21,6 +21,7 @@ import { PhotoDocSheet } from './print/PhotoDocSheet';
 import { PicHandoverDoc } from './print/PicHandoverDoc';
 import { ExpenseReceiptDoc } from './print/ExpenseReceiptDoc';
 import { DailyPoSheetDoc } from './print/DailyPoSheetDoc';
+import { SalarySlipDoc } from './print/SalarySlipDoc';
 import {
   Printer,
   FileText,
@@ -59,8 +60,10 @@ import { ReceivingDocument, ItemMaster, EquipmentItem, Supplier, normalizeItemCa
 import { SppgLogo } from './SppgLogo';
 import { QrSvg } from './common/QrSvg';
 import { localDateIso } from '../utils/localDate';
+import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatureImg';
+import type { SignatureDoc, SignatureKey } from '../utils/officerSignatures';
 
-export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'NONFOOD_ISSUE_FORM' | 'WASTE_RECAP_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'RACK_SIGN' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE' | 'DO_DONT_POSTER' | 'PHOTO_DOC' | 'PIC_HANDOVER' | 'EXPENSE_RECEIPT_BATCH' | 'DAILY_PO_SHEET';
+export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'NONFOOD_ISSUE_FORM' | 'WASTE_RECAP_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'RACK_SIGN' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE' | 'DO_DONT_POSTER' | 'PHOTO_DOC' | 'PIC_HANDOVER' | 'EXPENSE_RECEIPT_BATCH' | 'SALARY_SLIP' | 'DAILY_PO_SHEET';
 
 export interface ItemTagData {
   uniqueKey: string;
@@ -116,6 +119,7 @@ const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
   { id: 'RACK_SIGN', label: 'Papan Nama Rak & Kategori', hint: 'Papan nama huruf besar untuk rak dan kategori barang, terbaca dari jauh. Pasang di atas rak; plakat rak tetap di samping setinggi mata.' },
   { id: 'PIC_HANDOVER', label: 'Serah Terima Insentif PIC', hint: 'Kuitansi serah terima insentif PIC sekolah, dibuat sekaligus dari file Excel daftar penerima. File tidak diunggah atau disimpan.' },
   { id: 'EXPENSE_RECEIPT_BATCH', label: 'Kuitansi Pengeluaran', hint: 'Kuitansi pengeluaran dadakan (No. .../KULBanPer/bulan/tahun), dibuat sekaligus dari file Excel kuitansi. File tidak diunggah atau disimpan.' },
+  { id: 'SALARY_SLIP', label: 'Slip Gaji', hint: 'Slip gaji per orang dari file Excel daftar gaji: honor harian, tunjangan, potongan, dan total diterima. Dicetak 2 sampai 4 slip per A4 dengan garis potong. File tidak diunggah atau disimpan.' },
   { id: 'PHOTO_DOC', label: 'Dokumentasi Foto', hint: 'Foto dokumentasi untuk laporan berkala, ditata otomatis 4 sampai 9 foto per lembar A4 dengan kop dan judul di tiap lembar. Foto tidak diunggah atau disimpan.' },
   { id: 'SUPPLIER_EXPENSE_NOTE', label: 'Nota Kas Keluar', hint: 'Bukti pembayaran ke supplier dengan tanda tangan.' },
   { id: 'SOP_STORAGE', label: 'SOP Gudang', hint: 'SOP penanganan bahan di gudang kering, non-food, chiller, freezer, sisa bahan dari dapur, area krat, serta pemakaian APD di dapur.' },
@@ -155,6 +159,7 @@ export const FORM_CATEGORIES: FormCategoryGroup[] = [
       'SUPPLIER_EXPENSE_NOTE',
       'PIC_HANDOVER',
       'EXPENSE_RECEIPT_BATCH',
+      'SALARY_SLIP',
       'PHOTO_DOC',
     ],
   },
@@ -180,7 +185,7 @@ export const FORM_CATEGORIES: FormCategoryGroup[] = [
   },
 ];
 
-const FORMS_WITH_OWN_SETTINGS: FormType[] = ['RACK_SIGN', 'PIC_HANDOVER', 'EXPENSE_RECEIPT_BATCH', 'PHOTO_DOC', 'DAILY_PO_SHEET', 'NONFOOD_ISSUE_FORM'];
+const FORMS_WITH_OWN_SETTINGS: FormType[] = ['RACK_SIGN', 'PIC_HANDOVER', 'EXPENSE_RECEIPT_BATCH', 'SALARY_SLIP', 'PHOTO_DOC', 'DAILY_PO_SHEET', 'NONFOOD_ISSUE_FORM'];
 
 export const getCategoryForForm = (formId: FormType): FormCategory => {
   const cat = FORM_CATEGORIES.find(c => c.forms.includes(formId));
@@ -227,11 +232,13 @@ const Field: React.FC<{ label: string; value?: string; blank?: string; mono?: bo
   </div>
 );
 
-const SignBox: React.FC<{ role: string; name?: string; signature?: string }> = ({ role, name, signature }) => (
+const SignBox: React.FC<{ role: string; name?: string; signature?: string; officer?: SignatureKey; doc?: SignatureDoc }> = ({ role, name, signature, officer, doc }) => (
   <div className="text-center text-xs">
-    <p className="text-slate-700">{role}</p>
-    <div className="h-16 flex items-center justify-center">
+    {/* Tinggi 2 baris agar garis tanda tangan sejajar walau nama jabatan panjang */}
+    <p className="min-h-8 text-slate-700">{role}</p>
+    <div className="h-20 flex items-center justify-center">
       {signature?.startsWith('data:image') && <img src={signature} alt={`Tanda tangan ${role}`} className="max-h-14 object-contain" />}
+      {officer && doc && <OfficerSignatureImg doc={doc} officer={officer} />}
     </div>
     <div className="border-t border-slate-500 mx-auto w-40 pt-1 font-semibold text-slate-900">
       {name || <span className="text-slate-400 font-normal">( {BLANK} )</span>}
@@ -561,6 +568,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const [photoPageCount, setPhotoPageCount] = useState(0);
   const [picReceiptCount, setPicReceiptCount] = useState(0);
   const [expenseReceiptCount, setExpenseReceiptCount] = useState(0);
+  const [salarySlipCount, setSalarySlipCount] = useState(0);
   const [poSheetCount, setPoSheetCount] = useState(0);
   const [wasteMonth, setWasteMonth] = useState<string>(() => localDateIso().slice(0, 7));
   const [wasteDateMode, setWasteDateMode] = useState<'AUTO' | 'BLANK'>('AUTO');
@@ -1877,6 +1885,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       ? picReceiptCount
       : activeForm === 'EXPENSE_RECEIPT_BATCH'
       ? expenseReceiptCount
+      : activeForm === 'SALARY_SLIP'
+      ? salarySlipCount
       : activeForm === 'DAILY_PO_SHEET'
       ? poSheetCount
       : null;
@@ -1989,7 +1999,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             className="inline-flex items-center justify-center gap-2 px-4 min-h-[44px] sm:min-h-[36px] rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
           >
             <Printer className="w-4 h-4" />
-            {printCount === null ? 'Cetak' : `Cetak ${printCount} ${activeForm === 'DAILY_PO_SHEET' ? 'form' : activeForm === 'PIC_HANDOVER' ? 'kuitansi' : activeForm === 'EXPENSE_RECEIPT_BATCH' ? 'kuitansi' : activeForm === 'PHOTO_DOC' ? 'lembar' : activeForm === 'RACK_SIGN' ? 'papan nama' : activeForm === 'RACK_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'plakat' : activeForm === 'ITEM_TAG_LABEL' ? 'tag' : 'label'}`}
+            {printCount === null ? 'Cetak' : `Cetak ${printCount} ${activeForm === 'DAILY_PO_SHEET' ? 'form' : activeForm === 'PIC_HANDOVER' ? 'kuitansi' : activeForm === 'EXPENSE_RECEIPT_BATCH' ? 'kuitansi' : activeForm === 'SALARY_SLIP' ? 'slip' : activeForm === 'PHOTO_DOC' ? 'lembar' : activeForm === 'RACK_SIGN' ? 'papan nama' : activeForm === 'RACK_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'plakat' : activeForm === 'ITEM_TAG_LABEL' ? 'tag' : 'label'}`}
           </button>
         </div>
 
@@ -2097,7 +2107,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 </div>
               )}
             </>
-          ) : activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'PIC_HANDOVER' && activeForm !== 'EXPENSE_RECEIPT_BATCH' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'NONFOOD_ISSUE_FORM' ? (
+          ) : activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'PIC_HANDOVER' && activeForm !== 'EXPENSE_RECEIPT_BATCH' && activeForm !== 'SALARY_SLIP' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'NONFOOD_ISSUE_FORM' ? (
             <div>
               <label htmlFor="print-date" className={LABEL_CLS}>{activeForm === 'SOP_STORAGE' || activeForm === 'DO_DONT_POSTER' ? 'Tanggal berlaku' : 'Tanggal dokumen'}</label>
               <input id="print-date" type="date" value={printDate} onChange={e => setPrintDate(e.target.value || localDateIso())} className={INPUT_CLS} />
@@ -2755,11 +2765,11 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       <div
         id="print-area"
         className={`bg-white rounded-xl border border-slate-200 max-w-4xl mx-auto font-sans text-slate-900 overflow-x-auto ${
-          activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' || activeForm === 'RACK_SIGN' || activeForm === 'PHOTO_DOC' || activeForm === 'PIC_HANDOVER' || activeForm === 'EXPENSE_RECEIPT_BATCH' || activeForm === 'DAILY_PO_SHEET' || activeForm === 'ITEM_TAG_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'p-4 sm:p-6' : 'p-5 sm:p-10'
+          activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' || activeForm === 'RACK_SIGN' || activeForm === 'PHOTO_DOC' || activeForm === 'PIC_HANDOVER' || activeForm === 'EXPENSE_RECEIPT_BATCH' || activeForm === 'SALARY_SLIP' || activeForm === 'DAILY_PO_SHEET' || activeForm === 'ITEM_TAG_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'p-4 sm:p-6' : 'p-5 sm:p-10'
         }`}
       >
         {/* Kop dokumen, sama dengan Laporan Pengeluaran. Label dan plakat dicetak tanpa kop; SOP memasang kop di tiap lembarnya. */}
-        {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'PIC_HANDOVER' && activeForm !== 'EXPENSE_RECEIPT_BATCH' && activeForm !== 'DAILY_PO_SHEET' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'SOP_STORAGE' && activeForm !== 'DO_DONT_POSTER' && (
+        {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'PIC_HANDOVER' && activeForm !== 'EXPENSE_RECEIPT_BATCH' && activeForm !== 'SALARY_SLIP' && activeForm !== 'DAILY_PO_SHEET' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'SOP_STORAGE' && activeForm !== 'DO_DONT_POSTER' && (
           <div className="border-b-2 border-slate-900 pb-3 mb-5 flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
               <SppgLogo size="lg" variant="color" showText={false} />
@@ -2993,10 +3003,11 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               </tbody>
             </table>
 
+            <DocSignatureToggle doc="permintaan-bahan" />
             <div className="grid grid-cols-3 gap-6 pt-2">
               <SignBox role="Diminta (dapur)" name={kitchenPic || undefined} />
               <SignBox role="Diserahkan (gudang)" name={currentUser?.name} />
-              <SignBox role="Mengetahui (Kepala SPPG)" name={headOfficeName || undefined} />
+              <SignBox role="Mengetahui (Kepala SPPG Malang Tumpang Jeru)" name={headOfficeName || undefined} officer="headSignature" doc="permintaan-bahan" />
             </div>
           </div>
         )}
@@ -3152,15 +3163,18 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             </div>
 
             {/* Susunan tanda tangan mengikuti form limbah yang biasa dipakai: keterangan, jabatan, ruang ttd, nama */}
+            <DocSignatureToggle doc="rekap-limbah" />
             <div className="grid grid-cols-2 gap-6 pt-2 text-center text-xs break-inside-avoid">
               {[
-                { top: 'Mengetahui,', role: 'Akuntan SPPG Tumpang Jeru', name: warehouseDb.getSignerName('AKUNTAN') },
-                { top: `Malang, ${BLANK.slice(0, 20)}`, role: 'Asisten Lapangan', name: warehouseDb.getSignerName('ASLAP') },
+                { top: 'Mengetahui,', role: 'Akuntan SPPG Malang Tumpang Jeru', name: warehouseDb.getSignerName('AKUNTAN') },
+                { top: `Malang, ${BLANK.slice(0, 20)}`, role: 'Asisten Lapangan SPPG Malang Tumpang Jeru', name: warehouseDb.getSignerName('ASLAP'), officer: 'fieldAssistantSignature' as const },
               ].map(sg => (
                 <div key={sg.role}>
                   <p className="text-slate-800">{sg.top}</p>
                   <p className="text-slate-800">{sg.role}</p>
-                  <div className="h-16" />
+                  <div className="h-20 flex items-center justify-center">
+                    {'officer' in sg && sg.officer && <OfficerSignatureImg doc="rekap-limbah" officer={sg.officer} />}
+                  </div>
                   <p className="font-semibold text-slate-900">({sg.name || BLANK})</p>
                 </div>
               ))}
@@ -3173,6 +3187,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
         {activeForm === 'PIC_HANDOVER' && <PicHandoverDoc onCountChange={setPicReceiptCount} />}
 
         {activeForm === 'EXPENSE_RECEIPT_BATCH' && <ExpenseReceiptDoc onCountChange={setExpenseReceiptCount} />}
+
+        {activeForm === 'SALARY_SLIP' && <SalarySlipDoc onCountChange={setSalarySlipCount} />}
 
         {activeForm === 'DAILY_PO_SHEET' && <DailyPoSheetDoc initialDate={initialDate} onCountChange={setPoSheetCount} />}
 
@@ -3812,11 +3828,12 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               </p>
             )}
 
+            <DocSignatureToggle doc="bukti-belanja" />
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 pt-2">
               <SignBox role="Penerima (supplier)" name={selectedSupplier.contactPerson || selectedSupplier.name || undefined} />
               <SignBox role="Bendahara" name={expensePicTreasurer || undefined} />
               <SignBox role="Pemeriksa barang" name={expensePicVerifier || undefined} />
-              <SignBox role="Menyetujui (Kepala SPPG)" name={expensePicApprover || undefined} />
+              <SignBox role="Menyetujui (Kepala SPPG Malang Tumpang Jeru)" name={expensePicApprover || undefined} officer="headSignature" doc="bukti-belanja" />
             </div>
           </div>
         )}

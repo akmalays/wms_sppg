@@ -5,6 +5,7 @@ import { SppgLogo } from '../SppgLogo';
 import { KopText } from '../common/KopText';
 import { warehouseDb } from '../../db/storage';
 import { SopPlace, SopDefinition, SOPS, APD_BY_SECTION } from './sopGudangContent';
+import { DocSignatureToggle, OfficerSignatureImg } from '../common/OfficerSignatureImg';
 
 export { SOP_PLACE_OPTIONS } from './sopGudangContent';
 export type { SopPlace } from './sopGudangContent';
@@ -21,8 +22,8 @@ interface SopGudangDocProps {
 
 // Nama diambil dari data Karyawan (lengkap dengan gelar), sama dengan dokumen cetak lain.
 const signers = () => [
-  { label: 'Disusun oleh', role: 'Asisten Lapangan', name: warehouseDb.getSignerName('ASLAP') || 'M. Ali Akbar Fathoni, S.Pd.' },
-  { label: 'Diperiksa oleh', role: 'Akuntan', name: warehouseDb.getSignerName('AKUNTAN') || 'Alfiana Viransa, S.Tr.Ak.' },
+  { label: 'Disusun oleh', role: 'Asisten Lapangan SPPG Malang Tumpang Jeru', name: warehouseDb.getSignerName('ASLAP') || 'M. Ali Akbar Fathoni, S.Pd.', officer: 'fieldAssistantSignature' as const },
+  { label: 'Diperiksa oleh', role: 'Akuntan SPPG Malang Tumpang Jeru', name: warehouseDb.getSignerName('AKUNTAN') || 'Alfiana Viransa, S.Tr.Ak.' },
 ];
 
 const Section: React.FC<{ no: number; title: string; children: React.ReactNode }> = ({ no, title, children }) => (
@@ -69,16 +70,21 @@ const SopHeader: React.FC<{ title: string; printedDate: string }> = ({ title, pr
 );
 
 const SopSigners: React.FC = () => (
+  <>
+  <DocSignatureToggle doc="sop-gudang" className="mt-5" />
   <div className="sop-avoid grid grid-cols-2 gap-6 pt-5 text-center text-xs">
     {signers().map(s => (
       <div key={s.name}>
         <p className="text-slate-700">{s.label},</p>
         <p className="text-slate-700">{s.role}</p>
-        <div className="h-16" />
+        <div className="h-20 flex items-center justify-center">
+          {'officer' in s && s.officer && <OfficerSignatureImg doc="sop-gudang" officer={s.officer} />}
+        </div>
         <p className="font-semibold text-slate-900 underline underline-offset-2">{s.name}</p>
       </div>
     ))}
   </div>
+  </>
 );
 
 const SopPage: React.FC<{
