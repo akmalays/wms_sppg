@@ -1,8 +1,5 @@
 import React from 'react';
 import { DeliveryClassRow, SheetProps } from './DeliveryDocSheets';
-import ttdRizkyImg from '../../assets/ttd rizky.png';
-import ttdEnoImg from '../../assets/ttd eno.png';
-import ttdToniImg from '../../assets/ttd toni.png';
 
 // Format standar dokumen pengiriman: isi sama dengan format kertas lama (DeliveryDocSheets.tsx),
 // wording dirapikan dan tata letak dibuat seragam. Format lama tetap bisa dipilih di modal cetak.
@@ -32,21 +29,12 @@ const Signer: React.FC<{ caption: string; role: string; name?: string; note?: st
   note,
   signature,
 }) => {
-  const effectiveSignature =
-    signature ||
-    (role.includes('Kepala SPPG')
-      ? ttdRizkyImg
-      : role.includes('Ahli Gizi')
-        ? ttdEnoImg
-        : role.includes('Asisten Lapangan')
-          ? ttdToniImg
-          : undefined);
   return (
     <div className="text-center">
       <div className={LABEL}>{caption}</div>
       <div className="font-semibold leading-tight text-[10.5px]">{role}</div>
       <div className="h-20 flex items-center justify-center -my-1">
-        {effectiveSignature && <img src={effectiveSignature} alt={`Tanda tangan ${role}`} className="max-h-full h-full w-auto object-contain scale-[1.25] origin-center" />}
+        {signature && <img src={signature} alt={`Tanda tangan ${role}`} className="max-h-full h-full w-auto object-contain scale-[1.25] origin-center" />}
       </div>
       <div className="font-semibold underline underline-offset-2 min-h-[1.2em] leading-tight">{name || '(.................................)'}</div>
       {note && <div className="text-[10.5px] text-slate-600">{note}</div>}

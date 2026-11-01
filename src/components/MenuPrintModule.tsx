@@ -6,8 +6,9 @@ import {localDateIso} from "../utils/localDate";
 import {useToast} from "../context/ToastContext";
 import {FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY} from "./common/FormDialog";
 
-// Template Canva resmi SPPG. Judul kertas ("Menu Makanan", "Menu Sekolah", "Menu 3B") dan foto nampan
+// Template Canva SPPG. Judul kertas ("Menu Makanan", "Menu Sekolah", "Menu 3B") dan foto nampan
 // contoh sudah tercetak di template; aplikasi hanya menulis tanggal, daftar menu, foto, dan nilai gizi.
+// Desain baru: ekspor template kosong dari Canva ke src/assets, lalu tambahkan entrinya di POSTER_TEMPLATES.
 import templateSingle from "../assets/poster-single.jpg";
 import templateDouble from "../assets/poster-double.jpg";
 
@@ -216,18 +217,28 @@ interface NoteBox {x: number; y: number; rot: number; w: number; h: number; maxP
 interface TrayBox {cx: number; cy: number; w: number; h: number; rot: number}
 interface NutritionColumn {x: number; y: number; px: number; gap: number}
 
-interface PosterLayout {
+type PosterMode = "SINGLE" | "DOUBLE";
+
+interface PosterTemplate {
+  id: string;
+  name: string;
+  mode: PosterMode;
   src: string;
   width: number;
   height: number;
-  date: {x: number; y: number; px: number};
+  /** color: warna tulisan tanggal, menyesuaikan latar di template (bawaan putih). */
+  date: {x: number; y: number; px: number; color?: string};
   notes: NoteBox[]; // per menu
   trays: TrayBox[]; // per menu
   nutrition: {large: NutritionColumn; small: NutritionColumn}[]; // per menu
 }
 
-const LAYOUTS: Record<"SINGLE" | "DOUBLE", PosterLayout> = {
-  SINGLE: {
+// Urutan menentukan desain bawaan: entri pertama tiap jenis poster terpilih saat halaman dibuka.
+const POSTER_TEMPLATES: PosterTemplate[] = [
+  {
+    id: "sppg",
+    name: "Template SPPG",
+    mode: "SINGLE",
     src: templateSingle,
     width: 1587,
     height: 2245,
@@ -236,7 +247,10 @@ const LAYOUTS: Record<"SINGLE" | "DOUBLE", PosterLayout> = {
     trays: [{cx: 1034, cy: 1095, w: 540, h: 655, rot: 16}],
     nutrition: [{large: {x: 360, y: 1785, px: 37, gap: 58}, small: {x: 830, y: 1785, px: 37, gap: 58}}],
   },
-  DOUBLE: {
+  {
+    id: "sppg",
+    name: "Template SPPG",
+    mode: "DOUBLE",
     src: templateDouble,
     width: 2245,
     height: 1587,
@@ -254,7 +268,11 @@ const LAYOUTS: Record<"SINGLE" | "DOUBLE", PosterLayout> = {
       {large: {x: 1198, y: 1276, px: 30, gap: 44}, small: {x: 1630, y: 1276, px: 30, gap: 44}},
     ],
   },
-};
+];
+
+const templatesFor = (mode: PosterMode) => POSTER_TEMPLATES.filter((t) => t.mode === mode);
+const DEFAULT_TEMPLATE_IDS: Record<PosterMode, string> = {SINGLE: templatesFor("SINGLE")[0].id, DOUBLE: templatesFor("DOUBLE")[0].id};
+const findTemplate = (mode: PosterMode, id: string) => templatesFor(mode).find((t) => t.id === id) ?? templatesFor(mode)[0];
 
 const INK = "#2a2830";
 const FONT = "Nunito, system-ui, sans-serif";
@@ -372,24 +390,27 @@ const ensureFonts = () => {
   return fontsReady;
 };
 
-async function drawPoster(canvas: HTMLCanvasElement, mode: "SINGLE" | "DOUBLE", date: string, menus: MenuCardData[]) {
-  const layout = LAYOUTS[mode];
+// scale < 1 untuk gambar kecil pilihan desain. isStale dicek setelah gambar termuat agar gambar
+// dari isian lama tidak menimpa yang baru.
+async function drawPoster(canvas: HTMLCanvasElement, layout: PosterTemplate, date: string, menus: MenuCardData[], scale = 1, isStale?: () => boolean) {
   const [template, ...photos] = await Promise.all([
     loadImage(layout.src),
     ...menus.map((m) => (m.photo ? loadImage(m.photo).catch(() => null) : Promise.resolve(null))),
     ensureFonts(),
   ]);
+  if (isStale?.()) return;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  canvas.width = layout.width;
-  canvas.height = layout.height;
+  canvas.width = Math.round(layout.width * scale);
+  canvas.height = Math.round(layout.height * scale);
+  ctx.scale(scale, scale);
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, layout.width, layout.height);
   ctx.drawImage(template as HTMLImageElement, 0, 0, layout.width, layout.height);
 
   if (date) {
     ctx.save();
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = layout.date.color ?? "#ffffff";
     ctx.font = `800 ${layout.date.px}px ${FONT}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -408,6 +429,56 @@ async function drawPoster(canvas: HTMLCanvasElement, mode: "SINGLE" | "DOUBLE", 
   });
 }
 
+const THUMB_SCALE = 0.25;
+
+// Pilihan desain: tiap template digambar kecil dengan isian yang sama seperti pratinjau utama.
+const PosterThumb: React.FC<{template: PosterTemplate; date: string; menus: MenuCardData[]; selected: boolean; onSelect: () => void}> = ({
+  template,
+  date,
+  menus,
+  selected,
+  onSelect,
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let stale = false;
+    const frame = requestAnimationFrame(() => {
+      drawPoster(canvas, template, date, menus, THUMB_SCALE, () => stale)
+        .then(() => !stale && setStatus("ready"))
+        .catch(() => !stale && setStatus("error"));
+    });
+    return () => {
+      stale = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [template, date, menus]);
+
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      className={`group text-left rounded-lg border p-1.5 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
+        selected ? "border-emerald-700 bg-emerald-50" : "border-slate-200 bg-white hover:border-slate-300"
+      }`}>
+      <div className="relative rounded-md overflow-hidden bg-slate-50" style={{aspectRatio: `${template.width} / ${template.height}`}}>
+        <canvas ref={canvasRef} aria-hidden="true" className={`block w-full h-full ${status === "ready" ? "" : "invisible"}`} />
+        {status !== "ready" && (
+          <span className="absolute inset-0 flex items-center justify-center px-2 text-center text-[11px] text-slate-600">
+            {status === "loading" ? "Memuat..." : "Template gagal dimuat"}
+          </span>
+        )}
+      </div>
+      <span className={`block mt-1.5 px-0.5 text-[11px] leading-tight ${selected ? "font-semibold text-emerald-800" : "font-medium text-slate-700"}`}>{template.name}</span>
+    </button>
+  );
+};
+
 // ---------------------------------------------------------------------------------------------
 
 interface MenuPrintModuleProps {
@@ -419,7 +490,8 @@ const MENU_LABELS = {SINGLE: ["Menu"], DOUBLE: ["Menu sekolah", "Menu 3B"]} as c
 export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) => {
   const toast = useToast();
   const [menuOrders, setMenuOrders] = useState<MenuOrder[]>(() => warehouseDb.getMenuOrders());
-  const [printMode, setPrintMode] = useState<"SINGLE" | "DOUBLE">("SINGLE");
+  const [printMode, setPrintMode] = useState<PosterMode>("SINGLE");
+  const [templateIds, setTemplateIds] = useState<Record<PosterMode, string>>(DEFAULT_TEMPLATE_IDS);
   const [selectedDate, setSelectedDate] = useState<string>(() => localDateIso());
   const [menus, setMenus] = useState<MenuCardData[]>(() => [emptyMenu(), emptyMenu()]);
   const [activeMenu, setActiveMenu] = useState(0);
@@ -447,7 +519,9 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
     [menuOrders, selectedDate]
   );
 
-  const visibleMenus = printMode === "SINGLE" ? menus.slice(0, 1) : menus;
+  const visibleMenus = useMemo(() => (printMode === "SINGLE" ? menus.slice(0, 1) : menus), [printMode, menus]);
+  const modeTemplates = templatesFor(printMode);
+  const activeTemplate = findTemplate(printMode, templateIds[printMode]);
   const editingIndex = printMode === "SINGLE" ? 0 : activeMenu;
   const current = menus[editingIndex];
 
@@ -481,16 +555,15 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
     const canvas = canvasRef.current;
     if (!canvas) return;
     const seq = ++drawSeq.current;
+    const isStale = () => seq !== drawSeq.current;
     const frame = requestAnimationFrame(() => {
-      if (seq !== drawSeq.current) return;
-      drawPoster(canvas, printMode, selectedDate, visibleMenus)
-        .then(() => setRenderError(""))
-        .catch(() => setRenderError("Template poster gagal dimuat. Muat ulang halaman lalu coba lagi."));
+      if (isStale()) return;
+      drawPoster(canvas, activeTemplate, selectedDate, visibleMenus, 1, isStale)
+        .then(() => !isStale() && setRenderError(""))
+        .catch(() => !isStale() && setRenderError("Template poster gagal dimuat. Muat ulang halaman lalu coba lagi."));
     });
     return () => cancelAnimationFrame(frame);
-    // visibleMenus berubah identitas setiap render; menus dan printMode sudah mewakilinya
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [printMode, selectedDate, menus]);
+  }, [activeTemplate, selectedDate, visibleMenus]);
 
   const handleApplyWhatsAppText = () => {
     if (!whatsAppText.trim()) return;
@@ -553,10 +626,11 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
     setDownloading(format);
     try {
       // Pastikan kanvas memuat isian terakhir sebelum diekspor
-      await drawPoster(canvas, printMode, selectedDate, visibleMenus);
+      await drawPoster(canvas, activeTemplate, selectedDate, visibleMenus);
       const dataUrl = canvas.toDataURL(format === "jpg" ? "image/jpeg" : "image/png", 0.95);
       const link = document.createElement("a");
-      link.download = `Poster-Menu-MBG-${selectedDate}-${printMode === "SINGLE" ? "1-menu" : "2-menu"}.${format}`;
+      const designSuffix = modeTemplates.length > 1 ? `-${activeTemplate.id}` : "";
+      link.download = `Poster-Menu-MBG-${selectedDate}-${printMode === "SINGLE" ? "1-menu" : "2-menu"}${designSuffix}.${format}`;
       link.href = dataUrl;
       link.click();
     } catch {
@@ -570,7 +644,7 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
     const canvas = canvasRef.current;
     if (canvas) {
       try {
-        await drawPoster(canvas, printMode, selectedDate, visibleMenus);
+        await drawPoster(canvas, activeTemplate, selectedDate, visibleMenus);
       } catch {
         toast.error("Poster gagal disiapkan untuk dicetak. Muat ulang halaman lalu coba lagi.", "Cetak gagal");
         return;
@@ -675,6 +749,27 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
                 </button>
               </div>
             </div>
+
+            {modeTemplates.length > 1 && (
+              <div>
+                <span className={FIELD_LABEL} id="poster-design-label">
+                  Desain poster
+                </span>
+                <div role="radiogroup" aria-labelledby="poster-design-label" className={`grid gap-2 ${printMode === "SINGLE" ? "grid-cols-3 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}>
+                  {modeTemplates.map((t) => (
+                    <PosterThumb
+                      key={t.id}
+                      template={t}
+                      date={selectedDate}
+                      menus={visibleMenus}
+                      selected={t.id === activeTemplate.id}
+                      onSelect={() => setTemplateIds((prev) => ({...prev, [printMode]: t.id}))}
+                    />
+                  ))}
+                </div>
+                <p className="mt-1 text-[11px] text-slate-600">Semua desain memakai isian yang sama. Unduh dan cetak mengikuti desain yang dipilih.</p>
+              </div>
+            )}
 
             <div>
               <label htmlFor="poster-date" className={FIELD_LABEL}>
@@ -871,7 +966,7 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
             role="img"
             aria-label={`Pratinjau poster menu ${formatPosterDate(selectedDate)}`}
             className="poster-canvas block w-full h-auto rounded-lg border border-slate-200 bg-slate-50"
-            style={{aspectRatio: `${LAYOUTS[printMode].width} / ${LAYOUTS[printMode].height}`}}
+            style={{aspectRatio: `${activeTemplate.width} / ${activeTemplate.height}`}}
           />
         </section>
       </div>

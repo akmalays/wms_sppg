@@ -4977,17 +4977,13 @@ class WarehouseDatabase {
   }
 
   private syncWasteUpsert(logs: WasteLog[]): void {
-    if (!isSupabaseConfigured() || logs.length === 0) return;
-    supabase.from('waste_logs').upsert(logs.map(mapWasteToSupabase)).then(({ error }) => {
-      if (error) console.error('Supabase waste_logs upsert error:', error);
-    });
+    if (logs.length === 0) return;
+    this.pushCloud('simpan catatan limbah', () => supabase.from('waste_logs').upsert(logs.map(mapWasteToSupabase)));
   }
 
   private syncWasteDelete(ids: string[]): void {
-    if (!isSupabaseConfigured() || ids.length === 0) return;
-    supabase.from('waste_logs').delete().in('id', ids).then(({ error }) => {
-      if (error) console.error('Supabase waste_logs delete error:', error);
-    });
+    if (ids.length === 0) return;
+    this.pushCloud('hapus catatan limbah', () => supabase.from('waste_logs').delete().in('id', ids));
   }
 
   public recordWasteLog(

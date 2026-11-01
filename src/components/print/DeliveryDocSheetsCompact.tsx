@@ -1,9 +1,6 @@
 import React from 'react';
 import { DeliveryClassRow, SheetProps } from './DeliveryDocSheets';
 import { QrSvg } from '../common/QrSvg';
-import ttdRizkyImg from '../../assets/ttd rizky.png';
-import ttdEnoImg from '../../assets/ttd eno.png';
-import ttdToniImg from '../../assets/ttd toni.png';
 
 // Format ringkas dokumen pengiriman: 2 halaman per sekolah (cukup 1 kertas bila dicetak bolak-balik).
 // Halaman 1 menggabungkan Surat Jalan dan Berita Acara Serah Terima: keduanya ditandatangani driver dan PIC
@@ -22,20 +19,11 @@ const Dots: React.FC<{ w?: string; value?: string }> = ({ w = 'w-28', value }) =
 
 // Tanda tangan ringkas: peran, ruang tanda tangan, nama (atau garis untuk ditulis tangan)
 const Sign: React.FC<{ role: string; name?: string; signature?: string; height?: string }> = ({ role, name, signature, height = 'h-16' }) => {
-  const effectiveSignature =
-    signature ||
-    (role.includes('Kepala SPPG')
-      ? ttdRizkyImg
-      : role.includes('Ahli Gizi')
-        ? ttdEnoImg
-        : role.includes('Asisten Lapangan')
-          ? ttdToniImg
-          : undefined);
   return (
     <div className="text-center">
       <div className="font-semibold leading-tight text-[10.5px]">{role}</div>
       <div className={`${height} flex items-center justify-center -mt-1.5 -mb-1`}>
-        {effectiveSignature && <img src={effectiveSignature} alt={`Tanda tangan ${role}`} className="max-h-full h-full w-auto object-contain scale-[1.35] origin-center" />}
+        {signature && <img src={signature} alt={`Tanda tangan ${role}`} className="max-h-full h-full w-auto object-contain scale-[1.35] origin-center" />}
       </div>
       <div className="font-semibold underline underline-offset-2 min-h-[1.2em] text-[10.5px] leading-tight">{name || '(..............................)'}</div>
     </div>
@@ -68,16 +56,11 @@ const Footer: React.FC<{ text: string }> = ({ text }) => (
   <div className="text-right text-[8.5px] text-slate-400 mt-2 font-mono">{text}</div>
 );
 
-export const SIPGN_LOGIN_URL = 'https://pm-sipgn.bgn.go.id/auth/login';
-
-interface HedonicQrInfo {
-  url?: string;
-  token?: string;
-  daysOpen?: number;
-}
+// Uji hedonik diisi sekolah di portal SIPGN BGN, QR cukup mengarah ke halaman loginnya
+const SIPGN_LOGIN_URL = 'https://pm-sipgn.bgn.go.id/auth/login';
 
 export const SuratJalanBastSheetCompact: React.FC<
-  SheetProps & { docNo: string; deliveryTime?: string; classes: DeliveryClassRow[]; hedonic?: HedonicQrInfo }
+  SheetProps & { docNo: string; deliveryTime?: string; classes: DeliveryClassRow[]; hedonicQr?: boolean }
 > = ({
   school,
   longDate,
@@ -88,7 +71,7 @@ export const SuratJalanBastSheetCompact: React.FC<
   docNo,
   deliveryTime,
   classes,
-  hedonic,
+  hedonicQr,
 }) => {
   const total = totalPortions > 0 ? totalPortions.toLocaleString('id-ID') : '';
   return (
@@ -196,7 +179,7 @@ export const SuratJalanBastSheetCompact: React.FC<
         </HandoverBox>
       </div>
 
-      <div className={`grid ${hedonic ? 'grid-cols-4' : 'grid-cols-3'} gap-3 items-start`}>
+      <div className={`grid ${hedonicQr ? 'grid-cols-4' : 'grid-cols-3'} gap-3 items-start`}>
         <div>
           <div className={`${LABEL} text-center`}>Diperiksa oleh,</div>
           <Sign role="Ahli Gizi SPPG Malang Tumpang Jeru" name={officers.nutritionistName} signature={officers.nutritionistSignature} />
@@ -209,14 +192,14 @@ export const SuratJalanBastSheetCompact: React.FC<
           <div className={`${LABEL} text-center`}>Mengetahui,</div>
           <Sign role="Kepala SPPG Malang Tumpang Jeru" name={officers.headName} signature={officers.headSignature} />
         </div>
-        {hedonic && (
+        {hedonicQr && (
           <div className="border border-slate-700 p-1.5 flex gap-1.5 items-start h-fit self-start">
-            <QrSvg value={hedonic.url || SIPGN_LOGIN_URL} className="w-[22mm] h-[22mm] shrink-0" />
+            <QrSvg value={SIPGN_LOGIN_URL} className="w-[22mm] h-[22mm] shrink-0" />
             <div className="text-[9.5px] leading-tight">
               <div className="font-bold">Uji hedonik</div>
-              <div>Pindai untuk menilai menu dan menulis kritik/saran.</div>
-              {hedonic.daysOpen ? <div className="mt-0.5 text-slate-600">Dibuka sampai H+{hedonic.daysOpen}</div> : null}
-              {hedonic.token ? <div className="font-mono text-[8.5px] text-slate-600">{hedonic.token}</div> : null}
+              <div>Pindai untuk membuka SIPGN BGN, lalu isi uji hedonik menu hari ini.</div>
+              {/* Alamat tertulis untuk yang tidak bisa memindai QR */}
+              <div className="mt-0.5 font-mono text-[8.5px] text-slate-600">pm-sipgn.bgn.go.id</div>
             </div>
           </div>
         )}

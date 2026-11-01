@@ -27,11 +27,8 @@ import { getBeneficiaryRecap, SKIP_REASON_LABEL, SkipReason } from '../utils/ben
 import { SuratJalanSheetLegacy, BeritaAcaraSheetLegacy, UjiHedonikSheetLegacy, DeliveryClassRow } from './print/DeliveryDocSheets';
 import { SuratJalanSheetStandard, BeritaAcaraSheetStandard, UjiHedonikSheetStandard } from './print/DeliveryDocSheetsStandard';
 import { SuratJalanBastSheetCompact } from './print/DeliveryDocSheetsCompact';
-import { ensureHedonicLinks, hedonicUrl, HEDONIC_DAYS_OPEN } from '../utils/hedonic';
 import { getRomanMonth } from '../utils/poNumberGenerator';
 import { SignaturePad } from './SignaturePad';
-
-export const SIPGN_LOGIN_URL = 'https://pm-sipgn.bgn.go.id/auth/login';
 
 export interface ClassBreakdownItem {
   id: string;
@@ -65,9 +62,32 @@ const DEFAULT_OFFICERS: DeliveryOfficerSettings = {
   headName: 'Rizky Iman Ramadhan, S.Pd.',
   driverName: '',
   consumeBefore: '11:00',
-  headSignature: ttdRizkyImg,
-  nutritionistSignature: ttdEnoImg,
-  fieldAssistantSignature: ttdToniImg,
+};
+
+// Tanda tangan bawaan hanya dipakai selama namanya masih nama default, agar tidak tercetak di atas nama orang lain.
+// String kosong berarti sengaja dihapus. URL aset tidak disimpan karena hash-nya berubah tiap build.
+type SignatureKey = 'headSignature' | 'nutritionistSignature' | 'fieldAssistantSignature';
+type NameKey = 'headName' | 'nutritionistName' | 'fieldAssistantName';
+const DEFAULT_SIGNATURES: [SignatureKey, NameKey, string][] = [
+  ['headSignature', 'headName', ttdRizkyImg],
+  ['nutritionistSignature', 'nutritionistName', ttdEnoImg],
+  ['fieldAssistantSignature', 'fieldAssistantName', ttdToniImg],
+];
+
+const withDefaultSignatures = (o: DeliveryOfficerSettings): DeliveryOfficerSettings => {
+  const out = { ...o };
+  for (const [sig, name, img] of DEFAULT_SIGNATURES) {
+    if (out[sig] === undefined && out[name] === DEFAULT_OFFICERS[name]) out[sig] = img;
+  }
+  return out;
+};
+
+const stripDefaultSignatures = (o: DeliveryOfficerSettings): DeliveryOfficerSettings => {
+  const out = { ...o };
+  for (const [sig, , img] of DEFAULT_SIGNATURES) {
+    if (out[sig] === img) out[sig] = undefined;
+  }
+  return out;
 };
 
 // Isian kosong di dokumen cetak dibiarkan bertitik agar diisi tangan, bukan diganti tebakan.
@@ -85,17 +105,14 @@ type DocFormat = 'STANDARD' | 'LEGACY' | 'RINGKAS';
 // Isian petugas yang kosong diisi dari jabatan karyawan aktif.
 const loadOfficers = (): DeliveryOfficerSettings => {
   const saved = warehouseDb.getAppSetting<Partial<DeliveryOfficerSettings>>(SETTING_OFFICERS, {});
-  return {
+  return withDefaultSignatures({
     ...DEFAULT_OFFICERS,
     ...saved,
     nutritionistName: saved.nutritionistName || DEFAULT_OFFICERS.nutritionistName,
     fieldAssistantName: saved.fieldAssistantName || DEFAULT_OFFICERS.fieldAssistantName,
     headName: saved.headName || DEFAULT_OFFICERS.headName,
     consumeBefore: saved.consumeBefore || DEFAULT_OFFICERS.consumeBefore,
-    headSignature: saved.headSignature || DEFAULT_OFFICERS.headSignature,
-    nutritionistSignature: saved.nutritionistSignature || DEFAULT_OFFICERS.nutritionistSignature,
-    fieldAssistantSignature: saved.fieldAssistantSignature || DEFAULT_OFFICERS.fieldAssistantSignature,
-  };
+  });
 };
 
 // Baris kelas bawaan di surat jalan, mengikuti format kertas SPPG (Kelompok A/B, Guru dan Tendik, PIC).
@@ -268,9 +285,6 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
     setHedonicQr(on);
     warehouseDb.saveAppSetting(SETTING_HEDONIC_QR, on, currentUser || undefined);
   };
-  // Kode QR per sekolah (id sekolah -> kode) untuk menu yang sedang dicetak
-  const [hedonicTokens, setHedonicTokens] = useState<Record<string, string>>({});
-  const [hedonicState, setHedonicState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
 
   // Sync date from parent
   useEffect(() => {
@@ -442,35 +456,9 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
     [printSchoolsQueue, customClassBreakdowns, selectedDate]
   );
   const isCompactDoc = docFormat === 'RINGKAS';
-  const wantsHedonicQr = isPrintModalOpen && isCompactDoc && hedonicQr && !!currentOrder;
-
-  useEffect(() => {
-    if (!wantsHedonicQr || !currentOrder) return;
-    let cancelled = false;
-    setHedonicState('loading');
-    ensureHedonicLinks(currentOrder, printSchoolsQueue)
-      .then(tokens => {
-        if (cancelled) return;
-        setHedonicTokens(tokens);
-        setHedonicState('ready');
-      })
-      .catch(err => {
-        console.error('Gagal membuat QR uji hedonik:', err);
-        if (!cancelled) setHedonicState('error');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [wantsHedonicQr, currentOrder, printSchoolsQueue]);
-
-  // Sekolah tanpa QR (menu belum ada, gagal dibuat) tetap mendapat lembar uji hedonik kertas
-  const hedonicTokenFor = (schoolId: string) => (wantsHedonicQr && hedonicState === 'ready' ? hedonicTokens[schoolId] : undefined);
-  const sheetsFor = (schoolId: string) => {
-    if (printSheetTab !== 'ALL') return 1;
-    if (!isCompactDoc) return 3;
-    return hedonicQr ? 1 : 2;
-  };
-  const printPageCount = printSchoolsQueue.reduce((sum, s) => sum + sheetsFor(s.id), 0);
+  // QR uji hedonik mengarah ke halaman login SIPGN (statis), jadi lembar kertasnya tidak perlu dicetak
+  const sheetsPerSchool = printSheetTab !== 'ALL' ? 1 : !isCompactDoc ? 3 : hedonicQr ? 1 : 2;
+  const printPageCount = printSchoolsQueue.length * sheetsPerSchool;
 
   // Buka modal cetak untuk 1 sekolah
   const handlePrintSingleSchool = (school: SchoolBeneficiaryAllocation) => {
@@ -495,8 +483,9 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
   };
 
   const handleSaveOfficers = () => {
-    setOfficerSettings(officerDraft);
-    warehouseDb.saveAppSetting(SETTING_OFFICERS, officerDraft, currentUser || undefined);
+    const stored = stripDefaultSignatures(officerDraft);
+    setOfficerSettings(withDefaultSignatures(stored));
+    warehouseDb.saveAppSetting(SETTING_OFFICERS, stored, currentUser || undefined);
     setIsOfficerModalOpen(false);
   };
 
@@ -1166,32 +1155,19 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                       onChange={e => changeHedonicQr(e.target.checked)}
                       className="w-4 h-4 rounded border-slate-300 text-emerald-700 cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-600"
                     />
-                    Uji hedonik lewat QR
+                    Uji hedonik lewat QR SIPGN
                   </label>
                 )}
                 <span className="text-[11px] text-slate-600">
                   {printSheetTab !== 'ALL'
                     ? '1 lembar per sekolah.'
-                    : isCompactDoc && wantsHedonicQr
-                      ? `1 halaman per sekolah. Sekolah memindai QR untuk uji hedonik, dibuka sampai H+${HEDONIC_DAYS_OPEN}.`
+                    : isCompactDoc && hedonicQr
+                      ? '1 halaman per sekolah. Sekolah mengisi uji hedonik di SIPGN BGN lewat QR, lembar kertasnya tidak dicetak.'
                       : isCompactDoc
                         ? '2 halaman per sekolah. Cetak bolak-balik agar cukup 1 kertas per sekolah.'
                         : '3 lembar per sekolah, masing-masing di halaman baru.'}
                 </span>
               </div>
-              {wantsHedonicQr && hedonicState !== 'ready' && (
-                <p
-                  role="status"
-                  className={`mx-4 sm:mx-5 mb-3 text-[11px] ${hedonicState === 'error' ? 'p-2.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-900' : 'text-slate-600'}`}
-                >
-                  {hedonicState === 'error'
-                    ? 'QR uji hedonik gagal dibuat (periksa internet, atau migrasi hedonic_qr belum dijalankan di Supabase). Lembar uji hedonik kertas ikut dicetak.'
-                    : 'Menyiapkan QR uji hedonik…'}
-                </p>
-              )}
-              {isCompactDoc && hedonicQr && !currentOrder && (
-                <p className="mx-4 sm:mx-5 mb-3 text-[11px] text-slate-600">QR uji hedonik dibuat dari menu; tanggal ini belum punya menu, jadi lembar kertas yang dicetak.</p>
-              )}
 
               {(printMismatches.length > 0 || missingOfficerFields.length > 0 || !currentOrder) && (
                 <div role="note" className="mx-4 sm:mx-5 mb-3 p-2.5 rounded-lg border border-amber-200 bg-amber-50 text-[11px] text-amber-900 space-y-0.5">
@@ -1230,20 +1206,13 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                           shortDate: shortDocDate(selectedDate),
                           longDate: formatIndonesianDate(selectedDate),
                           totalPortions: dailyP,
-                          officers: {
-                            ...officerSettings,
-                            headSignature: officerSettings.headSignature || ttdRizkyImg,
-                            nutritionistSignature: officerSettings.nutritionistSignature || ttdEnoImg,
-                            fieldAssistantSignature: officerSettings.fieldAssistantSignature || ttdToniImg,
-                          },
+                          officers: officerSettings,
                           kop: <DeliveryKop />,
                         };
                         const isStd = docFormat === 'STANDARD';
                         const classes = printClassRows(school, dailyP);
                         if (isCompactDoc) {
-                          const token = hedonicTokenFor(school.id);
-                          const hasQr = hedonicQr;
-                          const pages = hasQr ? 1 : 2;
+                          const pages = hedonicQr ? 1 : 2;
                           return (
                             <>
                               {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_1') && (
@@ -1253,10 +1222,10 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                                   docNo={docNo}
                                   deliveryTime={school.deliveryTime}
                                   classes={classes}
-                                  hedonic={hasQr ? { url: SIPGN_LOGIN_URL, token: token || '', daysOpen: HEDONIC_DAYS_OPEN } : undefined}
+                                  hedonicQr={hedonicQr}
                                 />
                               )}
-                              {((printSheetTab === 'ALL' && !hasQr) || printSheetTab === 'SHEET_3') && (
+                              {((printSheetTab === 'ALL' && !hedonicQr) || printSheetTab === 'SHEET_3') && (
                                 <UjiHedonikSheetStandard {...sheetProps} footer={`Halaman 2 dari 2 · ${school.schoolName}`} />
                               )}
                             </>

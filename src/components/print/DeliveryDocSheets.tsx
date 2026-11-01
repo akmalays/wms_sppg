@@ -1,8 +1,5 @@
 import React from "react";
 import {SchoolBeneficiaryAllocation} from "../../types/warehouse";
-import ttdRizkyImg from "../../assets/ttd rizky.png";
-import ttdEnoImg from "../../assets/ttd eno.png";
-import ttdToniImg from "../../assets/ttd toni.png";
 
 // Tiga lembar dokumen pengiriman per sekolah. Ada dua format:
 // - Legacy: sama dengan format kertas lama SPPG Malang Tumpang Jeru (disimpan untuk jaga-jaga).
@@ -169,14 +166,14 @@ export const SuratJalanSheetLegacy: React.FC<SheetProps & {docNo: string; delive
       <div>
         <div>Ahli Gizi SPPG Malang Tumpang Jeru,</div>
         <div className="h-20 flex items-center justify-center -my-1">
-          <img src={officers.nutritionistSignature || ttdEnoImg} alt="Tanda tangan Ahli Gizi SPPG" className="h-20 w-auto object-contain" />
+          {officers.nutritionistSignature && <img src={officers.nutritionistSignature} alt="Tanda tangan Ahli Gizi SPPG" className="h-20 w-auto object-contain" />}
         </div>
         <div className="font-semibold">{officers.nutritionistName || " "}</div>
       </div>
       <div>
         <div>Asisten Lapangan SPPG Malang Tumpang Jeru,</div>
         <div className="h-20 flex items-center justify-center -my-1">
-          <img src={officers.fieldAssistantSignature || ttdToniImg} alt="Tanda tangan Asisten Lapangan" className="h-20 w-auto object-contain" />
+          {officers.fieldAssistantSignature && <img src={officers.fieldAssistantSignature} alt="Tanda tangan Asisten Lapangan" className="h-20 w-auto object-contain" />}
         </div>
         <div className="font-semibold">{officers.fieldAssistantName || " "}</div>
       </div>
@@ -193,10 +190,8 @@ export const SuratJalanSheetLegacy: React.FC<SheetProps & {docNo: string; delive
 // ---------------------------------------------------------------------------
 // LEMBAR 2: BERITA ACARA PENERIMAAN PAKET MAKANAN + PENYERAHAN ALAT MAKAN
 // ---------------------------------------------------------------------------
-const HeadSignature: React.FC<{src?: string; className?: string}> = ({src, className = "h-20"}) => {
-  const effectiveSrc = src || ttdRizkyImg;
-  return effectiveSrc ? <img src={effectiveSrc} alt="Tanda tangan Kepala SPPG" className={`${className} object-contain`} /> : <div className={className} />;
-};
+const HeadSignature: React.FC<{src?: string; className?: string}> = ({src, className = "h-20"}) =>
+  src ? <img src={src} alt="Tanda tangan Kepala SPPG" className={`${className} object-contain`} /> : <div className={className} />;
 
 const MengetahuiBox: React.FC<{headName: string; headSignature?: string}> = ({headName, headSignature}) => (
   <div className="border border-slate-800 p-3 w-64 text-[11.5px]">

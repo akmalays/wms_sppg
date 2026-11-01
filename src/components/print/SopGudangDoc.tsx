@@ -17,7 +17,6 @@ interface SopGudangDocProps {
   place: SopPlace | 'ALL';
   effectiveDate: string; // sudah diformat
   printedDate: string; // sudah diformat
-  printedBy: string;
 }
 
 // Nama diambil dari data Karyawan (lengkap dengan gelar), sama dengan dokumen cetak lain.
@@ -50,7 +49,7 @@ const TH = 'border border-slate-300 p-1.5 text-left';
 const TD = 'border border-slate-300 p-1.5';
 
 // Kop di setiap SOP agar tiap lembar bisa ditempel sendiri
-const SopHeader: React.FC<{ title: string; printedDate: string; printedBy: string }> = ({ title, printedDate, printedBy }) => (
+const SopHeader: React.FC<{ title: string; printedDate: string }> = ({ title, printedDate }) => (
   <>
     <div className="border-b-2 border-slate-900 pb-3 flex items-start justify-between gap-4">
       <div className="flex items-center gap-3">
@@ -59,7 +58,6 @@ const SopHeader: React.FC<{ title: string; printedDate: string; printedBy: strin
       </div>
       <div className="text-right text-[11px] text-slate-600 space-y-0.5 shrink-0">
         <div>Dicetak: {printedDate}</div>
-        <div>Oleh: {printedBy}</div>
       </div>
     </div>
 
@@ -88,13 +86,12 @@ const SopPage: React.FC<{
   contentsOf: (rackId: string | undefined, fallback: string) => string;
   effectiveDate: string;
   printedDate: string;
-  printedBy: string;
   breakAfter: boolean;
-}> = ({ sop, contentsOf, effectiveDate, printedDate, printedBy, breakAfter }) => {
+}> = ({ sop, contentsOf, effectiveDate, printedDate, breakAfter }) => {
   let n = 0;
   return (
     <div className={`space-y-3.5 text-xs ${breakAfter ? 'page-break pb-8 mb-8 border-b border-dashed border-slate-300 print:border-0 print:pb-0 print:mb-0' : ''}`}>
-      <SopHeader title={sop.title} printedDate={printedDate} printedBy={printedBy} />
+      <SopHeader title={sop.title} printedDate={printedDate} />
 
       <table className="w-full border-collapse border border-slate-300 table-print text-[11px]">
         <tbody>
@@ -226,13 +223,12 @@ const APD_CHANGE: { what: string; when: string }[] = [
 const ApdSopPage: React.FC<{
   effectiveDate: string;
   printedDate: string;
-  printedBy: string;
   breakAfter: boolean;
-}> = ({ effectiveDate, printedDate, printedBy, breakAfter }) => {
+}> = ({ effectiveDate, printedDate, breakAfter }) => {
   let n = 0;
   return (
     <div className={`space-y-3.5 text-xs ${breakAfter ? 'page-break pb-8 mb-8 border-b border-dashed border-slate-300 print:border-0 print:pb-0 print:mb-0' : ''}`}>
-      <SopHeader title="Pemakaian Alat Pelindung Diri (APD) di Dapur" printedDate={printedDate} printedBy={printedBy} />
+      <SopHeader title="Pemakaian Alat Pelindung Diri (APD) di Dapur" printedDate={printedDate} />
 
       <table className="w-full border-collapse border border-slate-300 table-print text-[11px]">
         <tbody>
@@ -381,7 +377,7 @@ const ApdSopPage: React.FC<{
   );
 };
 
-export const SopGudangDoc: React.FC<SopGudangDocProps> = ({ items, place, effectiveDate, printedDate, printedBy }) => {
+export const SopGudangDoc: React.FC<SopGudangDocProps> = ({ items, place, effectiveDate, printedDate }) => {
   // Nama barang per rak/unit dari Master Barang (maks. 8 nama agar ringkas)
   const namesByRack = useMemo(() => {
     const map: Record<string, string[]> = {};
@@ -411,7 +407,6 @@ export const SopGudangDoc: React.FC<SopGudangDocProps> = ({ items, place, effect
             key={p}
             effectiveDate={effectiveDate}
             printedDate={printedDate}
-            printedBy={printedBy}
             breakAfter={i < places.length - 1}
           />
         ) : (
@@ -421,7 +416,6 @@ export const SopGudangDoc: React.FC<SopGudangDocProps> = ({ items, place, effect
             contentsOf={contentsOf}
             effectiveDate={effectiveDate}
             printedDate={printedDate}
-            printedBy={printedBy}
             breakAfter={i < places.length - 1}
           />
         ),

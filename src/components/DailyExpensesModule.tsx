@@ -462,9 +462,7 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
           <KopText />
         </div>
         <div className="text-right text-[11px] text-slate-600 space-y-0.5 shrink-0">
-          <div>Dicetak: {formatDateLong(new Date())}</div>
-          <div>Oleh: {currentUser.name}</div>
-        </div>
+          <div>Dicetak: {formatDateLong(new Date())}</div>        </div>
       </div>
 
       <div className="text-center mb-5">

@@ -2767,7 +2767,6 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             </div>
             <div className="text-right text-[11px] text-slate-600 space-y-0.5 shrink-0">
               <div>Dicetak: {formatLongDate(localDateIso())}</div>
-              <div>Oleh: {currentUser?.name || BLANK}</div>
             </div>
           </div>
         )}
@@ -3064,7 +3063,6 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             place={sopPlace}
             effectiveDate={formatLongDate(printDate)}
             printedDate={formatLongDate(localDateIso())}
-            printedBy={currentUser?.name || BLANK}
           />
         )}
 
