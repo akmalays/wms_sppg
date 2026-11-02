@@ -64,7 +64,7 @@ import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatu
 import type { SignatureDoc } from '../utils/documentSigners';
 import type { SignerRole } from '../db/storage';
 
-export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'NONFOOD_ISSUE_FORM' | 'WASTE_RECAP_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'RACK_SIGN' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE' | 'DO_DONT_POSTER' | 'PHOTO_DOC' | 'PIC_HANDOVER' | 'EXPENSE_RECEIPT_BATCH' | 'SALARY_SLIP' | 'DAILY_PO_SHEET';
+export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'DRY_ISSUE_FORM' | 'WET_ISSUE_FORM' | 'NONFOOD_ISSUE_FORM' | 'WASTE_RECAP_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'RACK_SIGN' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE' | 'DO_DONT_POSTER' | 'PHOTO_DOC' | 'PIC_HANDOVER' | 'EXPENSE_RECEIPT_BATCH' | 'SALARY_SLIP' | 'DAILY_PO_SHEET';
 
 export interface ItemTagData {
   uniqueKey: string;
@@ -111,7 +111,8 @@ const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
   { id: 'RECEIVING_FORM', label: 'BA Penerimaan', hint: 'Berita acara serah terima barang dari supplier.' },
   { id: 'OPNAME_SHEET', label: 'Lembar Opname', hint: 'Lembar hitung fisik stok per lokasi.' },
   { id: 'BIN_CARD', label: 'Kartu Stok', hint: 'Kartu gantung di rak untuk mencatat keluar-masuk satu barang.' },
-  { id: 'KITCHEN_REQUISITION', label: 'Bon Dapur', hint: 'Bon permintaan bahan dari dapur ke gudang, diisi tangan.' },
+  { id: 'DRY_ISSUE_FORM', label: 'Pengambilan Gudang Kering', hint: 'Log harian bahan kering yang diambil dapur: jam, barang, qty, sisa yang kembali, dan paraf pengambil serta petugas gudang. Daftar nama barang tercetak di bawah.' },
+  { id: 'WET_ISSUE_FORM', label: 'Pengambilan Gudang Basah', hint: 'Log harian bahan chiller dan freezer yang diambil dapur, dengan kolom kondisi bahan saat diambil dan paraf kedua pihak.' },
   { id: 'NONFOOD_ISSUE_FORM', label: 'Pengambilan Non-Food', hint: 'Log harian barang non-food yang diambil relawan dari gudang. Disalin ke Barang Keluar > Operasional.' },
   { id: 'WASTE_RECAP_FORM', label: 'Rekap Limbah', hint: 'Lembar timbang sisa makanan Senin-Jumat: 5 jenis limbah dan total per hari. Tanggal bisa tercetak otomatis atau diisi tangan.' },
   { id: 'EQUIPMENT_LABEL', label: 'Label Barang & Aset', hint: 'Stiker berkode QR untuk barang gudang dan aset dapur.' },
@@ -144,7 +145,8 @@ export const FORM_CATEGORIES: FormCategoryGroup[] = [
     forms: [
       'DAILY_PO_SHEET',
       'RECEIVING_FORM',
-      'KITCHEN_REQUISITION',
+      'DRY_ISSUE_FORM',
+      'WET_ISSUE_FORM',
       'NONFOOD_ISSUE_FORM',
       'WASTE_RECAP_FORM',
       'OPNAME_SHEET',
@@ -602,6 +604,13 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     () => items.filter(i => i.isActive && i.itemType === 'OPERATIONAL_CONSUMABLE').sort((a, b) => a.name.localeCompare(b.name)),
     [items]
   );
+  // Bahan pangan aktif untuk daftar nama di form pengambilan gudang kering/basah
+  const foodItemsByWarehouse = useMemo(() => {
+    const food = items
+      .filter(i => i.isActive && (i.itemType === 'FOOD_DAILY_FLOW' || i.itemType === 'FOOD_CARRYING_STOCK'))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return { dry: food.filter(i => !isWetItem(i)), wet: food.filter(isWetItem) };
+  }, [items]);
   const equipment = useMemo(() => warehouseDb.getEquipment(), []);
   const suppliers = useMemo(() => warehouseDb.getSuppliers(), []);
   const users = useMemo(() => warehouseDb.getUsers(), []);
@@ -637,9 +646,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   );
   const [opnameLocation, setOpnameLocation] = useState<string>('ALL');
   const [selectedItemId, setSelectedItemId] = useState<string>(items[0]?.id || '');
-  const [menuToday, setMenuToday] = useState<string>('');
-  const [targetPortions, setTargetPortions] = useState<number>(0);
-  const [kitchenPic, setKitchenPic] = useState<string>('');
+  const [issueBlankDate, setIssueBlankDate] = useState(false);
 
   // Supplier Expense Note States
   const [expenseSupplierId, setExpenseSupplierId] = useState<string>(
@@ -2743,21 +2750,11 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             </div>
           )}
 
-          {activeForm === 'KITCHEN_REQUISITION' && (
-            <>
-              <div>
-                <label htmlFor="kr-portions" className={LABEL_CLS}>Target porsi</label>
-                <input id="kr-portions" type="number" min="0" value={targetPortions || ''} placeholder="Kosongkan untuk diisi tangan" onChange={e => setTargetPortions(Number(e.target.value) || 0)} className={INPUT_CLS} />
-              </div>
-              <div>
-                <label htmlFor="kr-pic" className={LABEL_CLS}>Peminta (dapur)</label>
-                <input id="kr-pic" type="text" value={kitchenPic} placeholder="Kosongkan untuk diisi tangan" onChange={e => setKitchenPic(e.target.value)} className={INPUT_CLS} />
-              </div>
-              <div className="sm:col-span-2">
-                <label htmlFor="kr-menu" className={LABEL_CLS}>Menu</label>
-                <input id="kr-menu" type="text" value={menuToday} placeholder="Kosongkan untuk diisi tangan" onChange={e => setMenuToday(e.target.value)} className={INPUT_CLS} />
-              </div>
-            </>
+          {(activeForm === 'DRY_ISSUE_FORM' || activeForm === 'WET_ISSUE_FORM') && (
+            <label className="flex items-center gap-2 text-slate-800 sm:pt-5 min-h-[44px] sm:min-h-0 cursor-pointer">
+              <input type="checkbox" checked={issueBlankDate} onChange={e => setIssueBlankDate(e.target.checked)} className="w-4 h-4 accent-emerald-700" />
+              Kosongkan tanggal (cetak banyak lembar sekaligus)
+            </label>
           )}
         </div>
       </div>
@@ -2968,50 +2965,96 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           </div>
         )}
 
-        {/* 4. Bon permintaan bahan dapur: baris kosong, diisi tangan oleh dapur dan gudang */}
-        {activeForm === 'KITCHEN_REQUISITION' && (
-          <div className="space-y-5 text-xs">
-            <DocTitle title="Bon Permintaan Bahan Dapur" subtitle="Serah terima bahan dari gudang ke dapur" />
+        {/* Log pengambilan bahan dari gudang kering/basah: diisi tangan tiap kali dapur mengambil bahan */}
+        {(activeForm === 'DRY_ISSUE_FORM' || activeForm === 'WET_ISSUE_FORM') && (() => {
+          const wet = activeForm === 'WET_ISSUE_FORM';
+          const refItems = wet ? foodItemsByWarehouse.wet : foodItemsByWarehouse.dry;
+          const TH = 'border border-slate-300 p-1.5';
+          const columns: { label: React.ReactNode; cls: string }[] = [
+            { label: 'Jam', cls: 'text-center w-12' },
+            { label: wet ? 'Nama bahan' : 'Nama barang', cls: 'text-left' },
+            { label: 'Qty', cls: 'text-right w-12' },
+            { label: 'Satuan', cls: 'text-center w-14' },
+            ...(wet ? [{ label: <>Kondisi<br />(B/R)</>, cls: 'text-center w-14' }] : []),
+            { label: 'Kembali', cls: 'text-right w-14' },
+            { label: 'Nama pengambil', cls: 'text-left w-28' },
+            { label: <>Paraf<br />pengambil</>, cls: 'text-center w-16' },
+            { label: <>Paraf<br />gudang</>, cls: 'text-center w-16' },
+          ];
+          return (
+            <div className="space-y-5 text-xs">
+              <DocTitle
+                title={wet ? 'Form Pengambilan Bahan Gudang Basah' : 'Form Pengambilan Barang Gudang Kering'}
+                subtitle={wet ? 'Bahan chiller dan freezer yang diambil dapur' : 'Bahan kering yang diambil dapur dari gudang'}
+              />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
-              <Field label="Tanggal masak" value={formatLongDate(printDate)} />
-              <Field label="Target porsi" value={targetPortions > 0 ? `${targetPortions.toLocaleString('id-ID')} porsi` : undefined} />
-              <div className="sm:col-span-2">
-                <Field label="Menu" value={menuToday || undefined} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+                <Field label="Tanggal" value={issueBlankDate ? undefined : formatLongDate(printDate)} />
+                <Field label="Lembar ke" blank="........ dari ........" />
+                <div className="sm:col-span-2">
+                  <Field label="Menu hari ini" />
+                </div>
               </div>
-            </div>
 
-            <table className="w-full border-collapse border border-slate-300 table-print">
-              <thead className="bg-slate-100 text-slate-800 font-semibold">
-                <tr>
-                  <th className="border border-slate-300 p-1.5 w-8 text-center">No</th>
-                  <th className="border border-slate-300 p-1.5 text-left">Bahan</th>
-                  <th className="border border-slate-300 p-1.5 text-right w-24">Diminta</th>
-                  <th className="border border-slate-300 p-1.5 text-right w-24">Diserahkan</th>
-                  <th className="border border-slate-300 p-1.5 text-center w-16">Satuan</th>
-                  <th className="border border-slate-300 p-1.5 text-left w-40">Kondisi / suhu</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from({ length: 14 }).map((_, idx) => (
-                  <tr key={idx} className="h-8">
-                    <td className="border border-slate-300 p-1.5 text-center font-mono text-slate-500">{idx + 1}</td>
-                    {Array.from({ length: 5 }).map((__, c) => (
-                      <td key={c} className="border border-slate-300 p-1.5"></td>
+              <table className="w-full border-collapse border border-slate-300 table-print">
+                <thead className="bg-slate-100 text-slate-800 font-semibold leading-tight">
+                  <tr>
+                    <th className={`${TH} w-8 text-center`}>No</th>
+                    {columns.map((c, i) => (
+                      <th key={i} className={`${TH} ${c.cls}`}>{c.label}</th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {Array.from({ length: 20 }).map((_, idx) => (
+                    <tr key={idx} className="h-8">
+                      <td className={`${TH} text-center font-mono text-slate-500`}>{idx + 1}</td>
+                      {columns.map((__, c) => (
+                        <td key={c} className={TH}></td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
-            <DocSignatureToggle doc="permintaan-bahan" />
-            <div className="grid grid-cols-3 gap-6 pt-2">
-              <SignBox role="Diminta (dapur)" name={kitchenPic || undefined} />
-              <SignBox role="Diserahkan (gudang)" name={currentUser?.name} />
-              <SignBox role="Mengetahui (Kepala SPPG Malang Tumpang Jeru)" name={headOfficeName || undefined} officer="KEPALA_SPPG" doc="permintaan-bahan" />
+              <ul className="text-[10px] text-slate-700 leading-snug list-disc pl-4 space-y-0.5 break-inside-avoid">
+                {wet ? (
+                  <>
+                    <li>Ambil bahan yang <b>kedaluwarsanya paling dekat</b> lebih dulu (FEFO). Tutup lagi pintu chiller atau freezer segera setelah mengambil.</li>
+                    <li>Kondisi: tulis <b>B</b> bila baik, <b>R</b> bila berbau, berlendir, berubah warna, atau kemasan rusak. Bahan R jangan dipakai; serahkan ke petugas gudang.</li>
+                    <li>Kolom Kembali diisi bila ada sisa bahan yang dikembalikan ke chiller atau freezer.</li>
+                  </>
+                ) : (
+                  <>
+                    <li>Ambil barang yang <b>paling lama datang</b> lebih dulu (FIFO). Cek Palet Sisa Bahan sebelum membuka kemasan baru.</li>
+                    <li>Kolom Kembali diisi bila ada sisa yang dikembalikan ke gudang.</li>
+                  </>
+                )}
+                <li>Petugas gudang memaraf setiap baris setelah mencocokkan barang dan jumlahnya, lalu mencatatnya di aplikasi (Barang Keluar) pada hari yang sama.</li>
+              </ul>
+
+              <DocSignatureToggle doc="pengambilan-gudang" />
+              <div className="grid grid-cols-3 gap-6 pt-2 break-inside-avoid">
+                <SignBox role="Petugas gudang" name={currentUser?.name} />
+                <SignBox role="Koordinator dapur" />
+                <SignBox role="Mengetahui (Kepala SPPG Malang Tumpang Jeru)" name={headOfficeName || undefined} officer="KEPALA_SPPG" doc="pengambilan-gudang" />
+              </div>
+
+              {refItems.length > 0 && (
+                <div className="break-inside-avoid">
+                  <p className="font-semibold text-slate-800 mb-1.5">{wet ? 'Nama bahan di gudang basah' : 'Nama barang di gudang kering'} (tulis sesuai daftar ini)</p>
+                  <ul className="columns-2 sm:columns-3 print:columns-3 gap-6 text-[10px] text-slate-700 leading-relaxed">
+                    {refItems.map(item => (
+                      <li key={item.id} className="break-inside-avoid">
+                        {item.name} <span className="text-slate-500">({wet && item.location ? `${item.baseUnit}, ${item.location}` : item.baseUnit})</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Log pengambilan non-food: daftar barang di bawah agar nama yang ditulis cocok dengan master. */}
         {activeForm === 'NONFOOD_ISSUE_FORM' && (

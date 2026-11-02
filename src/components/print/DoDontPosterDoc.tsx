@@ -156,7 +156,7 @@ const POSTERS: Record<PosterKey, Poster> = {
     dos: [
       { head: 'Tulis tanggal datang di kemasan atau dus.' },
       { head: 'Barang baru di belakang atau di bawah.', detail: 'Barang lama di depan supaya dipakai dulu.' },
-      { head: 'Ambil bahan hanya dengan Bon Dapur.' },
+      { head: 'Setiap pengambilan dicatat di Form Pengambilan Gudang Kering.' },
       { head: 'Cek Palet Sisa Bahan dulu.', detail: 'Sisa terbuka dipakai sebelum membuka kemasan baru.' },
       { head: 'Catat barang masuk dan keluar di aplikasi hari itu juga.' },
     ],

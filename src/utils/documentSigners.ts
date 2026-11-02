@@ -54,7 +54,7 @@ export type SignatureDoc =
   | 'pengeluaran-harian'
   | 'absensi'
   | 'laporan-tugas'
-  | 'permintaan-bahan'
+  | 'pengambilan-gudang'
   | 'bukti-belanja'
   | 'rekap-limbah'
   | 'log-limbah'

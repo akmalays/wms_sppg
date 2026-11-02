@@ -96,7 +96,7 @@ export const SOPS: Record<Exclude<SopPlace, 'APD'>, SopDefinition> = {
       {
         title: 'Mengambil bahan',
         items: [
-          'Ambil hanya dengan Bon Dapur yang sudah diisi.',
+          'Setiap pengambilan dicatat di Form Pengambilan Gudang Kering dan diparaf petugas gudang.',
           <>Ambil yang <b>paling lama datang</b> atau yang <b>kedaluwarsanya paling dekat</b>.</>,
           <>Cek Palet Sisa Bahan lebih dulu: <b>sisa terbuka dipakai sebelum membuka kemasan baru</b>.</>,
           'Rak 1–3 hampir kosong → isi ulang dari Rak 4, buka dus yang paling lama.',
