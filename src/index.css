@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Varian print: juga berlaku di dalam .print-preview, supaya pratinjau cetak di layar sama persis dengan hasil cetak. */
+@custom-variant print {
+  @media print {
+    @slot;
+  }
+  &:where(.print-preview, .print-preview *) {
+    @slot;
+  }
+}
+
 @layer base {
   :root {
     --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;

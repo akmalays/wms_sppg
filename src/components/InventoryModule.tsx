@@ -2452,8 +2452,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                     <div className="text-slate-500">Otorisasi / Persetujuan,</div>
                     <div className="font-semibold text-slate-800">Kepala SPPG Malang Tumpang Jeru</div>
                     <div className="h-24 flex flex-col items-center justify-end font-bold text-slate-900">
-                      <OfficerSignatureImg doc="opname" officer="KEPALA_SPPG" className="h-16" />
-                      ({viewingOpname.approvedByName && !viewingOpname.approvedByName.includes('Siti Rahma') ? viewingOpname.approvedByName : signerName('KEPALA_SPPG')})
+                      {(() => {
+                        const approver = viewingOpname.approvedByName && !viewingOpname.approvedByName.includes('Siti Rahma') ? viewingOpname.approvedByName : signerName('KEPALA_SPPG');
+                        return (
+                          <>
+                            <OfficerSignatureImg doc="opname" officer="KEPALA_SPPG" className="h-16" forName={approver} />
+                            ({approver})
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

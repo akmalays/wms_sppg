@@ -1,4 +1,5 @@
-import ttdRizkyImg from '../assets/ttd rizky.png';
+// Versi rapat: goresan sama dengan 'ttd rizky.png' tanpa ruang kosong di sekelilingnya, jadi tercetak lebih besar.
+import ttdRizkyImg from '../assets/ttd rizky rapat.png';
 import ttdEnoImg from '../assets/ttd eno.png';
 import ttdToniImg from '../assets/ttd toni.png';
 import ttdAlfianaImg from '../assets/ttd alfiana.png';

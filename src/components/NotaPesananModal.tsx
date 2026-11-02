@@ -738,7 +738,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
 
               {/* Tanda tangan Kepala SPPG, mengikuti centang di modal Petugas */}
               <div className={`my-0.5 ${isCompact ? 'h-20' : 'h-24 sm:h-28'} flex items-center justify-center`}>
-                <OfficerSignatureImg doc="po-nota" officer="KEPALA_SPPG" className={isCompact ? 'h-20' : 'h-24 sm:h-28'} />
+                <OfficerSignatureImg doc="po-nota" officer="KEPALA_SPPG" className={isCompact ? 'h-20' : 'h-24 sm:h-28'} forName={signerName} />
               </div>
 
               {/* Nama Penandatangan Bergaris Bawah */}

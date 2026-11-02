@@ -21,7 +21,6 @@ import {
   readGrids,
 } from '../../utils/excelTable';
 import { signerName } from '../../db/storage';
-import ttdKepalaImg from '../../assets/ttd rizky rapat.png';
 import { OfficerSignatureImg } from '../common/OfficerSignatureImg';
 
 // Slip gaji relawan/karyawan, dibuat massal dari file Excel daftar gaji dan dicetak 2 sampai 4 slip per A4.
@@ -687,7 +686,7 @@ export const SalarySlipDoc: React.FC<SalarySlipDocProps> = ({ onCountChange }) =
                   <p>Mengetahui,</p>
                   <p className="text-slate-600">Kepala SPPG Malang Tumpang Jeru</p>
                   <div className="h-20 flex items-center justify-center">
-                    {withSignature && <OfficerSignatureImg officer="KEPALA_SPPG" className="h-20" defaultVariant={ttdKepalaImg} />}
+                    {withSignature && <OfficerSignatureImg officer="KEPALA_SPPG" className="h-20" />}
                   </div>
                   <p className="font-bold underline underline-offset-2">{head}</p>
                 </div>

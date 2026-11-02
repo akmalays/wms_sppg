@@ -8,21 +8,28 @@ import { QrSvg } from '../common/QrSvg';
 // Halaman 2 memakai Uji Hedonik format standar apa adanya; bila uji hedonik lewat QR, QR-nya dicetak di halaman 1
 // dan halaman 2 tidak perlu dicetak. Format standar dan lama tidak diubah.
 
+// Satu lembar mengisi area cetak A4 (297mm dikurangi margin @page 8mm + 10mm, sisa 2mm agar tidak tumpah ke halaman
+// berikutnya). Ruang lebih diserap kotak serah terima, jadi ruang tanda tangan basah ikut lega.
 const SHEET =
-  'bg-white p-7 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-[11px] print:text-[9.5px] leading-snug';
-const CELL = 'border border-slate-700 px-2 py-1 print:py-0.5 print:px-1';
+  'bg-white p-7 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-[11px] leading-snug flex flex-col print:min-h-[277mm]';
+const CELL_BORDER = 'border border-slate-700 px-2';
+const CELL = `${CELL_BORDER} py-1`;
 const LABEL = 'text-slate-600';
+// Ruang tanda tangan basah di kotak serah terima: memanjang mengisi kotak, nama tetap di bawah.
+const HANDOVER_SIGN = 'flex-1 min-h-12';
+// Tanda tangan petugas (gambar) di baris bawah dibuat besar agar goresan tipis tetap jelas.
+const OFFICER_SIGN = 'h-24';
 
 const Dots: React.FC<{ w?: string; value?: string }> = ({ w = 'w-28', value }) => (
   <span className={`inline-block ${w} border-b border-dotted border-slate-700 align-bottom px-1 font-semibold`}>{value || ' '}</span>
 );
 
-const Sign: React.FC<{ role: string; name?: string; signature?: string; height?: string }> = ({ role, name, signature, height = 'h-14 print:h-8.5' }) => {
+const Sign: React.FC<{ role: string; name?: string; signature?: string; height?: string }> = ({ role, name, signature, height = 'h-16' }) => {
   return (
-    <div className="text-center">
+    <div className="text-center flex flex-col flex-1">
       <div className="font-semibold leading-tight text-[10.5px]">{role}</div>
-      <div className={`${height} flex items-center justify-center -mt-1.5 -mb-1`}>
-        {signature && <img src={signature} alt={`Tanda tangan ${role}`} className="max-h-full h-full w-auto object-contain scale-[1.35] origin-center" />}
+      <div className={`${height} flex items-center justify-center`}>
+        {signature && <img src={signature} alt={`Tanda tangan ${role}`} className="max-h-full h-full w-auto object-contain" />}
       </div>
       <div className="font-semibold underline underline-offset-2 min-h-[1.2em] text-[10.5px] leading-tight">{name || '(..............................)'}</div>
     </div>
@@ -37,13 +44,14 @@ const HandoverBox: React.FC<{ title: string; children: React.ReactNode; from: Re
 }) => (
   <div className="border border-slate-700 flex flex-col">
     <div className="bg-slate-100 border-b border-slate-700 px-2 py-1 font-semibold">{title}</div>
-    <div className="px-2 py-1.5 space-y-1 flex-1">{children}</div>
-    <div className="grid grid-cols-2 gap-2 px-2 pb-2 pt-1">
-      <div>
+    <div className="px-2 py-1.5 space-y-1.5">{children}</div>
+    {/* Ruang tanda tangan basah memanjang mengikuti sisa halaman */}
+    <div className="grid grid-cols-2 gap-2 px-2 pb-2 pt-2 flex-1">
+      <div className="flex flex-col">
         <div className={`${LABEL} text-center text-[10px]`}>Yang menyerahkan,</div>
         {from}
       </div>
-      <div>
+      <div className="flex flex-col">
         <div className={`${LABEL} text-center text-[10px]`}>Yang menerima,</div>
         {to}
       </div>
@@ -73,18 +81,27 @@ export const SuratJalanBastSheetCompact: React.FC<
   hedonicQr,
 }) => {
   const total = totalPortions > 0 ? totalPortions.toLocaleString('id-ID') : '';
+  // Tinggi baris kelas dibagi dari ruang 72mm (sisa halaman setelah bagian lain): SD (9 baris) sekitar 8mm,
+  // PAUD/SMP lebih tinggi, maksimal 14mm. Lebih dari 12 baris memakai teks lebih kecil agar tetap satu halaman.
+  const rowCount = classes.length + 1;
+  const dense = rowCount > 12;
+  const rowHeight = dense ? undefined : `${Math.min(14, 72 / rowCount).toFixed(1)}mm`;
+  const rowCell = dense ? `${CELL_BORDER} py-0.5 text-[10px]` : CELL;
+  // Lembar padat: jarak antarbagian dan ruang tanda tangan basah dirapatkan
+  const gap = dense ? 'mb-2' : 'mb-4';
+  const handoverSign = dense ? 'flex-1 min-h-8' : HANDOVER_SIGN;
   return (
     <div className={SHEET}>
       {kop}
-      <div className="text-center mt-3 mb-3 print:mt-1 print:mb-1.5">
-        <h2 className="text-[13.5px] print:text-[12px] font-bold uppercase underline underline-offset-4">Surat Jalan dan Berita Acara Serah Terima</h2>
-        <p className="mt-0.5 text-[11px] print:text-[9px] text-slate-700">Makan Bergizi Gratis (MBG) · SPPG Malang Tumpang Jeru</p>
-        <p className="mt-0.5 text-[10.5px] print:text-[9px]">
+      <div className={`text-center ${dense ? 'mt-2' : 'mt-4'} ${gap}`}>
+        <h2 className="text-[14px] font-bold uppercase underline underline-offset-4">Surat Jalan dan Berita Acara Serah Terima</h2>
+        <p className="mt-1 text-[11px] text-slate-700">Makan Bergizi Gratis (MBG) · SPPG Malang Tumpang Jeru</p>
+        <p className="mt-0.5 text-[11px]">
           Nomor: <span className="font-semibold">{docNo}</span>
         </p>
       </div>
 
-      <table className="w-full border-collapse border border-slate-700 mb-3 print:mb-1.5">
+      <table className={`w-full border-collapse border border-slate-700 ${gap}`}>
         <tbody>
           <tr>
             <td className={`${CELL} ${LABEL} w-24`}>Kepada</td>
@@ -103,7 +120,7 @@ export const SuratJalanBastSheetCompact: React.FC<
         </tbody>
       </table>
 
-      <table className="w-full border-collapse border border-slate-700 mb-3 print:mb-1.5">
+      <table className={`w-full border-collapse border border-slate-700 ${gap}`}>
         <thead className="bg-slate-100">
           <tr className="text-center font-semibold">
             <th rowSpan={2} className={`${CELL} w-8`}>No</th>
@@ -119,35 +136,35 @@ export const SuratJalanBastSheetCompact: React.FC<
         </thead>
         <tbody>
           {classes.map((c, i) => (
-            <tr key={`${c.className}-${i}`} className="h-7 print:h-5.5">
-              <td className={`${CELL} text-center`}>{i + 1}</td>
-              <td className={CELL}>{c.className}</td>
-              <td className={`${CELL} text-center`}>{c.portions !== undefined ? c.portions.toLocaleString('id-ID') : ''}</td>
-              <td className={CELL}></td>
-              <td className={CELL}></td>
-              <td className={CELL}></td>
+            <tr key={`${c.className}-${i}`} style={{ height: rowHeight }}>
+              <td className={`${rowCell} text-center`}>{i + 1}</td>
+              <td className={rowCell}>{c.className}</td>
+              <td className={`${rowCell} text-center`}>{c.portions !== undefined ? c.portions.toLocaleString('id-ID') : ''}</td>
+              <td className={rowCell}></td>
+              <td className={rowCell}></td>
+              <td className={rowCell}></td>
             </tr>
           ))}
-          <tr className="h-7 print:h-5.5 font-bold bg-slate-50">
-            <td colSpan={2} className={`${CELL} text-right`}>Total</td>
-            <td className={`${CELL} text-center`}>{total}</td>
-            <td className={CELL}></td>
-            <td className={CELL}></td>
-            <td className={CELL}></td>
+          <tr className="font-bold bg-slate-50" style={{ height: rowHeight }}>
+            <td colSpan={2} className={`${rowCell} text-right`}>Total</td>
+            <td className={`${rowCell} text-center`}>{total}</td>
+            <td className={rowCell}></td>
+            <td className={rowCell}></td>
+            <td className={rowCell}></td>
           </tr>
         </tbody>
       </table>
 
-      <div className="border-2 border-red-600 text-red-700 font-bold text-center py-1 print:py-0.5 mb-3 print:mb-1.5 text-xs print:text-[10px]">
+      <div className={`border-2 border-red-600 text-red-700 font-bold text-center py-1.5 ${gap} text-xs`}>
         Makanan baik dikonsumsi sebelum pukul {officers.consumeBefore || '11:00'} WIB
       </div>
 
       {/* Serah terima: saat makanan diantar dan saat alat makan dijemput */}
-      <div className="grid grid-cols-2 gap-3 print:gap-2 mb-3 print:mb-1.5">
+      <div className={`grid grid-cols-2 gap-3 flex-1 ${dense ? '' : 'min-h-[52mm]'}`}>
         <HandoverBox
           title="I. Paket makanan (saat diantar)"
-          from={<Sign role="Driver" name={officers.driverName} />}
-          to={<Sign role="PIC sekolah" />}
+          from={<Sign role="Driver" name={officers.driverName} height={handoverSign} />}
+          to={<Sign role="PIC sekolah" height={handoverSign} />}
         >
           <p>
             Telah diterima <b>{total || <Dots w="w-12" />} paket</b> makanan dalam keadaan baik dan layak dikonsumsi, pukul{' '}
@@ -162,8 +179,8 @@ export const SuratJalanBastSheetCompact: React.FC<
         </HandoverBox>
         <HandoverBox
           title="II. Alat makan (saat dijemput)"
-          from={<Sign role="PIC sekolah" />}
-          to={<Sign role="Driver" name={officers.driverName} />}
+          from={<Sign role="PIC sekolah" height={handoverSign} />}
+          to={<Sign role="Driver" name={officers.driverName} height={handoverSign} />}
         >
           <p>
             Telah dikembalikan <Dots w="w-12" /> dari <b>{total || <Dots w="w-12" />} set</b> alat makan yang dikirim, pukul{' '}
@@ -178,27 +195,28 @@ export const SuratJalanBastSheetCompact: React.FC<
         </HandoverBox>
       </div>
 
-      <div className={`grid ${hedonicQr ? 'grid-cols-4' : 'grid-cols-3'} gap-3 print:gap-1.5 items-start`}>
+      {/* Jarak dari kotak serah terima supaya baris Diperiksa/Mengetahui dan QR tidak menempel */}
+      <div className={`grid ${hedonicQr ? 'grid-cols-4' : 'grid-cols-3'} gap-4 ${dense ? 'mt-3' : 'mt-6'} items-start`}>
         <div>
           <div className={`${LABEL} text-center`}>Diperiksa oleh,</div>
-          <Sign role="Ahli Gizi SPPG Malang Tumpang Jeru" name={officers.nutritionistName} signature={officers.nutritionistSignature} />
+          <Sign role="Ahli Gizi SPPG Malang Tumpang Jeru" name={officers.nutritionistName} signature={officers.nutritionistSignature} height={OFFICER_SIGN} />
         </div>
         <div>
           <div className={`${LABEL} text-center`}>Diperiksa oleh,</div>
-          <Sign role="Asisten Lapangan SPPG Malang Tumpang Jeru" name={officers.fieldAssistantName} signature={officers.fieldAssistantSignature} />
+          <Sign role="Asisten Lapangan SPPG Malang Tumpang Jeru" name={officers.fieldAssistantName} signature={officers.fieldAssistantSignature} height={OFFICER_SIGN} />
         </div>
         <div>
           <div className={`${LABEL} text-center`}>Mengetahui,</div>
-          <Sign role="Kepala SPPG Malang Tumpang Jeru" name={officers.headName} signature={officers.headSignature} />
+          <Sign role="Kepala SPPG Malang Tumpang Jeru" name={officers.headName} signature={officers.headSignature} height={OFFICER_SIGN} />
         </div>
         {hedonicQr && (
-          <div className="border border-slate-700 p-1.5 print:p-1 flex gap-1.5 items-start h-fit self-start">
-            <QrSvg value={SIPGN_LOGIN_URL} className="w-[22mm] h-[22mm] print:w-[18mm] print:h-[18mm] shrink-0" />
-            <div className="text-[9.5px] print:text-[8.5px] leading-tight">
+          <div className="border border-slate-700 p-2 flex gap-2 items-start h-fit self-start">
+            <QrSvg value={SIPGN_LOGIN_URL} className="w-[22mm] h-[22mm] shrink-0" />
+            <div className="min-w-0 text-[9.5px] leading-tight">
               <div className="font-bold">Uji hedonik</div>
               <div>Pindai untuk membuka SIPGN BGN, lalu isi uji hedonik menu hari ini.</div>
               {/* Alamat tertulis untuk yang tidak bisa memindai QR */}
-              <div className="mt-0.5 font-mono text-[8.5px] print:text-[8px] text-slate-600">pm-sipgn.bgn.go.id</div>
+              <div className="mt-0.5 font-mono text-[8.5px] text-slate-600 break-all">pm-sipgn.bgn.go.id</div>
             </div>
           </div>
         )}

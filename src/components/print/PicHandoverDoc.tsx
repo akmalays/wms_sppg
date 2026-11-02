@@ -21,7 +21,6 @@ import {
   readGrids,
 } from '../../utils/excelTable';
 import { signerName } from '../../db/storage';
-import ttdKepalaImg from '../../assets/ttd rizky rapat.png';
 import { OfficerSignatureImg } from '../common/OfficerSignatureImg';
 
 // Kuitansi serah terima insentif PIC sekolah, dibuat massal dari file Excel "Daftar Penerima PIC".
@@ -246,7 +245,7 @@ export const PicHandoverDoc: React.FC<PicHandoverDocProps> = ({ onCountChange })
           <p>Mengetahui,</p>
           <p className="text-slate-600">Kepala SPPG Malang Tumpang Jeru</p>
           <div className="h-16 flex items-center justify-center">
-            {withSignatures && <OfficerSignatureImg officer="KEPALA_SPPG" className="h-16" defaultVariant={ttdKepalaImg} />}
+            {withSignatures && <OfficerSignatureImg officer="KEPALA_SPPG" className="h-16" />}
           </div>
           <p className="font-bold underline underline-offset-2">{head}</p>
         </div>
@@ -440,7 +439,7 @@ export const PicHandoverDoc: React.FC<PicHandoverDocProps> = ({ onCountChange })
                   <p>Mengetahui,</p>
                   <p className="text-slate-600">Kepala SPPG Malang Tumpang Jeru</p>
                   <div className="h-20 flex items-center justify-center">
-                    {withSignatures && <OfficerSignatureImg officer="KEPALA_SPPG" className="h-20" defaultVariant={ttdKepalaImg} />}
+                    {withSignatures && <OfficerSignatureImg officer="KEPALA_SPPG" className="h-20" />}
                   </div>
                   <p className="font-bold underline underline-offset-2">{head}</p>
                 </div>

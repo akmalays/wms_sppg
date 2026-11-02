@@ -28,14 +28,14 @@ const Signer: React.FC<{ caption: string; role: string; name?: string; note?: st
   name,
   note,
   signature,
-  sigHeight = 'h-18 print:h-10',
+  sigHeight = 'h-18 print:h-16',
 }) => {
   return (
     <div className="text-center">
       <div className={`${LABEL} text-[10.5px] print:text-[9px]`}>{caption}</div>
       <div className="font-semibold leading-tight text-[10px] print:text-[9px]">{role}</div>
-      <div className={`${sigHeight} flex items-center justify-center -my-0.5`}>
-        {signature && <img src={signature} alt={`Tanda tangan ${role}`} className="max-h-full h-full w-auto object-contain scale-[1.15] origin-center" />}
+      <div className={`${sigHeight} flex items-center justify-center`}>
+        {signature && <img src={signature} alt={`Tanda tangan ${role}`} className="max-h-full h-full w-auto object-contain" />}
       </div>
       <div className="font-semibold underline underline-offset-2 min-h-[1.2em] leading-tight text-[10.5px] print:text-[9.5px]">{name || '(.................................)'}</div>
       {note && <div className="text-[10px] print:text-[8.5px] text-slate-600">{note}</div>}
@@ -129,10 +129,10 @@ export const SuratJalanSheetStandard: React.FC<SheetProps & { docNo: string; del
     </p>
 
     <div className="grid grid-cols-4 gap-3 print:gap-1.5">
-      <Signer caption="Diperiksa oleh," role="Ahli Gizi SPPG Malang Tumpang Jeru" name={officers.nutritionistName} signature={officers.nutritionistSignature} sigHeight="h-16 print:h-10" />
-      <Signer caption="Diperiksa oleh," role="Asisten Lapangan SPPG Malang Tumpang Jeru" name={officers.fieldAssistantName} signature={officers.fieldAssistantSignature} sigHeight="h-16 print:h-10" />
-      <Signer caption="Diterima oleh," role="Pihak Sekolah" note={school.schoolName} sigHeight="h-16 print:h-10" />
-      <Signer caption="Mengetahui," role="Kepala SPPG Malang Tumpang Jeru" name={officers.headName} signature={officers.headSignature} sigHeight="h-16 print:h-10" />
+      <Signer caption="Diperiksa oleh," role="Ahli Gizi SPPG Malang Tumpang Jeru" name={officers.nutritionistName} signature={officers.nutritionistSignature} sigHeight="h-20" />
+      <Signer caption="Diperiksa oleh," role="Asisten Lapangan SPPG Malang Tumpang Jeru" name={officers.fieldAssistantName} signature={officers.fieldAssistantSignature} sigHeight="h-20" />
+      <Signer caption="Diterima oleh," role="Pihak Sekolah" note={school.schoolName} sigHeight="h-20" />
+      <Signer caption="Mengetahui," role="Kepala SPPG Malang Tumpang Jeru" name={officers.headName} signature={officers.headSignature} sigHeight="h-20" />
     </div>
     <Footer text={footer} />
   </div>
@@ -189,8 +189,8 @@ export const BeritaAcaraSheetStandard: React.FC<SheetProps & { docNo: string }> 
           Makanan baik dikonsumsi sebelum pukul {officers.consumeBefore || '11:00'} WIB
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Signer caption="Yang menyerahkan," role="Driver" name={officers.driverName} sigHeight="h-14 print:h-8" />
-          <Signer caption="Yang menerima," role="PIC Sekolah" sigHeight="h-14 print:h-8" />
+          <Signer caption="Yang menyerahkan," role="Driver" name={officers.driverName} sigHeight="h-16" />
+          <Signer caption="Yang menerima," role="PIC Sekolah" sigHeight="h-16" />
         </div>
       </section>
 
@@ -214,14 +214,14 @@ export const BeritaAcaraSheetStandard: React.FC<SheetProps & { docNo: string }> 
           <PartyBox title="Yang menerima" party="Driver SPPG Malang Tumpang Jeru" rows={[['Nama', officers.driverName || <Dots />], ['No. telepon', <Dots />]]} />
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Signer caption="Yang menyerahkan," role="PIC Sekolah" sigHeight="h-14 print:h-8" />
-          <Signer caption="Yang menerima," role="Driver" name={officers.driverName} sigHeight="h-14 print:h-8" />
+          <Signer caption="Yang menyerahkan," role="PIC Sekolah" sigHeight="h-16" />
+          <Signer caption="Yang menerima," role="Driver" name={officers.driverName} sigHeight="h-16" />
         </div>
       </section>
 
       <div className="flex justify-center mt-1.5 print:mt-0.5">
         <div className="w-56">
-          <Signer caption="Mengetahui," role="Kepala SPPG Malang Tumpang Jeru" name={officers.headName} signature={officers.headSignature} sigHeight="h-14 print:h-8" />
+          <Signer caption="Mengetahui," role="Kepala SPPG Malang Tumpang Jeru" name={officers.headName} signature={officers.headSignature} sigHeight="h-16" />
         </div>
       </div>
       <Footer text={footer} />
@@ -301,7 +301,7 @@ export const UjiHedonikSheetStandard: React.FC<SheetProps> = ({ school, longDate
 
     <div className="flex justify-end">
       <div className="w-56">
-        <Signer caption="Penilai," role="Perwakilan Sekolah" sigHeight="h-16 print:h-9" />
+        <Signer caption="Penilai," role="Perwakilan Sekolah" sigHeight="h-16 print:h-12" />
       </div>
     </div>
     <Footer text={footer} />

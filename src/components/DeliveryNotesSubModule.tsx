@@ -429,6 +429,8 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
     [printSchoolsQueue, customClassBreakdowns, selectedDate]
   );
   const isCompactDoc = docFormat === 'RINGKAS';
+  // Format ringkas muat sampai 18 baris kelas dalam satu halaman A4; lebih dari itu lembarnya terpotong ke halaman kedua.
+  const overlongClassSchools = isCompactDoc ? printSchoolsQueue.filter(s => printClassRows(s, 0).length > 18) : [];
   // QR uji hedonik mengarah ke halaman login SIPGN (statis), jadi lembar kertasnya tidak perlu dicetak
   const sheetsPerSchool = printSheetTab !== 'ALL' ? 1 : !isCompactDoc ? 3 : hedonicQr ? 1 : 2;
   const printPageCount = printSchoolsQueue.length * sheetsPerSchool;
@@ -1009,6 +1011,16 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
               #delivery-print-portal {
                 display: none;
               }
+              /* Lembar pratinjau = kertas A4 dengan margin sama seperti @page di bawah */
+              .print-preview .print-page-break {
+                box-sizing: border-box;
+                width: 210mm;
+                max-width: 100%;
+                min-height: 297mm;
+                padding: 8mm 10mm 10mm 10mm !important;
+                background: #ffffff;
+                box-shadow: 0 1px 3px rgb(15 23 42 / 0.15);
+              }
               @media print {
                 @page {
                   size: A4 portrait;
@@ -1042,7 +1054,6 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                   break-inside: avoid !important;
                   box-sizing: border-box !important;
                   width: 100% !important;
-                  min-height: 0 !important;
                   margin: 0 !important;
                   border: none !important;
                   box-shadow: none !important;
@@ -1166,9 +1177,15 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                 </span>
               </div>
 
-              {(printMismatches.length > 0 || !currentOrder) && (
+              {(printMismatches.length > 0 || overlongClassSchools.length > 0 || !currentOrder) && (
                 <div role="note" className="mx-4 sm:mx-5 mb-3 p-2.5 rounded-lg border border-amber-200 bg-amber-50 text-[11px] text-amber-900 space-y-0.5">
                   {!currentOrder && <div>Belum ada menu untuk tanggal ini, kolom menu akan tercetak kosong.</div>}
+                  {overlongClassSchools.length > 0 && (
+                    <div>
+                      <b>{overlongClassSchools.map(s => s.schoolName).join(', ')}</b>: lebih dari 18 baris kelas, surat jalannya
+                      akan terpotong ke halaman kedua. Gabungkan beberapa kelas lewat tombol Atur kelas bila ingin satu halaman.
+                    </div>
+                  )}
                   {printMismatches.map(m => (
                     <div key={m.school.id}>
                       <b>{m.school.schoolName}</b>: rincian kelas {m.classTotal.toLocaleString('id-ID')} porsi, porsi hari ini{' '}
@@ -1181,7 +1198,8 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
 
             {/* Pratinjau Dokumen di Layar (Scrollable Screen Preview) */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-200/70" id="delivery-preview-scroll">
-              <div className="max-w-[210mm] mx-auto space-y-6">
+              {/* print-preview: kelas print: ikut berlaku, tiap lembar digambar seukuran A4 dengan margin @page */}
+              <div className="print-preview w-[210mm] max-w-full mx-auto space-y-6">
                 {printSchoolsQueue.map((school, sIdx) => (
                   <div key={school.id} className="space-y-6">
                     {renderSchoolSheetElements(school, sIdx)}

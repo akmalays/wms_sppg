@@ -239,7 +239,7 @@ const SignBox: React.FC<{ role: string; name?: string; signature?: string; offic
     <p className="min-h-8 text-slate-700">{role}</p>
     <div className="h-20 flex items-center justify-center">
       {signature?.startsWith('data:image') && <img src={signature} alt={`Tanda tangan ${role}`} className="max-h-14 object-contain" />}
-      {officer && doc && <OfficerSignatureImg doc={doc} officer={officer} />}
+      {officer && doc && <OfficerSignatureImg doc={doc} officer={officer} forName={name || ''} />}
     </div>
     <div className="border-t border-slate-500 mx-auto w-40 pt-1 font-semibold text-slate-900">
       {name || <span className="text-slate-400 font-normal">( {BLANK} )</span>}
@@ -605,7 +605,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const equipment = useMemo(() => warehouseDb.getEquipment(), []);
   const suppliers = useMemo(() => warehouseDb.getSuppliers(), []);
   const users = useMemo(() => warehouseDb.getUsers(), []);
-  const headOfficeName = users.find(u => u.role === 'KA_SPPG')?.name || '';
+  const headOfficeName = warehouseDb.getSignerName('KEPALA_SPPG');
   const accountantName = warehouseDb.getSignerName('AKUNTAN');
 
   // Supplier terakhir per barang, diambil dari dokumen penerimaan (bukan tebakan).

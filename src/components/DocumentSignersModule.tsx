@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { warehouseDb, APP_SETTINGS_CHANGED_EVENT, DocumentSigners, SignerRole } from '../db/storage';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { warehouseDb, APP_SETTINGS_CHANGED_EVENT, DEFAULT_SIGNER_NAMES, DocumentSigners, SignerRole } from '../db/storage';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Select } from './common/Select';
@@ -29,18 +29,32 @@ export const DocumentSignersModule: React.FC = () => {
   const canEdit = can('MANAGE_USERS');
   const [saved, setSaved] = useState<DocumentSigners>(() => warehouseDb.getDocumentSigners());
   const [draft, setDraft] = useState<DocumentSigners>(saved);
+  const [dataVersion, setDataVersion] = useState(0);
+  const isDirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
+  // Data dari cloud/perangkat lain: isian yang sedang diubah dibiarkan, yang belum diubah ikut diperbarui.
+  const isDirtyRef = useRef(isDirty);
+  isDirtyRef.current = isDirty;
   useEffect(() => {
-    const reload = () => setSaved(warehouseDb.getDocumentSigners());
+    const reload = () => {
+      const next = warehouseDb.getDocumentSigners();
+      setSaved(next);
+      if (!isDirtyRef.current) setDraft(next);
+      setDataVersion(v => v + 1);
+    };
     window.addEventListener(APP_SETTINGS_CHANGED_EVENT, reload);
-    return () => window.removeEventListener(APP_SETTINGS_CHANGED_EVENT, reload);
+    window.addEventListener('sppg_warehouse_sync', reload);
+    return () => {
+      window.removeEventListener(APP_SETTINGS_CHANGED_EVENT, reload);
+      window.removeEventListener('sppg_warehouse_sync', reload);
+    };
   }, []);
 
   const activeEmployees = useMemo(
     () => warehouseDb.getEmployees().filter(e => e.status === 'AKTIF').sort((a, b) => a.name.localeCompare(b.name, 'id')),
-    []
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dataVersion]
   );
-  const isDirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
   const update = (role: SignerRole, patch: { name?: string; signature?: string }) =>
     setDraft(prev => {
@@ -89,7 +103,7 @@ export const DocumentSignersModule: React.FC = () => {
         {SIGNER_ROLES.map(({ role, title }) => {
           const entry = draft[role] || {};
           const employeeName = warehouseDb.getSignerNameFromEmployees(role);
-          const effectiveName = entry.name || employeeName || warehouseDb.getSignerName(role);
+          const effectiveName = entry.name || employeeName || DEFAULT_SIGNER_NAMES[role] || '';
           const defaultSig = defaultSignatureFor(role, effectiveName);
           const signature = entry.signature !== undefined ? entry.signature : defaultSig;
           const isCustomName = !!entry.name && !activeEmployees.some(e => e.name === entry.name);

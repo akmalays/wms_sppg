@@ -2221,7 +2221,7 @@ export type DocumentSigners = Partial<Record<SignerRole, DocumentSigner>>;
 export const SETTING_DOCUMENT_SIGNERS = 'document_signers';
 
 // Dipakai bila jabatan itu belum ada di data karyawan, sesuai dokumen kertas SPPG Malang Tumpang Jeru.
-const DEFAULT_SIGNER_NAMES: Partial<Record<SignerRole, string>> = {
+export const DEFAULT_SIGNER_NAMES: Partial<Record<SignerRole, string>> = {
   KEPALA_SPPG: 'Rizky Iman Ramadhan, S.Pd.',
   AHLI_GIZI: 'Eno Shafira Ramadanti, A.md.Gz',
   ASLAP: 'Mukhammad Ali Akbar Fathoni, S.Pd',
