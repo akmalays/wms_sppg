@@ -757,12 +757,12 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
             <div>
               <div className="text-slate-600">Mengetahui,</div>
               <div className="font-semibold text-slate-800">Akuntan SPPG Malang Tumpang Jeru</div>
-              <div className="h-16 flex items-end justify-center font-bold">({signerName('AKUNTAN')})</div>
+              <div className="h-24 flex flex-col items-center justify-end font-bold"><OfficerSignatureImg doc="log-limbah" officer="AKUNTAN" className="h-16" />({signerName('AKUNTAN')})</div>
             </div>
             <div>
               <div className="text-slate-600">Malang, {formatDate(today)}</div>
               <div className="font-semibold text-slate-800">Asisten Lapangan SPPG Malang Tumpang Jeru</div>
-              <div className="h-24 flex flex-col items-center justify-end font-bold"><OfficerSignatureImg doc="log-limbah" officer="fieldAssistantSignature" className="h-16" />({signerName('ASLAP')})</div>
+              <div className="h-24 flex flex-col items-center justify-end font-bold"><OfficerSignatureImg doc="log-limbah" officer="ASLAP" className="h-16" />({signerName('ASLAP')})</div>
             </div>
           </div>
         </div>

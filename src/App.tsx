@@ -19,6 +19,7 @@ import { StockOpnameModule } from './components/StockOpnameModule';
 import { EquipmentModule } from './components/EquipmentModule';
 import { SuppliersModule } from './components/SuppliersModule';
 import { AuditLogModule } from './components/AuditLogModule';
+import { DocumentSignersModule } from './components/DocumentSignersModule';
 import { MenuPrintModule } from './components/MenuPrintModule';
 import { LoginPage } from './components/LoginPage';
 import { LandingPage } from './components/LandingPage';
@@ -291,6 +292,8 @@ const MainLayout: React.FC = () => {
               initialTab={activeTab === 'user_management' ? 'ACCOUNTS' : undefined}
             />
           )}
+
+          {activeTab === 'document_signers' && <DocumentSignersModule />}
 
           {activeTab === 'profile' && (
             <ProfileModule onNavigate={setActiveTab} />

@@ -733,7 +733,7 @@ export const ProfileModule: React.FC<ProfileModuleProps> = ({ onNavigate }) => {
               </div>
               <div>
                 <p className="text-slate-600">Mengetahui & menyetujui,</p>
-                <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="laporan-tugas" officer="headSignature" /></div>
+                <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="laporan-tugas" officer="KEPALA_SPPG" /></div>
                 <p className="font-bold text-slate-900 underline">{signerName('KEPALA_SPPG')}</p>
                 <p className="text-[11px] text-slate-600">Kepala SPPG Malang Tumpang Jeru</p>
               </div>

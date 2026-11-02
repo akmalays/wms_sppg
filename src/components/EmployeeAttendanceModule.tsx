@@ -1343,7 +1343,8 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
             <div>
               <div className="text-slate-500">Diverifikasi Oleh,</div>
               <div className="font-semibold text-slate-800">Koordinator Operasional Dapur</div>
-              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+              <div className="h-24 flex flex-col items-center justify-end font-bold text-slate-900">
+                <OfficerSignatureImg doc="absensi" officer="KOORDINATOR" className="h-16" />
                 ({signerName('KOORDINATOR')})
               </div>
             </div>
@@ -1352,7 +1353,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
               <div className="font-semibold text-slate-800">Kepala SPPG Malang Tumpang Jeru</div>
               <div className="h-24 flex flex-col items-center justify-end font-bold text-slate-900">
-                <OfficerSignatureImg doc="absensi" officer="headSignature" className="h-16" />
+                <OfficerSignatureImg doc="absensi" officer="KEPALA_SPPG" className="h-16" />
                 ({signerName('KEPALA_SPPG')})
               </div>
             </div>
@@ -1562,7 +1563,8 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
             <div>
               <div className="text-slate-500">Diverifikasi Oleh,</div>
               <div className="font-semibold text-slate-800">Koordinator Operasional SPPG</div>
-              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+              <div className="h-24 flex flex-col items-center justify-end font-bold text-slate-900">
+                <OfficerSignatureImg doc="absensi" officer="KOORDINATOR" className="h-16" />
                 ({signerName('KOORDINATOR')})
               </div>
             </div>
@@ -1571,7 +1573,7 @@ export const EmployeeAttendanceModule: React.FC<{ initialTab?: EmployeeTab }> = 
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
               <div className="font-semibold text-slate-800">Kepala SPPG Malang Tumpang Jeru</div>
               <div className="h-24 flex flex-col items-center justify-end font-bold text-slate-900">
-                <OfficerSignatureImg doc="absensi" officer="headSignature" className="h-16" />
+                <OfficerSignatureImg doc="absensi" officer="KEPALA_SPPG" className="h-16" />
                 ({signerName('KEPALA_SPPG')})
               </div>
             </div>

@@ -21,7 +21,7 @@ import {
   readGrids,
 } from '../../utils/excelTable';
 import { signerName } from '../../db/storage';
-import ttdAkuntanImg from '../../assets/ttd alfiana.png';
+import { OfficerSignatureImg } from '../common/OfficerSignatureImg';
 
 // Kuitansi pengeluaran dadakan (format .../KULBanPer/<bulan>/<tahun>), dibuat massal dari Excel
 // "KWITANSI PENGELUARAN DADAKAN" (nama file dari akuntansi). Isi sama dengan template Word mail merge yang dipakai sebelumnya.
@@ -219,7 +219,7 @@ export const ExpenseReceiptDoc: React.FC<ExpenseReceiptDocProps> = ({ onCountCha
           <p className="invisible">Malang,</p>
           <p>Staf Akuntansi SPPG Malang Tumpang Jeru</p>
           <div className={`${compact ? 'h-11' : 'h-14'} flex items-center justify-center`}>
-            {withSignature && <img src={ttdAkuntanImg} alt="Tanda tangan Staf Akuntansi" className={`${compact ? 'h-10' : 'h-14'} w-auto object-contain`} />}
+            {withSignature && <OfficerSignatureImg officer="AKUNTAN" className={compact ? 'h-10' : 'h-14'} />}
           </div>
           <p className="font-bold underline underline-offset-2">{r.staff || fallbackStaff}</p>
         </div>
@@ -403,7 +403,7 @@ export const ExpenseReceiptDoc: React.FC<ExpenseReceiptDocProps> = ({ onCountCha
               <div className="mt-6 ml-auto w-64 text-center text-[11px]">
                 <p>Staf Akuntansi SPPG Malang Tumpang Jeru</p>
                 <div className="h-16 flex items-center justify-center">
-                  {withSignature && <img src={ttdAkuntanImg} alt="Tanda tangan Staf Akuntansi" className="h-14 w-auto object-contain" />}
+                  {withSignature && <OfficerSignatureImg officer="AKUNTAN" className="h-14" />}
                 </div>
                 <p className="font-bold underline underline-offset-2">{toPrint[0].staff || fallbackStaff}</p>
               </div>

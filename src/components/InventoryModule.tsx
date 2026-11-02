@@ -653,7 +653,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
             <div>
               <div className="text-slate-500">Diverifikasi Oleh,</div>
               <div className="font-semibold text-slate-800">Akuntan SPPG Malang Tumpang Jeru</div>
-              <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+              <div className="h-24 flex flex-col items-center justify-end font-bold text-slate-900">
+                <OfficerSignatureImg doc="opname" officer="AKUNTAN" className="h-16" />
                 ({signerName('AKUNTAN')})
               </div>
             </div>
@@ -662,7 +663,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
               <div className="text-slate-500">Mengetahui & Menyetujui,</div>
               <div className="font-semibold text-slate-800">Kepala SPPG Malang Tumpang Jeru</div>
               <div className="h-24 flex flex-col items-center justify-end font-bold text-slate-900">
-                <OfficerSignatureImg doc="opname" officer="headSignature" className="h-16" />
+                <OfficerSignatureImg doc="opname" officer="KEPALA_SPPG" className="h-16" />
                 ({signerName('KEPALA_SPPG')})
               </div>
             </div>
@@ -2441,7 +2442,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                   <div>
                     <div className="text-slate-500">Diverifikasi Oleh,</div>
                     <div className="font-semibold text-slate-800">Akuntan SPPG Malang Tumpang Jeru</div>
-                    <div className="h-16 flex items-end justify-center font-bold text-slate-900">
+                    <div className="h-24 flex flex-col items-center justify-end font-bold text-slate-900">
+                      <OfficerSignatureImg doc="opname" officer="AKUNTAN" className="h-16" />
                       ({signerName('AKUNTAN')})
                     </div>
                   </div>
@@ -2450,7 +2452,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                     <div className="text-slate-500">Otorisasi / Persetujuan,</div>
                     <div className="font-semibold text-slate-800">Kepala SPPG Malang Tumpang Jeru</div>
                     <div className="h-24 flex flex-col items-center justify-end font-bold text-slate-900">
-                      <OfficerSignatureImg doc="opname" officer="headSignature" className="h-16" />
+                      <OfficerSignatureImg doc="opname" officer="KEPALA_SPPG" className="h-16" />
                       ({viewingOpname.approvedByName && !viewingOpname.approvedByName.includes('Siti Rahma') ? viewingOpname.approvedByName : signerName('KEPALA_SPPG')})
                     </div>
                   </div>

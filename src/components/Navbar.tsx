@@ -68,6 +68,7 @@ const NAV_GROUPS: { id: 'laporan' | 'lainnya'; label: string; items: NavItem[] }
     items: [
       { id: 'suppliers', label: 'Supplier' },
       { id: 'employees', label: 'Karyawan' },
+      { id: 'document_signers', label: 'Penanda Tangan' },
       { id: 'equipment', label: 'Aset Dapur' },
       { id: 'website_cms', label: 'Atur Website' },
     ],

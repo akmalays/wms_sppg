@@ -608,12 +608,12 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
           <div>
             <div className="text-slate-600">Diperiksa oleh,</div>
             <div className="font-semibold text-slate-800">Akuntan SPPG Malang Tumpang Jeru</div>
-            <div className="h-16 flex items-end justify-center font-bold">({signerName('AKUNTAN')})</div>
+            <div className="h-24 flex flex-col items-center justify-end font-bold"><OfficerSignatureImg doc="pengeluaran-harian" officer="AKUNTAN" className="h-16" />({signerName('AKUNTAN')})</div>
           </div>
           <div>
             <div className="text-slate-600">Mengetahui,</div>
             <div className="font-semibold text-slate-800">Kepala SPPG Malang Tumpang Jeru</div>
-            <div className="h-24 flex flex-col items-center justify-end font-bold"><OfficerSignatureImg doc="pengeluaran-harian" officer="headSignature" className="h-16" />({signerName('KEPALA_SPPG')})</div>
+            <div className="h-24 flex flex-col items-center justify-end font-bold"><OfficerSignatureImg doc="pengeluaran-harian" officer="KEPALA_SPPG" className="h-16" />({signerName('KEPALA_SPPG')})</div>
           </div>
         </div>
       </div>

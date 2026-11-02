@@ -2212,6 +2212,44 @@ const SIGNER_POSITIONS: Record<SignerRole, RegExp> = {
   ASLAP: /asisten\s+lapangan/i,
 };
 
+/** Isian halaman Data > Penanda Tangan. Nama kosong = ikut data karyawan; signature '' = sengaja dihapus. */
+export interface DocumentSigner {
+  name?: string;
+  signature?: string;
+}
+export type DocumentSigners = Partial<Record<SignerRole, DocumentSigner>>;
+export const SETTING_DOCUMENT_SIGNERS = 'document_signers';
+
+// Dipakai bila jabatan itu belum ada di data karyawan, sesuai dokumen kertas SPPG Malang Tumpang Jeru.
+const DEFAULT_SIGNER_NAMES: Partial<Record<SignerRole, string>> = {
+  KEPALA_SPPG: 'Rizky Iman Ramadhan, S.Pd.',
+  AHLI_GIZI: 'Eno Shafira Ramadanti, A.md.Gz',
+  ASLAP: 'Mukhammad Ali Akbar Fathoni, S.Pd',
+  AKUNTAN: 'Alfiana Viransa, S.Tr.Ak.',
+};
+
+// Sebelum ada halaman Penanda Tangan, nama & tanda tangan petugas disimpan di modal Petugas pengiriman.
+const LEGACY_OFFICER_FIELDS: [SignerRole, string, string][] = [
+  ['KEPALA_SPPG', 'headName', 'headSignature'],
+  ['AHLI_GIZI', 'nutritionistName', 'nutritionistSignature'],
+  ['ASLAP', 'fieldAssistantName', 'fieldAssistantSignature'],
+];
+const LEGACY_DEFAULT_OFFICER_NAMES = ['Rizky Iman Ramadhan, S.Pd.', 'Eno Shafira Ramadanti, A.md.Gz', 'Mukhammad Ali Akbar Fathoni, S.Pd'];
+
+const migrateLegacyOfficers = (legacy: Record<string, unknown>): DocumentSigners => {
+  const out: DocumentSigners = {};
+  for (const [role, nameKey, sigKey] of LEGACY_OFFICER_FIELDS) {
+    const name = typeof legacy[nameKey] === 'string' ? (legacy[nameKey] as string).trim() : '';
+    const signature = legacy[sigKey];
+    const entry: DocumentSigner = {};
+    // Nama bawaan modal lama tidak dibawa, supaya nama ikut data karyawan.
+    if (name && !LEGACY_DEFAULT_OFFICER_NAMES.includes(name)) entry.name = name;
+    if (typeof signature === 'string') entry.signature = signature;
+    if (entry.name !== undefined || entry.signature !== undefined) out[role] = entry;
+  }
+  return out;
+};
+
 class WarehouseDatabase {
   private items: ItemMaster[] = [];
   private suppliers: Supplier[] = [];
@@ -5482,10 +5520,27 @@ class WarehouseDatabase {
    * Kosong jika belum ada, agar dokumen mencetak garis isian, bukan nama yang salah.
    */
   public getSignerName(role: SignerRole): string {
+    const chosen = this.getDocumentSigners()[role]?.name?.trim();
+    if (chosen) return chosen;
+    return this.getSignerNameFromEmployees(role) || DEFAULT_SIGNER_NAMES[role] || '';
+  }
+
+  /** Nama dari data karyawan aktif dengan jabatan itu, tanpa pilihan di halaman Penanda Tangan. */
+  public getSignerNameFromEmployees(role: SignerRole): string {
     const emp = this.employees.find(e => e.status === 'AKTIF' && SIGNER_POSITIONS[role].test(e.position));
     if (emp) return emp.name;
     if (role === 'KEPALA_SPPG') return this.users.find(u => u.role === 'KA_SPPG')?.name || '';
     return '';
+  }
+
+  public getDocumentSigners(): DocumentSigners {
+    const saved = this.getAppSetting<DocumentSigners | undefined>(SETTING_DOCUMENT_SIGNERS, undefined);
+    if (saved) return saved;
+    return migrateLegacyOfficers(this.getAppSetting<Record<string, unknown>>('delivery_officers', {}));
+  }
+
+  public saveDocumentSigners(signers: DocumentSigners, user?: User): void {
+    this.saveAppSetting(SETTING_DOCUMENT_SIGNERS, signers, user);
   }
 
   public getSppgHeadName(): string {

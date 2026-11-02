@@ -21,7 +21,6 @@ import {
   readGrids,
 } from '../../utils/excelTable';
 import { signerName } from '../../db/storage';
-import ttdAkuntanImg from '../../assets/ttd alfiana.png';
 import ttdKepalaImg from '../../assets/ttd rizky rapat.png';
 import { OfficerSignatureImg } from '../common/OfficerSignatureImg';
 
@@ -372,7 +371,7 @@ export const SalarySlipDoc: React.FC<SalarySlipDocProps> = ({ onCountChange }) =
         <div>
           <p>Dibayarkan oleh,</p>
           <div className="h-[13mm] flex items-center justify-center">
-            {withSignature && <img src={ttdAkuntanImg} alt="Tanda tangan Akuntan" className="h-[12mm] w-auto object-contain" />}
+            {withSignature && <OfficerSignatureImg officer="AKUNTAN" className="h-[12mm]" />}
           </div>
           <p className="font-bold underline underline-offset-2">{accountant}</p>
           <p className="text-slate-600">Akuntan SPPG</p>
@@ -680,7 +679,7 @@ export const SalarySlipDoc: React.FC<SalarySlipDocProps> = ({ onCountChange }) =
                   <p>Dibayarkan oleh,</p>
                   <p className="text-slate-600">Akuntan SPPG Malang Tumpang Jeru</p>
                   <div className="h-20 flex items-center justify-center">
-                    {withSignature && <img src={ttdAkuntanImg} alt="Tanda tangan Akuntan" className="h-16 w-auto object-contain" />}
+                    {withSignature && <OfficerSignatureImg officer="AKUNTAN" className="h-20" />}
                   </div>
                   <p className="font-bold underline underline-offset-2">{accountant}</p>
                 </div>
@@ -688,7 +687,7 @@ export const SalarySlipDoc: React.FC<SalarySlipDocProps> = ({ onCountChange }) =
                   <p>Mengetahui,</p>
                   <p className="text-slate-600">Kepala SPPG Malang Tumpang Jeru</p>
                   <div className="h-20 flex items-center justify-center">
-                    {withSignature && <OfficerSignatureImg officer="headSignature" className="h-20" defaultVariant={ttdKepalaImg} />}
+                    {withSignature && <OfficerSignatureImg officer="KEPALA_SPPG" className="h-20" defaultVariant={ttdKepalaImg} />}
                   </div>
                   <p className="font-bold underline underline-offset-2">{head}</p>
                 </div>

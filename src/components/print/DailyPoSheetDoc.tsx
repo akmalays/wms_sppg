@@ -242,13 +242,13 @@ export const DailyPoSheetDoc: React.FC<DailyPoSheetDocProps> = ({ initialDate, o
             <div className="text-center">
               <p>Diperiksa oleh,</p>
               <p className="text-slate-600">Asisten Lapangan SPPG Malang Tumpang Jeru</p>
-              <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="po-harian" officer="fieldAssistantSignature" /></div>
+              <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="po-harian" officer="ASLAP" /></div>
               <p className="font-bold underline underline-offset-2">{signerName('ASLAP')}</p>
             </div>
             <div className="text-center">
               <p>Mengetahui,</p>
               <p className="text-slate-600">Kepala SPPG Malang Tumpang Jeru</p>
-              <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="po-harian" officer="headSignature" /></div>
+              <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="po-harian" officer="KEPALA_SPPG" /></div>
               <p className="font-bold underline underline-offset-2">{signerName('KEPALA_SPPG')}</p>
             </div>
           </div>

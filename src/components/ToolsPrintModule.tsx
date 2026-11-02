@@ -61,7 +61,8 @@ import { SppgLogo } from './SppgLogo';
 import { QrSvg } from './common/QrSvg';
 import { localDateIso } from '../utils/localDate';
 import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatureImg';
-import type { SignatureDoc, SignatureKey } from '../utils/officerSignatures';
+import type { SignatureDoc } from '../utils/documentSigners';
+import type { SignerRole } from '../db/storage';
 
 export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'KITCHEN_REQUISITION' | 'NONFOOD_ISSUE_FORM' | 'WASTE_RECAP_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'RACK_SIGN' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE' | 'DO_DONT_POSTER' | 'PHOTO_DOC' | 'PIC_HANDOVER' | 'EXPENSE_RECEIPT_BATCH' | 'SALARY_SLIP' | 'DAILY_PO_SHEET';
 
@@ -232,7 +233,7 @@ const Field: React.FC<{ label: string; value?: string; blank?: string; mono?: bo
   </div>
 );
 
-const SignBox: React.FC<{ role: string; name?: string; signature?: string; officer?: SignatureKey; doc?: SignatureDoc }> = ({ role, name, signature, officer, doc }) => (
+const SignBox: React.FC<{ role: string; name?: string; signature?: string; officer?: SignerRole; doc?: SignatureDoc }> = ({ role, name, signature, officer, doc }) => (
   <div className="text-center text-xs">
     {/* Tinggi 2 baris agar garis tanda tangan sejajar walau nama jabatan panjang */}
     <p className="min-h-8 text-slate-700">{role}</p>
@@ -605,7 +606,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const suppliers = useMemo(() => warehouseDb.getSuppliers(), []);
   const users = useMemo(() => warehouseDb.getUsers(), []);
   const headOfficeName = users.find(u => u.role === 'KA_SPPG')?.name || '';
-  const accountantName = users.find(u => u.role === 'AKUNTAN')?.name || '';
+  const accountantName = warehouseDb.getSignerName('AKUNTAN');
 
   // Supplier terakhir per barang, diambil dari dokumen penerimaan (bukan tebakan).
   const lastSupplierByItem = useMemo(() => {
@@ -3007,7 +3008,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             <div className="grid grid-cols-3 gap-6 pt-2">
               <SignBox role="Diminta (dapur)" name={kitchenPic || undefined} />
               <SignBox role="Diserahkan (gudang)" name={currentUser?.name} />
-              <SignBox role="Mengetahui (Kepala SPPG Malang Tumpang Jeru)" name={headOfficeName || undefined} officer="headSignature" doc="permintaan-bahan" />
+              <SignBox role="Mengetahui (Kepala SPPG Malang Tumpang Jeru)" name={headOfficeName || undefined} officer="KEPALA_SPPG" doc="permintaan-bahan" />
             </div>
           </div>
         )}
@@ -3166,8 +3167,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             <DocSignatureToggle doc="rekap-limbah" />
             <div className="grid grid-cols-2 gap-6 pt-2 text-center text-xs break-inside-avoid">
               {[
-                { top: 'Mengetahui,', role: 'Akuntan SPPG Malang Tumpang Jeru', name: warehouseDb.getSignerName('AKUNTAN') },
-                { top: `Malang, ${BLANK.slice(0, 20)}`, role: 'Asisten Lapangan SPPG Malang Tumpang Jeru', name: warehouseDb.getSignerName('ASLAP'), officer: 'fieldAssistantSignature' as const },
+                { top: 'Mengetahui,', role: 'Akuntan SPPG Malang Tumpang Jeru', name: warehouseDb.getSignerName('AKUNTAN'), officer: 'AKUNTAN' as const },
+                { top: `Malang, ${BLANK.slice(0, 20)}`, role: 'Asisten Lapangan SPPG Malang Tumpang Jeru', name: warehouseDb.getSignerName('ASLAP'), officer: 'ASLAP' as const },
               ].map(sg => (
                 <div key={sg.role}>
                   <p className="text-slate-800">{sg.top}</p>
@@ -3833,7 +3834,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
               <SignBox role="Penerima (supplier)" name={selectedSupplier.contactPerson || selectedSupplier.name || undefined} />
               <SignBox role="Bendahara" name={expensePicTreasurer || undefined} />
               <SignBox role="Pemeriksa barang" name={expensePicVerifier || undefined} />
-              <SignBox role="Menyetujui (Kepala SPPG Malang Tumpang Jeru)" name={expensePicApprover || undefined} officer="headSignature" doc="bukti-belanja" />
+              <SignBox role="Menyetujui (Kepala SPPG Malang Tumpang Jeru)" name={expensePicApprover || undefined} officer="KEPALA_SPPG" doc="bukti-belanja" />
             </div>
           </div>
         )}

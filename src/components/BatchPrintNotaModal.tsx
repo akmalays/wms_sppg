@@ -354,7 +354,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
                 <div>Malang Tumpang Jeru</div>
               </div>
               <div className="my-0.5 h-20 flex items-center justify-center">
-                <OfficerSignatureImg doc="po-nota" officer="headSignature" className="h-20" />
+                <OfficerSignatureImg doc="po-nota" officer="KEPALA_SPPG" className="h-20" />
               </div>
               <div className="mt-0.5 font-bold text-black underline underline-offset-2 text-[10px]">
                 {displaySignerName}

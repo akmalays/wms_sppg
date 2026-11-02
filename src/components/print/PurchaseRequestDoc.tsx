@@ -113,8 +113,8 @@ export const PurchaseRequestDoc: React.FC<{ request: PurchaseRequest }> = ({ req
       <div className="grid grid-cols-3 gap-6 pt-2 text-center text-[11px] break-inside-avoid">
         {[
           { top: 'Diminta oleh,', role: 'Admin Gudang', name: request.requestedBy },
-          { top: 'Diperiksa oleh,', role: 'Akuntan SPPG Malang Tumpang Jeru', name: signerName('AKUNTAN') },
-          { top: 'Disetujui oleh,', role: 'Kepala SPPG Malang Tumpang Jeru', name: signerName('KEPALA_SPPG'), officer: 'headSignature' as const },
+          { top: 'Diperiksa oleh,', role: 'Akuntan SPPG Malang Tumpang Jeru', name: signerName('AKUNTAN'), officer: 'AKUNTAN' as const },
+          { top: 'Disetujui oleh,', role: 'Kepala SPPG Malang Tumpang Jeru', name: signerName('KEPALA_SPPG'), officer: 'KEPALA_SPPG' as const },
         ].map(sg => (
           <div key={sg.role}>
             <p>{sg.top}</p>

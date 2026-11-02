@@ -1,12 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { APP_SETTINGS_CHANGED_EVENT } from '../../db/storage';
-import { docSignatureOn, officerSignature, setDocSignatureOn, SignatureDoc, SignatureKey } from '../../utils/officerSignatures';
-
-const OFFICER_LABEL: Record<SignatureKey, string> = {
-  headSignature: 'Kepala SPPG',
-  nutritionistSignature: 'Ahli Gizi SPPG',
-  fieldAssistantSignature: 'Asisten Lapangan',
-};
+import { APP_SETTINGS_CHANGED_EVENT, SignerRole } from '../../db/storage';
+import { docSignatureOn, setDocSignatureOn, SIGNER_ROLES, signerSignature, SignatureDoc } from '../../utils/documentSigners';
 
 // Semua gambar dan centang dari dokumen yang sama ikut berubah saat centangnya diubah.
 // Tanpa doc = dokumen itu punya centang sendiri (slip gaji, serah terima PIC), jadi selalu tampil.
@@ -24,14 +18,14 @@ const useDocSignature = (doc?: SignatureDoc): [boolean, (on: boolean) => void] =
 // Gambar tanda tangan petugas di dokumen cetak. Tidak dirender bila centang dokumen itu dilepas.
 export const OfficerSignatureImg: React.FC<{
   doc?: SignatureDoc;
-  officer: SignatureKey;
+  officer: SignerRole;
   className?: string;
   defaultVariant?: string;
 }> = ({ doc, officer, className = 'h-20', defaultVariant }) => {
   const [on] = useDocSignature(doc);
-  const src = on ? officerSignature(officer, defaultVariant) : undefined;
+  const src = on ? signerSignature(officer, defaultVariant) : undefined;
   if (!src) return null;
-  return <img src={src} alt={`Tanda tangan ${OFFICER_LABEL[officer]}`} className={`${className} w-auto object-contain`} />;
+  return <img src={src} alt={`Tanda tangan ${SIGNER_ROLES.find(r => r.role === officer)?.title || officer}`} className={`${className} w-auto object-contain`} />;
 };
 
 // Centang di layar (tidak ikut tercetak) untuk memasang atau melepas tanda tangan di satu jenis dokumen.

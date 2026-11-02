@@ -4986,7 +4986,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                       <div className="text-slate-500 text-[11px]">Mengetahui,</div>
                       <div className="font-semibold text-slate-800">Kepala SPPG Malang Tumpang Jeru</div>
                     </div>
-                    <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="rekap-porsi" officer="headSignature" /></div>
+                    <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="rekap-porsi" officer="KEPALA_SPPG" /></div>
                     <div className="font-bold underline text-slate-900">( {signerName("KEPALA_SPPG")} )</div>
                   </div>
 
@@ -4995,7 +4995,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                       <div className="text-slate-500 text-[11px]">Dibuat oleh,</div>
                       <div className="font-semibold text-slate-800">Asisten Lapangan SPPG Malang Tumpang Jeru</div>
                     </div>
-                    <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="rekap-porsi" officer="fieldAssistantSignature" /></div>
+                    <div className="h-20 flex items-center justify-center"><OfficerSignatureImg doc="rekap-porsi" officer="ASLAP" /></div>
                     <div className="font-bold underline text-slate-900">( {signerName("ASLAP")} )</div>
                   </div>
                 </div>

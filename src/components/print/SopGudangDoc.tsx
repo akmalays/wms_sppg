@@ -22,8 +22,8 @@ interface SopGudangDocProps {
 
 // Nama diambil dari data Karyawan (lengkap dengan gelar), sama dengan dokumen cetak lain.
 const signers = () => [
-  { label: 'Disusun oleh', role: 'Asisten Lapangan SPPG Malang Tumpang Jeru', name: warehouseDb.getSignerName('ASLAP') || 'M. Ali Akbar Fathoni, S.Pd.', officer: 'fieldAssistantSignature' as const },
-  { label: 'Diperiksa oleh', role: 'Akuntan SPPG Malang Tumpang Jeru', name: warehouseDb.getSignerName('AKUNTAN') || 'Alfiana Viransa, S.Tr.Ak.' },
+  { label: 'Disusun oleh', role: 'Asisten Lapangan SPPG Malang Tumpang Jeru', name: warehouseDb.getSignerName('ASLAP'), officer: 'ASLAP' as const },
+  { label: 'Diperiksa oleh', role: 'Akuntan SPPG Malang Tumpang Jeru', name: warehouseDb.getSignerName('AKUNTAN'), officer: 'AKUNTAN' as const },
 ];
 
 const Section: React.FC<{ no: number; title: string; children: React.ReactNode }> = ({ no, title, children }) => (
