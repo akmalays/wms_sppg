@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Select } from './common/Select';
 import { DateStepper } from './common/DateStepper';
 import {
@@ -465,6 +466,68 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
   // Pemicu cetak langsung
   const handleTriggerPrint = () => {
     window.print();
+  };
+
+  // Render lembar dokumen per sekolah untuk layar maupun portal cetak
+  const renderSchoolSheetElements = (school: SchoolBeneficiaryAllocation, sIdx: number) => {
+    const dailyP = (school as any).dailyPortion || school.portionCount;
+    // Nomor: urut sekolah/BAST/SPPG/tanggal/bulan romawi/tahun, mis. 05/BAST/SPPG/28/IX/2026
+    const [yy, mm, dd] = selectedDate.split('-');
+    const docNo = `${docSeqBySchool[school.id] || String(sIdx + 1).padStart(2, '0')}${sessionCode}/BAST/SPPG/${dd}/${getRomanMonth(Number(mm))}/${yy}`;
+
+    const sheetProps = {
+      school,
+      dayName: dayNameOf(selectedDate),
+      shortDate: shortDocDate(selectedDate),
+      longDate: formatIndonesianDate(selectedDate),
+      totalPortions: dailyP,
+      officers: officersForPrint(officerSettings),
+      kop: <DeliveryKop />,
+    };
+    const isStd = docFormat === 'STANDARD';
+    const classes = printClassRows(school, dailyP);
+    if (isCompactDoc) {
+      const pages = hedonicQr ? 1 : 2;
+      return (
+        <React.Fragment key={school.id}>
+          {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_1') && (
+            <SuratJalanBastSheetCompact
+              {...sheetProps}
+              footer={`Halaman 1 dari ${pages} · ${school.schoolName}`}
+              docNo={docNo}
+              deliveryTime={school.deliveryTime}
+              classes={classes}
+              hedonicQr={hedonicQr}
+            />
+          )}
+          {((printSheetTab === 'ALL' && !hedonicQr) || printSheetTab === 'SHEET_3') && (
+            <UjiHedonikSheetStandard {...sheetProps} footer={`Halaman 2 dari 2 · ${school.schoolName}`} />
+          )}
+        </React.Fragment>
+      );
+    }
+    return (
+      <React.Fragment key={school.id}>
+        {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_1') &&
+          (isStd ? (
+            <SuratJalanSheetStandard {...sheetProps} footer={`Lembar 1 dari 3 · ${school.schoolName}`} docNo={docNo} deliveryTime={school.deliveryTime} classes={classes} />
+          ) : (
+            <SuratJalanSheetLegacy {...sheetProps} footer={`Lembar 1 dari 3 · ${school.schoolName}`} docNo={docNo} deliveryTime={school.deliveryTime} classes={classes} />
+          ))}
+        {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_2') &&
+          (isStd ? (
+            <BeritaAcaraSheetStandard {...sheetProps} footer={`Lembar 2 dari 3 · ${school.schoolName}`} docNo={docNo} />
+          ) : (
+            <BeritaAcaraSheetLegacy {...sheetProps} footer={`Lembar 2 dari 3 · ${school.schoolName}`} />
+          ))}
+        {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_3') &&
+          (isStd ? (
+            <UjiHedonikSheetStandard {...sheetProps} footer={`Lembar 3 dari 3 · ${school.schoolName}`} />
+          ) : (
+            <UjiHedonikSheetLegacy {...sheetProps} footer={`Lembar 3 dari 3 · ${school.schoolName}`} />
+          ))}
+      </React.Fragment>
+    );
   };
 
   return (
@@ -943,37 +1006,51 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
           >
             {/* Modal Header Controls (Non-Printable) */}
             <style>{`
+              #delivery-print-portal {
+                display: none;
+              }
               @media print {
                 @page {
                   size: A4 portrait;
                   margin: 8mm 10mm 10mm 10mm;
                 }
-                body * {
-                  visibility: hidden !important;
+                html, body {
+                  overflow: visible !important;
+                  height: auto !important;
+                  min-height: 100% !important;
+                  background: #ffffff !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
                 }
-                #delivery-printable-area, #delivery-printable-area * {
-                  visibility: visible !important;
+                /* Sembunyikan seluruh UI web aplikasi (#root) agar tidak mengganggu layout cetak */
+                #root {
+                  display: none !important;
                 }
-                #delivery-printable-area {
-                  position: absolute !important;
-                  left: 0 !important;
-                  top: 0 !important;
+                /* Tampilkan portal cetak pengiriman langsung di body */
+                body > #delivery-print-portal {
+                  display: block !important;
+                  position: static !important;
                   width: 100% !important;
                   margin: 0 !important;
                   padding: 0 !important;
-                  background: white !important;
+                  background: #ffffff !important;
                 }
                 .print-page-break {
                   page-break-after: always !important;
                   break-after: page !important;
-                  min-height: 265mm;
-                  margin-bottom: 0 !important;
+                  page-break-inside: avoid !important;
+                  break-inside: avoid !important;
+                  box-sizing: border-box !important;
+                  width: 100% !important;
+                  min-height: 0 !important;
+                  margin: 0 !important;
                   border: none !important;
                   box-shadow: none !important;
                   padding: 0 !important;
+                  background: #ffffff !important;
                 }
-                /* Lembar terakhir tidak memaksa halaman baru agar tidak ada halaman kosong di akhir */
-                #delivery-printable-area > div > div:last-child > .print-page-break:last-child {
+                /* Lembar paling akhir di antrean tidak memaksa halaman baru kosong */
+                #delivery-print-portal > .print-page-break:last-child {
                   page-break-after: auto !important;
                   break-after: auto !important;
                 }
@@ -1102,83 +1179,29 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
               )}
             </div>
 
-            {/* Printable Document Viewport */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-200/70" id="delivery-printable-area">
+            {/* Pratinjau Dokumen di Layar (Scrollable Screen Preview) */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-200/70" id="delivery-preview-scroll">
               <div className="max-w-[210mm] mx-auto space-y-6">
-                {printSchoolsQueue.map((school, sIdx) => {
-                  const dailyP = (school as any).dailyPortion || school.portionCount;
-                  // Nomor: urut sekolah/BAST/SPPG/tanggal/bulan romawi/tahun, mis. 05/BAST/SPPG/28/IX/2026
-                  const [yy, mm, dd] = selectedDate.split('-');
-                  const docNo = `${docSeqBySchool[school.id] || String(sIdx + 1).padStart(2, '0')}${sessionCode}/BAST/SPPG/${dd}/${getRomanMonth(Number(mm))}/${yy}`;
-
-                  return (
-                    <div key={school.id} className="space-y-6">
-                      {/* ========================================================= */}
-                      {/* LEMBAR 1: SURAT JALAN & DETAIL KELAS                      */}
-                      {/* ========================================================= */}
-                      {(() => {
-                        const sheetProps = {
-                          school,
-                          dayName: dayNameOf(selectedDate),
-                          shortDate: shortDocDate(selectedDate),
-                          longDate: formatIndonesianDate(selectedDate),
-                          totalPortions: dailyP,
-                          officers: officersForPrint(officerSettings),
-                          kop: <DeliveryKop />,
-                        };
-                        const isStd = docFormat === 'STANDARD';
-                        const classes = printClassRows(school, dailyP);
-                        if (isCompactDoc) {
-                          const pages = hedonicQr ? 1 : 2;
-                          return (
-                            <>
-                              {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_1') && (
-                                <SuratJalanBastSheetCompact
-                                  {...sheetProps}
-                                  footer={`Halaman 1 dari ${pages} · ${school.schoolName}`}
-                                  docNo={docNo}
-                                  deliveryTime={school.deliveryTime}
-                                  classes={classes}
-                                  hedonicQr={hedonicQr}
-                                />
-                              )}
-                              {((printSheetTab === 'ALL' && !hedonicQr) || printSheetTab === 'SHEET_3') && (
-                                <UjiHedonikSheetStandard {...sheetProps} footer={`Halaman 2 dari 2 · ${school.schoolName}`} />
-                              )}
-                            </>
-                          );
-                        }
-                        return (
-                          <>
-                            {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_1') &&
-                              (isStd ? (
-                                <SuratJalanSheetStandard {...sheetProps} footer={`Lembar 1 dari 3 · ${school.schoolName}`} docNo={docNo} deliveryTime={school.deliveryTime} classes={classes} />
-                              ) : (
-                                <SuratJalanSheetLegacy {...sheetProps} footer={`Lembar 1 dari 3 · ${school.schoolName}`} docNo={docNo} deliveryTime={school.deliveryTime} classes={classes} />
-                              ))}
-                            {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_2') &&
-                              (isStd ? (
-                                <BeritaAcaraSheetStandard {...sheetProps} footer={`Lembar 2 dari 3 · ${school.schoolName}`} docNo={docNo} />
-                              ) : (
-                                <BeritaAcaraSheetLegacy {...sheetProps} footer={`Lembar 2 dari 3 · ${school.schoolName}`} />
-                              ))}
-                            {(printSheetTab === 'ALL' || printSheetTab === 'SHEET_3') &&
-                              (isStd ? (
-                                <UjiHedonikSheetStandard {...sheetProps} footer={`Lembar 3 dari 3 · ${school.schoolName}`} />
-                              ) : (
-                                <UjiHedonikSheetLegacy {...sheetProps} footer={`Lembar 3 dari 3 · ${school.schoolName}`} />
-                              ))}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  );
-                })}
+                {printSchoolsQueue.map((school, sIdx) => (
+                  <div key={school.id} className="space-y-6">
+                    {renderSchoolSheetElements(school, sIdx)}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Portal Cetak Dokumen: Ditempel langsung di <body> di luar pohon #root agar page-break bersih */}
+      {typeof document !== 'undefined' &&
+        isPrintModalOpen &&
+        createPortal(
+          <div id="delivery-print-portal" aria-hidden="true">
+            {printSchoolsQueue.map((school, sIdx) => renderSchoolSheetElements(school, sIdx))}
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

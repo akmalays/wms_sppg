@@ -9,16 +9,15 @@ import { QrSvg } from '../common/QrSvg';
 // dan halaman 2 tidak perlu dicetak. Format standar dan lama tidak diubah.
 
 const SHEET =
-  'bg-white p-7 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-[11px] leading-snug';
-const CELL = 'border border-slate-700 px-2 py-1';
+  'bg-white p-7 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-[11px] print:text-[9.5px] leading-snug';
+const CELL = 'border border-slate-700 px-2 py-1 print:py-0.5 print:px-1';
 const LABEL = 'text-slate-600';
 
 const Dots: React.FC<{ w?: string; value?: string }> = ({ w = 'w-28', value }) => (
-  <span className={`inline-block ${w} border-b border-dotted border-slate-700 align-bottom px-1 font-semibold`}>{value || ' '}</span>
+  <span className={`inline-block ${w} border-b border-dotted border-slate-700 align-bottom px-1 font-semibold`}>{value || ' '}</span>
 );
 
-// Tanda tangan ringkas: peran, ruang tanda tangan, nama (atau garis untuk ditulis tangan)
-const Sign: React.FC<{ role: string; name?: string; signature?: string; height?: string }> = ({ role, name, signature, height = 'h-16' }) => {
+const Sign: React.FC<{ role: string; name?: string; signature?: string; height?: string }> = ({ role, name, signature, height = 'h-14 print:h-8.5' }) => {
   return (
     <div className="text-center">
       <div className="font-semibold leading-tight text-[10.5px]">{role}</div>
@@ -77,15 +76,15 @@ export const SuratJalanBastSheetCompact: React.FC<
   return (
     <div className={SHEET}>
       {kop}
-      <div className="text-center mt-3 mb-3">
-        <h2 className="text-[13.5px] font-bold uppercase underline underline-offset-4">Surat Jalan dan Berita Acara Serah Terima</h2>
-        <p className="mt-0.5 text-[11px] text-slate-700">Makan Bergizi Gratis (MBG) · SPPG Malang Tumpang Jeru</p>
-        <p className="mt-0.5 text-[10.5px]">
+      <div className="text-center mt-3 mb-3 print:mt-1 print:mb-1.5">
+        <h2 className="text-[13.5px] print:text-[12px] font-bold uppercase underline underline-offset-4">Surat Jalan dan Berita Acara Serah Terima</h2>
+        <p className="mt-0.5 text-[11px] print:text-[9px] text-slate-700">Makan Bergizi Gratis (MBG) · SPPG Malang Tumpang Jeru</p>
+        <p className="mt-0.5 text-[10.5px] print:text-[9px]">
           Nomor: <span className="font-semibold">{docNo}</span>
         </p>
       </div>
 
-      <table className="w-full border-collapse border border-slate-700 mb-3">
+      <table className="w-full border-collapse border border-slate-700 mb-3 print:mb-1.5">
         <tbody>
           <tr>
             <td className={`${CELL} ${LABEL} w-24`}>Kepada</td>
@@ -104,7 +103,7 @@ export const SuratJalanBastSheetCompact: React.FC<
         </tbody>
       </table>
 
-      <table className="w-full border-collapse border border-slate-700 mb-3">
+      <table className="w-full border-collapse border border-slate-700 mb-3 print:mb-1.5">
         <thead className="bg-slate-100">
           <tr className="text-center font-semibold">
             <th rowSpan={2} className={`${CELL} w-8`}>No</th>
@@ -120,7 +119,7 @@ export const SuratJalanBastSheetCompact: React.FC<
         </thead>
         <tbody>
           {classes.map((c, i) => (
-            <tr key={`${c.className}-${i}`} className="h-7">
+            <tr key={`${c.className}-${i}`} className="h-7 print:h-5.5">
               <td className={`${CELL} text-center`}>{i + 1}</td>
               <td className={CELL}>{c.className}</td>
               <td className={`${CELL} text-center`}>{c.portions !== undefined ? c.portions.toLocaleString('id-ID') : ''}</td>
@@ -129,7 +128,7 @@ export const SuratJalanBastSheetCompact: React.FC<
               <td className={CELL}></td>
             </tr>
           ))}
-          <tr className="h-7 font-bold bg-slate-50">
+          <tr className="h-7 print:h-5.5 font-bold bg-slate-50">
             <td colSpan={2} className={`${CELL} text-right`}>Total</td>
             <td className={`${CELL} text-center`}>{total}</td>
             <td className={CELL}></td>
@@ -139,12 +138,12 @@ export const SuratJalanBastSheetCompact: React.FC<
         </tbody>
       </table>
 
-      <div className="border-2 border-red-600 text-red-700 font-bold text-center py-1 mb-3">
+      <div className="border-2 border-red-600 text-red-700 font-bold text-center py-1 print:py-0.5 mb-3 print:mb-1.5 text-xs print:text-[10px]">
         Makanan baik dikonsumsi sebelum pukul {officers.consumeBefore || '11:00'} WIB
       </div>
 
       {/* Serah terima: saat makanan diantar dan saat alat makan dijemput */}
-      <div className="grid grid-cols-2 gap-3 mb-3">
+      <div className="grid grid-cols-2 gap-3 print:gap-2 mb-3 print:mb-1.5">
         <HandoverBox
           title="I. Paket makanan (saat diantar)"
           from={<Sign role="Driver" name={officers.driverName} />}
@@ -179,7 +178,7 @@ export const SuratJalanBastSheetCompact: React.FC<
         </HandoverBox>
       </div>
 
-      <div className={`grid ${hedonicQr ? 'grid-cols-4' : 'grid-cols-3'} gap-3 items-start`}>
+      <div className={`grid ${hedonicQr ? 'grid-cols-4' : 'grid-cols-3'} gap-3 print:gap-1.5 items-start`}>
         <div>
           <div className={`${LABEL} text-center`}>Diperiksa oleh,</div>
           <Sign role="Ahli Gizi SPPG Malang Tumpang Jeru" name={officers.nutritionistName} signature={officers.nutritionistSignature} />
@@ -193,13 +192,13 @@ export const SuratJalanBastSheetCompact: React.FC<
           <Sign role="Kepala SPPG Malang Tumpang Jeru" name={officers.headName} signature={officers.headSignature} />
         </div>
         {hedonicQr && (
-          <div className="border border-slate-700 p-1.5 flex gap-1.5 items-start h-fit self-start">
-            <QrSvg value={SIPGN_LOGIN_URL} className="w-[22mm] h-[22mm] shrink-0" />
-            <div className="text-[9.5px] leading-tight">
+          <div className="border border-slate-700 p-1.5 print:p-1 flex gap-1.5 items-start h-fit self-start">
+            <QrSvg value={SIPGN_LOGIN_URL} className="w-[22mm] h-[22mm] print:w-[18mm] print:h-[18mm] shrink-0" />
+            <div className="text-[9.5px] print:text-[8.5px] leading-tight">
               <div className="font-bold">Uji hedonik</div>
               <div>Pindai untuk membuka SIPGN BGN, lalu isi uji hedonik menu hari ini.</div>
               {/* Alamat tertulis untuk yang tidak bisa memindai QR */}
-              <div className="mt-0.5 font-mono text-[8.5px] text-slate-600">pm-sipgn.bgn.go.id</div>
+              <div className="mt-0.5 font-mono text-[8.5px] print:text-[8px] text-slate-600">pm-sipgn.bgn.go.id</div>
             </div>
           </div>
         )}

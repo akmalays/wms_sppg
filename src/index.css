@@ -141,9 +141,30 @@
   100% { transform: scale(1); }
 }
 
-/* Cetak: hanya isi aplikasi (#root) yang dicetak. Elemen lain yang ditempel langsung ke <body>,
-   seperti daftar pilihan SearchPicker atau sisipan ekstensi browser, tidak ikut menjadi blok di halaman terakhir. */
-@media print {
-  html, body { background: #ffffff !important; }
-  body > *:not(#root) { display: none !important; }
+/* Portal cetak tersembunyi pada tampilan layar biasa */
+#delivery-print-portal {
+  display: none;
 }
+
+/* Cetak: hanya isi aplikasi (#root) yang dicetak secara bawaan.
+   Portal cetak khusus (seperti #delivery-print-portal) ditempel langsung ke <body> untuk cetak dokumen multi-halaman yang bersih. */
+@media print {
+  html, body {
+    background: #ffffff !important;
+  }
+  body:has(#delivery-print-portal) #root {
+    display: none !important;
+  }
+  body > #delivery-print-portal {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+  body > *:not(#root):not(#delivery-print-portal):not([id^="print-"]) {
+    display: none !important;
+  }
+}
+

@@ -5,8 +5,8 @@ import { DeliveryClassRow, SheetProps } from './DeliveryDocSheets';
 // wording dirapikan dan tata letak dibuat seragam. Format lama tetap bisa dipilih di modal cetak.
 
 const SHEET =
-  'bg-white p-8 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-[11.5px] leading-snug';
-const CELL = 'border border-slate-700 px-2 py-1.5';
+  'bg-white p-8 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-[11.5px] print:text-[10px] leading-snug';
+const CELL = 'border border-slate-700 px-2 py-1.5 print:py-0.5 print:px-1.5';
 const LABEL = 'text-slate-600';
 
 const Dots: React.FC<{ w?: string; value?: string }> = ({ w = 'w-32', value }) => (
@@ -14,42 +14,43 @@ const Dots: React.FC<{ w?: string; value?: string }> = ({ w = 'w-32', value }) =
 );
 
 const DocTitle: React.FC<{ title: string; subtitle?: string; docNo?: string }> = ({ title, subtitle, docNo }) => (
-  <div className="text-center mt-4 mb-4">
-    <h2 className="text-[14px] font-bold uppercase tracking-wide underline underline-offset-4">{title}</h2>
-    {subtitle && <p className="mt-1 text-[11.5px] text-slate-700">{subtitle}</p>}
-    {docNo && <p className="mt-0.5 text-[11px]">Nomor: <span className="font-semibold">{docNo}</span></p>}
+  <div className="text-center mt-3 mb-3 print:mt-1 print:mb-1.5">
+    <h2 className="text-[13.5px] print:text-[12.5px] font-bold uppercase tracking-wide underline underline-offset-4">{title}</h2>
+    {subtitle && <p className="mt-0.5 text-[11px] print:text-[9.5px] text-slate-700">{subtitle}</p>}
+    {docNo && <p className="mt-0.5 text-[10.5px] print:text-[9px]">Nomor: <span className="font-semibold">{docNo}</span></p>}
   </div>
 );
 
 // Kolom tanda tangan: peran di atas, ruang tanda tangan, nama bergaris bawah, keterangan di bawah
-const Signer: React.FC<{ caption: string; role: string; name?: string; note?: string; signature?: string }> = ({
+const Signer: React.FC<{ caption: string; role: string; name?: string; note?: string; signature?: string; sigHeight?: string }> = ({
   caption,
   role,
   name,
   note,
   signature,
+  sigHeight = 'h-18 print:h-10',
 }) => {
   return (
     <div className="text-center">
-      <div className={LABEL}>{caption}</div>
-      <div className="font-semibold leading-tight text-[10.5px]">{role}</div>
-      <div className="h-20 flex items-center justify-center -my-1">
-        {signature && <img src={signature} alt={`Tanda tangan ${role}`} className="max-h-full h-full w-auto object-contain scale-[1.25] origin-center" />}
+      <div className={`${LABEL} text-[10.5px] print:text-[9px]`}>{caption}</div>
+      <div className="font-semibold leading-tight text-[10px] print:text-[9px]">{role}</div>
+      <div className={`${sigHeight} flex items-center justify-center -my-0.5`}>
+        {signature && <img src={signature} alt={`Tanda tangan ${role}`} className="max-h-full h-full w-auto object-contain scale-[1.15] origin-center" />}
       </div>
-      <div className="font-semibold underline underline-offset-2 min-h-[1.2em] leading-tight">{name || '(.................................)'}</div>
-      {note && <div className="text-[10.5px] text-slate-600">{note}</div>}
+      <div className="font-semibold underline underline-offset-2 min-h-[1.2em] leading-tight text-[10.5px] print:text-[9.5px]">{name || '(.................................)'}</div>
+      {note && <div className="text-[10px] print:text-[8.5px] text-slate-600">{note}</div>}
     </div>
   );
 };
 
 const InfoTable: React.FC<{ rows: [string, React.ReactNode, string, React.ReactNode][] }> = ({ rows }) => (
-  <table className="w-full border-collapse border border-slate-700 mb-4">
+  <table className="w-full border-collapse border border-slate-700 mb-3 print:mb-1.5 text-[11px] print:text-[9.5px]">
     <tbody>
       {rows.map(([l1, v1, l2, v2]) => (
         <tr key={l1}>
-          <td className={`${CELL} ${LABEL} w-28`}>{l1}</td>
+          <td className={`${CELL} ${LABEL} w-28 print:w-24`}>{l1}</td>
           <td className={`${CELL} font-semibold`}>{v1}</td>
-          <td className={`${CELL} ${LABEL} w-28`}>{l2}</td>
+          <td className={`${CELL} ${LABEL} w-28 print:w-24`}>{l2}</td>
           <td className={`${CELL} font-semibold`}>{v2}</td>
         </tr>
       ))}
@@ -58,7 +59,7 @@ const InfoTable: React.FC<{ rows: [string, React.ReactNode, string, React.ReactN
 );
 
 const Footer: React.FC<{ text: string }> = ({ text }) => (
-  <div className="text-right text-[8.5px] text-slate-400 mt-4 font-mono">{text}</div>
+  <div className="text-right text-[8.5px] print:text-[7.5px] text-slate-400 mt-3 print:mt-1 font-mono">{text}</div>
 );
 
 const portionsText = (n: number) => (n > 0 ? `${n.toLocaleString('id-ID')} porsi` : '');
@@ -89,7 +90,7 @@ export const SuratJalanSheetStandard: React.FC<SheetProps & { docNo: string; del
       ]}
     />
 
-    <table className="w-full border-collapse border border-slate-700 mb-2">
+    <table className="w-full border-collapse border border-slate-700 mb-2 print:mb-1 text-[11px] print:text-[9.5px]">
       <thead className="bg-slate-100">
         <tr className="text-center font-semibold">
           <th rowSpan={2} className={`${CELL} w-9`}>No</th>
@@ -105,7 +106,7 @@ export const SuratJalanSheetStandard: React.FC<SheetProps & { docNo: string; del
       </thead>
       <tbody>
         {classes.map((c, i) => (
-          <tr key={`${c.className}-${i}`} className="h-8">
+          <tr key={`${c.className}-${i}`} className="h-8 print:h-5.5">
             <td className={`${CELL} text-center`}>{i + 1}</td>
             <td className={CELL}>{c.className}</td>
             <td className={`${CELL} text-center`}>{c.portions !== undefined ? c.portions.toLocaleString('id-ID') : ''}</td>
@@ -114,7 +115,7 @@ export const SuratJalanSheetStandard: React.FC<SheetProps & { docNo: string; del
             <td className={CELL}></td>
           </tr>
         ))}
-        <tr className="h-8 font-bold bg-slate-50">
+        <tr className="h-8 print:h-5.5 font-bold bg-slate-50">
           <td colSpan={2} className={`${CELL} text-right`}>Total</td>
           <td className={`${CELL} text-center`}>{totalPortions > 0 ? totalPortions.toLocaleString('id-ID') : ''}</td>
           <td className={CELL}></td>
@@ -123,15 +124,15 @@ export const SuratJalanSheetStandard: React.FC<SheetProps & { docNo: string; del
         </tr>
       </tbody>
     </table>
-    <p className="text-[10.5px] text-slate-600 mb-6">
+    <p className="text-[10px] print:text-[8.5px] text-slate-600 mb-4 print:mb-2">
       Alat makan dihitung dua kali: saat diserahkan ke sekolah dan saat dijemput kembali. Selisih dicatat di kolom Keterangan.
     </p>
 
-    <div className="grid grid-cols-4 gap-3">
-      <Signer caption="Diperiksa oleh," role="Ahli Gizi SPPG Malang Tumpang Jeru" name={officers.nutritionistName} signature={officers.nutritionistSignature} />
-      <Signer caption="Diperiksa oleh," role="Asisten Lapangan SPPG Malang Tumpang Jeru" name={officers.fieldAssistantName} signature={officers.fieldAssistantSignature} />
-      <Signer caption="Diterima oleh," role="Pihak Sekolah" note={school.schoolName} />
-      <Signer caption="Mengetahui," role="Kepala SPPG Malang Tumpang Jeru" name={officers.headName} signature={officers.headSignature} />
+    <div className="grid grid-cols-4 gap-3 print:gap-1.5">
+      <Signer caption="Diperiksa oleh," role="Ahli Gizi SPPG Malang Tumpang Jeru" name={officers.nutritionistName} signature={officers.nutritionistSignature} sigHeight="h-16 print:h-10" />
+      <Signer caption="Diperiksa oleh," role="Asisten Lapangan SPPG Malang Tumpang Jeru" name={officers.fieldAssistantName} signature={officers.fieldAssistantSignature} sigHeight="h-16 print:h-10" />
+      <Signer caption="Diterima oleh," role="Pihak Sekolah" note={school.schoolName} sigHeight="h-16 print:h-10" />
+      <Signer caption="Mengetahui," role="Kepala SPPG Malang Tumpang Jeru" name={officers.headName} signature={officers.headSignature} sigHeight="h-16 print:h-10" />
     </div>
     <Footer text={footer} />
   </div>
@@ -141,13 +142,13 @@ export const SuratJalanSheetStandard: React.FC<SheetProps & { docNo: string; del
 // LEMBAR 2: BERITA ACARA SERAH TERIMA (paket makanan + alat makan)
 // ---------------------------------------------------------------------------
 const PartyBox: React.FC<{ title: string; party: string; rows: [string, React.ReactNode][] }> = ({ title, party, rows }) => (
-  <div className="border border-slate-700">
-    <div className="bg-slate-100 border-b border-slate-700 px-2 py-1 font-semibold">{title}</div>
-    <div className="px-2 py-1.5 space-y-1">
+  <div className="border border-slate-700 text-[10.5px] print:text-[9px]">
+    <div className="bg-slate-100 border-b border-slate-700 px-2 py-0.5 font-semibold">{title}</div>
+    <div className="px-2 py-1 print:py-0.5 space-y-0.5">
       <div className="font-semibold">{party}</div>
       {rows.map(([label, value]) => (
         <div key={label} className="flex gap-2">
-          <span className={`${LABEL} w-20 shrink-0`}>{label}</span>
+          <span className={`${LABEL} w-18 print:w-16 shrink-0`}>{label}</span>
           <span>: {value}</span>
         </div>
       ))}
@@ -173,54 +174,54 @@ export const BeritaAcaraSheetStandard: React.FC<SheetProps & { docNo: string }> 
       <DocTitle title="Berita Acara Serah Terima" subtitle="Paket Makanan dan Alat Makan Program Makan Bergizi Gratis" docNo={docNo} />
 
       {/* I. Paket makanan: driver → sekolah */}
-      <section className="mb-4">
-        <h3 className="font-bold mb-1">I. Serah Terima Paket Makanan</h3>
-        <p className="text-justify mb-2">
+      <section className="mb-2.5 print:mb-1">
+        <h3 className="font-bold mb-0.5 print:text-[10px]">I. Serah Terima Paket Makanan</h3>
+        <p className="text-justify mb-1.5 print:mb-0.5 text-[10.5px] print:text-[9px] leading-snug">
           Pada hari ini <b>{dayName}</b>, tanggal <b>{dateOnly}</b>, pukul <Dots w="w-14" /> WIB, telah diserahkan{' '}
           <b>{total} paket</b> Makanan Bergizi Gratis dari SPPG Malang Tumpang Jeru kepada <b>{school.schoolName}</b> dalam
           keadaan baik dan layak dikonsumsi.
         </p>
-        <div className="grid grid-cols-2 gap-3 mb-2">
+        <div className="grid grid-cols-2 gap-2 mb-1.5 print:mb-0.5">
           <PartyBox title="Yang menyerahkan" party="Driver SPPG Malang Tumpang Jeru" rows={[['Nama', officers.driverName || <Dots />], ['No. telepon', <Dots />]]} />
           <PartyBox title="Yang menerima" party={school.schoolName} rows={[['PIC', <Dots />], ['No. telepon', school.phone || <Dots />]]} />
         </div>
-        <div className="border-2 border-red-600 text-red-700 font-bold text-center py-1.5 mb-2 uppercase tracking-wide">
+        <div className="border border-red-600 text-red-700 font-bold text-center py-0.5 mb-1.5 print:mb-0.5 uppercase tracking-wide text-[10.5px] print:text-[9px]">
           Makanan baik dikonsumsi sebelum pukul {officers.consumeBefore || '11:00'} WIB
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Signer caption="Yang menyerahkan," role="Driver" name={officers.driverName} />
-          <Signer caption="Yang menerima," role="PIC Sekolah" />
+        <div className="grid grid-cols-2 gap-2">
+          <Signer caption="Yang menyerahkan," role="Driver" name={officers.driverName} sigHeight="h-14 print:h-8" />
+          <Signer caption="Yang menerima," role="PIC Sekolah" sigHeight="h-14 print:h-8" />
         </div>
       </section>
 
-      <div className="border-t border-dashed border-slate-400 my-3" />
+      <div className="border-t border-dashed border-slate-400 my-2 print:my-0.5" />
 
       {/* II. Alat makan: sekolah → driver */}
-      <section className="mb-4">
-        <h3 className="font-bold mb-1">II. Serah Terima Alat Makan</h3>
-        <p className="text-justify mb-2">
+      <section className="mb-2 print:mb-0.5">
+        <h3 className="font-bold mb-0.5 print:text-[10px]">II. Serah Terima Alat Makan</h3>
+        <p className="text-justify mb-1.5 print:mb-0.5 text-[10.5px] print:text-[9px] leading-snug">
           Pada hari dan tanggal yang sama, pukul <Dots w="w-14" /> WIB, <b>{school.schoolName}</b> telah menyerahkan kembali alat
           makan sebanyak <Dots w="w-14" /> dari <b>{total} set</b> yang dikirim kepada SPPG Malang Tumpang Jeru melalui driver.
         </p>
-        <div className="flex flex-wrap gap-x-6 gap-y-1 mb-2">
+        <div className="flex flex-wrap gap-x-6 gap-y-0.5 mb-1.5 print:mb-0.5 text-[10px] print:text-[8.5px]">
           <span className={LABEL}>Kondisi alat makan:</span>
           <span>☐ Lengkap</span>
           <span>☐ Kurang <Dots w="w-10" /> set</span>
           <span>☐ Rusak <Dots w="w-10" /> set</span>
         </div>
-        <div className="grid grid-cols-2 gap-3 mb-2">
+        <div className="grid grid-cols-2 gap-2 mb-1.5 print:mb-0.5">
           <PartyBox title="Yang menyerahkan" party={school.schoolName} rows={[['PIC', <Dots />], ['No. telepon', school.phone || <Dots />]]} />
           <PartyBox title="Yang menerima" party="Driver SPPG Malang Tumpang Jeru" rows={[['Nama', officers.driverName || <Dots />], ['No. telepon', <Dots />]]} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Signer caption="Yang menyerahkan," role="PIC Sekolah" />
-          <Signer caption="Yang menerima," role="Driver" name={officers.driverName} />
+        <div className="grid grid-cols-2 gap-2">
+          <Signer caption="Yang menyerahkan," role="PIC Sekolah" sigHeight="h-14 print:h-8" />
+          <Signer caption="Yang menerima," role="Driver" name={officers.driverName} sigHeight="h-14 print:h-8" />
         </div>
       </section>
 
-      <div className="flex justify-center mt-2">
-        <div className="w-60">
-          <Signer caption="Mengetahui," role="Kepala SPPG Malang Tumpang Jeru" name={officers.headName} signature={officers.headSignature} />
+      <div className="flex justify-center mt-1.5 print:mt-0.5">
+        <div className="w-56">
+          <Signer caption="Mengetahui," role="Kepala SPPG Malang Tumpang Jeru" name={officers.headName} signature={officers.headSignature} sigHeight="h-14 print:h-8" />
         </div>
       </div>
       <Footer text={footer} />
@@ -248,24 +249,24 @@ export const UjiHedonikSheetStandard: React.FC<SheetProps> = ({ school, longDate
 
     <InfoTable rows={[['Nama sekolah', school.schoolName, 'Tanggal uji', longDate]]} />
 
-    <h3 className="font-bold mb-1">Petunjuk pengisian</h3>
-    <ol className="list-decimal pl-5 space-y-0.5 mb-3">
+    <h3 className="font-bold mb-0.5 print:text-[10px]">Petunjuk pengisian</h3>
+    <ol className="list-decimal pl-5 space-y-0.5 mb-2.5 print:mb-1.5 text-[10.5px] print:text-[9px]">
       <li>Di hadapan Anda terdapat 5 jenis sampel: makanan pokok, lauk hewani, lauk nabati, sayur, dan buah.</li>
       <li>
         Beri nilai <b>rasa, warna, aroma, dan tekstur</b> setiap sampel dengan menuliskan angka <b>1–5</b> sesuai skala di bawah.
       </li>
     </ol>
 
-    <div className="grid grid-cols-5 border border-slate-700 mb-4 text-center">
+    <div className="grid grid-cols-5 border border-slate-700 mb-3 print:mb-1.5 text-center">
       {SCALE.map((label, i) => (
-        <div key={label} className={`py-1.5 ${i > 0 ? 'border-l border-slate-700' : ''}`}>
-          <div className="text-[14px] font-bold">{i + 1}</div>
-          <div className="text-[10.5px]">{label}</div>
+        <div key={label} className={`py-1 print:py-0.5 ${i > 0 ? 'border-l border-slate-700' : ''}`}>
+          <div className="text-[13px] print:text-[11px] font-bold">{i + 1}</div>
+          <div className="text-[10px] print:text-[8.5px]">{label}</div>
         </div>
       ))}
     </div>
 
-    <table className="w-full border-collapse border border-slate-700 mb-4">
+    <table className="w-full border-collapse border border-slate-700 mb-3 print:mb-1.5 text-[11px] print:text-[9.5px]">
       <thead className="bg-slate-100">
         <tr className="text-center font-semibold">
           <th rowSpan={2} className={`${CELL} w-14`}>Kode</th>
@@ -280,7 +281,7 @@ export const UjiHedonikSheetStandard: React.FC<SheetProps> = ({ school, longDate
       </thead>
       <tbody>
         {SAMPLES.map(([code, label]) => (
-          <tr key={code} className="h-9">
+          <tr key={code} className="h-8 print:h-5.5">
             <td className={`${CELL} text-center font-bold`}>{code}</td>
             <td className={CELL}>{label}</td>
             {PARAMS.map(p => (
@@ -291,16 +292,16 @@ export const UjiHedonikSheetStandard: React.FC<SheetProps> = ({ school, longDate
       </tbody>
     </table>
 
-    <h3 className="font-bold mb-1">Kritik &amp; saran</h3>
-    <div className="border border-slate-700 px-3 pb-2 mb-6">
+    <h3 className="font-bold mb-0.5 print:text-[10px]">Kritik &amp; saran</h3>
+    <div className="border border-slate-700 px-3 pb-1 mb-4 print:mb-1.5">
       {Array.from({ length: 5 }).map((_, i) => (
-        <div key={i} className="border-b border-dotted border-slate-500 h-7" />
+        <div key={i} className="border-b border-dotted border-slate-500 h-6 print:h-4.5" />
       ))}
     </div>
 
     <div className="flex justify-end">
       <div className="w-56">
-        <Signer caption="Penilai," role="Perwakilan Sekolah" />
+        <Signer caption="Penilai," role="Perwakilan Sekolah" sigHeight="h-16 print:h-9" />
       </div>
     </div>
     <Footer text={footer} />

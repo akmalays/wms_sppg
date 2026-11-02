@@ -40,23 +40,23 @@ export interface SheetProps {
   footer: string;
 }
 
-const SHEET = "bg-white p-7 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-xs";
+const SHEET = "bg-white p-7 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-xs print:text-[10px]";
 const LINE = "inline-block border-b border-slate-700 align-bottom";
-const CELL = "border border-slate-800 px-2 py-1.5";
+const CELL = "border border-slate-800 px-2 py-1.5 print:py-0.5 print:px-1";
 
 const Blank: React.FC<{w: string; value?: string; center?: boolean}> = ({w, value, center}) => (
   <span className={`${LINE} ${w} ${center ? "text-center" : "px-1"} font-semibold min-h-[1.1em]`}>{value || " "}</span>
 );
 
 const SignLine: React.FC<{name?: string}> = ({name}) => (
-  <div className="mt-12 flex items-end gap-1 w-56">
+  <div className="mt-8 print:mt-3 flex items-end gap-1 w-56">
     <span>(</span>
     <span className="flex-1 border-b border-slate-800 text-center font-semibold pb-0.5">{name || " "}</span>
     <span>)</span>
   </div>
 );
 
-const Footer: React.FC<{text: string}> = ({text}) => <div className="text-right text-[8.5px] text-slate-400 mt-3 font-mono">{text}</div>;
+const Footer: React.FC<{text: string}> = ({text}) => <div className="text-right text-[8.5px] print:text-[7.5px] text-slate-400 mt-3 print:mt-1 font-mono">{text}</div>;
 
 // ---------------------------------------------------------------------------
 // LEMBAR 1: SURAT JALAN
@@ -139,7 +139,7 @@ export const SuratJalanSheetLegacy: React.FC<SheetProps & {docNo: string; delive
       </thead>
       <tbody>
         {classes.map((c, i) => (
-          <tr key={`${c.className}-${i}`} className="h-9">
+          <tr key={`${c.className}-${i}`} className="h-8 print:h-5.5">
             <td className={`${CELL} text-center`}>{i + 1}</td>
             <td className={`${CELL} text-center`}>{c.className}</td>
             <td className={`${CELL} text-center`}>{c.portions !== undefined ? c.portions.toLocaleString("id-ID") : ""}</td>
@@ -148,7 +148,7 @@ export const SuratJalanSheetLegacy: React.FC<SheetProps & {docNo: string; delive
             <td className={CELL}></td>
           </tr>
         ))}
-        <tr className="h-9 font-bold">
+        <tr className="h-8 print:h-5.5 font-bold">
           <td colSpan={2} className={`${CELL} text-center`}>
             Total
           </td>
@@ -160,26 +160,30 @@ export const SuratJalanSheetLegacy: React.FC<SheetProps & {docNo: string; delive
       </tbody>
     </table>
 
-    <div className="grid grid-cols-3 gap-4 text-[12px]">
+    <div className="grid grid-cols-3 gap-3 print:gap-1.5 text-[11px] print:text-[9.5px]">
       <div className="col-span-2 text-center">Diperiksa Oleh,</div>
       <div>Diterima Oleh,</div>
       <div>
         <div>Ahli Gizi SPPG Malang Tumpang Jeru,</div>
-        <div className="h-20 flex items-center justify-center -my-1">
-          {officers.nutritionistSignature && <img src={officers.nutritionistSignature} alt="Tanda tangan Ahli Gizi SPPG" className="h-20 w-auto object-contain" />}
+        <div className="h-16 print:h-10 flex items-center justify-center -my-0.5">
+          {officers.nutritionistSignature && (
+            <img src={officers.nutritionistSignature} alt="Tanda tangan Ahli Gizi SPPG" className="h-16 print:h-10 w-auto object-contain scale-[1.15] origin-center" />
+          )}
         </div>
         <div className="font-semibold">{officers.nutritionistName || " "}</div>
       </div>
       <div>
         <div>Asisten Lapangan SPPG Malang Tumpang Jeru,</div>
-        <div className="h-20 flex items-center justify-center -my-1">
-          {officers.fieldAssistantSignature && <img src={officers.fieldAssistantSignature} alt="Tanda tangan Asisten Lapangan" className="h-20 w-auto object-contain" />}
+        <div className="h-16 print:h-10 flex items-center justify-center -my-0.5">
+          {officers.fieldAssistantSignature && (
+            <img src={officers.fieldAssistantSignature} alt="Tanda tangan Asisten Lapangan" className="h-16 print:h-10 w-auto object-contain scale-[1.15] origin-center" />
+          )}
         </div>
         <div className="font-semibold">{officers.fieldAssistantName || " "}</div>
       </div>
       <div>
         <div>Pihak Sekolah,</div>
-        <div className="h-20" />
+        <div className="h-16 print:h-10" />
         <div className="border-b border-dotted border-slate-800 w-44" />
       </div>
     </div>
@@ -190,14 +194,14 @@ export const SuratJalanSheetLegacy: React.FC<SheetProps & {docNo: string; delive
 // ---------------------------------------------------------------------------
 // LEMBAR 2: BERITA ACARA PENERIMAAN PAKET MAKANAN + PENYERAHAN ALAT MAKAN
 // ---------------------------------------------------------------------------
-const HeadSignature: React.FC<{src?: string; className?: string}> = ({src, className = "h-20"}) =>
+const HeadSignature: React.FC<{src?: string; className?: string}> = ({src, className = "h-16 print:h-9"}) =>
   src ? <img src={src} alt="Tanda tangan Kepala SPPG" className={`${className} object-contain`} /> : <div className={className} />;
 
 const MengetahuiBox: React.FC<{headName: string; headSignature?: string}> = ({headName, headSignature}) => (
-  <div className="border border-slate-800 p-3 w-64 text-[11.5px]">
+  <div className="border border-slate-800 p-2.5 print:p-1 w-60 text-[11px] print:text-[9.5px]">
     <div>Mengetahui:</div>
-    <div className="my-1 flex items-center">
-      <HeadSignature src={headSignature} className="h-20" />
+    <div className="my-0.5 flex items-center">
+      <HeadSignature src={headSignature} className="h-14 print:h-8" />
     </div>
     <div className="font-semibold underline">{headName || " "}</div>
     <div>Kepala SPPG Malang Tumpang Jeru</div>
