@@ -28,6 +28,8 @@ interface SearchPickerProps {
   noun?: string;
   /** Fokus ke tombol saat pertama dirender, mis. baris yang baru ditambahkan. */
   autoFocus?: boolean;
+  /** Urutan kolom untuk navigasi panah di tabel isian (utils/gridNav). */
+  gridCol?: number;
 }
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
@@ -51,6 +53,7 @@ export const SearchPicker: React.FC<SearchPickerProps> = ({
   size = 'md',
   noun = 'pilihan',
   autoFocus = false,
+  gridCol,
 }) => {
   const listId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -187,6 +190,7 @@ export const SearchPicker: React.FC<SearchPickerProps> = ({
         aria-expanded={open}
         aria-label={ariaLabel}
         aria-invalid={invalid || undefined}
+        data-grid-col={gridCol}
         onClick={() => (open ? close() : openPicker())}
         onKeyDown={e => {
           if (!open && (e.key === 'ArrowDown' || (e.key.length === 1 && !e.ctrlKey && !e.metaKey))) {

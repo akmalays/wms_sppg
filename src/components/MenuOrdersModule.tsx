@@ -48,6 +48,7 @@ import {SppgLogo} from "./SppgLogo";
 import {DeliveryNotesSubModule} from "./DeliveryNotesSubModule";
 import {PoEditModal} from "./PoEditModal";
 import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatureImg';
+import {handleGridKeyDown} from "../utils/gridNav";
 
 const PO_UNIT_OPTIONS = ["Kg", "Gram", "Liter", "Pcs", "Pack", "Dus", "Ikat", "Butir", "Roll", "Botol", "Jerigen", "Pouch", "Rim"];
 
@@ -4518,7 +4519,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                 <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-semibold text-slate-800">Bahan per supplier</h3>
-                    <p className="text-[11px] text-slate-600">Satu kelompok supplier jadi satu PO. Supplier di luar daftar bisa diketik langsung.</p>
+                    <p className="text-[11px] text-slate-600">Satu kelompok supplier jadi satu PO. Supplier di luar daftar bisa diketik langsung. Pindah sel dengan panah atau Enter.</p>
                   </div>
                   <button
                     type="button"
@@ -4544,6 +4545,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                     return (
                       <li
                         key={idx}
+                        data-grid-rowel
                         className={`grid gap-2 px-3 py-2 items-start grid-cols-[1fr_1fr_2.75rem] ${
                           withSupplier ? "sm:grid-cols-[9rem_1fr_7rem_12rem_2.25rem]" : "sm:grid-cols-[9rem_1fr_7rem_2.25rem]"
                         }`}>
@@ -4551,6 +4553,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                           className="w-full"
                           size="sm"
                           aria-label={`Kategori ${row.itemName || `baris ${idx + 1}`}`}
+                          data-grid-col={0}
                           value={row.category}
                           onChange={(e) => updatePoRow(idx, {category: e.target.value})}>
                           <option value="Protein">Protein</option>
@@ -4574,6 +4577,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                             placeholder="Pilih bahan dari master barang"
                             searchPlaceholder="Cari bahan, mis. ayam, beras..."
                             ariaLabel={`Nama bahan baris ${idx + 1}`}
+                            gridCol={1}
                             onSelect={(opt, text) => {
                               if (idx === poFocusRow) setPoFocusRow(null);
                               const master = opt ? findMasterItem(opt.value) : undefined;
@@ -4608,6 +4612,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                               }
                             }}
                             aria-label={`Jumlah ${row.itemName || `baris ${idx + 1}`}`}
+                            data-grid-col={2}
                             className={`${TABLE_INPUT} font-mono ${masterUnit ? "pr-12" : ""}`}
                           />
                           {masterUnit && (
@@ -4629,6 +4634,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                               placeholder="Pilih supplier"
                               searchPlaceholder="Cari atau ketik supplier baru..."
                               ariaLabel={`Supplier untuk ${row.itemName || `baris ${idx + 1}`}`}
+                              gridCol={3}
                               onSelect={(opt, text) => updatePoRow(idx, {supplier: opt ? opt.value : text})}
                             />
                           </div>
@@ -4647,7 +4653,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
                   let poNo = 0;
                   return (
-                    <div className="space-y-3">
+                    // Navigasi seperti spreadsheet lintas kelompok supplier: panah dan Enter pindah sel (utils/gridNav)
+                    <div className="space-y-3" onKeyDownCapture={handleGridKeyDown}>
                       {poGroups.assigned.map((group) => {
                         const filled = group.rows.filter(({row}) => row.itemName.trim()).length;
                         if (filled > 0) poNo += 1;

@@ -14,6 +14,7 @@ import { DialogShell, FIELD_INPUT, FIELD_LABEL, TABLE_INPUT, BTN_PRIMARY, BTN_SE
 import { localDateIso } from '../utils/localDate';
 import { convertQty, isCountableUnit, normalizeQtyForUnit, unitKey } from '../utils/unitConversion';
 import { isPendingSupplierPo } from '../utils/poSupplier';
+import { handleGridKeyDown } from '../utils/gridNav';
 
 interface PoReceivingWeighingModalProps {
   isOpen: boolean;
@@ -28,6 +29,14 @@ const EXTRA_PREFIX = 'POI-LUAR-';
 const EXTRA_NOTE = 'Di luar PO';
 const UNIT_OPTIONS = ['Kg', 'Gram', 'Liter', 'Pcs', 'Pack', 'Dus', 'Ikat', 'Butir', 'Roll', 'Botol', 'Jerigen', 'Pouch', 'Rim'];
 const isExtraItem = (it: WeighedPoItemInput) => it.poiId.startsWith(EXTRA_PREFIX);
+
+// Harga diketik bebas: "14250", "14.333" (titik ribuan), "14 333", "Rp 100.000", "5000,5" (koma desimal)
+const parseRupiah = (raw: string): number => {
+  const v = raw.replace(/[^\d.,]/g, '');
+  const normalized = /^\d{1,3}(\.\d{3})+(,\d*)?$/.test(v) ? v.replace(/\./g, '').replace(',', '.') : v.replace(',', '.');
+  return Math.max(0, parseFloat(normalized) || 0);
+};
+const formatRupiahInput = (n: number) => (n ? n.toLocaleString('id-ID', { maximumFractionDigits: 2 }) : '');
 
 export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> = ({
   isOpen,
@@ -56,6 +65,10 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
   const [items, setItems] = useState<WeighedPoItemInput[]>([]);
   // Raw text typed in the qty box, so "0," / "0.5" can be typed without being reset to empty
   const [qtyDrafts, setQtyDrafts] = useState<Record<string, string>>({});
+  // Teks harga yang sedang diketik; dirapikan (titik ribuan) saat keluar dari kolom
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
+  // Harga per kemasan (opsional), mis. Rp100.000 per dus isi 20: harga satuan dihitung otomatis
+  const [packByPoiId, setPackByPoiId] = useState<Record<string, { price: string; size: string }>>({});
 
   // Initialize data when modal opens
   useEffect(() => {
@@ -193,6 +206,23 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
   const handlePriceChange = (index: number, val: number) => {
     const newPrice = Math.max(0, val);
     updateItem(index, it => ({ unitPrice: newPrice, subtotal: Math.round(it.actualQty * newPrice) }));
+  };
+
+  const packFor = (poiId: string) => {
+    const pack = packByPoiId[poiId];
+    const price = pack ? parseRupiah(pack.price) : 0;
+    const size = pack ? Math.max(0, parseFloat(pack.size.replace(',', '.')) || 0) : 0;
+    return { price, size, active: price > 0 && size > 0 };
+  };
+
+  const handlePackChange = (index: number, patch: Partial<{ price: string; size: string }>) => {
+    const poiId = items[index].poiId;
+    const current = packByPoiId[poiId];
+    const next = { price: current?.price ?? '', size: current?.size ?? '', ...patch };
+    setPackByPoiId(prev => ({ ...prev, [poiId]: next }));
+    const price = parseRupiah(next.price);
+    const size = Math.max(0, parseFloat(next.size.replace(',', '.')) || 0);
+    if (price > 0 && size > 0) handlePriceChange(index, Math.round((price / size) * 100) / 100);
   };
 
   const handleConditionChange = (index: number, text: string) => {
@@ -424,7 +454,13 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
         <fieldset disabled={isAlreadyReceived || isSubmitting} className="space-y-5 min-w-0">
           {/* Kedatangan */}
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-800">Kedatangan</h3>
+            {/* Penerima bukan isian, jadi ditulis di baris judul agar grid isian tetap sejajar */}
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <h3 className="text-sm font-semibold text-slate-800">Kedatangan</h3>
+              <p className="text-[11px] text-slate-600">
+                Diterima oleh <span className="font-semibold text-slate-900">{currentUser.name}</span>
+              </p>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
                 <label htmlFor="rcv-date" className={FIELD_LABEL}>Tanggal tiba</label>
@@ -456,11 +492,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                   className={FIELD_INPUT}
                 />
               </div>
-              <div>
-                <span className={FIELD_LABEL}>Diterima oleh</span>
-                <p className="min-h-[44px] sm:min-h-[34px] flex items-center text-xs font-semibold text-slate-900">{currentUser.name}</p>
-              </div>
-              <div className="sm:col-span-2 lg:col-span-3">
+              <div className="sm:col-span-2 lg:col-span-4">
                 <label htmlFor="rcv-notes" className={FIELD_LABEL}>Catatan pengiriman</label>
                 <input
                   id="rcv-notes"
@@ -477,16 +509,16 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
           {/* Hasil timbang */}
           <section className="space-y-2">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
-              <div>
+              <div className="min-w-0 flex-1">
                 <h3 className="text-sm font-semibold text-slate-800">Hasil timbang ({items.length} bahan)</h3>
                 <p className="text-[11px] text-slate-600">
-                  Isi jumlah sesuai timbangan. Bahan yang tidak datang biarkan kosong.{' '}
+                  Kosongkan bahan yang tidak datang. Pindah sel dengan panah atau Enter.{' '}
                   {pendingSupplier
-                    ? 'Pilih supplier tiap bahan; PO otomatis dipecah per supplier saat disimpan.'
-                    : 'Ganti supplier bila yang mengirim berbeda; PO otomatis dipecah per supplier saat disimpan.'}
+                    ? 'Pilih supplier tiap bahan, PO dipecah per supplier saat disimpan.'
+                    : 'Supplier bisa diganti per bahan, PO dipecah per supplier saat disimpan.'}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 shrink-0">
                 <button type="button" onClick={handleCopyTargetToActual} className={BTN_SECONDARY}>
                   <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
                   Samakan dengan PO
@@ -499,20 +531,25 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
             </div>
 
             <div className="border border-slate-200 rounded-xl overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              {/* Lebar minimum: di layar sempit tabel digeser ke samping, bukan isiannya yang menyempit */}
+              <table className="w-full min-w-[1320px] text-left text-xs">
                 <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
                   <tr>
                     <th className="py-2 px-3 font-semibold min-w-[180px]">Bahan</th>
                     <th className="py-2 px-3 font-semibold min-w-[170px]">Supplier</th>
                     <th className="py-2 px-3 font-semibold text-right w-24">Dipesan</th>
-                    <th className="py-2 px-3 font-semibold w-36">Diterima</th>
+                    <th className="py-2 px-3 font-semibold min-w-[140px]">Diterima</th>
                     <th className="py-2 px-3 font-semibold w-24">Selisih</th>
-                    <th className="py-2 px-3 font-semibold w-32">Harga satuan</th>
+                    <th className="py-2 px-3 font-semibold min-w-[220px]">
+                      Harga kemasan <span className="font-normal text-slate-500">(opsional)</span>
+                    </th>
+                    <th className="py-2 px-3 font-semibold min-w-[140px]">Harga satuan</th>
                     <th className="py-2 px-3 font-semibold text-right w-28">Subtotal</th>
                     <th className="py-2 px-3 font-semibold min-w-[170px]">Kondisi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                {/* Navigasi seperti spreadsheet: panah dan Enter pindah sel (lihat utils/gridNav) */}
+                <tbody className="divide-y divide-slate-100" onKeyDownCapture={handleGridKeyDown}>
                   {items.map((it, idx) => {
                     const diff = Math.round((it.actualQty - it.targetQty) * 100) / 100;
                     const stockUnit = stockUnitByIndex[idx];
@@ -525,7 +562,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                     const supplierChanged =
                       !extra && !!plannedSupplier && !!supplier.trim() && supplier.trim().toLowerCase() !== plannedSupplier.trim().toLowerCase();
                     return (
-                      <tr key={it.poiId || idx} className={`align-top ${extra ? 'bg-sky-50/40' : ''}`}>
+                      <tr key={it.poiId || idx} data-grid-rowel className={`align-top ${extra ? 'bg-sky-50/40' : ''}`}>
                         <td className="py-2 px-3">
                           {extra ? (
                             <div className="flex items-start gap-1.5">
@@ -536,6 +573,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                                   value={it.name}
                                   onChange={e => handleExtraNameChange(idx, e.target.value)}
                                   placeholder="Nama bahan"
+                                  data-grid-col={0}
                                   aria-label="Nama bahan di luar PO"
                                   aria-invalid={!it.name.trim() || undefined}
                                   className={`${TABLE_INPUT} ${!it.name.trim() ? 'border-amber-400' : ''}`}
@@ -566,6 +604,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                             value={supplier}
                             onChange={e => setSupplierByPoiId(prev => ({ ...prev, [it.poiId]: e.target.value }))}
                             placeholder="Pilih atau ketik"
+                            data-grid-col={1}
                             aria-label={`Supplier ${label}`}
                             aria-invalid={supplierMissing || undefined}
                             className={`${TABLE_INPUT} ${supplierMissing ? 'border-amber-400' : ''}`}
@@ -584,6 +623,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                               onChange={e => handleQtyChange(idx, e.target.value)}
                               onBlur={() => handleQtyBlur(idx)}
                               placeholder="0"
+                              data-grid-col={2}
                               aria-label={`Jumlah diterima ${label}`}
                               className={`${TABLE_INPUT} w-20 text-right font-mono`}
                             />
@@ -593,6 +633,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                                 list="rcv-unit-options"
                                 value={it.unit}
                                 onChange={e => updateItem(idx, () => ({ unit: e.target.value }))}
+                                data-grid-col={3}
                                 aria-label={`Satuan ${label}`}
                                 className={`${TABLE_INPUT} w-16`}
                               />
@@ -621,20 +662,72 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                           )}
                         </td>
                         <td className="py-2 px-3">
-                          <div className="relative">
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-slate-500 pointer-events-none">Rp</span>
+                          <div className="flex items-center gap-1">
+                            <div className="relative flex-1 min-w-[104px]">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-slate-500 pointer-events-none">Rp</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={packByPoiId[it.poiId]?.price ?? ''}
+                                onChange={e => handlePackChange(idx, { price: e.target.value })}
+                                placeholder="per dus"
+                                data-grid-col={4}
+                                aria-label={`Harga per kemasan ${label}`}
+                                className={`${TABLE_INPUT} pl-7 text-right font-mono`}
+                              />
+                            </div>
+                            <span className="text-slate-500">isi</span>
                             <input
-                              type="number"
-                              min="0"
-                              step="100"
-                              value={it.unitPrice || ''}
-                              onChange={e => handlePriceChange(idx, parseFloat(e.target.value) || 0)}
-                              aria-label={`Harga satuan ${label}`}
-                              aria-invalid={it.unitPrice <= 0 || undefined}
-                              className={`${TABLE_INPUT} pl-7 text-right font-mono ${it.unitPrice <= 0 ? 'border-amber-400' : ''}`}
+                              type="text"
+                              inputMode="decimal"
+                              value={packByPoiId[it.poiId]?.size ?? ''}
+                              onChange={e => handlePackChange(idx, { size: e.target.value })}
+                              placeholder="0"
+                              data-grid-col={5}
+                              aria-label={`Isi per kemasan ${label}, dalam ${it.unit}`}
+                              className={`${TABLE_INPUT} w-12 text-right font-mono`}
                             />
+                            <span className="text-slate-600 whitespace-nowrap">{it.unit}</span>
                           </div>
-                          {it.unitPrice <= 0 && <div className="mt-1 text-[11px] text-amber-800">Harga belum diisi</div>}
+                        </td>
+                        <td className="py-2 px-3">
+                          {(() => {
+                            const pack = packFor(it.poiId);
+                            return (
+                              <>
+                                <div className="relative">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-slate-500 pointer-events-none">Rp</span>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={priceDrafts[it.poiId] ?? formatRupiahInput(it.unitPrice)}
+                                    onChange={e => {
+                                      setPriceDrafts(prev => ({ ...prev, [it.poiId]: e.target.value }));
+                                      handlePriceChange(idx, parseRupiah(e.target.value));
+                                    }}
+                                    onBlur={() =>
+                                      setPriceDrafts(prev => {
+                                        const next = { ...prev };
+                                        delete next[it.poiId];
+                                        return next;
+                                      })
+                                    }
+                                    readOnly={pack.active}
+                                    title={pack.active ? 'Dihitung dari harga kemasan. Kosongkan harga kemasan untuk mengisi manual.' : undefined}
+                                    data-grid-col={6}
+                                    aria-label={`Harga satuan ${label}`}
+                                    aria-invalid={it.unitPrice <= 0 || undefined}
+                                    className={`${TABLE_INPUT} pl-7 text-right font-mono ${pack.active ? 'bg-slate-50 text-slate-700' : ''} ${it.unitPrice <= 0 ? 'border-amber-400' : ''}`}
+                                  />
+                                </div>
+                                {pack.active ? (
+                                  <div className="mt-1 text-[11px] text-slate-600">otomatis</div>
+                                ) : (
+                                  it.unitPrice <= 0 && <div className="mt-1 text-[11px] text-amber-800">Harga belum diisi</div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </td>
                         <td className="py-2 px-3 pt-3 text-right font-mono font-semibold text-slate-900 tabular-nums whitespace-nowrap">
                           {rupiah(it.subtotal || 0)}
@@ -645,6 +738,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
                             placeholder="Mis. segar, 2 ikat layu"
                             value={it.conditionNote || ''}
                             onChange={e => handleConditionChange(idx, e.target.value)}
+                            data-grid-col={7}
                             aria-label={`Kondisi ${label}`}
                             className={TABLE_INPUT}
                           />
