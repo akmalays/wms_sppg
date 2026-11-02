@@ -373,9 +373,10 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
       {/* Print Specific CSS untuk Batch Pool */}
       <style>{`
         @media print {
+          /* Margin 0 agar header/footer bawaan browser (URL, tanggal) tidak tercetak; margin diganti padding halaman */
           @page {
             size: A4 portrait;
-            margin: 5mm 8mm;
+            margin: 0;
           }
           html, body {
             overflow: visible !important;
@@ -406,8 +407,8 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
           .batch-a4-page {
             box-sizing: border-box !important;
             width: 100% !important;
-            min-height: 275mm !important;
-            max-height: 282mm !important;
+            min-height: 285mm !important;
+            max-height: 292mm !important;
             page-break-after: always !important;
             break-after: page !important;
             page-break-inside: avoid !important;
@@ -415,7 +416,7 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
             display: flex !important;
             flex-direction: column !important;
             justify-content: space-between !important;
-            padding: 1mm 0 !important;
+            padding: 6mm 8mm !important;
             margin: 0 !important;
             border: none !important;
             box-shadow: none !important;

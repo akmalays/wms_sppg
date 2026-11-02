@@ -1011,7 +1011,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
               #delivery-print-portal {
                 display: none;
               }
-              /* Lembar pratinjau = kertas A4 dengan margin sama seperti @page di bawah */
+              /* Lembar pratinjau = kertas A4 dengan margin sama seperti padding lembar cetak di bawah */
               .print-preview .print-page-break {
                 box-sizing: border-box;
                 width: 210mm;
@@ -1022,9 +1022,11 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                 box-shadow: 0 1px 3px rgb(15 23 42 / 0.15);
               }
               @media print {
+                /* Margin 0: browser tidak punya ruang untuk header/footer bawaan (URL, tanggal, judul).
+                   Margin kertas diganti padding di tiap lembar. */
                 @page {
                   size: A4 portrait;
-                  margin: 8mm 10mm 10mm 10mm;
+                  margin: 0;
                 }
                 html, body {
                   overflow: visible !important;
@@ -1057,7 +1059,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
                   margin: 0 !important;
                   border: none !important;
                   box-shadow: none !important;
-                  padding: 0 !important;
+                  padding: 8mm 10mm 10mm 10mm !important;
                   background: #ffffff !important;
                 }
                 /* Lembar paling akhir di antrean tidak memaksa halaman baru kosong */
@@ -1198,7 +1200,7 @@ export const DeliveryNotesSubModule: React.FC<DeliveryNotesSubModuleProps> = ({
 
             {/* Pratinjau Dokumen di Layar (Scrollable Screen Preview) */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-200/70" id="delivery-preview-scroll">
-              {/* print-preview: kelas print: ikut berlaku, tiap lembar digambar seukuran A4 dengan margin @page */}
+              {/* print-preview: kelas print: ikut berlaku, tiap lembar digambar seukuran A4 dengan margin cetak */}
               <div className="print-preview w-[210mm] max-w-full mx-auto space-y-6">
                 {printSchoolsQueue.map((school, sIdx) => (
                   <div key={school.id} className="space-y-6">

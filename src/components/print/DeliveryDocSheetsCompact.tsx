@@ -8,10 +8,10 @@ import { QrSvg } from '../common/QrSvg';
 // Halaman 2 memakai Uji Hedonik format standar apa adanya; bila uji hedonik lewat QR, QR-nya dicetak di halaman 1
 // dan halaman 2 tidak perlu dicetak. Format standar dan lama tidak diubah.
 
-// Satu lembar mengisi area cetak A4 (297mm dikurangi margin @page 8mm + 10mm, sisa 2mm agar tidak tumpah ke halaman
-// berikutnya). Ruang lebih diserap kotak serah terima, jadi ruang tanda tangan basah ikut lega.
+// Satu lembar setinggi A4 (padding cetak 8mm/10mm sudah termasuk, sisa 2mm agar tidak tumpah ke halaman berikutnya).
+// Ruang lebih diserap kotak serah terima, jadi ruang tanda tangan basah ikut lega.
 const SHEET =
-  'bg-white p-7 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-[11px] leading-snug flex flex-col print:min-h-[277mm]';
+  'bg-white p-7 shadow-md rounded-sm border border-slate-300 print:border-none print:shadow-none print:p-0 print-page-break text-slate-900 font-sans text-[11px] leading-snug flex flex-col print:min-h-[295mm]';
 const CELL_BORDER = 'border border-slate-700 px-2';
 const CELL = `${CELL_BORDER} py-1`;
 const LABEL = 'text-slate-600';

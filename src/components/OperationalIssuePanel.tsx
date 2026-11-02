@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, AlertTriangle, X, PackageMinus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { warehouseDb } from '../db/storage';
+import { warehouseDb, ISSUE_CORRECTION_PREFIX } from '../db/storage';
+import { InventoryTransaction } from '../types/warehouse';
 import { localDateIso } from '../utils/localDate';
 import { SearchPicker } from './common/SearchPicker';
 import { ScanButton } from './common/QrScannerDialog';
 import { ScanTarget } from '../utils/scanCode';
-import { FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY } from './common/FormDialog';
+import { FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY, FormDialog } from './common/FormDialog';
 import { PaperIssueFormDialog, PAPER_FORM_REF_PREFIX } from './PaperIssueFormDialog';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
@@ -40,6 +41,11 @@ export const OperationalIssuePanel: React.FC<{
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
   const [isPaperOpen, setIsPaperOpen] = useState(false);
+  // Koreksi salah input: catatan asli tetap, selisihnya dicatat sebagai koreksi
+  const [correcting, setCorrecting] = useState<InventoryTransaction | null>(null);
+  const [correctQty, setCorrectQty] = useState('');
+  const [correctReason, setCorrectReason] = useState('');
+  const [correctError, setCorrectError] = useState('');
 
   // Dibuka dari QR Form Pengambilan Non-Food; sama seperti tombolnya, hanya untuk yang boleh mencatat pemakaian.
   useEffect(() => {
@@ -69,7 +75,14 @@ export const OperationalIssuePanel: React.FC<{
     () =>
       warehouseDb
         .getTransactions()
-        .filter(tx => tx.transactionType === 'ISSUE_CONSUMPTION' && tx.quantity < 0 && itemIds.has(tx.itemId) && tx.timestamp.startsWith(selectedDate))
+        .filter(
+          tx =>
+            tx.transactionType === 'ISSUE_CONSUMPTION' &&
+            tx.quantity < 0 &&
+            !tx.referenceDocument?.startsWith(ISSUE_CORRECTION_PREFIX) &&
+            itemIds.has(tx.itemId) &&
+            tx.timestamp.startsWith(selectedDate)
+        )
         .sort((a, b) => b.timestamp.localeCompare(a.timestamp)),
     [dataVersion, itemIds, selectedDate]
   );
@@ -98,6 +111,36 @@ export const OperationalIssuePanel: React.FC<{
         ? `${other.name} adalah bahan makanan. Catat di tab Bahan dapur.`
         : `Kode ${code} bukan barang operasional di Master Barang.`
     );
+  };
+
+  const openCorrection = (tx: InventoryTransaction) => {
+    setCorrecting(tx);
+    setCorrectQty(String(warehouseDb.getNetIssuedQuantity(tx)));
+    setCorrectReason('');
+    setCorrectError('');
+  };
+
+  const correctAmount = parseFloat(correctQty.replace(',', '.'));
+  const correctingNet = correcting ? warehouseDb.getNetIssuedQuantity(correcting) : 0;
+  const correctDelta = correcting && correctAmount >= 0 ? Number((correctAmount - correctingNet).toFixed(2)) : 0;
+
+  const handleCorrect = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!correcting) return;
+    if (!(correctAmount >= 0)) return setCorrectError('Isi jumlah yang benar, 0 bila dibatalkan.');
+    try {
+      warehouseDb.correctIssuedQuantity(correcting, correctAmount, currentUser, correctReason.trim());
+      setFeedback(
+        correctAmount === 0
+          ? `${correcting.itemName} dibatalkan, ${fmt(correctingNet)} ${correcting.unit} kembali ke stok.`
+          : `${correcting.itemName} dikoreksi menjadi ${fmt(correctAmount)} ${correcting.unit}.`
+      );
+      setError('');
+      setCorrecting(null);
+      setDataVersion(v => v + 1);
+    } catch (err: any) {
+      setCorrectError(err?.message || 'Gagal menyimpan koreksi.');
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -233,10 +276,14 @@ export const OperationalIssuePanel: React.FC<{
                   <th className="py-2.5 px-4 w-28 text-right">Jumlah</th>
                   <th className="py-2.5 px-4">Dipakai untuk</th>
                   <th className="py-2.5 px-4">Dicatat oleh</th>
+                  {can('RECORD_CONSUMPTION') && <th className="py-2.5 px-4 w-24"><span className="sr-only">Aksi</span></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {issued.map(tx => (
+                {issued.map(tx => {
+                  const original = Math.abs(tx.quantity);
+                  const net = warehouseDb.getNetIssuedQuantity(tx);
+                  return (
                   <tr key={tx.id}>
                     <td className="py-2.5 px-4 font-mono tabular-nums text-slate-700">
                       {/* Kertas tidak mencatat jam, jadi jam buatan tidak ditampilkan. */}
@@ -247,17 +294,85 @@ export const OperationalIssuePanel: React.FC<{
                       {tx.notes && tx.notes !== 'Barang keluar operasional' && <div className="text-[11px] text-slate-600">{tx.notes}</div>}
                     </td>
                     <td className="py-2.5 px-4 text-right font-mono tabular-nums font-semibold text-slate-900">
-                      {fmt(Math.abs(tx.quantity))} {tx.unit}
+                      {net !== original && (
+                        <span className="mr-1.5 font-normal text-slate-500 line-through" aria-label={`semula ${fmt(original)}`}>{fmt(original)}</span>
+                      )}
+                      {fmt(net)} {tx.unit}
+                      {net !== original && (
+                        <div className="font-sans text-[11px] font-normal text-slate-600">{net === 0 ? 'dibatalkan' : 'dikoreksi'}</div>
+                      )}
                     </td>
                     <td className="py-2.5 px-4 text-slate-800">{tx.location}</td>
                     <td className="py-2.5 px-4 text-slate-700">{tx.userName}</td>
+                    {can('RECORD_CONSUMPTION') && (
+                      <td className="py-2.5 px-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => openCorrection(tx)}
+                          aria-label={`Koreksi ${tx.itemName}`}
+                          className={`min-h-[36px] px-2 -mr-2 rounded-md text-[11px] font-semibold text-emerald-800 hover:underline cursor-pointer ${FOCUS}`}
+                        >
+                          Koreksi
+                        </button>
+                      </td>
+                    )}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </section>
+
+      {correcting && (
+        <FormDialog
+          title={`Koreksi ${correcting.itemName}`}
+          description={
+            <>
+              Tercatat keluar {fmt(correctingNet)} {correcting.unit} untuk {correcting.location}. Catatan asli tetap tersimpan, selisihnya
+              dicatat sebagai koreksi di Buku Mutasi.
+            </>
+          }
+          onClose={() => setCorrecting(null)}
+          onSubmit={handleCorrect}
+          submitLabel={correctAmount === 0 ? 'Batalkan catatan' : 'Simpan koreksi'}
+          submitDisabled={!(correctAmount >= 0) || correctDelta === 0}
+          danger={correctAmount === 0}
+          error={correctError}
+        >
+          <div>
+            <label htmlFor="op-correct-qty" className={FIELD_LABEL}>Jumlah yang benar ({correcting.unit})</label>
+            <input
+              id="op-correct-qty"
+              type="number"
+              min="0"
+              step="any"
+              inputMode="decimal"
+              value={correctQty}
+              onChange={e => setCorrectQty(e.target.value)}
+              className={`${FIELD_INPUT} text-right font-mono tabular-nums`}
+            />
+            <p className="mt-1 text-[11px] text-slate-600">
+              {correctDelta < 0
+                ? `${fmt(-correctDelta)} ${correcting.unit} kembali ke stok.`
+                : correctDelta > 0
+                  ? `Stok berkurang ${fmt(correctDelta)} ${correcting.unit} lagi.`
+                  : 'Isi 0 untuk membatalkan seluruh catatan.'}
+            </p>
+          </div>
+          <div>
+            <label htmlFor="op-correct-reason" className={FIELD_LABEL}>Alasan (opsional)</label>
+            <input
+              id="op-correct-reason"
+              value={correctReason}
+              onChange={e => setCorrectReason(e.target.value)}
+              placeholder="Contoh: salah tulis jumlah di form"
+              className={FIELD_INPUT}
+            />
+          </div>
+        </FormDialog>
+      )}
 
       {isPaperOpen && (
         <PaperIssueFormDialog

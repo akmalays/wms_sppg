@@ -2372,13 +2372,26 @@ class WarehouseDatabase {
   /**
    * Kirim berurutan dan berhenti di langkah pertama yang gagal. Rincian penerimaan dan mutasinya
    * merujuk dokumen induk, jadi tidak boleh tiba di server sebelum dokumennya tersimpan.
+   * Koneksi putus (sinyal lemah di gudang) dicoba ulang sampai 3 kali; error dari database tidak.
    */
   private pushCloudSequence(steps: Array<[label: string, run: () => PromiseLike<{ error: any }>]>): void {
     if (!isSupabaseConfigured()) return;
+    // Error jaringan tidak membawa kode Postgres/PostgREST.
+    const isNetworkError = (error: any) =>
+      !error?.code || /fetch|network|timeout|load failed/i.test(String(error?.message || ''));
     void (async () => {
       for (const [label, run] of steps) {
-        const { error } = await run();
-        if (error) {
+        let attempt = 0;
+        for (;;) {
+          const { error } = await run();
+          if (!error) break;
+          // Baris sudah tersimpan pada percobaan sebelumnya, hanya balasannya yang hilang.
+          if (attempt > 0 && error.code === '23505') break;
+          if (attempt < 2 && isNetworkError(error)) {
+            attempt++;
+            await new Promise(resolve => setTimeout(resolve, attempt * 2000));
+            continue;
+          }
           reportCloudWriteError(label, error);
           return;
         }
@@ -3070,7 +3083,7 @@ class WarehouseDatabase {
 
         // Create transaction entry
         const tx: InventoryTransaction = {
-          id: `TX-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          id: uniqueId('TX'),
           timestamp: timestampStr,
           itemId: item.id,
           itemName: item.name,
@@ -3101,7 +3114,8 @@ class WarehouseDatabase {
 
     this.receivings.unshift(savedDoc);
 
-    // Dokumen dulu, lalu rincian dan mutasinya (keduanya merujuk dokumen), lalu stok barang.
+    // Dokumen dulu, lalu rinciannya (merujuk dokumen), lalu stok barang, terakhir mutasi.
+    // Stok sebelum mutasi: bila koneksi putus di tengah, stok yang terlihat petugas tetap tersimpan.
     const docRow = mapReceivingToSupabase(savedDoc);
     const lineRows = newLines.map(l => mapLineToSupabase(l, savedDoc.id));
     const txRows = this.transactions.filter(t => t.referenceDocument === docId).map(mapTxToSupabase);
@@ -3120,12 +3134,12 @@ class WarehouseDatabase {
     this.pushCloudSequence([
       [`simpan penerimaan ${docId}`, () => supabase.from('receiving_documents').insert(docRow)],
       [`simpan rincian penerimaan ${docId}`, () => supabase.from('receiving_lines').insert(lineRows)],
-      ...(txRows.length > 0
-        ? [[`simpan mutasi stok ${docId}`, () => supabase.from('inventory_transactions').insert(txRows)] as [string, () => PromiseLike<{ error: any }>]]
-        : []),
       ...stockUpdates.map(
         u => [`simpan stok "${u.name}"`, () => supabase.from('item_master').update(u.row).eq('id', u.id)] as [string, () => PromiseLike<{ error: any }>]
       ),
+      ...(txRows.length > 0
+        ? [[`simpan mutasi stok ${docId}`, () => supabase.from('inventory_transactions').insert(txRows)] as [string, () => PromiseLike<{ error: any }>]]
+        : []),
     ]);
 
     this.notifyAllChanged();
@@ -3166,12 +3180,58 @@ class WarehouseDatabase {
     location: string,
     user: User,
     notes: string,
-    referenceDoc?: string
+    referenceDoc?: string,
+    occurredAt?: Date
   ): InventoryTransaction {
     if (quantity <= 0) {
       throw new Error('Jumlah koreksi harus lebih dari 0.');
     }
-    return this.postConsumption(itemId, quantity, location, user, notes, referenceDoc);
+    return this.postConsumption(itemId, quantity, location, user, notes, referenceDoc, occurredAt);
+  }
+
+  /** Koreksi yang menempel pada satu catatan barang keluar (referensi KOR-<id catatan>). */
+  public getIssueCorrections(issueTxId: string): InventoryTransaction[] {
+    const ref = `${ISSUE_CORRECTION_PREFIX}${issueTxId}`;
+    return this.transactions.filter(t => t.referenceDocument === ref);
+  }
+
+  /** Jumlah keluar bersih satu catatan setelah semua koreksinya (positif). */
+  public getNetIssuedQuantity(issueTx: InventoryTransaction): number {
+    const corrections = this.getIssueCorrections(issueTx.id).reduce((sum, t) => sum + t.quantity, 0);
+    return Number((-(issueTx.quantity + corrections)).toFixed(2));
+  }
+
+  /**
+   * Ubah jumlah barang keluar yang salah input tanpa menghapus catatan aslinya. Selisihnya dicatat
+   * pada tanggal catatan asli: lebih kecil = barang kembali ke stok, lebih besar = pemakaian tambahan.
+   */
+  public correctIssuedQuantity(issueTx: InventoryTransaction, correctQty: number, user: User, reason: string): void {
+    if (issueTx.transactionType !== 'ISSUE_CONSUMPTION' || issueTx.quantity >= 0) {
+      throw new Error('Hanya catatan barang keluar yang bisa dikoreksi.');
+    }
+    if (!(correctQty >= 0)) {
+      throw new Error('Jumlah yang benar tidak boleh kurang dari 0.');
+    }
+    const delta = Number((correctQty - this.getNetIssuedQuantity(issueTx)).toFixed(2));
+    if (delta === 0) {
+      throw new Error('Jumlahnya sama dengan yang tercatat.');
+    }
+    const item = this.getItemById(issueTx.itemId);
+    if (!item) {
+      throw new Error('Barang tidak ditemukan.');
+    }
+    if (delta > 0 && delta > item.currentStock) {
+      throw new Error(`Stok ${item.name} tinggal ${item.currentStock} ${item.baseUnit}, tidak cukup untuk tambahan ${delta}.`);
+    }
+    const ref = `${ISSUE_CORRECTION_PREFIX}${issueTx.id}`;
+    const occurredAt = new Date(issueTx.timestamp.replace(' ', 'T'));
+    const at = isNaN(occurredAt.getTime()) ? undefined : occurredAt;
+    const note = `${correctQty === 0 ? 'Dibatalkan' : `Koreksi jumlah menjadi ${correctQty} ${item.baseUnit}`}${reason ? `: ${reason}` : ''}`;
+    if (delta < 0) {
+      this.correctConsumption(item.id, -delta, issueTx.location, user, note, ref, at);
+    } else {
+      this.recordConsumption(item.id, delta, issueTx.location, user, note, ref, at);
+    }
   }
 
   private postConsumption(
@@ -5666,6 +5726,9 @@ export const warehouseDb = new WarehouseDatabase();
 
 /** Garis isian untuk tanda tangan yang namanya belum tercatat. */
 export const SIGNER_BLANK = '..............................';
+
+/** Awalan referensi koreksi barang keluar: KOR-<id catatan asli>. */
+export const ISSUE_CORRECTION_PREFIX = 'KOR-';
 
 /** Nama penanda tangan, atau garis isian jika jabatan itu belum ada di data karyawan. */
 export const signerName = (role: SignerRole): string => warehouseDb.getSignerName(role) || SIGNER_BLANK;

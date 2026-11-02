@@ -775,9 +775,10 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
       {/* Print Specific CSS */}
       <style>{`
         @media print {
+          /* Margin 0 agar header/footer bawaan browser (URL, tanggal) tidak tercetak; margin diganti padding kertas */
           @page {
             size: A4 portrait;
-            margin: 6mm 8mm;
+            margin: 0;
           }
           body * {
             visibility: hidden !important;
@@ -791,7 +792,8 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
             top: 0 !important;
             width: 100% !important;
             max-width: 100% !important;
-            padding: 0 !important;
+            box-sizing: border-box !important;
+            padding: 6mm 8mm !important;
             margin: 0 !important;
             box-shadow: none !important;
             border: none !important;

@@ -824,7 +824,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
       );
 
       const savedMsg = `${lines.length} barang dari ${selectedSupplier.name} masuk stok (Rp ${grandTotal.toLocaleString('id-ID')}).`;
-      toast.success(savedMsg, 'Barang Masuk Tersimpan');
       showToast(savedMsg);
       setIsCreatingDeliveryOrder(false);
       setSelectedDocForDetail(newDoc);

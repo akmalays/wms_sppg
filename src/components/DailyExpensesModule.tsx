@@ -206,8 +206,9 @@ export const DailyExpensesModule: React.FC<DailyExpensesModuleProps> = ({ onNavi
           kind: 'DAPUR',
           rawDate,
           parsedDate: parseExpenseDate(rawDate),
-          // Catatan dari form kertas tidak punya jam asli (disimpan pukul 12.00), jadi tidak ditampilkan.
-          time: tx.referenceDocument?.startsWith('FORM-') ? '' : tx.timestamp.slice(11, 16).replace(':', '.'),
+          // Catatan dari form kertas tidak punya jam asli (disimpan pukul 12.00), begitu juga koreksi (KOR-)
+          // yang memakai jam catatan aslinya, jadi tidak ditampilkan.
+          time: /^(FORM-|KOR-)/.test(tx.referenceDocument || '') ? '' : tx.timestamp.slice(11, 16).replace(':', '.'),
           itemName: tx.itemName,
           category: normalizeToStandardCategory(tx.category, tx.itemName),
           quantityLabel: qty < 0

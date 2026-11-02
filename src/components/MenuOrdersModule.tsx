@@ -363,18 +363,6 @@ function parseDishItems(menuStr: string): ParsedDish[] {
   });
 }
 
-// Template cepat untuk PO bahan standar SPPG.
-// Satuan diselaraskan dengan satuan standar Master Barang (Kg, Pcs, Liter).
-const STANDARD_PO_TEMPLATES = [
-  {category: "Protein", itemName: "Ayam Potong", qtyOrder: "260 Kg", arrivalTime: "08.30"},
-  {category: "Protein", itemName: "Tahu Putih", qtyOrder: "520 Pcs", arrivalTime: "09.30"},
-  {category: "Sembako", itemName: "Beras Mentari 25kg", qtyOrder: "175 Kg", arrivalTime: "14.00"},
-  {category: "Sembako", itemName: "Minyak Tropical 2L", qtyOrder: "24 Liter", arrivalTime: "14.00"},
-  {category: "Sayur dan Buah", itemName: "Buncis Segar", qtyOrder: "45 Kg", arrivalTime: "07.30"},
-  {category: "Sayur dan Buah", itemName: "Wortel Manis", qtyOrder: "35 Kg", arrivalTime: "07.30"},
-  {category: "Sayur dan Buah", itemName: "Semangka Non-Biji", qtyOrder: "180 Kg", arrivalTime: "10.00"},
-  {category: "Bumbu", itemName: "Bawang Putih Kating", qtyOrder: "8 Kg", arrivalTime: "08.00"},
-];
 
 const getTodayIso = (): string => {
   const d = new Date();
@@ -1721,11 +1709,74 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   const cleanSupplier = (name: string) => (["Pemasok Rekanan", "Pemasok Lokal"].includes(name.trim()) ? "" : name.trim());
 
   // Supplier kosong ditebak sekali saat daftar dimuat, bukan saat mengetik, agar baris tidak pindah kelompok di tengah ketikan.
+  // Riwayat baris PO dari menu-menu sebelumnya: dasar "bahan rutin" dan saran supplier per bahan.
+  // Supplier hanya dipakai bila masih aktif di Master Supplier, agar supplier lama tidak terpilih lagi.
+  const poHistory = useMemo(() => {
+    const since = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      return localDateIso(d);
+    })();
+    const activeSupplier = (name: string) => {
+      const found = masterSuppliers.find((sp) => normName(sp.name) === normName(cleanSupplier(name || "")));
+      return found && found.isActive !== false ? found.name : "";
+    };
+    const byItem = new Map<string, {row: MenuPoArrivalItem; date: string; recentCount: number; supplier: string}>();
+    [...orders]
+      .filter((o) => o.id !== selectedPoOrderId)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .forEach((o) => {
+        (o.poArrivalItems || []).forEach((row) => {
+          const key = normName(row.itemName || "");
+          if (!key) return;
+          const prev = byItem.get(key);
+          byItem.set(key, {
+            row,
+            date: o.date,
+            recentCount: (prev?.recentCount || 0) + (o.date >= since ? 1 : 0),
+            // Supplier terakhir yang masih aktif; baris tanpa supplier tidak menghapus riwayatnya.
+            supplier: activeSupplier(row.supplier) || prev?.supplier || "",
+          });
+        });
+      });
+    return byItem;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, masterSuppliers, selectedPoOrderId]);
+
+  // Bahan rutin: dipesan di 2 menu atau lebih dalam 30 hari terakhir (bila belum ada, cukup 1 menu), maksimal 25.
+  const routinePoRows = useMemo((): PoFormRow[] => {
+    const entries = Array.from(poHistory.values()).filter((e) => {
+      const master = findMasterItem(e.row.itemName);
+      return e.recentCount > 0 && master?.isActive !== false;
+    });
+    const minCount = entries.some((e) => e.recentCount >= 2) ? 2 : 1;
+    return entries
+      .filter((e) => e.recentCount >= minCount)
+      .sort((a, b) => b.recentCount - a.recentCount || b.date.localeCompare(a.date))
+      .slice(0, 25)
+      .map((e) => {
+        const master = findMasterItem(e.row.itemName);
+        return {
+          category: master?.category || e.row.category,
+          itemName: master?.name || e.row.itemName,
+          qtyOrder: e.row.qtyOrder || "",
+          // Jumlah datang dikosongkan: baru terisi setelah barang diterima dan ditimbang.
+          qtyArrived: "",
+          supplier: e.supplier,
+          arrivalTime: e.row.arrivalTime || "",
+          pic: currentUser.name,
+          notes: "",
+        };
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poHistory, inventoryItems, currentUser.name]);
+
   const withSuggestedSuppliers = (rows: PoFormRow[]): PoFormRow[] =>
     rows.map((r) => ({
       ...r,
       supplier:
         cleanSupplier(r.supplier) ||
+        poHistory.get(normName(r.itemName || ""))?.supplier ||
         resolveSupplierForItem(
           r.category,
           r.itemName,
@@ -2099,14 +2150,21 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     }
   };
 
-  const handleApplyPoTemplate = () => {
+  const handleApplyPoTemplate = async () => {
+    if (routinePoRows.length === 0) {
+      toast.info("Belum ada PO menu dalam 30 hari terakhir. Isi bahan per supplier secara manual.", "Belum ada bahan rutin");
+      return;
+    }
+    if (poFormRows.some((r) => r.itemName.trim())) {
+      const ok = await askConfirm({
+        title: "Ganti daftar bahan?",
+        message: `Bahan yang sudah diisi diganti dengan ${routinePoRows.length} bahan rutin dari PO 30 hari terakhir.`,
+        confirmText: "Ganti",
+      });
+      if (!ok) return;
+    }
     setPoFocusRow(null);
-    // Jumlah datang dikosongkan: baru terisi setelah barang diterima dan ditimbang.
-    setPoFormRows(
-      withSuggestedSuppliers(
-        STANDARD_PO_TEMPLATES.map((t) => ({...t, supplier: "", qtyArrived: "", pic: currentUser.name, notes: ""})),
-      ),
-    );
+    setPoFormRows(withSuggestedSuppliers(routinePoRows));
   };
 
   const handleDeletePoForOrder = async (orderId?: string) => {
@@ -4466,8 +4524,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                     type="button"
                     onClick={handleApplyPoTemplate}
                     className={`${BTN_SECONDARY} self-start sm:self-auto`}
-                    title="Isi daftar dengan bahan standar SPPG: ayam, beras, tahu, sayur, buah">
-                    Pakai daftar bahan standar
+                    title="Bahan yang sering dipesan di PO menu 30 hari terakhir, lengkap dengan jumlah, jam datang, dan supplier terakhirnya">
+                    Pakai bahan rutin{routinePoRows.length > 0 ? ` (${routinePoRows.length})` : ""}
                   </button>
                 </div>
 
