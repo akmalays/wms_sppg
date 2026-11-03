@@ -249,7 +249,7 @@ const POSTER_TEMPLATES: PosterTemplate[] = [
     width: 1587,
     height: 2245,
     date: {x: 793, y: 618, px: 58},
-    notes: [{x: 170, y: 905, rot: -15, w: 430, h: 320, maxPx: 32, minPx: 20}],
+    notes: [{x: 165, y: 905, rot: -15, w: 445, h: 370, maxPx: 42, minPx: 22}],
     trays: [{cx: 1034, cy: 1095, w: 540, h: 655, rot: 16}],
     nutrition: [{large: {x: 360, y: 1785, px: 37, gap: 58}, small: {x: 830, y: 1785, px: 37, gap: 58}}],
   },
@@ -897,7 +897,17 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
               <label htmlFor="poster-date" className={FIELD_LABEL}>
                 Tanggal menu
               </label>
-              <input id="poster-date" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className={`${FIELD_INPUT} sm:max-w-[220px] font-mono`} />
+              <div className="flex items-center gap-2">
+                <input id="poster-date" type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value || localDateIso())} className={`${FIELD_INPUT} sm:max-w-[220px] font-mono`} />
+                {selectedDate !== localDateIso() && (
+                  <button type="button" onClick={() => setSelectedDate(localDateIso())} className={`${BTN_SECONDARY} shrink-0`}>
+                    Hari ini
+                  </button>
+                )}
+              </div>
+              {selectedDate !== localDateIso() && (
+                <p className="mt-1 text-[11px] text-amber-700">Tanggal poster bukan hari ini ({formatPosterDate(localDateIso())}).</p>
+              )}
               {orderForDate ? (
                 <div className="mt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                   <p className="text-xs text-slate-700 min-w-0">
