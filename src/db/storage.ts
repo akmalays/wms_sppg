@@ -48,6 +48,7 @@ import { reportCloudWriteError } from '../lib/cloudEvents';
 import { localDateIso, localTimestamp } from '../utils/localDate';
 import { convertQty, unitKey } from '../utils/unitConversion';
 import { placeNewItem } from '../utils/itemPlacement';
+import { EXTRA_COST_CATEGORY, EXTRA_COST_NOTE, EXTRA_COST_UNIT, extraCostToPoItem } from '../utils/extraCosts';
 
 const MAX_AUDIT_LOGS = 2000;
 
@@ -4826,6 +4827,38 @@ class WarehouseDatabase {
       });
     }
 
+    // 3b. Biaya tambahan supplier (selep, kresek): dicatat sebagai pengeluaran, tidak masuk stok.
+    // Penanda [Biaya tambahan] mencegahnya dicocokkan dengan baris barang bernama sama di Barang Masuk.
+    const extraCosts = (metadata.extraCosts || []).filter(c => c.amount > 0);
+    if (metadata.autoRecordExpense !== false) {
+      extraCosts.forEach(cost => {
+        const label = cost.label.trim() || EXTRA_COST_NOTE;
+        const expId = uniqueId('NFE');
+        const newExpense: NonFoodExpense = {
+          id: expId,
+          date: todayStr,
+          time: arrivalTime.replace(':', '.'),
+          itemName: label,
+          category: EXTRA_COST_CATEGORY,
+          quantity: 1,
+          unit: EXTRA_COST_UNIT,
+          unitPrice: cost.amount,
+          totalCost: cost.amount,
+          department: 'Dapur Pengolahan Utama',
+          volunteer: user.name,
+          pic: user.name,
+          recipient: po.supplierName,
+          receiptRef: po.poNumber,
+          notes: `[GR: ${receivingDoc.id}] [${EXTRA_COST_NOTE}] PO ${po.poNumber} (${po.supplierName}).`,
+          createdAt: nowIso,
+        };
+        expenseIds.push(expId);
+        this.nonFoodExpenses.unshift(newExpense);
+        const expenseRow = mapExpenseToSupabase(newExpense);
+        txSteps.push([`simpan biaya "${label}"`, () => supabase.from('non_food_expenses').upsert(expenseRow)]);
+      });
+    }
+
     // 4. Update the Purchase Order itself: mark as SELESAI
     const updatedPoItems: PurchaseOrderItem[] = weighedItems.map((w, idx) => ({
       ...(po.items.find(orig => orig.id === w.poiId) || {}),
@@ -4839,6 +4872,8 @@ class WarehouseDatabase {
       subtotal: w.subtotal,
       notes: w.conditionNote ? `${w.conditionNote}${w.notes ? ' | ' + w.notes : ''}` : w.notes,
     }));
+    // Biaya tambahan ikut jadi baris nota agar tertagih dan masuk total
+    extraCosts.forEach(cost => updatedPoItems.push(extraCostToPoItem(cost)));
 
     const newGrandTotal = updatedPoItems.reduce((acc, it) => acc + (it.subtotal || 0), 0);
 

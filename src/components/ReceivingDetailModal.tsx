@@ -133,11 +133,30 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
                   </tr>
                 );
               })}
+              {linked
+                .filter(e => !document.lines.some(l => (e.itemId && e.itemId === l.itemId) || e.itemName === l.itemName))
+                .map(exp => (
+                  <tr key={exp.id} className="align-top bg-amber-50/20">
+                    <td className="py-2 px-3">
+                      <div className="font-semibold text-slate-900">{exp.itemName}</div>
+                      <div className="text-[11px] text-amber-800 mt-0.5">Biaya tambahan supplier</div>
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono tabular-nums text-slate-700 whitespace-nowrap">
+                      {exp.quantity} {exp.unit || 'Paket'}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono tabular-nums text-slate-800 whitespace-nowrap">
+                      {rupiah(exp.unitPrice || exp.totalCost || 0)}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono tabular-nums font-semibold text-slate-900 whitespace-nowrap">
+                      {rupiah(exp.totalCost || 0)}
+                    </td>
+                  </tr>
+                ))}
             </tbody>
             {linkedTotal > 0 && (
               <tfoot className="border-t border-slate-200 bg-slate-50">
                 <tr>
-                  <td colSpan={3} className="py-2 px-3 text-right font-semibold text-slate-800">Total belanja</td>
+                  <td colSpan={3} className="py-2 px-3 text-right font-semibold text-slate-800">Total belanja (termasuk biaya tambahan)</td>
                   <td className="py-2 px-3 text-right font-mono tabular-nums font-bold text-slate-900 whitespace-nowrap">{rupiah(linkedTotal)}</td>
                 </tr>
               </tfoot>

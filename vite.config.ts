@@ -7,10 +7,10 @@ export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, '.'),
-        'jsqr': path.resolve(__dirname, 'node_modules/jsqr/dist/jsQR.js'),
-      },
+      alias: [
+        { find: /^@\//, replacement: `${path.resolve(__dirname, '.')}/` },
+        { find: 'jsqr', replacement: path.resolve(__dirname, 'node_modules/jsqr/dist/jsQR.js') },
+      ],
     },
     optimizeDeps: {
       include: ['jsqr'],

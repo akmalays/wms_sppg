@@ -73,6 +73,8 @@ import { useConfirm } from '../context/ConfirmContext';
 import { localDateIso } from '../utils/localDate';
 import { isCountableUnit, normalizeQtyForUnit } from '../utils/unitConversion';
 import { suggestDryLocation } from '../utils/warehouseRacks';
+import { EXTRA_COST_CATEGORY, EXTRA_COST_NOTE, EXTRA_COST_UNIT, ExtraCost, extraCostToPoItem, filledExtraCosts, sumExtraCosts } from '../utils/extraCosts';
+import { ExtraCostsEditor } from './common/ExtraCostsEditor';
 
 // Jumlah dari belanja bisa berupa teks ("2 pack"); angka ditampilkan dengan koma desimal
 const formatRecordQty = (qty: string | number): string => {
@@ -537,6 +539,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
   // Baris dimulai kosong agar petugas memilih barangnya sendiri, bukan barang pertama di daftar.
   const emptyLine = (): Omit<ReceivingLine, 'id'> => ({ itemId: '', itemName: '', category: '', quantity: 0, unit: '', conditionNote: '', batchNumber: '', unitPrice: 0 });
   const [lines, setLines] = useState<Omit<ReceivingLine, 'id'>[]>(() => [emptyLine()]);
+  // Biaya tambahan di nota toko/supplier (selep, kresek): bukan barang, jadi tidak masuk stok
+  const [formExtraCosts, setFormExtraCosts] = useState<ExtraCost[]>([]);
 
   // Reload only this module's data. Calling the app-level refresh remounts the whole page
   // (App keys the content on dataVersion), which wiped the post-save prompt and open modals.
@@ -565,6 +569,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
     setErrorMessage('');
 
     setLines([emptyLine()]);
+    setFormExtraCosts([]);
     setIsCreatingDeliveryOrder(true);
   };
 
@@ -799,50 +804,73 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
       // Belanja dari nota ikut tercatat di laporan pengeluaran. Penanda [GR: id] menautkannya ke
       // dokumen penerimaan ini, jadi riwayat menampilkan satu baris per barang (lihat unifiedRecords).
       const timeLabel = formTime.replace(':', '.');
-      const grandTotal = lines.reduce((sum, l) => sum + l.quantity * (l.unitPrice || 0), 0);
+      const costs = filledExtraCosts(formExtraCosts);
+      const grandTotal = lines.reduce((sum, l) => sum + l.quantity * (l.unitPrice || 0), 0) + sumExtraCosts(costs);
       warehouseDb.recordNonFoodExpensesBatch(
-        lines.map(l => {
-          const category = normalizeToStandardCategory(l.category, l.itemName);
-          return {
+        [
+          ...lines.map(l => {
+            const category = normalizeToStandardCategory(l.category, l.itemName);
+            return {
+              date: formDate,
+              time: timeLabel,
+              itemId: l.itemId,
+              itemName: l.itemName,
+              category,
+              quantity: l.quantity,
+              unit: l.unit,
+              unitPrice: l.unitPrice || 0,
+              totalCost: Math.round(l.quantity * (l.unitPrice || 0)),
+              pic: currentUser.name,
+              recipient: selectedSupplier.name,
+              receiptRef: formDeliveryNote.trim() || newDoc.id,
+              department: expenseDepartmentFor(category, l.itemName),
+              notes: `[GR: ${newDoc.id}] [Toko/Supplier: ${selectedSupplier.name}]${l.conditionNote ? ` ${l.conditionNote}` : ''}`,
+            };
+          }),
+          // Penanda [Biaya tambahan] mencegahnya dicocokkan dengan baris barang bernama sama di riwayat
+          ...costs.map(c => ({
             date: formDate,
             time: timeLabel,
-            itemId: l.itemId,
-            itemName: l.itemName,
-            category,
-            quantity: l.quantity,
-            unit: l.unit,
-            unitPrice: l.unitPrice || 0,
-            totalCost: Math.round(l.quantity * (l.unitPrice || 0)),
+            itemName: c.label,
+            category: EXTRA_COST_CATEGORY,
+            quantity: 1,
+            unit: EXTRA_COST_UNIT,
+            unitPrice: c.amount,
+            totalCost: c.amount,
             pic: currentUser.name,
             recipient: selectedSupplier.name,
             receiptRef: formDeliveryNote.trim() || newDoc.id,
-            department: expenseDepartmentFor(category, l.itemName),
-            notes: `[GR: ${newDoc.id}] [Toko/Supplier: ${selectedSupplier.name}]${l.conditionNote ? ` ${l.conditionNote}` : ''}`,
-          };
-        }),
+            department: expenseDepartmentFor(EXTRA_COST_CATEGORY, c.label),
+            notes: `[GR: ${newDoc.id}] [Toko/Supplier: ${selectedSupplier.name}] [${EXTRA_COST_NOTE}]`,
+          })),
+        ],
         currentUser
       );
 
-      const savedMsg = `${lines.length} barang dari ${selectedSupplier.name} masuk stok (Rp ${grandTotal.toLocaleString('id-ID')}).`;
+      const costNote = costs.length > 0 ? `, termasuk biaya tambahan Rp ${sumExtraCosts(costs).toLocaleString('id-ID')}` : '';
+      const savedMsg = `${lines.length} barang dari ${selectedSupplier.name} masuk stok (Rp ${grandTotal.toLocaleString('id-ID')}${costNote}).`;
       showToast(savedMsg);
       setIsCreatingDeliveryOrder(false);
       setSelectedDocForDetail(newDoc);
       refreshAll();
 
       // Tawarkan cetak nota dengan harga dari nota supplier.
-      const doItems: PurchaseOrderItem[] = lines.map((l, i) => {
-        const price = l.unitPrice || 0;
-        return {
-          id: `POI-${Date.now()}-${i}`,
-          name: l.itemName,
-          category: l.category,
-          quantity: l.quantity,
-          unit: l.unit,
-          unitPrice: price,
-          subtotal: l.quantity * price,
-          notes: l.conditionNote || undefined,
-        };
-      });
+      const doItems: PurchaseOrderItem[] = [
+        ...lines.map((l, i) => {
+          const price = l.unitPrice || 0;
+          return {
+            id: `POI-${Date.now()}-${i}`,
+            name: l.itemName,
+            category: l.category,
+            quantity: l.quantity,
+            unit: l.unit,
+            unitPrice: price,
+            subtotal: l.quantity * price,
+            notes: l.conditionNote || undefined,
+          };
+        }),
+        ...costs.map(extraCostToPoItem),
+      ];
       setJustSavedPrompt({
         title: 'Barang Masuk Stok',
         subtitle: `Penerimaan #${formDeliveryNote || newDoc.id} dari ${selectedSupplier.name} masuk stok gudang dan laporan pengeluaran.`,
@@ -2122,14 +2150,32 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                   })}
                 </ul>
 
-                <div className="flex items-center justify-between lg:justify-end gap-4 px-3 py-3 bg-slate-50 border-t border-slate-200">
-                  <span className="text-xs font-semibold text-slate-700">Total nota</span>
-                  <span className="text-sm font-mono tabular-nums font-bold text-slate-900">
-                    Rp {lines.reduce((sum, l) => sum + l.quantity * (l.unitPrice || 0), 0).toLocaleString('id-ID')}
-                  </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-3 bg-slate-50 border-t border-slate-200">
+                  <div className="text-xs text-slate-700">
+                    <span>Subtotal barang: </span>
+                    <span className="font-mono font-semibold text-slate-900 tabular-nums">
+                      Rp {lines.reduce((sum, l) => sum + l.quantity * (l.unitPrice || 0), 0).toLocaleString('id-ID')}
+                    </span>
+                    {sumExtraCosts(formExtraCosts) > 0 && (
+                      <span className="text-slate-600"> · Biaya tambahan: Rp {sumExtraCosts(formExtraCosts).toLocaleString('id-ID')}</span>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs font-semibold text-slate-700 mr-2">Total nota:</span>
+                    <span className="text-sm font-mono tabular-nums font-bold text-slate-900">
+                      Rp {(lines.reduce((sum, l) => sum + l.quantity * (l.unitPrice || 0), 0) + sumExtraCosts(formExtraCosts)).toLocaleString('id-ID')}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
+
+            {/* Extra Costs Section */}
+            <ExtraCostsEditor
+              idPrefix="manual-rcv"
+              rows={formExtraCosts}
+              onChange={setFormExtraCosts}
+            />
 
             {/* Photo Documentation Section */}
             <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60">
@@ -2171,20 +2217,31 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
           </div>
 
           {/* Footer controls */}
-          <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-2 px-4 sm:px-6 py-4 border-t border-slate-200 bg-slate-50">
-            <button
-              type="button"
-              onClick={() => setIsCreatingDeliveryOrder(false)}
-              className="min-h-[44px] sm:min-h-[36px] px-4 text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              className="inline-flex items-center justify-center gap-2 min-h-[44px] sm:min-h-[36px] px-5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
-            >
-              Simpan dan tambah ke stok
-            </button>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-6 py-4 border-t border-slate-200 bg-slate-50">
+            <div className="text-xs text-slate-700">
+              <span className="font-semibold text-slate-900">Total penerimaan: </span>
+              <span className="font-mono font-bold text-slate-900 tabular-nums">
+                Rp {(lines.reduce((sum, l) => sum + l.quantity * (l.unitPrice || 0), 0) + sumExtraCosts(formExtraCosts)).toLocaleString('id-ID')}
+              </span>
+              {formExtraCosts.filter(c => c.amount > 0).length > 0 && (
+                <span className="text-slate-600"> (termasuk biaya tambahan Rp {sumExtraCosts(formExtraCosts).toLocaleString('id-ID')})</span>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsCreatingDeliveryOrder(false)}
+                className="min-h-[44px] sm:min-h-[36px] px-4 text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center gap-2 min-h-[44px] sm:min-h-[36px] px-5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+              >
+                Simpan dan tambah ke stok
+              </button>
+            </div>
           </div>
         </form>
       ) : (

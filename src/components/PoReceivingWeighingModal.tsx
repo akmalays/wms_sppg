@@ -15,6 +15,8 @@ import { localDateIso } from '../utils/localDate';
 import { convertQty, isCountableUnit, normalizeQtyForUnit, unitKey } from '../utils/unitConversion';
 import { isPendingSupplierPo } from '../utils/poSupplier';
 import { handleGridKeyDown } from '../utils/gridNav';
+import { ExtraCost, filledExtraCosts, sumExtraCosts } from '../utils/extraCosts';
+import { ExtraCostsEditor } from './common/ExtraCostsEditor';
 
 interface PoReceivingWeighingModalProps {
   isOpen: boolean;
@@ -69,6 +71,8 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   // Harga per kemasan (opsional), mis. Rp100.000 per dus isi 20: harga satuan dihitung otomatis
   const [packByPoiId, setPackByPoiId] = useState<Record<string, { price: string; size: string }>>({});
+  // Biaya tambahan supplier (selep, kresek) yang ikut ditagih di nota
+  const [extraCosts, setExtraCosts] = useState<ExtraCost[]>([]);
 
   // Initialize data when modal opens
   useEffect(() => {
@@ -110,6 +114,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
 
       setItems(initialItems);
       setQtyDrafts({});
+      setExtraCosts([]);
     }
   }, [po, isOpen]);
 
@@ -154,6 +159,21 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
   const isAlreadyReceived = po.status === 'SELESAI';
   const pendingSupplier = isPendingSupplierPo(po);
   const plannedSupplier = pendingSupplier ? '' : po.supplierName;
+
+  // Supplier yang benar-benar mengirim bahan: biaya tambahan hanya bisa ditagihkan ke salah satunya
+  const receivedSuppliers = [
+    ...new Map(
+      items
+        .filter(it => it.actualQty > 0)
+        .map(it => (supplierByPoiId[it.poiId] || '').trim())
+        .filter(Boolean)
+        .map(name => [name.toLowerCase(), name] as const)
+    ).values(),
+  ];
+  const costSupplierOptions = receivedSuppliers.length > 0 ? receivedSuppliers : plannedSupplier ? [plannedSupplier] : [];
+  const extraCostTotal = sumExtraCosts(extraCosts);
+  // Satu supplier saja: biaya otomatis milik supplier itu
+  const costSupplierOf = (c: ExtraCost) => (costSupplierOptions.length === 1 ? costSupplierOptions[0] : (c.supplierName || '').trim());
 
   const updateItem = (index: number, patch: (it: WeighedPoItemInput) => Partial<WeighedPoItemInput>) => {
     setItems(prev => prev.map((it, i) => (i === index ? { ...it, ...patch(it) } : it)));
@@ -306,6 +326,17 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
       return;
     }
 
+    const costs = filledExtraCosts(extraCosts);
+    const receivedKeys = new Set(costSupplierOptions.map(s => s.toLowerCase()));
+    const orphanCosts = costs.filter(c => !receivedKeys.has(costSupplierOf(c).toLowerCase()));
+    if (orphanCosts.length > 0) {
+      toast.error(
+        `Pilih supplier yang menagih: ${orphanCosts.map(c => c.label).join(', ')}. Hanya supplier yang mengirim bahan yang bisa dipilih.`,
+        'Biaya Tambahan Belum Lengkap'
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const notes = [generalNotes.trim(), courierName.trim() && `Diantar oleh: ${courierName.trim()}`].filter(Boolean).join('. ');
@@ -340,10 +371,14 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
         return;
       }
       const targets = split.pos;
+      // Nama supplier di PO hasil pecahan bisa sedikit beda tulisannya; biaya yang tidak cocok ikut PO pertama
+      const costKey = (c: ExtraCost) => costSupplierOf(c).toLowerCase();
+      const targetKeys = new Set(targets.map(t => t.supplierName.trim().toLowerCase()));
+      const unmatchedCosts = costs.filter(c => !targetKeys.has(costKey(c)));
 
       const received: PurchaseOrderNota[] = [];
       const warnings: string[] = [];
-      for (const target of targets) {
+      for (const [targetIdx, target] of targets.entries()) {
         const poiIds = new Set(target.items.map(i => i.id));
         const result = warehouseDb.receiveAndCompletePurchaseOrder(
           target.id,
@@ -358,6 +393,10 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
             notes: notes || undefined,
             autoUpdateStock,
             autoRecordExpense,
+            extraCosts: [
+              ...costs.filter(c => costKey(c) === target.supplierName.trim().toLowerCase()),
+              ...(targetIdx === 0 ? unmatchedCosts : []),
+            ],
           } satisfies ReceivePoMetadata,
           currentUser
         );
@@ -423,10 +462,11 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
         <>
           {/* Ringkasan di kiri footer agar terlihat saat tabel digulir; aksi simpan tetap satu-satunya fokus */}
           <div className="mr-auto text-xs text-slate-700">
-            <span className="font-mono font-semibold text-slate-900 tabular-nums">{rupiah(calculations.totalActualCost)}</span>
+            <span className="font-mono font-semibold text-slate-900 tabular-nums">{rupiah(calculations.totalActualCost + extraCostTotal)}</span>
             {calculations.totalTargetCost > 0 && (
               <span className="text-slate-600"> dari {rupiah(calculations.totalTargetCost)}</span>
             )}
+            {extraCostTotal > 0 && <span className="text-slate-600"> · termasuk biaya tambahan {rupiah(extraCostTotal)}</span>}
             <span className="text-slate-600"> · {calculations.weighedCount} dari {items.length} bahan ditimbang</span>
           </div>
           <button type="button" onClick={onClose} disabled={isSubmitting} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
@@ -764,6 +804,14 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
               </p>
             )}
           </section>
+
+          <ExtraCostsEditor
+            idPrefix="rcv"
+            rows={extraCosts}
+            onChange={setExtraCosts}
+            supplierOptions={costSupplierOptions}
+            defaultSupplier={costSupplierOptions.length === 1 ? costSupplierOptions[0] : undefined}
+          />
 
           {/* Setelah disimpan */}
           <section className="space-y-2">

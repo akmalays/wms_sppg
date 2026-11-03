@@ -559,5 +559,7 @@ export interface ReceivePoMetadata {
   supplierSignature?: string;
   autoUpdateStock?: boolean;
   autoRecordExpense?: boolean;
+  /** Biaya tambahan supplier (selep, kresek): masuk nota dan pengeluaran, tidak masuk stok. */
+  extraCosts?: { id: string; label: string; amount: number }[];
 }
 

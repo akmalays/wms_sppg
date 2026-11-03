@@ -252,8 +252,10 @@ interface DrawnPosterTemplate extends PosterBase {
 
 type PosterTemplate = ImagePosterTemplate | DrawnPosterTemplate;
 
+const isDrawnPoster = (template: PosterTemplate): template is DrawnPosterTemplate => "draw" in template;
+
 interface ImagePosterTemplate extends PosterBase {
-  kind?: undefined;
+  kind?: "image";
   src: string;
   /** color: warna tulisan tanggal, menyesuaikan latar di template (bawaan putih). */
   date: {x: number; y: number; px: number; color?: string};
@@ -561,7 +563,7 @@ const ensureFonts = () => {
 // scale < 1 untuk gambar kecil pilihan desain. isStale dicek setelah gambar termuat agar gambar
 // dari isian lama tidak menimpa yang baru.
 async function drawPoster(canvas: HTMLCanvasElement, layout: PosterTemplate, date: string, menus: MenuCardData[], scale = 1, isStale?: () => boolean) {
-  if (layout.kind === "drawn") return drawCanvasPoster(canvas, layout, date, menus[0], scale, isStale);
+  if (isDrawnPoster(layout)) return drawCanvasPoster(canvas, layout, date, menus[0], scale, isStale);
   const [template, ...photos] = await Promise.all([
     loadImage(layout.src),
     ...menus.map((m) => (m.photo ? loadImage(m.photo).catch(() => null) : Promise.resolve(null))),
@@ -839,7 +841,7 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
       // Dimuat saat dipakai saja: library dan modelnya besar. Model diunduh sekali lalu disimpan cache browser.
       const {removeBackground} = await import("@imgly/background-removal");
       const blob = await removeBackground(source, {
-        progress: (key, current, total) => {
+        progress: (key: string, current: number, total: number) => {
           if (key.startsWith("fetch") && total > 0) setCutoutStatus(`Mengunduh model ${Math.round((current / total) * 100)}%`);
           else if (key.startsWith("compute")) setCutoutStatus("Menghapus background...");
         },
