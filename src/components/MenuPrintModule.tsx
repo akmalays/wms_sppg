@@ -24,6 +24,8 @@ interface MenuCardData {
   items: string[];
   /** Foto nampan hasil unggah; null berarti foto contoh di template yang tampil. */
   photo: string | null;
+  /** Foto asli sebelum background dihapus; terisi berarti `photo` adalah potongan nampan bertransparansi. */
+  photoOriginal?: string | null;
   largePortion: NutritionValues;
   smallPortion: NutritionValues;
 }
@@ -92,6 +94,10 @@ function parseNutritionText(text: string): NutritionValues {
 }
 
 const hasAnyNutrition = (n: NutritionValues) => Object.values(n).some(Boolean);
+
+// Bentuk teks untuk kotak isian gizi: satu zat gizi per baris, sama dengan format pesan ahli gizi.
+const formatNutritionText = (n: NutritionValues) =>
+  hasAnyNutrition(n) ? NUTRITION_ROWS.map((row) => `${row.label}: ${n[row.key]}`).join("\n") : "";
 
 // Parser pesan siaran WhatsApp dari ahli gizi
 interface ParsedWhatsAppMenu {
@@ -242,8 +248,8 @@ const POSTER_TEMPLATES: PosterTemplate[] = [
     src: templateSingle,
     width: 1587,
     height: 2245,
-    date: {x: 793, y: 618, px: 44},
-    notes: [{x: 175, y: 905, rot: -11, w: 470, h: 300, maxPx: 34, minPx: 20}],
+    date: {x: 793, y: 618, px: 58},
+    notes: [{x: 170, y: 905, rot: -15, w: 430, h: 320, maxPx: 32, minPx: 20}],
     trays: [{cx: 1034, cy: 1095, w: 540, h: 655, rot: 16}],
     nutrition: [{large: {x: 360, y: 1785, px: 37, gap: 58}, small: {x: 830, y: 1785, px: 37, gap: 58}}],
   },
@@ -254,10 +260,10 @@ const POSTER_TEMPLATES: PosterTemplate[] = [
     src: templateDouble,
     width: 2245,
     height: 1587,
-    date: {x: 1082, y: 371, px: 34},
+    date: {x: 1082, y: 371, px: 50},
     notes: [
-      {x: 125, y: 690, rot: -12, w: 290, h: 215, maxPx: 30, minPx: 18},
-      {x: 1232, y: 705, rot: -12, w: 270, h: 205, maxPx: 30, minPx: 18},
+      {x: 120, y: 700, rot: -15, w: 275, h: 205, maxPx: 27, minPx: 17},
+      {x: 1228, y: 712, rot: -15, w: 260, h: 195, maxPx: 27, minPx: 17},
     ],
     trays: [
       {cx: 680, cy: 785, w: 380, h: 460, rot: 23},
@@ -348,6 +354,55 @@ function drawTrayPhoto(ctx: CanvasRenderingContext2D, box: TrayBox, img: HTMLIma
   ctx.restore();
 }
 
+// Warna latar template di sekeliling kotak nampan (median, agar tepi kertas atau sayur di dekatnya tidak ikut).
+function sampleBackdrop(ctx: CanvasRenderingContext2D, box: TrayBox, scale: number): string {
+  const rad = (box.rot * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const rs: number[] = [];
+  const gs: number[] = [];
+  const bs: number[] = [];
+  const steps = 12;
+  for (let i = 0; i < steps; i++) {
+    for (const [fx, fy] of [[i / steps - 0.5, -0.5], [i / steps - 0.5, 0.5], [-0.5, i / steps - 0.5], [0.5, i / steps - 0.5]]) {
+      const lx = fx * (box.w + 60);
+      const ly = fy * (box.h + 60);
+      const x = Math.round((box.cx + lx * cos - ly * sin) * scale);
+      const y = Math.round((box.cy + lx * sin + ly * cos) * scale);
+      if (x < 0 || y < 0 || x >= ctx.canvas.width || y >= ctx.canvas.height) continue;
+      const [r, g, b] = ctx.getImageData(x, y, 1, 1).data;
+      rs.push(r);
+      gs.push(g);
+      bs.push(b);
+    }
+  }
+  if (rs.length === 0) return "#ffffff";
+  const median = (arr: number[]) => arr.sort((a, b) => a - b)[Math.floor(arr.length / 2)];
+  return `rgb(${median(rs)}, ${median(gs)}, ${median(bs)})`;
+}
+
+// Potongan nampan tanpa background: nampan contoh ditutup warna latar, lalu nampan baru digambar utuh dengan bayangan seperti contoh di template.
+function drawTrayCutout(ctx: CanvasRenderingContext2D, box: TrayBox, img: HTMLImageElement, backdrop: string) {
+  ctx.save();
+  ctx.translate(box.cx, box.cy);
+  ctx.rotate((box.rot * Math.PI) / 180);
+  ctx.save();
+  ctx.filter = "blur(14px)";
+  ctx.fillStyle = backdrop;
+  ctx.beginPath();
+  ctx.roundRect(-box.w / 2 - 12, -box.h / 2 - 12, box.w + 24, box.h + 24, 40);
+  ctx.fill();
+  ctx.restore();
+  const scale = Math.min(box.w / img.naturalWidth, box.h / img.naturalHeight);
+  const dw = img.naturalWidth * scale;
+  const dh = img.naturalHeight * scale;
+  ctx.shadowColor = "rgba(15, 23, 42, 0.28)";
+  ctx.shadowBlur = 24;
+  ctx.shadowOffsetY = 10;
+  ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+  ctx.restore();
+}
+
 function drawNutrition(ctx: CanvasRenderingContext2D, col: NutritionColumn, values: NutritionValues) {
   if (!hasAnyNutrition(values)) return;
   ctx.save();
@@ -364,6 +419,35 @@ function drawNutrition(ctx: CanvasRenderingContext2D, col: NutritionColumn, valu
     ctx.fillText(`${values[row.key] || "-"} ${row.unit}`, col.x + labelWidth, y);
   });
   ctx.restore();
+}
+
+// Buang tepi transparan hasil hapus background, agar nampan memenuhi kotak saat digambar.
+async function trimTransparent(blob: Blob): Promise<Blob> {
+  const bitmap = await createImageBitmap(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return blob;
+  ctx.drawImage(bitmap, 0, 0);
+  const {data, width, height} = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  let minX = width, minY = height, maxX = -1, maxY = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (data[(y * width + x) * 4 + 3] > 16) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) throw new Error("Nampan tidak terdeteksi.");
+  const out = document.createElement("canvas");
+  out.width = maxX - minX + 1;
+  out.height = maxY - minY + 1;
+  out.getContext("2d")?.drawImage(canvas, minX, minY, out.width, out.height, 0, 0, out.width, out.height);
+  return new Promise((resolve, reject) => out.toBlob((b) => (b ? resolve(b) : reject(new Error("Gagal memotong gambar."))), "image/png"));
 }
 
 const imageCache = new Map<string, Promise<HTMLImageElement>>();
@@ -422,7 +506,8 @@ async function drawPoster(canvas: HTMLCanvasElement, layout: PosterTemplate, dat
     const menu = menus[i];
     if (!menu) return;
     const photo = photos[i] as HTMLImageElement | null | undefined;
-    if (photo) drawTrayPhoto(ctx, layout.trays[i], photo);
+    if (photo && menu.photoOriginal) drawTrayCutout(ctx, layout.trays[i], photo, sampleBackdrop(ctx, layout.trays[i], scale));
+    else if (photo) drawTrayPhoto(ctx, layout.trays[i], photo);
     drawNote(ctx, box, menu.items);
     drawNutrition(ctx, layout.nutrition[i].large, menu.largePortion);
     drawNutrition(ctx, layout.nutrition[i].small, menu.smallPortion);
@@ -496,6 +581,8 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
   const [menus, setMenus] = useState<MenuCardData[]>(() => [emptyMenu(), emptyMenu()]);
   const [activeMenu, setActiveMenu] = useState(0);
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
+  const [cutoutIndex, setCutoutIndex] = useState<number | null>(null);
+  const [cutoutStatus, setCutoutStatus] = useState("");
   const [downloading, setDownloading] = useState<"jpg" | "png" | null>(null);
   const [renderError, setRenderError] = useState("");
   const [showWhatsAppPaste, setShowWhatsAppPaste] = useState(false);
@@ -528,8 +615,17 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
   const updateMenu = (index: number, patch: Partial<MenuCardData>) =>
     setMenus((prev) => prev.map((m, i) => (i === index ? {...m, ...patch} : m)));
 
-  const updateNutrition = (index: number, portion: "largePortion" | "smallPortion", key: keyof NutritionValues, value: string) =>
-    setMenus((prev) => prev.map((m, i) => (i === index ? {...m, [portion]: {...m[portion], [key]: value.replace(/[^\d.,]/g, "")}} : m)));
+  // Teks yang sedang diketik per kotak gizi; dilepas saat kotak ditinggalkan agar tampil rapi sesuai hasil baca.
+  const [nutritionDrafts, setNutritionDrafts] = useState<Record<string, string>>({});
+  const setNutritionText = (index: number, portion: "largePortion" | "smallPortion", text: string) => {
+    setNutritionDrafts((prev) => ({...prev, [`${index}-${portion}`]: text}));
+    updateMenu(index, {[portion]: parseNutritionText(text)});
+  };
+  const clearNutritionDraft = (index: number, portion: "largePortion" | "smallPortion") =>
+    setNutritionDrafts((prev) => {
+      const {[`${index}-${portion}`]: _, ...rest} = prev;
+      return rest;
+    });
 
   const fillFromOrder = useCallback((order: MenuOrder) => {
     const regular = splitDishes(order.menuTitle);
@@ -612,11 +708,37 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
     setUploadingIndex(index);
     try {
       const result = await compressImageToWebP(file, {maxDimension: 1200, quality: 0.85});
-      updateMenu(index, {photo: result.dataUrl});
+      updateMenu(index, {photo: result.dataUrl, photoOriginal: null});
     } catch {
       toast.error("Foto gagal dibaca. Coba foto lain dengan format JPG atau PNG.", "Foto nampan");
     } finally {
       setUploadingIndex(null);
+    }
+  };
+
+  const handleRemoveBackground = async () => {
+    const index = editingIndex;
+    const source = menus[index]?.photo;
+    if (!source) return;
+    setCutoutIndex(index);
+    setCutoutStatus("Menyiapkan...");
+    try {
+      // Dimuat saat dipakai saja: library dan modelnya besar. Model diunduh sekali lalu disimpan cache browser.
+      const {removeBackground} = await import("@imgly/background-removal");
+      const blob = await removeBackground(source, {
+        progress: (key, current, total) => {
+          if (key.startsWith("fetch") && total > 0) setCutoutStatus(`Mengunduh model ${Math.round((current / total) * 100)}%`);
+          else if (key.startsWith("compute")) setCutoutStatus("Menghapus background...");
+        },
+      });
+      const trimmed = await trimTransparent(blob);
+      const result = await compressImageToWebP(new File([trimmed], "nampan.png", {type: "image/png"}), {maxDimension: 1200, quality: 0.9});
+      updateMenu(index, {photo: result.dataUrl, photoOriginal: source});
+    } catch {
+      toast.error("Background gagal dihapus. Periksa koneksi internet (model diunduh saat pertama kali), lalu coba lagi.", "Foto nampan");
+    } finally {
+      setCutoutIndex(null);
+      setCutoutStatus("");
     }
   };
 
@@ -883,17 +1005,27 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
                 <div className="flex items-center gap-3">
                   <div className="w-16 h-16 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden shrink-0 flex items-center justify-center">
                     {current.photo ? (
-                      <img src={current.photo} alt="Foto nampan yang dipakai" className="w-full h-full object-cover" />
+                      <img src={current.photo} alt="Foto nampan yang dipakai" className={`w-full h-full ${current.photoOriginal ? "object-contain" : "object-cover"}`} />
                     ) : (
                       <span className="text-[11px] text-slate-600 text-center leading-tight px-1">Foto contoh</span>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingIndex !== null} className={`${BTN_SECONDARY} disabled:opacity-50`}>
+                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingIndex !== null || cutoutIndex !== null} className={`${BTN_SECONDARY} disabled:opacity-50`}>
                       {uploadingIndex === editingIndex ? "Memproses foto..." : current.photo ? "Ganti foto" : "Unggah foto"}
                     </button>
+                    {current.photo && !current.photoOriginal && (
+                      <button type="button" onClick={handleRemoveBackground} disabled={cutoutIndex !== null} className={`${BTN_SECONDARY} disabled:opacity-50`}>
+                        {cutoutIndex === editingIndex ? cutoutStatus : "Hapus background"}
+                      </button>
+                    )}
+                    {current.photoOriginal && (
+                      <button type="button" onClick={() => updateMenu(editingIndex, {photo: current.photoOriginal ?? null, photoOriginal: null})} className={BTN_SECONDARY}>
+                        Kembalikan background
+                      </button>
+                    )}
                     {current.photo && (
-                      <button type="button" onClick={() => updateMenu(editingIndex, {photo: null})} className={BTN_SECONDARY}>
+                      <button type="button" onClick={() => updateMenu(editingIndex, {photo: null, photoOriginal: null})} disabled={cutoutIndex !== null} className={`${BTN_SECONDARY} disabled:opacity-50`}>
                         Pakai foto contoh
                       </button>
                     )}
@@ -901,50 +1033,40 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
                   <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" tabIndex={-1} aria-hidden="true" />
                 </div>
                 <p className="mt-1 text-[11px] text-slate-600">Foto diambil dari atas, nampan tegak memanjang. Foto menutupi nampan contoh di template.</p>
+                {current.photo && !current.photoOriginal && (
+                  <p className="mt-0.5 text-[11px] text-slate-600">Hapus background membuat nampan menyatu dengan poster. Pertama kali perlu mengunduh model sekitar 80 MB; foto tetap diproses di perangkat ini.</p>
+                )}
               </div>
 
               <div>
                 <span className={FIELD_LABEL}>Nilai gizi</span>
-                <div className="rounded-lg border border-slate-200 overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead className="bg-slate-50 text-slate-700">
-                      <tr>
-                        <th scope="col" className="text-left font-semibold px-3 py-2">
-                          Zat gizi
-                        </th>
-                        <th scope="col" className="text-left font-semibold px-2 py-2">
-                          Porsi besar
-                        </th>
-                        <th scope="col" className="text-left font-semibold px-2 py-2">
-                          Porsi kecil
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {NUTRITION_ROWS.map((row) => (
-                        <tr key={row.key}>
-                          <th scope="row" className="text-left font-medium text-slate-700 px-3 py-1.5 sm:whitespace-nowrap">
-                            {row.label} <span className="font-normal text-slate-600">({row.unit})</span>
-                          </th>
-                          {(["largePortion", "smallPortion"] as const).map((portion) => (
-                            <td key={portion} className="px-2 py-1.5">
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                value={current[portion][row.key]}
-                                onChange={(e) => updateNutrition(editingIndex, portion, row.key, e.target.value)}
-                                aria-label={`${row.label} ${portion === "largePortion" ? "porsi besar" : "porsi kecil"} (${row.unit})`}
-                                placeholder="0"
-                                className={`${FIELD_INPUT} font-mono tabular-nums text-right`}
-                              />
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {(["largePortion", "smallPortion"] as const).map((portion) => {
+                    const id = `nutrition-${portion}`;
+                    const values = current[portion];
+                    const missing = NUTRITION_ROWS.filter((row) => !values[row.key]).map((row) => row.label.toLowerCase());
+                    return (
+                      <div key={portion}>
+                        <label htmlFor={id} className="block text-xs font-medium text-slate-700 mb-1">
+                          {portion === "largePortion" ? "Porsi besar" : "Porsi kecil"}
+                        </label>
+                        <textarea
+                          id={id}
+                          rows={5}
+                          value={nutritionDrafts[`${editingIndex}-${portion}`] ?? formatNutritionText(values)}
+                          onChange={(e) => setNutritionText(editingIndex, portion, e.target.value)}
+                          onBlur={() => clearNutritionDraft(editingIndex, portion)}
+                          placeholder={portion === "largePortion" ? "Energi: 763,1\nProtein: 28,4\nLemak: 22,5\nKarbohidrat: 110,2\nSerat: 6,3" : "Energi: 560\nProtein: 20,1\nLemak: 16,8\nKarbohidrat: 80,5\nSerat: 4,7"}
+                          className="w-full p-2.5 text-xs font-mono tabular-nums rounded-lg border border-slate-300 bg-white text-slate-900 leading-relaxed placeholder:text-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                        />
+                        <p className={`mt-0.5 text-[11px] ${hasAnyNutrition(values) && missing.length > 0 ? "text-amber-700" : "text-slate-600"}`}>
+                          {!hasAnyNutrition(values) ? "Belum diisi" : missing.length === 0 ? "Kelima zat gizi terbaca" : `Belum terbaca: ${missing.join(", ")}`}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
-                <p className="mt-1 text-[11px] text-slate-600">Pakai koma untuk desimal, misalnya 763,1.</p>
+                <p className="mt-1 text-[11px] text-slate-600">Tempel dari pesan ahli gizi, atau tulis satu zat gizi per baris. Tanpa nama zat gizi, angka dibaca berurutan: energi, protein, lemak, karbohidrat, serat. Pakai koma untuk desimal, misalnya 763,1.</p>
               </div>
             </div>
           </section>
