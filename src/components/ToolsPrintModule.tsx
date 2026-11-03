@@ -22,6 +22,7 @@ import { PicHandoverDoc } from './print/PicHandoverDoc';
 import { ExpenseReceiptDoc } from './print/ExpenseReceiptDoc';
 import { DailyPoSheetDoc } from './print/DailyPoSheetDoc';
 import { SalarySlipDoc } from './print/SalarySlipDoc';
+import { MealBoxLabelDoc, MealBoxLabelModel, MEAL_BOX_MODELS } from './print/MealBoxLabelDoc';
 import {
   Printer,
   FileText,
@@ -64,7 +65,7 @@ import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatu
 import type { SignatureDoc } from '../utils/documentSigners';
 import type { SignerRole } from '../db/storage';
 
-export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'DRY_ISSUE_FORM' | 'WET_ISSUE_FORM' | 'NONFOOD_ISSUE_FORM' | 'WASTE_RECAP_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'RACK_LABEL' | 'RACK_SIGN' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE' | 'DO_DONT_POSTER' | 'PHOTO_DOC' | 'PIC_HANDOVER' | 'EXPENSE_RECEIPT_BATCH' | 'SALARY_SLIP' | 'DAILY_PO_SHEET';
+export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'DRY_ISSUE_FORM' | 'WET_ISSUE_FORM' | 'NONFOOD_ISSUE_FORM' | 'WASTE_RECAP_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'MEAL_BOX_LABEL' | 'RACK_LABEL' | 'RACK_SIGN' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE' | 'DO_DONT_POSTER' | 'PHOTO_DOC' | 'PIC_HANDOVER' | 'EXPENSE_RECEIPT_BATCH' | 'SALARY_SLIP' | 'DAILY_PO_SHEET';
 
 export interface ItemTagData {
   uniqueKey: string;
@@ -116,6 +117,7 @@ const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
   { id: 'NONFOOD_ISSUE_FORM', label: 'Pengambilan Non-Food', hint: 'Log harian barang non-food yang diambil relawan dari gudang. Disalin ke Barang Keluar > Operasional.' },
   { id: 'WASTE_RECAP_FORM', label: 'Rekap Limbah', hint: 'Lembar timbang sisa makanan Senin-Jumat: 5 jenis limbah dan total per hari. Tanggal bisa tercetak otomatis atau diisi tangan.' },
   { id: 'EQUIPMENT_LABEL', label: 'Label Barang & Aset', hint: 'Stiker berkode QR untuk barang gudang dan aset dapur.' },
+  { id: 'MEAL_BOX_LABEL', label: 'Stiker Segel Makanan', hint: 'Stiker segel kotak makan / ompreng MBG: batas jam konsumsi dan larangan bawa pulang. Pilihan 2, 3, atau 4 kolom agar hemat kertas A4.' },
   { id: 'ITEM_TAG_LABEL', label: 'Tag Bahan Datang', hint: 'Tag sementara untuk wadah bahan yang baru datang: jumlah, supplier, jam datang, dan batas pakai. Ganti tiap kali bahan datang.' },
   { id: 'RACK_LABEL', label: 'Plakat Rak', hint: 'Plakat rak berisi daftar barang dan aturan penyimpanan.' },
   { id: 'RACK_SIGN', label: 'Papan Nama Rak & Kategori', hint: 'Papan nama huruf besar untuk rak dan kategori barang, terbaca dari jauh. Pasang di atas rak; plakat rak tetap di samping setinggi mata.' },
@@ -173,6 +175,7 @@ export const FORM_CATEGORIES: FormCategoryGroup[] = [
     forms: [
       'ITEM_TAG_LABEL',
       'EQUIPMENT_LABEL',
+      'MEAL_BOX_LABEL',
       'RACK_LABEL',
       'RACK_SIGN',
     ],
@@ -832,6 +835,29 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const [tagHasCustomSelection, setTagHasCustomSelection] = useState<boolean>(false);
   const [tagQcStatus, setTagQcStatus] = useState<string>('Lolos QC Organoleptik & Higiene');
   const [tagInspectorName, setTagInspectorName] = useState<string>(currentUser?.name || '');
+
+  // =========================================================================
+  // MEAL BOX LABELS (STIKER SEGEL KOTAK MAKAN & WAKTU KONSUMSI)
+  // =========================================================================
+  const [mealBoxModel, setMealBoxModel] = useState<MealBoxLabelModel>('MODEL_B');
+  const [mealBoxConsumeTime, setMealBoxConsumeTime] = useState<string>('11.00');
+  const [mealBoxSppgName, setMealBoxSppgName] = useState<string>('SPPG MALANG TUMPANG JERU');
+  const [mealBoxSheetCount, setMealBoxSheetCount] = useState<number>(1);
+  const [mealBoxShowCutLines, setMealBoxShowCutLines] = useState<boolean>(true);
+  const [mealBoxLabelCount, setMealBoxLabelCount] = useState<number>(30);
+  const [mealBoxIncludeQr, setMealBoxIncludeQr] = useState<boolean>(true);
+  const [mealBoxQrUrl, setMealBoxQrUrl] = useState<string>('/menu-mbg-hari-ini');
+  const [mealBoxQrUseDomain, setMealBoxQrUseDomain] = useState<boolean>(true);
+
+  const mealBoxEffectiveQrUrl = useMemo(() => {
+    if (!mealBoxQrUrl) return '/menu-mbg-hari-ini';
+    if (!mealBoxQrUseDomain) return mealBoxQrUrl;
+    if (mealBoxQrUrl.startsWith('http://') || mealBoxQrUrl.startsWith('https://')) {
+      return mealBoxQrUrl;
+    }
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${origin}${mealBoxQrUrl.startsWith('/') ? '' : '/'}${mealBoxQrUrl}`;
+  }, [mealBoxQrUrl, mealBoxQrUseDomain]);
 
   // Deriving Item Tags List
   const allItemTags = useMemo<ItemTagData[]>(() => {
@@ -1881,6 +1907,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       ? itemTagsToPrint.length
       : activeForm === 'EQUIPMENT_LABEL'
       ? labelsToPrint.length
+      : activeForm === 'MEAL_BOX_LABEL'
+      ? mealBoxLabelCount
       : activeForm === 'RACK_LABEL'
       ? racksToPrint.length
       : activeForm === 'DO_DONT_POSTER'
@@ -2007,7 +2035,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             className="inline-flex items-center justify-center gap-2 px-4 min-h-[44px] sm:min-h-[36px] rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
           >
             <Printer className="w-4 h-4" />
-            {printCount === null ? 'Cetak' : `Cetak ${printCount} ${activeForm === 'DAILY_PO_SHEET' ? 'form' : activeForm === 'PIC_HANDOVER' ? 'kuitansi' : activeForm === 'EXPENSE_RECEIPT_BATCH' ? 'kuitansi' : activeForm === 'SALARY_SLIP' ? 'slip' : activeForm === 'PHOTO_DOC' ? 'lembar' : activeForm === 'RACK_SIGN' ? 'papan nama' : activeForm === 'RACK_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'plakat' : activeForm === 'ITEM_TAG_LABEL' ? 'tag' : 'label'}`}
+            {printCount === null ? 'Cetak' : `Cetak ${printCount} ${activeForm === 'DAILY_PO_SHEET' ? 'form' : activeForm === 'PIC_HANDOVER' ? 'kuitansi' : activeForm === 'EXPENSE_RECEIPT_BATCH' ? 'kuitansi' : activeForm === 'SALARY_SLIP' ? 'slip' : activeForm === 'PHOTO_DOC' ? 'lembar' : activeForm === 'RACK_SIGN' ? 'papan nama' : activeForm === 'RACK_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'plakat' : activeForm === 'ITEM_TAG_LABEL' ? 'tag' : activeForm === 'MEAL_BOX_LABEL' ? 'stiker' : 'label'}`}
           </button>
         </div>
 
@@ -2115,7 +2143,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 </div>
               )}
             </>
-          ) : activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'PIC_HANDOVER' && activeForm !== 'EXPENSE_RECEIPT_BATCH' && activeForm !== 'SALARY_SLIP' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'NONFOOD_ISSUE_FORM' ? (
+          ) : activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'PIC_HANDOVER' && activeForm !== 'EXPENSE_RECEIPT_BATCH' && activeForm !== 'SALARY_SLIP' && activeForm !== 'SUPPLIER_EXPENSE_NOTE' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'MEAL_BOX_LABEL' && activeForm !== 'NONFOOD_ISSUE_FORM' ? (
             <div>
               <label htmlFor="print-date" className={LABEL_CLS}>{activeForm === 'SOP_STORAGE' || activeForm === 'DO_DONT_POSTER' ? 'Tanggal berlaku' : 'Tanggal dokumen'}</label>
               <input id="print-date" type="date" value={printDate} onChange={e => setPrintDate(e.target.value || localDateIso())} className={INPUT_CLS} />
@@ -2590,6 +2618,118 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                 </div>
               </div>
             </>
+          ) : activeForm === 'MEAL_BOX_LABEL' ? (
+            <>
+              <div>
+                <label className={LABEL_CLS}>Model desain stiker</label>
+                <Select
+                  className="w-full"
+                  value={mealBoxModel}
+                  onChange={e => setMealBoxModel(e.target.value as MealBoxLabelModel)}
+                >
+                  {MEAL_BOX_MODELS.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} · {m.perSheet} pcs/A4 ({m.badge})
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              <div>
+                <label className={LABEL_CLS}>Batas jam konsumsi</label>
+                <input
+                  type="text"
+                  value={mealBoxConsumeTime}
+                  onChange={e => setMealBoxConsumeTime(e.target.value)}
+                  placeholder="11.00"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className={LABEL_CLS}>Nama SPPG / Titik Layanan</label>
+                <input
+                  type="text"
+                  value={mealBoxSppgName}
+                  onChange={e => setMealBoxSppgName(e.target.value)}
+                  placeholder="SPPG MALANG TUMPANG JERU"
+                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className={LABEL_CLS}>Jumlah lembar A4</label>
+                <Select
+                  className="w-full"
+                  value={mealBoxSheetCount}
+                  onChange={e => setMealBoxSheetCount(Number(e.target.value))}
+                >
+                  <option value={1}>1 lembar ({MEAL_BOX_MODELS.find(m => m.id === mealBoxModel)?.perSheet || 30} pcs)</option>
+                  <option value={2}>2 lembar ({(MEAL_BOX_MODELS.find(m => m.id === mealBoxModel)?.perSheet || 30) * 2} pcs)</option>
+                  <option value={3}>3 lembar ({(MEAL_BOX_MODELS.find(m => m.id === mealBoxModel)?.perSheet || 30) * 3} pcs)</option>
+                  <option value={5}>5 lembar ({(MEAL_BOX_MODELS.find(m => m.id === mealBoxModel)?.perSheet || 30) * 5} pcs)</option>
+                  <option value={10}>10 lembar ({(MEAL_BOX_MODELS.find(m => m.id === mealBoxModel)?.perSheet || 30) * 10} pcs)</option>
+                  <option value={20}>20 lembar ({(MEAL_BOX_MODELS.find(m => m.id === mealBoxModel)?.perSheet || 30) * 20} pcs)</option>
+                </Select>
+              </div>
+
+              <div className="sm:col-span-2 pt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-200 mt-1 pt-2">
+                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={mealBoxShowCutLines}
+                    onChange={e => setMealBoxShowCutLines(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-700 rounded cursor-pointer"
+                  />
+                  <span>Tampilkan garis putus-putus panduan potong</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={mealBoxIncludeQr}
+                    onChange={e => setMealBoxIncludeQr(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-700 rounded cursor-pointer"
+                  />
+                  <span className="font-semibold text-slate-900">Sertakan QR Code Menu Hari Ini</span>
+                </label>
+              </div>
+
+              {mealBoxIncludeQr && (
+                <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <div>
+                    <label className={LABEL_CLS}>Target link QR Code</label>
+                    <input
+                      type="text"
+                      value={mealBoxQrUrl}
+                      onChange={e => setMealBoxQrUrl(e.target.value)}
+                      placeholder="/menu-mbg-hari-ini"
+                      className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-mono font-medium"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Membuka halaman info menu MBG, foto menu, dan kandungan gizi hari ini.
+                    </p>
+                  </div>
+                  <div className="flex flex-col justify-between">
+                    <div>
+                      <label className={LABEL_CLS}>Format link saat dicetak</label>
+                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer mt-1">
+                        <input
+                          type="checkbox"
+                          checked={mealBoxQrUseDomain}
+                          onChange={e => setMealBoxQrUseDomain(e.target.checked)}
+                          className="w-4 h-4 accent-emerald-700 rounded cursor-pointer"
+                        />
+                        <span>Sertakan domain (URL lengkap agar kamera HP langsung membuka link)</span>
+                      </label>
+                    </div>
+                    <p className="text-[10px] font-mono text-emerald-800 mt-1 truncate">
+                      Isi QR: {mealBoxEffectiveQrUrl}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
           ) : activeForm === 'RACK_LABEL' ? (
             <>
               <div>
@@ -2763,11 +2903,11 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       <div
         id="print-area"
         className={`bg-white rounded-xl border border-slate-200 max-w-4xl mx-auto font-sans text-slate-900 overflow-x-auto ${
-          activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' || activeForm === 'RACK_SIGN' || activeForm === 'PHOTO_DOC' || activeForm === 'PIC_HANDOVER' || activeForm === 'EXPENSE_RECEIPT_BATCH' || activeForm === 'SALARY_SLIP' || activeForm === 'DAILY_PO_SHEET' || activeForm === 'ITEM_TAG_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'p-4 sm:p-6' : 'p-5 sm:p-10'
+          activeForm === 'EQUIPMENT_LABEL' || activeForm === 'RACK_LABEL' || activeForm === 'RACK_SIGN' || activeForm === 'PHOTO_DOC' || activeForm === 'PIC_HANDOVER' || activeForm === 'EXPENSE_RECEIPT_BATCH' || activeForm === 'SALARY_SLIP' || activeForm === 'DAILY_PO_SHEET' || activeForm === 'ITEM_TAG_LABEL' || activeForm === 'MEAL_BOX_LABEL' || activeForm === 'DO_DONT_POSTER' ? 'p-4 sm:p-6' : 'p-5 sm:p-10'
         }`}
       >
         {/* Kop dokumen, sama dengan Laporan Pengeluaran. Label dan plakat dicetak tanpa kop; SOP memasang kop di tiap lembarnya. */}
-        {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'PIC_HANDOVER' && activeForm !== 'EXPENSE_RECEIPT_BATCH' && activeForm !== 'SALARY_SLIP' && activeForm !== 'DAILY_PO_SHEET' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'SOP_STORAGE' && activeForm !== 'DO_DONT_POSTER' && (
+        {activeForm !== 'EQUIPMENT_LABEL' && activeForm !== 'RACK_LABEL' && activeForm !== 'RACK_SIGN' && activeForm !== 'PHOTO_DOC' && activeForm !== 'PIC_HANDOVER' && activeForm !== 'EXPENSE_RECEIPT_BATCH' && activeForm !== 'SALARY_SLIP' && activeForm !== 'DAILY_PO_SHEET' && activeForm !== 'ITEM_TAG_LABEL' && activeForm !== 'MEAL_BOX_LABEL' && activeForm !== 'SOP_STORAGE' && activeForm !== 'DO_DONT_POSTER' && (
           <div className="border-b-2 border-slate-900 pb-3 mb-5 flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
               <SppgLogo size="lg" variant="color" showText={false} />
@@ -3244,6 +3384,21 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           <DoDontPosterDoc
             target={doDontTarget}
             effectiveDate={formatLongDate(printDate)}
+          />
+        )}
+
+        {/* Stiker Segel Makanan: tanpa kop */}
+        {activeForm === 'MEAL_BOX_LABEL' && (
+          <MealBoxLabelDoc
+            layoutModel={mealBoxModel}
+            onModelChange={setMealBoxModel}
+            consumeTime={mealBoxConsumeTime}
+            sppgName={mealBoxSppgName}
+            sheetCount={mealBoxSheetCount}
+            showCutLines={mealBoxShowCutLines}
+            includeQrCode={mealBoxIncludeQr}
+            qrUrl={mealBoxEffectiveQrUrl}
+            onCountChange={setMealBoxLabelCount}
           />
         )}
 
