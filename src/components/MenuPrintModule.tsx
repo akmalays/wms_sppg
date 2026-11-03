@@ -11,6 +11,8 @@ import {FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY} from "./common/For
 // Desain baru: ekspor template kosong dari Canva ke src/assets, lalu tambahkan entrinya di POSTER_TEMPLATES.
 import templateSingle from "../assets/poster-single.jpg";
 import templateDouble from "../assets/poster-double.jpg";
+import logoSppg from "../assets/logo sppg.png";
+import {drawGreenPoster, drawPurplePoster, type DrawnPosterInput, type PosterTrayBox} from "./print/menuPosterDesigns";
 
 interface NutritionValues {
   energy: string; // kkal
@@ -208,6 +210,13 @@ function formatPosterDate(dateStr: string): string {
   return `${days[d.getDay()]}, ${day}-${m}-${y}`;
 }
 
+// Format panjang untuk desain yang digambar di kanvas: "Selasa, 3 November 2026"
+function formatPosterDateLong(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  if (!dateStr || Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("id-ID", {weekday: "long", day: "numeric", month: "long", year: "numeric"});
+}
+
 // Rencana menu menyimpan hidangan dipisah koma; "+" tetap satu hidangan (mis. "tumis labu siam+jagung").
 const splitDishes = (text?: string) =>
   (text || "")
@@ -225,13 +234,27 @@ interface NutritionColumn {x: number; y: number; px: number; gap: number}
 
 type PosterMode = "SINGLE" | "DOUBLE";
 
-interface PosterTemplate {
+interface PosterBase {
   id: string;
   name: string;
   mode: PosterMode;
-  src: string;
   width: number;
   height: number;
+  /** Petunjuk di bawah isian hidangan bila desain memakai urutan hidangan secara khusus. */
+  itemsHint?: string;
+}
+
+// Desain yang digambar langsung di kanvas (lihat print/menuPosterDesigns.ts); hanya untuk poster 1 menu.
+interface DrawnPosterTemplate extends PosterBase {
+  kind: "drawn";
+  draw: (ctx: CanvasRenderingContext2D, input: DrawnPosterInput) => void;
+}
+
+type PosterTemplate = ImagePosterTemplate | DrawnPosterTemplate;
+
+interface ImagePosterTemplate extends PosterBase {
+  kind?: undefined;
+  src: string;
   /** color: warna tulisan tanggal, menyesuaikan latar di template (bawaan putih). */
   date: {x: number; y: number; px: number; color?: string};
   notes: NoteBox[]; // per menu
@@ -274,7 +297,29 @@ const POSTER_TEMPLATES: PosterTemplate[] = [
       {large: {x: 1198, y: 1276, px: 30, gap: 44}, small: {x: 1630, y: 1276, px: 30, gap: 44}},
     ],
   },
+  {
+    id: "hijau",
+    name: "Hijau",
+    mode: "SINGLE",
+    kind: "drawn",
+    width: 1587,
+    height: 2245,
+    draw: drawGreenPoster,
+    itemsHint: "Desain Hijau menaruh hidangan di sekeliling nampan sesuai urutan baris: 1 kiri atas, 2 kanan atas, 3 kiri bawah, 4 kanan bawah, 5 dan seterusnya di bawah. Urutkan sesuai letaknya di foto.",
+  },
+  {
+    id: "ceria",
+    name: "Ceria",
+    mode: "SINGLE",
+    kind: "drawn",
+    width: 1587,
+    height: 2245,
+    draw: drawPurplePoster,
+  },
 ];
+
+// Logo SLHS diambil dari template SPPG 1 menu (berlatar putih) agar semua desain memakai logo yang sama.
+const SLHS_CROP = {sx: 1380, sy: 52, sw: 146, sh: 112};
 
 const templatesFor = (mode: PosterMode) => POSTER_TEMPLATES.filter((t) => t.mode === mode);
 const DEFAULT_TEMPLATE_IDS: Record<PosterMode, string> = {SINGLE: templatesFor("SINGLE")[0].id, DOUBLE: templatesFor("DOUBLE")[0].id};
@@ -382,13 +427,14 @@ function sampleBackdrop(ctx: CanvasRenderingContext2D, box: TrayBox, scale: numb
 }
 
 // Potongan nampan tanpa background: nampan contoh ditutup warna latar, lalu nampan baru digambar utuh dengan bayangan seperti contoh di template.
-function drawTrayCutout(ctx: CanvasRenderingContext2D, box: TrayBox, img: HTMLImageElement, backdrop: string) {
+function drawTrayCutout(ctx: CanvasRenderingContext2D, box: TrayBox, img: HTMLImageElement, backdrop: string | null) {
   ctx.save();
   ctx.translate(box.cx, box.cy);
   ctx.rotate((box.rot * Math.PI) / 180);
   ctx.save();
+  if (!backdrop) ctx.globalAlpha = 0;
   ctx.filter = "blur(14px)";
-  ctx.fillStyle = backdrop;
+  ctx.fillStyle = backdrop ?? "transparent";
   ctx.beginPath();
   ctx.roundRect(-box.w / 2 - 12, -box.h / 2 - 12, box.w + 24, box.h + 24, 40);
   ctx.fill();
@@ -402,6 +448,31 @@ function drawTrayCutout(ctx: CanvasRenderingContext2D, box: TrayBox, img: HTMLIm
   ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
   ctx.restore();
 }
+
+// Tempat foto pada desain kanvas, sebelum foto nampan diunggah (desain ini tidak punya nampan contoh).
+function drawTrayPlaceholder(ctx: CanvasRenderingContext2D, box: TrayBox, colors: {fill: string; stroke: string; text: string}) {
+  ctx.save();
+  ctx.translate(box.cx, box.cy);
+  ctx.rotate((box.rot * Math.PI) / 180);
+  ctx.beginPath();
+  ctx.roundRect(-box.w / 2, -box.h / 2, box.w, box.h, 36);
+  ctx.fillStyle = colors.fill;
+  ctx.fill();
+  ctx.setLineDash([22, 16]);
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = colors.stroke;
+  ctx.stroke();
+  ctx.rotate((-box.rot * Math.PI) / 180);
+  ctx.fillStyle = colors.text;
+  ctx.font = `700 44px ${FONT}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Foto nampan", 0, 0);
+  ctx.restore();
+}
+
+const nutritionRowsFor = (values: NutritionValues) =>
+  NUTRITION_ROWS.map((row) => ({label: row.label, value: values[row.key] ? `${values[row.key]} ${row.unit}` : "-"}));
 
 function drawNutrition(ctx: CanvasRenderingContext2D, col: NutritionColumn, values: NutritionValues) {
   if (!hasAnyNutrition(values)) return;
@@ -469,7 +540,20 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 let fontsReady: Promise<unknown> | null = null;
 const ensureFonts = () => {
   if (!fontsReady) {
-    fontsReady = Promise.all(["600 30px Nunito", "700 30px Nunito", "800 30px Nunito"].map((f) => document.fonts.load(f))).catch(() => undefined);
+    fontsReady = Promise.all(
+      [
+        "600 30px Nunito",
+        "700 30px Nunito",
+        "800 30px Nunito",
+        '400 30px "Plus Jakarta Sans"',
+        '500 30px "Plus Jakarta Sans"',
+        '600 30px "Plus Jakarta Sans"',
+        '700 30px "Plus Jakarta Sans"',
+        '800 30px "Plus Jakarta Sans"',
+        '800 30px "Baloo 2"',
+        "italic 800 30px Fraunces",
+      ].map((f) => document.fonts.load(f))
+    ).catch(() => undefined);
   }
   return fontsReady;
 };
@@ -477,6 +561,7 @@ const ensureFonts = () => {
 // scale < 1 untuk gambar kecil pilihan desain. isStale dicek setelah gambar termuat agar gambar
 // dari isian lama tidak menimpa yang baru.
 async function drawPoster(canvas: HTMLCanvasElement, layout: PosterTemplate, date: string, menus: MenuCardData[], scale = 1, isStale?: () => boolean) {
+  if (layout.kind === "drawn") return drawCanvasPoster(canvas, layout, date, menus[0], scale, isStale);
   const [template, ...photos] = await Promise.all([
     loadImage(layout.src),
     ...menus.map((m) => (m.photo ? loadImage(m.photo).catch(() => null) : Promise.resolve(null))),
@@ -511,6 +596,34 @@ async function drawPoster(canvas: HTMLCanvasElement, layout: PosterTemplate, dat
     drawNote(ctx, box, menu.items);
     drawNutrition(ctx, layout.nutrition[i].large, menu.largePortion);
     drawNutrition(ctx, layout.nutrition[i].small, menu.smallPortion);
+  });
+}
+
+async function drawCanvasPoster(canvas: HTMLCanvasElement, layout: DrawnPosterTemplate, date: string, menu: MenuCardData, scale: number, isStale?: () => boolean) {
+  const [logo, slhsSource, photo] = await Promise.all([
+    loadImage(logoSppg),
+    loadImage(templateSingle),
+    menu.photo ? loadImage(menu.photo).catch(() => null) : Promise.resolve(null),
+    ensureFonts(),
+  ]);
+  if (isStale?.()) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  canvas.width = Math.round(layout.width * scale);
+  canvas.height = Math.round(layout.height * scale);
+  ctx.scale(scale, scale);
+  layout.draw(ctx, {
+    dateLong: formatPosterDateLong(date),
+    items: menu.items,
+    large: nutritionRowsFor(menu.largePortion),
+    small: nutritionRowsFor(menu.smallPortion),
+    logo,
+    slhs: {img: slhsSource, ...SLHS_CROP},
+    drawTray: (box: PosterTrayBox, placeholder) => {
+      if (photo && menu.photoOriginal) drawTrayCutout(ctx, box, photo, null);
+      else if (photo) drawTrayPhoto(ctx, box, photo);
+      else drawTrayPlaceholder(ctx, box, placeholder);
+    },
   });
 }
 
@@ -1008,6 +1121,7 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
                   className="w-full p-2.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 leading-relaxed placeholder:text-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 />
                 <p className="mt-1 text-[11px] text-slate-600">Tulisan otomatis mengecil bila daftar panjang, agar tetap muat di kertas.</p>
+                {activeTemplate.itemsHint && <p className="mt-0.5 text-[11px] text-slate-600">{activeTemplate.itemsHint}</p>}
               </div>
 
               <div>
