@@ -15,7 +15,7 @@ import { localDateIso } from '../utils/localDate';
 import { convertQty, isCountableUnit, normalizeQtyForUnit, unitKey } from '../utils/unitConversion';
 import { isPendingSupplierPo } from '../utils/poSupplier';
 import { handleGridKeyDown } from '../utils/gridNav';
-import { ExtraCost, filledExtraCosts, sumExtraCosts } from '../utils/extraCosts';
+import { ExtraCost, filledExtraCosts, sumExtraCosts, unpricedExtraCosts } from '../utils/extraCosts';
 import { ExtraCostsEditor } from './common/ExtraCostsEditor';
 
 interface PoReceivingWeighingModalProps {
@@ -326,6 +326,12 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
       return;
     }
 
+    const unpricedCosts = unpricedExtraCosts(extraCosts);
+    if (unpricedCosts.length > 0) {
+      toast.error(`Isi nominal atau hapus baris: ${unpricedCosts.map(c => c.label.trim()).join(', ')}.`, 'Biaya Tambahan Belum Lengkap');
+      return;
+    }
+
     const costs = filledExtraCosts(extraCosts);
     const receivedKeys = new Set(costSupplierOptions.map(s => s.toLowerCase()));
     const orphanCosts = costs.filter(c => !receivedKeys.has(costSupplierOf(c).toLowerCase()));
@@ -462,11 +468,16 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
         <>
           {/* Ringkasan di kiri footer agar terlihat saat tabel digulir; aksi simpan tetap satu-satunya fokus */}
           <div className="mr-auto text-xs text-slate-700">
-            <span className="font-mono font-semibold text-slate-900 tabular-nums">{rupiah(calculations.totalActualCost + extraCostTotal)}</span>
+            {/* "dari" hanya membandingkan nilai bahan dengan nilai PO; biaya tambahan tidak ada di PO */}
+            <span className="font-mono font-semibold text-slate-900 tabular-nums">{rupiah(calculations.totalActualCost)}</span>
             {calculations.totalTargetCost > 0 && (
               <span className="text-slate-600"> dari {rupiah(calculations.totalTargetCost)}</span>
             )}
-            {extraCostTotal > 0 && <span className="text-slate-600"> · termasuk biaya tambahan {rupiah(extraCostTotal)}</span>}
+            {extraCostTotal > 0 && (
+              <span className="text-slate-600">
+                {' '}+ biaya tambahan {rupiah(extraCostTotal)} = <span className="font-mono font-semibold text-slate-900 tabular-nums">{rupiah(calculations.totalActualCost + extraCostTotal)}</span>
+              </span>
+            )}
             <span className="text-slate-600"> · {calculations.weighedCount} dari {items.length} bahan ditimbang</span>
           </div>
           <button type="button" onClick={onClose} disabled={isSubmitting} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>

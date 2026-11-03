@@ -73,7 +73,7 @@ import { useConfirm } from '../context/ConfirmContext';
 import { localDateIso } from '../utils/localDate';
 import { isCountableUnit, normalizeQtyForUnit } from '../utils/unitConversion';
 import { suggestDryLocation } from '../utils/warehouseRacks';
-import { EXTRA_COST_CATEGORY, EXTRA_COST_NOTE, EXTRA_COST_UNIT, ExtraCost, extraCostToPoItem, filledExtraCosts, sumExtraCosts } from '../utils/extraCosts';
+import { EXTRA_COST_CATEGORY, EXTRA_COST_NOTE, EXTRA_COST_UNIT, ExtraCost, extraCostToPoItem, filledExtraCosts, isExtraCostExpense, sumExtraCosts, unpricedExtraCosts } from '../utils/extraCosts';
 import { ExtraCostsEditor } from './common/ExtraCostsEditor';
 
 // Jumlah dari belanja bisa berupa teks ("2 pack"); angka ditampilkan dengan koma desimal
@@ -751,6 +751,14 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
       }
     }
 
+    const unpricedCosts = unpricedExtraCosts(formExtraCosts);
+    if (unpricedCosts.length > 0) {
+      const msg = `Biaya tambahan belum ada nominalnya: ${unpricedCosts.map(c => c.label.trim()).join(', ')}. Isi nominal atau hapus barisnya.`;
+      setErrorMessage(msg);
+      toast.error(msg, 'Validasi Gagal');
+      return;
+    }
+
     try {
       // Belanja non-menu (plastik, obat, APD) sering dari minimarket atau apotek yang belum ada di
       // Master Supplier. Nama yang diketik didaftarkan dulu agar dokumen penerimaan tetap punya supplier.
@@ -1273,7 +1281,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
       const linked = [...(linkedByDoc.get(rec.id) || [])];
       rec.lines.forEach((l, idx) => {
         const cat = autoDetectCategory(l.itemName);
-        const matchIdx = linked.findIndex(e => (e.itemId && e.itemId === l.itemId) || e.itemName === l.itemName);
+        // Biaya tambahan bernama sama dengan barang (mis. kresek) tidak boleh mengambil harga barang itu
+        const matchIdx = linked.findIndex(e => !isExtraCostExpense(e) && ((e.itemId && e.itemId === l.itemId) || e.itemName === l.itemName));
         const priced = matchIdx >= 0 ? linked.splice(matchIdx, 1)[0] : undefined;
         const unitPrice = priced?.unitPrice || 0;
 

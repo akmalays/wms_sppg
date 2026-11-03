@@ -185,7 +185,9 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
   const [dailyDisposal, setDailyDisposal] = useState<DisposalMethod>('Pakan Ternak & Kompos Organik');
   const [dailyNotes, setDailyNotes] = useState('');
   const [splitOpen, setSplitOpen] = useState(false);
-  const [splitTotal, setSplitTotal] = useState('');
+  // Hasil timbang satu per satu (sisa tidak dipilah ditimbang beberapa kali), dijumlah lalu dibagi per pola menu
+  const [weighings, setWeighings] = useState<number[]>([]);
+  const [weighDraft, setWeighDraft] = useState('');
   const [splitPatternIdx, setSplitPatternIdx] = useState(0);
   const [splitNote, setSplitNote] = useState('');
 
@@ -380,7 +382,8 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
     setDailyDate(target);
     loadDailyForm(target);
     setSplitOpen(false);
-    setSplitTotal('');
+    setWeighings([]);
+    setWeighDraft('');
     setIsDailyModalOpen(true);
   };
 
@@ -399,17 +402,39 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
   }, [wasteLogs]);
   const dailySum = round2(NUTRITION.reduce((s, n) => s + (parseFloat(dailyValues[n.key]) || 0), 0));
 
+  // "19,5" dan "19.5" sama-sama dibaca 19,5 kg
+  const parseWeight = (raw: string) => {
+    const n = Number(raw.trim().replace(',', '.'));
+    return raw.trim() !== '' && Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const draftWeight = parseWeight(weighDraft);
+  // Angka yang sudah diketik tapi belum ditekan "Tambah" ikut dihitung, agar tidak tertinggal
+  const allWeighings = draftWeight !== null ? [...weighings, draftWeight] : weighings;
+  const weighTotal = round2(allWeighings.reduce((a, b) => a + b, 0));
+
+  const addWeighing = () => {
+    if (draftWeight === null) {
+      if (weighDraft.trim()) alert('Isi hasil timbang dengan angka lebih dari 0, mis. 18 atau 19,5.');
+      return;
+    }
+    setWeighings(prev => [...prev, draftWeight]);
+    setWeighDraft('');
+  };
+
   const applySplit = () => {
-    const total = parseFloat(splitTotal);
+    const total = weighTotal;
     if (!(total > 0)) {
-      alert('Isi total timbangan lebih dari 0 kg.');
+      alert('Catat minimal satu hasil timbang lebih dari 0 kg.');
       return;
     }
     const pattern = SPLIT_PATTERNS[splitPatternIdx];
     const values = emptyDailyValues();
     NUTRITION.forEach(n => (values[n.key] = String(round2((pattern.shares[n.key] / 100) * total))));
     setDailyValues(values);
-    setSplitNote(`Dibagi otomatis dari total ${formatKg(total)} kg (pola ${pattern.name.toLowerCase()}).`);
+    const detail = allWeighings.length > 1 ? `${allWeighings.length} kali timbang: ${allWeighings.map(formatKg).join(' + ')}, ` : '';
+    setSplitNote(`Dibagi otomatis dari total ${formatKg(total)} kg (${detail}pola ${pattern.name.toLowerCase()}).`);
+    setWeighings(allWeighings);
+    setWeighDraft('');
     setSplitOpen(false);
   };
 
@@ -1379,24 +1404,66 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                     aria-expanded={splitOpen}
                     className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left font-medium text-slate-700 min-h-[44px] sm:min-h-[36px] cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                   >
-                    <span>Sisa tidak dipilah? Bagi dari total timbangan</span>
+                    <span>Sisa tidak dipilah? Catat hasil timbang, lalu bagi ke 5 kategori</span>
                     <ChevronRight className={`w-4 h-4 text-slate-500 transition-transform ${splitOpen ? 'rotate-90' : ''}`} />
                   </button>
                   {splitOpen && (
                     <div className="px-3 pb-3 space-y-2.5">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <label>
-                          <span className="block text-slate-600 mb-1">Total timbangan (kg)</span>
+                      <div>
+                        <label htmlFor="weigh-input" className="block text-slate-600 mb-1">Hasil timbang (kg), satu per satu</label>
+                        <div className="flex items-center gap-2">
                           <input
-                            type="number"
+                            id="weigh-input"
+                            type="text"
                             inputMode="decimal"
-                            step="0.01"
-                            min="0"
-                            value={splitTotal}
-                            onChange={e => setSplitTotal(e.target.value)}
-                            className={`${inputClass} font-mono`}
+                            autoComplete="off"
+                            value={weighDraft}
+                            onChange={e => setWeighDraft(e.target.value)}
+                            onKeyDown={e => {
+                              // Enter menambah timbangan, bukan menyimpan form
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                addWeighing();
+                              }
+                            }}
+                            placeholder="mis. 18"
+                            className={`${inputClass} font-mono text-right`}
                           />
-                        </label>
+                          <button
+                            type="button"
+                            onClick={addWeighing}
+                            className="shrink-0 inline-flex items-center gap-1 px-3 min-h-[44px] sm:min-h-[36px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs font-medium hover:bg-slate-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                          >
+                            <Plus className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
+                            Tambah
+                          </button>
+                        </div>
+                        {weighings.length > 0 && (
+                          <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Hasil timbang yang sudah dicatat">
+                            {weighings.map((w, idx) => (
+                              <li key={idx} className="inline-flex items-center gap-1 pl-2 rounded-md border border-slate-200 bg-slate-50 font-mono text-xs text-slate-800">
+                                <span className="text-[11px] text-slate-500">{idx + 1}.</span>
+                                {formatKg(w)} kg
+                                <button
+                                  type="button"
+                                  onClick={() => setWeighings(prev => prev.filter((_, i) => i !== idx))}
+                                  aria-label={`Hapus timbangan ${idx + 1} (${formatKg(w)} kg)`}
+                                  className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[28px] sm:min-h-[28px] text-slate-500 hover:text-rose-700 cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <p className="mt-2 flex items-baseline justify-between gap-2 px-2.5 py-2 rounded-lg bg-slate-50 border border-slate-200">
+                          <span className="text-slate-700">
+                            Jumlah{allWeighings.length > 0 && ` ${allWeighings.length} kali timbang`}
+                          </span>
+                          <span className="font-mono font-semibold text-slate-900">{formatKg(weighTotal)} kg</span>
+                        </p>
+                      </div>
+                      <div>
                         <label>
                           <span className="block text-slate-600 mb-1">Pola menu</span>
                           <Select className="w-full" value={splitPatternIdx} onChange={e => setSplitPatternIdx(Number(e.target.value))}>
@@ -1415,7 +1482,7 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                         onClick={applySplit}
                         className="w-full px-3 py-2 text-xs font-semibold rounded-lg border border-emerald-700 text-emerald-800 bg-white hover:bg-emerald-50 min-h-[44px] sm:min-h-[36px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                       >
-                        Isi 5 kategori dari total ini
+                        {weighTotal > 0 ? `Bagi ${formatKg(weighTotal)} kg ke 5 kategori` : 'Bagi ke 5 kategori'}
                       </button>
                     </div>
                   )}

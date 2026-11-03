@@ -385,16 +385,29 @@ export const BatchPrintNotaModal: React.FC<BatchPrintNotaModalProps> = ({
             margin: 0 !important;
             padding: 0 !important;
           }
-          body * {
-            visibility: hidden !important;
+          /* Sama dengan Nota PO: yang bukan kumpulan nota dibuang dari tata letak (bukan hanya disembunyikan),
+             dan pembungkus modal dilepas, agar tidak ada halaman kosong dari halaman aplikasi di belakang modal. */
+          body *:not(:has(#print-batch-pool)):not(#print-batch-pool):not(#print-batch-pool *) {
+            display: none !important;
           }
-          #print-batch-pool, #print-batch-pool * {
-            visibility: visible !important;
+          body *:has(#print-batch-pool) {
+            position: static !important;
+            display: block !important;
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: 0 !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            backdrop-filter: none !important;
+            transform: none !important;
+            animation: none !important;
           }
           #print-batch-pool {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+            position: static !important;
             width: 100% !important;
             display: block !important;
             padding: 0 !important;

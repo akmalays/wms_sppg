@@ -31,6 +31,7 @@ import { ReceivingDetailModal } from './ReceivingDetailModal';
 import { DailyChecklistWidget } from './DailyChecklistWidget';
 import { localDateIso } from '../utils/localDate';
 import { isAwaitingDelivery, isOrderedPurchaseOrder, poDateForMenu } from '../utils/poSupplier';
+import { isExtraCostPoItem } from '../utils/extraCosts';
 
 interface DashboardViewProps {
   onNavigate: (tab: string) => void;
@@ -222,6 +223,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
 
     todaysPos.forEach(po => {
       (po.items || []).forEach((it, idx) => {
+        // Biaya tambahan (selep, kresek) bukan bahan yang ditunggu datang
+        if (isExtraCostPoItem(it)) return;
         const key = `${it.name.toLowerCase()}_${(po.supplierName || '').toLowerCase()}`;
         if (!itemKeySet.has(key)) {
           itemKeySet.add(key);
@@ -290,17 +293,40 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
     () => todayPoItems.filter(i => i.status === 'ARRIVED'),
     [todayPoItems]
   );
-  const itemsWithNotes = useMemo(
-    () => todayPoItems.filter(i => i.notes && i.notes.trim() !== ''),
-    [todayPoItems]
-  );
 
-  const displayedPoItems = useMemo(() => {
-    if (poFilter === 'PENDING') return pendingPoItems;
-    if (poFilter === 'ARRIVED') return arrivedPoItems;
-    if (poFilter === 'NOTES') return itemsWithNotes;
-    return todayPoItems;
-  }, [todayPoItems, poFilter, pendingPoItems, arrivedPoItems, itemsWithNotes]);
+  // Satu kartu per supplier: petugas menunggu kiriman per supplier, bukan per bahan
+  const poSupplierGroups = useMemo(() => {
+    const groups = new Map<string, { key: string; supplier?: string; items: TodayPoItemTrack[] }>();
+    todayPoItems.forEach(item => {
+      const key = (item.supplier || '').trim().toLowerCase();
+      if (!groups.has(key)) groups.set(key, { key: key || '__none', supplier: item.supplier, items: [] });
+      groups.get(key)!.items.push(item);
+    });
+    return [...groups.values()].map(g => {
+      const arrived = g.items.filter(i => i.status === 'ARRIVED').length;
+      const partial = g.items.some(i => i.status === 'PARTIAL');
+      const status: TodayPoItemTrack['status'] = arrived === g.items.length ? 'ARRIVED' : arrived > 0 || partial ? 'PARTIAL' : 'PENDING';
+      const times = g.items.map(i => i.expectedTime).filter((t): t is string => Boolean(t)).sort();
+      return {
+        ...g,
+        arrived,
+        status,
+        expectedTime: times[0],
+        poNumbers: [...new Set(g.items.map(i => i.poNumber).filter((n): n is string => Boolean(n)))],
+        // Catatan PO ikut tersalin ke tiap bahan; cukup ditampilkan sekali per supplier
+        notes: [...new Set(g.items.map(i => (i.notes || '').trim()).filter(Boolean))],
+      };
+    });
+  }, [todayPoItems]);
+  const arrivedSupplierCount = poSupplierGroups.filter(g => g.status === 'ARRIVED').length;
+  const pendingSupplierCount = poSupplierGroups.length - arrivedSupplierCount;
+
+  const displayedPoGroups = useMemo(() => {
+    if (poFilter === 'PENDING') return poSupplierGroups.filter(g => g.status !== 'ARRIVED');
+    if (poFilter === 'ARRIVED') return poSupplierGroups.filter(g => g.status === 'ARRIVED');
+    if (poFilter === 'NOTES') return poSupplierGroups.filter(g => g.notes.length > 0);
+    return poSupplierGroups;
+  }, [poSupplierGroups, poFilter]);
 
   const triageTabs: { id: TriageFilter; label: string; count: number; active: string; idle: string }[] = [
     { id: 'ALL', label: 'Semua', count: totalAlertsCount, active: 'bg-slate-900 text-white', idle: 'text-slate-700 hover:bg-white' },
@@ -311,10 +337,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
   ];
 
   const poTabs: { id: typeof poFilter; label: string; count: number }[] = [
-    { id: 'ALL', label: 'Semua', count: todayPoItems.length },
-    { id: 'PENDING', label: 'Belum tiba', count: pendingPoItems.length },
-    { id: 'ARRIVED', label: 'Sudah tiba', count: arrivedPoItems.length },
-    { id: 'NOTES', label: 'Ada catatan', count: itemsWithNotes.length },
+    { id: 'ALL', label: 'Semua', count: poSupplierGroups.length },
+    { id: 'PENDING', label: 'Belum tiba', count: pendingSupplierCount },
+    { id: 'ARRIVED', label: 'Sudah tiba', count: arrivedSupplierCount },
+    { id: 'NOTES', label: 'Ada catatan', count: poSupplierGroups.filter(g => g.notes.length > 0).length },
   ];
 
   return (
@@ -661,17 +687,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
                   />
                 </div>
                 <span className="shrink-0">
-                  <strong className="font-mono text-slate-900">{arrivedPoItems.length}/{todayPoItems.length}</strong> tiba
+                  <strong className="font-mono text-slate-900">{arrivedPoItems.length}/{todayPoItems.length}</strong> bahan tiba
                 </span>
               </div>
             </div>
 
-            {pendingPoItems.length > 0 && poFilter !== 'PENDING' && (
+            {pendingSupplierCount > 0 && poFilter !== 'PENDING' && (
               <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-950">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
                   <span>
-                    <strong>{pendingPoItems.length} bahan</strong> belum tiba atau baru tiba sebagian.
+                    <strong>{pendingSupplierCount} supplier</strong> belum tiba atau baru mengirim sebagian ({pendingPoItems.length} bahan).
                   </span>
                 </div>
                 <button
@@ -690,18 +716,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
               </div>
             )}
 
-            {displayedPoItems.length === 0 ? (
-              <p className="py-6 text-center text-xs text-slate-600">Tidak ada bahan pada filter ini.</p>
+            {displayedPoGroups.length === 0 ? (
+              <p className="py-6 text-center text-xs text-slate-600">Tidak ada supplier pada filter ini.</p>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {displayedPoItems.map(item => {
-                  const isPending = item.status === 'PENDING';
-                  const isPartial = item.status === 'PARTIAL';
-                  const isArrived = item.status === 'ARRIVED';
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-start">
+                {displayedPoGroups.map(group => {
+                  const isPending = group.status === 'PENDING';
+                  const isPartial = group.status === 'PARTIAL';
 
                   return (
                     <div
-                      key={item.id}
+                      key={group.key}
                       className={`p-3.5 rounded-xl border ${
                         isPending ? 'bg-white border-amber-200' : isPartial ? 'bg-white border-sky-200' : 'bg-slate-50 border-slate-200'
                       }`}
@@ -709,59 +734,65 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
                       <div className="flex items-center justify-between gap-2 text-[11px]">
                         <span
                           className={`px-2 py-0.5 rounded-md font-semibold ${
-                            isPending
-                              ? 'bg-amber-50 text-amber-800'
-                              : isPartial
-                              ? 'bg-sky-50 text-sky-700'
-                              : 'bg-emerald-50 text-emerald-800'
+                            isPending ? 'bg-amber-50 text-amber-800' : isPartial ? 'bg-sky-50 text-sky-700' : 'bg-emerald-50 text-emerald-800'
                           }`}
                         >
                           {isPending ? 'Belum tiba' : isPartial ? 'Tiba sebagian' : 'Sudah tiba'}
                         </span>
                         <span className="font-mono text-slate-600 flex items-center gap-1">
                           <Clock className="w-3 h-3 text-slate-500" />
-                          {item.expectedTime || 'Jam belum diatur'}
+                          {group.expectedTime || 'Jam belum diatur'}
                         </span>
                       </div>
 
-                      <h3 className="text-sm font-semibold text-slate-900 leading-snug mt-2.5">{item.itemName}</h3>
-                      <p className="text-[11px] text-slate-600 mt-0.5">
-                        {item.category}
-                        {item.poNumber && <span className="font-mono"> · {item.poNumber}</span>}
-                      </p>
-
-                      <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-700">
-                        <Store className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                        <span className={`truncate ${item.supplier ? 'font-semibold' : 'text-slate-500 italic'}`}>
-                          {item.supplier || 'Supplier belum diisi'}
+                      <h3 className="mt-2.5 flex items-center gap-1.5 text-sm font-semibold text-slate-900 leading-snug">
+                        <Store className="w-4 h-4 text-slate-500 shrink-0" />
+                        <span className={`truncate ${group.supplier ? '' : 'text-slate-500 italic font-medium'}`}>
+                          {group.supplier || 'Supplier belum diisi'}
                         </span>
+                      </h3>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        {group.items.length} bahan
+                        {group.poNumbers.length > 0 && <span className="font-mono"> · {group.poNumbers.join(', ')}</span>}
                       </p>
 
-                      <dl className="mt-2 grid grid-cols-2 gap-2 p-2 rounded-lg bg-white border border-slate-200 text-xs">
-                        <div>
-                          <dt className="text-[11px] text-slate-600">Dipesan</dt>
-                          <dd className="font-semibold font-mono text-slate-900">{item.qtyOrder}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-[11px] text-slate-600">Diterima</dt>
-                          <dd
-                            className={`font-semibold font-mono ${
-                              isArrived ? 'text-emerald-700' : isPartial ? 'text-sky-700' : 'text-slate-500'
-                            }`}
-                          >
-                            {item.qtyArrived}
-                          </dd>
-                        </div>
-                      </dl>
+                      <p className="mt-2 text-xs text-slate-700">
+                        <strong className="font-mono text-slate-900">{group.arrived}/{group.items.length}</strong> bahan diterima
+                      </p>
 
-                      {item.notes && item.notes.trim() !== '' && (
+                      {group.notes.length > 0 && (
                         <div className="mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-950 flex items-start gap-1.5 leading-snug">
                           <Info className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-px" />
-                          <span>
-                            <strong className="font-semibold">Catatan:</strong> {item.notes}
+                          <span className="min-w-0">
+                            <strong className="font-semibold">Catatan:</strong> {group.notes.join(' · ')}
                           </span>
                         </div>
                       )}
+
+                      <details className="group mt-2">
+                        <summary className={`list-none flex items-center gap-1 text-xs font-medium text-emerald-800 hover:text-emerald-900 cursor-pointer rounded-md min-h-[44px] sm:min-h-0 sm:py-1 ${FOCUS}`}>
+                          <span className="group-open:hidden">Lihat bahan</span>
+                          <span className="hidden group-open:inline">Sembunyikan bahan</span>
+                        </summary>
+                        <ul className="mt-1.5 divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">
+                          {group.items.map(item => (
+                            <li key={item.id} className="flex items-start justify-between gap-3 px-2.5 py-1.5 text-xs">
+                              <span className="min-w-0">
+                                <span className="text-slate-900">{item.itemName}</span>
+                                {item.status !== 'ARRIVED' && (
+                                  <span className={`ml-1.5 text-[11px] ${item.status === 'PARTIAL' ? 'text-sky-700' : 'text-amber-800'}`}>
+                                    {item.status === 'PARTIAL' ? 'sebagian' : 'belum'}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="shrink-0 font-mono tabular-nums text-right">
+                                <span className="text-slate-600">{item.qtyOrder}</span>
+                                {item.qtyArrived !== '-' && <span className="text-slate-900"> → {item.qtyArrived}</span>}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
                     </div>
                   );
                 })}

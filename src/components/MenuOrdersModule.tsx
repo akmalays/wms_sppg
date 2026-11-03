@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import {exportMultiSheetExcel, exportToExcel} from "../lib/excelExport";
 import {localDateIso} from "../utils/localDate";
+import {isExtraCostPoItem} from "../utils/extraCosts";
 import {convertQty, normalizeQtyForUnit} from "../utils/unitConversion";
 import {KopText} from "./common/KopText";
 import {FormDialog, DialogShell, FIELD_INPUT, FIELD_LABEL, TABLE_INPUT, BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST, FOCUS_RING} from "./common/FormDialog";
@@ -2280,7 +2281,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     const issuedNames = new Map(
       warehouseDb
         .getPurchaseOrdersByMenuOrderId(targetOrder.id)
-        .flatMap((p) => p.items.map((it) => [it.name.trim().toLowerCase(), p] as const)),
+        .flatMap((p) => p.items.filter((it) => !isExtraCostPoItem(it)).map((it) => [it.name.trim().toLowerCase(), p] as const)),
     );
     const alreadyOrdered = validRows.find((r) => issuedNames.has(r.itemName.trim().toLowerCase()));
     if (alreadyOrdered) {

@@ -29,7 +29,20 @@ export const newExtraCost = (supplierName?: string): ExtraCost => ({
 export const filledExtraCosts = (rows: ExtraCost[]): ExtraCost[] =>
   rows.filter(r => r.amount > 0).map(r => ({ ...r, label: r.label.trim() || EXTRA_COST_NOTE }));
 
+/** Baris yang sudah diberi keterangan tetapi nominalnya belum diisi: akan terbuang bila tetap disimpan. */
+export const unpricedExtraCosts = (rows: ExtraCost[]): ExtraCost[] => rows.filter(r => r.amount <= 0 && r.label.trim() !== '');
+
 export const sumExtraCosts = (rows: ExtraCost[]): number => rows.reduce((sum, r) => sum + (r.amount > 0 ? r.amount : 0), 0);
+
+/**
+ * Baris nota hasil biaya tambahan, bukan bahan. Baris ini ikut tersimpan di item PO agar tertagih,
+ * jadi fitur yang membaca item PO sebagai daftar bahan (rencana menu, kedatangan, cek pesanan dobel) harus melewatinya.
+ */
+export const isExtraCostPoItem = (it: { id?: string; notes?: string }): boolean =>
+  (it.id || '').startsWith(EXTRA_COST_ID_PREFIX) || it.notes === EXTRA_COST_NOTE;
+
+/** Catatan pengeluaran biaya tambahan (bertanda [Biaya tambahan]); jangan dicocokkan dengan baris barang bernama sama. */
+export const isExtraCostExpense = (e: { notes?: string }): boolean => (e.notes || '').includes(`[${EXTRA_COST_NOTE}]`);
 
 /** Baris nota untuk satu biaya tambahan: 1 paket seharga nominalnya. */
 export const extraCostToPoItem = (cost: ExtraCost): PurchaseOrderItem => ({

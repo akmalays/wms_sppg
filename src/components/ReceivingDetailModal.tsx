@@ -3,6 +3,7 @@ import { warehouseDb } from '../db/storage';
 import { ReceivingDocument } from '../types/warehouse';
 import { Printer } from 'lucide-react';
 import { DialogShell, BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './common/FormDialog';
+import { isExtraCostExpense } from '../utils/extraCosts';
 
 interface ReceivingDetailModalProps {
   document: ReceivingDocument | null;
@@ -44,7 +45,7 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
   if (!document) return null;
 
   const priceOf = (line: { itemId: string; itemName: string }) =>
-    linked.find(e => (e.itemId && e.itemId === line.itemId) || e.itemName === line.itemName);
+    linked.find(e => !isExtraCostExpense(e) && ((e.itemId && e.itemId === line.itemId) || e.itemName === line.itemName));
   const linkedTotal = linked.reduce((sum, e) => sum + (e.totalCost || 0), 0);
   // Catatan otomatis dari penerimaan PO sudah tergambar di baris "Dari nota pesanan".
   const customNotes = document.notes && !document.notes.startsWith('Penerimaan & penimbangan fisik dari PO') ? document.notes : '';
@@ -134,12 +135,12 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
                 );
               })}
               {linked
-                .filter(e => !document.lines.some(l => (e.itemId && e.itemId === l.itemId) || e.itemName === l.itemName))
+                .filter(e => isExtraCostExpense(e) || !document.lines.some(l => (e.itemId && e.itemId === l.itemId) || e.itemName === l.itemName))
                 .map(exp => (
                   <tr key={exp.id} className="align-top bg-amber-50/20">
                     <td className="py-2 px-3">
                       <div className="font-semibold text-slate-900">{exp.itemName}</div>
-                      <div className="text-[11px] text-amber-800 mt-0.5">Biaya tambahan supplier</div>
+                      <div className="text-[11px] text-amber-800 mt-0.5">{isExtraCostExpense(exp) ? 'Biaya tambahan supplier' : 'Belanja tertaut'}</div>
                     </td>
                     <td className="py-2 px-3 text-right font-mono tabular-nums text-slate-700 whitespace-nowrap">
                       {exp.quantity} {exp.unit || 'Paket'}

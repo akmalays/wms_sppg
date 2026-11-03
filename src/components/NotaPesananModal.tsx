@@ -780,23 +780,46 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
             size: A4 portrait;
             margin: 0;
           }
-          body * {
-            visibility: hidden !important;
+          html, body {
+            height: auto !important;
+            overflow: visible !important;
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
-          #print-nota-paper, #print-nota-paper * {
-            visibility: visible !important;
+          /* Yang bukan kertas nota atau pembungkusnya dibuang dari tata letak. visibility: hidden saja tetap
+             memakan tempat, sehingga halaman aplikasi di belakang modal ikut tercetak sebagai belasan halaman kosong. */
+          body *:not(:has(#print-nota-paper)):not(#print-nota-paper):not(#print-nota-paper *) {
+            display: none !important;
+          }
+          /* Pembungkus modal (fixed, tinggi dibatasi, bergulir) dilepas agar nota mengalir biasa di kertas */
+          body *:has(#print-nota-paper) {
+            position: static !important;
+            display: block !important;
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: 0 !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            backdrop-filter: none !important;
+            transform: none !important;
+            animation: none !important;
           }
           #print-nota-paper {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+            position: static !important;
             width: 100% !important;
             max-width: 100% !important;
+            min-height: 0 !important;
             box-sizing: border-box !important;
             padding: 6mm 8mm !important;
             margin: 0 !important;
             box-shadow: none !important;
             border: none !important;
+            border-radius: 0 !important;
             background: #ffffff !important;
             color: #000000 !important;
           }

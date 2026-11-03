@@ -48,7 +48,7 @@ import { reportCloudWriteError } from '../lib/cloudEvents';
 import { localDateIso, localTimestamp } from '../utils/localDate';
 import { convertQty, unitKey } from '../utils/unitConversion';
 import { placeNewItem } from '../utils/itemPlacement';
-import { EXTRA_COST_CATEGORY, EXTRA_COST_NOTE, EXTRA_COST_UNIT, extraCostToPoItem } from '../utils/extraCosts';
+import { EXTRA_COST_CATEGORY, EXTRA_COST_NOTE, EXTRA_COST_UNIT, extraCostToPoItem, isExtraCostPoItem } from '../utils/extraCosts';
 
 const MAX_AUDIT_LOGS = 2000;
 
@@ -3115,29 +3115,28 @@ class WarehouseDatabase {
 
     this.receivings.unshift(savedDoc);
 
-    // Dokumen dulu, lalu rinciannya (merujuk dokumen), lalu stok barang, terakhir mutasi.
-    // Stok sebelum mutasi: bila koneksi putus di tengah, stok yang terlihat petugas tetap tersimpan.
+    // Supplier dulu, lalu dokumen, lalu barang (dengan stok barunya), lalu rincian, terakhir mutasi.
+    // Supplier dan barang bisa baru didaftarkan tepat sebelum penerimaan ini (toko yang diketik, barang
+    // baru dari form); kiriman pendaftarannya tidak ditunggu, sehingga dokumen dan rincian yang merujuknya
+    // bisa tiba lebih dulu dan ditolak database. Karena itu keduanya dikirim ulang (upsert) di urutan ini.
     const docRow = mapReceivingToSupabase(savedDoc);
     const lineRows = newLines.map(l => mapLineToSupabase(l, savedDoc.id));
     const txRows = this.transactions.filter(t => t.referenceDocument === docId).map(mapTxToSupabase);
-    const stockUpdates = newLines
-      .map(line => this.getItemById(line.itemId))
-      .filter((item): item is ItemMaster => Boolean(item))
-      .map(item => ({
-        name: item.name,
-        id: item.id,
-        row: {
-          current_stock: item.currentStock,
-          last_movement_date: localTsToIso(item.lastMovementDate || localDateIso()),
-          updated_at: new Date().toISOString(),
-        },
-      }));
+    const receivedItems = [...new Map(
+      newLines
+        .map(line => this.getItemById(line.itemId))
+        .filter((item): item is ItemMaster => Boolean(item))
+        .map(item => [item.id, item] as const)
+    ).values()];
+    const supplierRow = mapSupplierToSupabase(supplier);
     this.pushCloudSequence([
+      [`simpan supplier "${supplier.name}"`, () => supabase.from('suppliers').upsert(supplierRow)],
       [`simpan penerimaan ${docId}`, () => supabase.from('receiving_documents').insert(docRow)],
+      ...receivedItems.map(item => {
+        const itemRow = mapItemToSupabase(item);
+        return [`simpan stok "${item.name}"`, () => supabase.from('item_master').upsert(itemRow)] as [string, () => PromiseLike<{ error: any }>];
+      }),
       [`simpan rincian penerimaan ${docId}`, () => supabase.from('receiving_lines').insert(lineRows)],
-      ...stockUpdates.map(
-        u => [`simpan stok "${u.name}"`, () => supabase.from('item_master').update(u.row).eq('id', u.id)] as [string, () => PromiseLike<{ error: any }>]
-      ),
       ...(txRows.length > 0
         ? [[`simpan mutasi stok ${docId}`, () => supabase.from('inventory_transactions').insert(txRows)] as [string, () => PromiseLike<{ error: any }>]]
         : []),
@@ -4617,7 +4616,7 @@ class WarehouseDatabase {
     if (!menu) return;
     const previous = new Map(previousItems.map(it => [it.itemName.trim().toLowerCase(), it]));
     const poArrivalItems = this.getPurchaseOrdersByMenuOrderId(menuOrderId).flatMap(p =>
-      p.items.map(it => {
+      p.items.filter(it => !isExtraCostPoItem(it)).map(it => {
         const prev = previous.get(it.name.trim().toLowerCase());
         return {
           category: prev?.category || it.category || 'Bahan Makanan',
