@@ -6,7 +6,10 @@ import {
   HABIT_WEEKDAY_LABELS,
   uploadCmsMedia
 } from '../db/websiteConfigStorage';
-import { Upload, Trash2, Star, CalendarDays } from 'lucide-react';
+import { Upload, Trash2, PenLine } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
+import { requestKidsAiDraft, KidsAiDraft } from '../utils/menuAiDraft';
 
 interface MenuTodayKidsEditorProps {
   menuToday: WebsiteMenuTodayConfig;
@@ -19,6 +22,20 @@ const inputCls =
 const labelCls = 'block text-xs font-semibold text-slate-700 mb-1';
 
 const linesToList = (text: string) => text.split('\n').map(l => l.trim()).filter(Boolean);
+
+type AiTarget = 'hero' | 'habit' | 'plateTip';
+
+const AiButton: React.FC<{ busy: boolean; disabled: boolean; label: string; onClick: () => void }> = ({ busy, disabled, label, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    className="inline-flex items-center gap-1 px-2 min-h-[44px] sm:min-h-[28px] rounded-md text-xs font-semibold text-emerald-800 hover:bg-emerald-50 disabled:text-slate-400 disabled:cursor-wait cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+  >
+    <PenLine className="w-3.5 h-3.5" />
+    {busy ? 'Menulis...' : label}
+  </button>
+);
 
 const ImagePicker: React.FC<{
   value: string;
@@ -94,6 +111,63 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
   const habit: DailyHabitItem =
     habits.find(h => h.weekday === activeDay) ?? { weekday: activeDay, title: '', description: '', steps: [], imageUrl: '' };
 
+  // Draf AI: satu panggilan menghasilkan ketiga bagian, tapi tiap tombol hanya memakai bagiannya sendiri.
+  const toast = useToast();
+  const askConfirm = useConfirm();
+  const [aiBusy, setAiBusy] = useState<AiTarget | null>(null);
+  const dayLabel = HABIT_WEEKDAY_LABELS[activeDay];
+
+  const runAi = async (target: AiTarget, hasContent: boolean, what: string, apply: (draft: KidsAiDraft) => void) => {
+    if (hasContent) {
+      const ok = await askConfirm({
+        title: `Ganti ${what} dengan draf AI?`,
+        message: 'Isi yang sekarang akan ditimpa. Baca dulu hasilnya sebelum menyimpan.',
+        confirmText: 'Ganti',
+        variant: 'warning',
+      });
+      if (!ok) return;
+    }
+    setAiBusy(target);
+    try {
+      const draft = await requestKidsAiDraft({
+        menuTitle: menuToday.menuTitle,
+        ingredients: menuToday.ingredients.map(i => ({ name: i.name, category: i.category })),
+        habitDay: dayLabel,
+        otherHabitTitles: habits.filter(h => h.weekday !== activeDay && h.title.trim()).map(h => h.title),
+      });
+      apply(draft);
+      onNotify(`Draf ${what} masuk. Baca dan perbaiki dulu sebelum Simpan.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Gagal membuat draf AI.');
+    } finally {
+      setAiBusy(null);
+    }
+  };
+
+  const handleAiHero = () =>
+    runAi('hero', Boolean(hero.name.trim()), 'Pahlawan Gizi', d => {
+      const category = d.hero.category.trim();
+      updateHero({
+        name: d.hero.name.trim(),
+        category: category.charAt(0).toUpperCase() + category.slice(1),
+        points: d.hero.points.map(p => p.trim()).filter(Boolean),
+        funFact: d.hero.funFact.trim(),
+      });
+    });
+
+  const handleAiHabit = () =>
+    runAi('habit', Boolean(habit.title.trim()), `kebiasaan ${dayLabel}`, d =>
+      updateHabit({
+        title: d.habit.title.trim(),
+        description: d.habit.description.trim(),
+        steps: d.habit.steps.map(st => st.trim()).filter(Boolean),
+        cheer: d.habit.cheer.trim(),
+      })
+    );
+
+  const handleAiPlateTip = () =>
+    runAi('plateTip', Boolean(menuToday.plateTip?.trim()), 'tips Isi Piringku', d => onChange({ plateTip: d.plateTip.trim() }));
+
   const updateHabit = (patch: Partial<DailyHabitItem>) => {
     const next = { ...habit, ...patch };
     const exists = habits.some(h => h.weekday === activeDay);
@@ -105,15 +179,13 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Pahlawan Gizi */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
-        <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-          <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
-            <Star className="w-4 h-4" />
-          </div>
+      <div className="space-y-4">
+        <div className="pb-2 border-b border-slate-100 flex items-start justify-between gap-2">
           <div>
-            <h3 className="font-display text-sm font-bold text-slate-900">Pahlawan Gizi Hari Ini</h3>
+            <h3 className="text-sm font-bold text-slate-900">Pahlawan Gizi Hari Ini</h3>
             <p className="text-[11px] text-slate-500">Satu bahan yang disorot untuk anak. Kosongkan nama untuk menyembunyikan bagian ini.</p>
           </div>
+          <AiButton busy={aiBusy === 'hero'} disabled={aiBusy !== null} label="Tulis dengan AI" onClick={handleAiHero} />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -179,15 +251,13 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
       </div>
 
       {/* Kebiasaan baik per hari */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
-        <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-          <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center">
-            <CalendarDays className="w-4 h-4" />
-          </div>
+      <div className="space-y-4">
+        <div className="pb-2 border-b border-slate-100 flex items-start justify-between gap-2">
           <div>
-            <h3 className="font-display text-sm font-bold text-slate-900">Kebiasaan Baik per Hari</h3>
+            <h3 className="text-sm font-bold text-slate-900">Kebiasaan Baik per Hari</h3>
             <p className="text-[11px] text-slate-500">Halaman publik otomatis menampilkan kebiasaan sesuai hari ini. Kosongkan judul untuk melewati hari tersebut.</p>
           </div>
+          <AiButton busy={aiBusy === 'habit'} disabled={aiBusy !== null} label={`Tulis ${dayLabel} dengan AI`} onClick={handleAiHabit} />
         </div>
 
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Pilih hari">
@@ -253,9 +323,12 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
       </div>
 
       {/* Isi Piringku & perkiraan energi */}
-      <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="lg:col-span-2 pt-4 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className={labelCls} htmlFor="plate-tip">Tips hari ini di bagian Isi Piringku (opsional)</label>
+          <div className="flex items-end justify-between gap-2 mb-1">
+            <label className={`${labelCls} mb-0`} htmlFor="plate-tip">Tips hari ini di bagian Isi Piringku (opsional)</label>
+            <AiButton busy={aiBusy === 'plateTip'} disabled={aiBusy !== null} label="Tulis dengan AI" onClick={handleAiPlateTip} />
+          </div>
           <textarea
             id="plate-tip"
             rows={3}

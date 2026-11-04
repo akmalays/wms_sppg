@@ -5,6 +5,8 @@ import {
   HeroVideoItem,
   HeroDocumentationSlide,
   IngredientNutritionInfo,
+  WebsiteMenuTodayConfig,
+  PortionTierConfig,
   DEFAULT_WEBSITE_CONFIG,
   getWebsiteConfig,
   saveWebsiteConfigToCloud,
@@ -21,6 +23,7 @@ import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
 import { MenuTodayKidsEditor } from './MenuTodayKidsEditor';
 import { compressImageToWebP } from '../utils/imageCompressor';
+import { requestMenuAiDraft, MenuAiDraft } from '../utils/menuAiDraft';
 import {
   Video,
   Image as ImageIcon,
@@ -35,17 +38,14 @@ import {
   ChevronRight,
   ChevronDown,
   Upload,
-  Sparkles,
-  UtensilsCrossed,
-  Info,
   Check,
   X,
   Download,
-  QrCode,
   RotateCcw,
   Printer,
   Copy,
-  Apple
+  Apple,
+  PenLine
 } from 'lucide-react';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
@@ -53,6 +53,29 @@ const BTN_PRIMARY = `inline-flex items-center justify-center gap-1.5 px-3.5 py-2
 const BTN_SECONDARY = `inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold border border-slate-300 transition-colors cursor-pointer min-h-[44px] sm:min-h-[36px] ${FOCUS}`;
 
 const ICON_BTN = `inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[32px] sm:min-h-[32px] rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS}`;
+
+const FIELD = `w-full px-3 min-h-[44px] sm:min-h-[36px] rounded-lg border border-slate-300 bg-white text-xs text-slate-800 ${FOCUS}`;
+const FIELD_LABEL = 'block text-xs font-semibold text-slate-700 mb-1';
+
+type EnergyKey = 'caloriesAvg' | 'proteinAvg' | 'carbsAvg' | 'fatAvg' | 'fiberAvg';
+const ENERGY_FIELDS: { key: EnergyKey; label: string }[] = [
+  { key: 'caloriesAvg', label: 'Kalori' },
+  { key: 'proteinAvg', label: 'Protein' },
+  { key: 'carbsAvg', label: 'Karbohidrat' },
+  { key: 'fatAvg', label: 'Lemak' },
+  { key: 'fiberAvg', label: 'Serat' },
+];
+
+const PORTION_FIELDS: { key: keyof PortionTierConfig; label: string }[] = [
+  { key: 'tierName', label: 'Untuk' },
+  { key: 'totalGramature', label: 'Total gramatur' },
+  { key: 'targetCalories', label: 'Target kalori' },
+  { key: 'proteinGrams', label: 'Protein' },
+  { key: 'carbGrams', label: 'Karbohidrat' },
+  { key: 'fatGrams', label: 'Lemak' },
+  { key: 'fiberGrams', label: 'Serat' },
+  { key: 'description', label: 'Uraian' },
+];
 
 type ToastTone = 'success' | 'warning' | 'error';
 
@@ -85,7 +108,7 @@ const CollapsibleCard: React.FC<{
   <details open={defaultOpen} className="group bg-white rounded-xl border border-slate-200">
     <summary className={`list-none [&::-webkit-details-marker]:hidden flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 min-h-[44px] cursor-pointer select-none rounded-xl hover:bg-slate-50 ${FOCUS}`}>
       <div className="min-w-0">
-        <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+        <h2 className="text-sm font-bold text-slate-900">{title}</h2>
         <p className="text-xs text-slate-600 mt-0.5">{summary}</p>
       </div>
       <ChevronDown className="w-4 h-4 text-slate-500 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
@@ -631,6 +654,92 @@ export const WebsiteCmsModule: React.FC = () => {
     }
   };
 
+  const patchMenuToday = (patch: Partial<WebsiteMenuTodayConfig>) =>
+    setConfig(prev => ({ ...prev, menuToday: { ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday), ...patch } }));
+
+  const patchEnergy = (key: EnergyKey, value: string) =>
+    setConfig(prev => {
+      const mt = prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+      return { ...prev, menuToday: { ...mt, energySummary: { ...mt.energySummary, [key]: value } } };
+    });
+
+  const patchPortion = (tier: 'portionSmall' | 'portionLarge', key: keyof PortionTierConfig, value: string) =>
+    setConfig(prev => {
+      const mt = prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+      return { ...prev, menuToday: { ...mt, [tier]: { ...mt[tier], [key]: value } } };
+    });
+
+  // Draf teks dari Gemini. Hasil masuk ke draf halaman ini dan baru tampil di website setelah Simpan.
+  const [aiBusy, setAiBusy] = useState<'description' | 'ingredients' | null>(null);
+
+  const fetchAiDraft = async (target: 'description' | 'ingredients'): Promise<MenuAiDraft | null> => {
+    const mt = config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+    setAiBusy(target);
+    try {
+      return await requestMenuAiDraft({
+        menuTitle: mt.menuTitle,
+        menuB3: mt.menuB3,
+        dateText: mt.dateText,
+        ingredients: mt.ingredients.map(i => ({ name: i.name, category: i.category })),
+      });
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Gagal membuat draf AI.');
+      return null;
+    } finally {
+      setAiBusy(null);
+    }
+  };
+
+  const handleAiDescription = async () => {
+    const mt = config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+    if (mt.description.trim()) {
+      const ok = await askConfirm({
+        title: 'Ganti deskripsi dengan draf AI?',
+        message: 'Deskripsi sajian yang sekarang akan ditimpa. Baca dulu hasilnya sebelum menyimpan.',
+        confirmText: 'Ganti',
+        variant: 'warning',
+      });
+      if (!ok) return;
+    }
+    const draft = await fetchAiDraft('description');
+    if (!draft?.description.trim()) return;
+    patchMenuToday({ description: draft.description.trim() });
+    showNotification('Draf deskripsi masuk. Baca dan perbaiki dulu sebelum Simpan.');
+  };
+
+  // Hanya mengisi kolom teks bahan yang masih kosong, supaya tulisan petugas tidak tertimpa.
+  const handleAiIngredients = async () => {
+    const draft = await fetchAiDraft('ingredients');
+    if (!draft) return;
+    const byName = new Map(draft.ingredients.map(d => [normalizeName(d.name), d]));
+    const merge = (items: IngredientNutritionInfo[]) =>
+      items.map(item => {
+        const d = byName.get(normalizeName(item.name));
+        if (!d) return item;
+        return {
+          ...item,
+          healthBenefits: item.healthBenefits.trim() ? item.healthBenefits : d.healthBenefits.trim(),
+          whyGood: item.whyGood?.some(w => w.trim()) ? item.whyGood : d.whyGood.map(w => w.trim()).filter(Boolean),
+          funFact: item.funFact?.trim() ? item.funFact : d.funFact.trim(),
+        };
+      });
+    // Hitungan dari state saat ini hanya untuk pesan; penulisan lewat updater agar ketikan selama menunggu AI tidak hilang.
+    const current = (config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).ingredients;
+    const filled = merge(current).filter((next, i) =>
+      next.healthBenefits !== current[i].healthBenefits || next.whyGood !== current[i].whyGood || next.funFact !== current[i].funFact
+    ).length;
+    setConfig(prev => {
+      const mt = prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+      return { ...prev, menuToday: { ...mt, ingredients: merge(mt.ingredients) } };
+    });
+    showNotification(
+      filled > 0
+        ? `Teks ${filled} bahan diisi draf AI. Kolom yang sudah ada isinya tidak diubah.`
+        : 'Semua bahan sudah punya teks, tidak ada yang diubah.',
+      filled > 0 ? 'success' : 'warning'
+    );
+  };
+
   // Helper & Handler untuk Menu MBG Hari Ini & QR Code
   const handleCopyQrLink = () => {
     const targetUrl = `${window.location.origin}/menu-mbg-hari-ini`;
@@ -787,34 +896,38 @@ export const WebsiteCmsModule: React.FC = () => {
   };
 
   return (
-    <div className={`space-y-4 ${isDirty ? 'pb-36 sm:pb-24' : ''}`}>
-      {/* Header */}
-      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 space-y-4">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Atur Website</h1>
-            <p className="text-xs text-slate-600 mt-0.5 max-w-2xl">
-              Video hero, foto menu MBG, kajian visual, dan halaman menu hari ini yang tampil di website publik.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <span className={`inline-flex items-center gap-1.5 text-xs mr-1 ${isDirty ? 'text-amber-800 font-semibold' : 'text-slate-600'}`}>
-              <span className={`w-2 h-2 rounded-full ${isDirty ? 'bg-amber-500' : 'bg-emerald-600'}`} aria-hidden="true" />
-              {isDirty ? 'Belum disimpan' : 'Semua tersimpan'}
-            </span>
-            <a href="/" target="_blank" rel="noopener noreferrer" className={BTN_SECONDARY}>
-              <ExternalLink className="w-4 h-4" />
-              Lihat Website
-            </a>
-            <button type="button" onClick={handleSaveAll} disabled={isCloudSaving || !isDirty} className={BTN_PRIMARY}>
-              <Save className="w-4 h-4" />
-              {isCloudSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
-            </button>
-          </div>
+    <div className="space-y-4">
+      {/* Header menempel di bawah navbar, supaya status dan tombol Simpan selalu terlihat tanpa bar mengambang */}
+      <div className="sticky top-14 z-30 bg-white px-4 py-3 sm:px-5 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Atur Website</h1>
+          <p className={`inline-flex items-center gap-1.5 text-xs ${isDirty ? 'text-amber-800 font-semibold' : 'text-slate-600'}`} aria-live="polite">
+            <span className={`w-2 h-2 rounded-full ${isDirty ? 'bg-amber-500' : 'bg-emerald-600'}`} aria-hidden="true" />
+            {isDirty ? 'Belum disimpan, website publik belum berubah' : 'Semua tersimpan'}
+          </p>
         </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {isDirty && (
+            <button type="button" onClick={handleDiscardChanges} disabled={isCloudSaving} className={BTN_SECONDARY}>
+              Batalkan
+            </button>
+          )}
+          <a href="/" target="_blank" rel="noopener noreferrer" className={`${BTN_SECONDARY} hidden sm:inline-flex`}>
+            <ExternalLink className="w-4 h-4" />
+            Lihat Website
+          </a>
+          <button type="button" onClick={handleSaveAll} disabled={isCloudSaving || !isDirty} className={BTN_PRIMARY}>
+            <Save className="w-4 h-4" />
+            {isCloudSaving ? 'Menyimpan...' : 'Simpan'}
+          </button>
+        </div>
+      </div>
 
-        <div role="tablist" aria-label="Bagian website" className="flex gap-1 p-1 bg-slate-100 rounded-lg text-xs overflow-x-auto max-w-full w-fit">
+      <div className="space-y-3 px-1">
+        <p className="text-xs text-slate-600 max-w-2xl">
+          Isi halaman menu hari ini (yang dibuka dari QR) dan bagian atas halaman depan website.
+        </p>
+        <div role="tablist" aria-label="Bagian website" className="flex gap-1 p-1 bg-slate-200/70 rounded-lg text-xs overflow-x-auto max-w-full w-fit">
           {([
             { id: 'menu_today', label: 'Menu Hari Ini & QR' },
             { id: 'hero', label: 'Bagian Atas (Hero)' },
@@ -838,13 +951,7 @@ export const WebsiteCmsModule: React.FC = () => {
       {/* 2. KONTEN TAB 1: HERO & VIDEO BACKGROUND */}
       {activeTab === 'hero' && (
         <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
-          <p className="text-xs text-slate-600">Bagian paling atas halaman depan website: judul, latar video atau foto, dan slide foto di kanan.</p>
-          <a href="/" target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 hover:underline min-h-[44px] sm:min-h-0 ${FOCUS}`}>
-            Lihat di website
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        </div>
+        <p className="text-xs text-slate-600 px-1">Bagian paling atas halaman depan website: judul, latar video atau foto, dan slide foto di kanan.</p>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Kolom Kiri: Konfigurasi Video & Kontrol */}
           <div className="lg:col-span-7 space-y-4">
@@ -1278,7 +1385,7 @@ export const WebsiteCmsModule: React.FC = () => {
 
           {/* Kolom Kanan: Pratinjau Tampilan Hero */}
           <div className="lg:col-span-5 space-y-4">
-            <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden sticky top-24 space-y-4 p-4">
+            <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden sticky top-40 space-y-4 p-4">
               <div className="flex items-center justify-between text-xs text-slate-200 pb-2 border-b border-slate-800">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-400" />
@@ -1386,90 +1493,22 @@ export const WebsiteCmsModule: React.FC = () => {
         </div>
       )}
 
-      {/* 4. KONTEN TAB 4: MENU MBG HARI INI & QR CODE */}
+      {/* KONTEN TAB: MENU MBG HARI INI & QR CODE */}
       {activeTab === 'menu_today' && (() => {
         const menuToday = config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
         const targetPublicUrl = `${window.location.origin}/menu-mbg-hari-ini`;
+        const energy = menuToday.energySummary;
+        const small = menuToday.portionSmall;
+        const large = menuToday.portionLarge;
+        const hero = menuToday.nutritionHero;
+        const habitCount = (menuToday.dailyHabits || []).filter(h => h.title.trim()).length;
 
         return (
           <div className="space-y-4">
-            {/* Kartu Hub QR Code & Akses Cepat */}
-            <div className="bg-emerald-900 rounded-xl p-4 sm:p-5 text-white border border-emerald-800">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
-                  <div className="p-3 bg-white rounded-lg shrink-0">
-                    {qrCodeDataUrl ? (
-                      <img src={qrCodeDataUrl} alt="QR Code Menu Hari Ini" className="w-28 h-28 object-contain" />
-                    ) : (
-                      <div className="w-28 h-28 flex items-center justify-center text-slate-400 text-xs">
-                        Membuat QR...
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-2 text-center sm:text-left">
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-700/60 border border-emerald-500/40 text-[11px] font-semibold text-emerald-100">
-                      <QrCode className="w-3.5 h-3.5" />
-                      <span>Akses Scan Meja & Nampan Makan Siswa</span>
-                    </div>
-                    <h3 className="text-lg font-bold text-white tracking-tight">
-                      Halaman Publik: /menu-mbg-hari-ini
-                    </h3>
-                    <p className="text-xs text-emerald-100/90 max-w-xl leading-relaxed">
-                      QR Code ini dapat ditempel di meja ruang makan sekolah, mading, atau nampan saji. Ketika siswa atau orang tua melakukan pemindaian (scan), mereka langsung diarahkan ke rincian menu, gramatur porsi besar/kecil, serta kandungan nutrisi dari tiap bahan pangan.
-                    </p>
-                    <div className="pt-1 flex items-center justify-center sm:justify-start gap-2 text-xs">
-                      <code className="px-2.5 py-1 rounded bg-black/30 border border-white/10 font-mono text-[11px] text-emerald-200 select-all">
-                        {targetPublicUrl}
-                      </code>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Tombol Aksi QR Code */}
-                <div className="flex flex-wrap sm:flex-col gap-2 shrink-0 w-full sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={() => window.open('/menu-mbg-hari-ini', '_blank')}
-                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-white hover:bg-emerald-50 text-emerald-950 font-semibold text-xs transition-colors cursor-pointer"
-                  >
-                    <ExternalLink className="w-4 h-4 text-emerald-700" />
-                    <span>Buka Halaman Publik</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleCopyQrLink}
-                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-800/80 hover:bg-emerald-700 border border-emerald-600/50 text-white font-medium text-xs transition-colors cursor-pointer"
-                  >
-                    {copiedQrLink ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
-                    <span>{copiedQrLink ? 'Tautan Disalin!' : 'Salin Tautan'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleDownloadQrPng}
-                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-800/80 hover:bg-emerald-700 border border-emerald-600/50 text-white font-medium text-xs transition-colors cursor-pointer"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Unduh PNG</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsPrintStickerModalOpen(true)}
-                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 border border-emerald-500 text-white font-semibold text-xs transition-colors cursor-pointer"
-                  >
-                    <Printer className="w-4 h-4" />
-                    <span>Cetak Stiker Meja</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Isi otomatis dari Rekap Order Menu */}
+            {/* Isi otomatis dari Rekap Order Menu: pekerjaan harian, jadi paling atas */}
             <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div className="min-w-0">
-                <h3 className="text-sm font-bold text-slate-900">Ambil dari Rekap Order Menu</h3>
+                <h2 className="text-sm font-bold text-slate-900">Ambil dari Rekap Order Menu</h2>
                 {selectedOrder ? (
                   <p className="text-xs text-slate-600 mt-0.5">
                     Menu {todayOrders.length > 1 ? `${selectedOrder.mealSession.toLowerCase()} ` : ''}hari ini:{' '}
@@ -1507,824 +1546,259 @@ export const WebsiteCmsModule: React.FC = () => {
               )}
             </div>
 
-            {/* Form Pengaturan Konten Menu Hari Ini */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-              {/* Kolom Kiri: Info Utama & Foto Menu */}
-              <div className="lg:col-span-7 space-y-4">
-                <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
-                        <UtensilsCrossed className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900">
-                          Identitas & Foto Sajian Menu Hari Ini
-                        </h3>
-                        <p className="text-[11px] text-slate-600">
-                          Informasi yang tampil di bagian atas halaman saat QR code di-scan
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Tanggal Sajian Menu
-                    </label>
-                    <input
-                      type="text"
-                      value={menuToday.dateText}
-                      onChange={e => setConfig(prev => ({
-                        ...prev,
-                        menuToday: {
-                          ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                          dateText: e.target.value
-                        }
-                      }))}
-                      placeholder="Contoh: Rabu, 15 Oktober 2026"
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Judul Sajian Menu
-                    </label>
-                    <input
-                      type="text"
-                      value={menuToday.menuTitle}
-                      onChange={e => setConfig(prev => ({
-                        ...prev,
-                        menuToday: {
-                          ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                          menuTitle: e.target.value
-                        }
-                      }))}
-                      placeholder="Contoh: Nasi Ayam Ungkep Bumbu Kuning & Sop Sayur Segar"
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="menu-b3" className="block text-xs font-semibold text-slate-700 mb-1">
-                      Menu 3B (ibu hamil, ibu menyusui, balita)
-                    </label>
-                    <input
-                      id="menu-b3"
-                      type="text"
-                      value={menuToday.menuB3 || ''}
-                      onChange={e => setConfig(prev => ({
-                        ...prev,
-                        menuToday: {
-                          ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                          menuB3: e.target.value
-                        }
-                      }))}
-                      placeholder="Pisahkan dengan koma. Contoh: Nasi tim, Ayam suwir, Sayur bayam, Pisang"
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                    />
-                    <p className="text-[11px] text-slate-600 mt-1">Terisi otomatis dari Rekap Order Menu. Kosongkan bila hari ini tidak ada menu 3B.</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Subjudul / Penjelasan Ringkas
-                    </label>
-                    <input
-                      type="text"
-                      value={menuToday.menuSubtitle}
-                      onChange={e => setConfig(prev => ({
-                        ...prev,
-                        menuToday: {
-                          ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                          menuSubtitle: e.target.value
-                        }
-                      }))}
-                      placeholder="Contoh: Siklus Hari Ke-3 | Standar Nutrisi BGN & UPT Puskesmas Tumpang"
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                    />
-                  </div>
-
-                  {/* Foto Menu Hari Ini */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Foto Sajian Menu Hari Ini
-                    </label>
-                    <div className="flex flex-col sm:flex-row items-start gap-3 p-3 rounded-lg border border-slate-200 bg-slate-50/50">
-                      <div className="w-36 h-24 rounded-lg overflow-hidden border border-slate-300 bg-slate-200 shrink-0">
-                        <img
-                          src={menuToday.imageUrl}
-                          alt="Foto Menu Hari Ini"
-                          className="w-full h-full object-cover"
-                          onError={e => {
-                            (e.currentTarget as HTMLImageElement).src = IMAGE_PRESETS[1].url;
-                          }}
-                        />
-                      </div>
-                      <div className="flex-1 space-y-2">
-                        <input
-                          type="file"
-                          ref={todayMenuPhotoFileRef}
-                          accept="image/*"
-                          onChange={handleUploadTodayMenuPhoto}
-                          className="hidden"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => todayMenuPhotoFileRef.current?.click()}
-                          disabled={isUploadingTodayMenuPhoto}
-                          className={`${BTN_PRIMARY}`}
-                        >
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>{isUploadingTodayMenuPhoto ? 'Memproses...' : 'Unggah Foto Baru (WebP)'}</span>
-                        </button>
-                        <div className="text-[11px] text-slate-500">
-                          Pilihan cepat preset foto sajian:
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {IMAGE_PRESETS.map(p => (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => {
-                                setConfig(prev => ({
-                                  ...prev,
-                                  menuToday: {
-                                    ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                                    imageUrl: p.url
-                                  }
-                                }));
-                              }}
-                              className={`px-2 py-0.5 rounded text-[10px] border transition-colors cursor-pointer ${
-                                menuToday.imageUrl === p.url
-                                  ? 'bg-emerald-700 text-white border-emerald-700'
-                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                              }`}
-                            >
-                              {p.label.split('(')[0]}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Deskripsi Sajian
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={menuToday.description}
-                      onChange={e => setConfig(prev => ({
-                        ...prev,
-                        menuToday: {
-                          ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                          description: e.target.value
-                        }
-                      }))}
-                      placeholder="Penjelasan menu, pengolahan higienis, dan cita rasa..."
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Peringatan Alergen / Keamanan Pangan
-                      </label>
-                      <input
-                        type="text"
-                        value={menuToday.allergensWarning || ''}
-                        onChange={e => setConfig(prev => ({
-                          ...prev,
-                          menuToday: {
-                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                            allergensWarning: e.target.value
-                          }
-                        }))}
-                        placeholder="Contoh: Mengandung kedelai. Bebas susu sapi & kacang tanah."
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Status Verifikasi QC & Gizi
-                      </label>
-                      <input
-                        type="text"
-                        value={menuToday.qcStatus || ''}
-                        onChange={e => setConfig(prev => ({
-                          ...prev,
-                          menuToday: {
-                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                            qcStatus: e.target.value
-                          }
-                        }))}
-                        placeholder="Contoh: Terverifikasi Ahli Gizi SPPG • Lolos Uji Organoleptik"
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Ringkasan Makronutrisi Sajian */}
-                <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4">
-                  <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
-                      <Sparkles className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900">
-                        Kandungan Gizi Makro Rata-Rata
-                      </h3>
-                      <p className="text-[11px] text-slate-600">
-                        Akumulasi nutrisi per porsi standar rekomendasi Badan Gizi Nasional
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Kalori Rata-Rata</label>
-                      <input
-                        type="text"
-                        value={menuToday.energySummary.caloriesAvg}
-                        onChange={e => setConfig(prev => ({
-                          ...prev,
-                          menuToday: {
-                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                            energySummary: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).energySummary,
-                              caloriesAvg: e.target.value
-                            }
-                          }
-                        }))}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-800"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Protein Rata-Rata</label>
-                      <input
-                        type="text"
-                        value={menuToday.energySummary.proteinAvg}
-                        onChange={e => setConfig(prev => ({
-                          ...prev,
-                          menuToday: {
-                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                            energySummary: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).energySummary,
-                              proteinAvg: e.target.value
-                            }
-                          }
-                        }))}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-800"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Karbohidrat Rata-Rata</label>
-                      <input
-                        type="text"
-                        value={menuToday.energySummary.carbsAvg}
-                        onChange={e => setConfig(prev => ({
-                          ...prev,
-                          menuToday: {
-                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                            energySummary: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).energySummary,
-                              carbsAvg: e.target.value
-                            }
-                          }
-                        }))}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-800"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Lemak Sehat</label>
-                      <input
-                        type="text"
-                        value={menuToday.energySummary.fatAvg}
-                        onChange={e => setConfig(prev => ({
-                          ...prev,
-                          menuToday: {
-                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                            energySummary: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).energySummary,
-                              fatAvg: e.target.value
-                            }
-                          }
-                        }))}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-800"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Serat Pangan</label>
-                      <input
-                        type="text"
-                        value={menuToday.energySummary.fiberAvg}
-                        onChange={e => setConfig(prev => ({
-                          ...prev,
-                          menuToday: {
-                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                            energySummary: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).energySummary,
-                              fiberAvg: e.target.value
-                            }
-                          }
-                        }))}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-800"
-                      />
-                    </div>
-                  </div>
-                </div>
+            {/* QR halaman publik */}
+            <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="w-20 h-20 shrink-0 rounded-lg border border-slate-200 bg-white p-1 flex items-center justify-center">
+                {qrCodeDataUrl ? (
+                  <img src={qrCodeDataUrl} alt="QR halaman menu hari ini" className="w-full h-full object-contain" />
+                ) : (
+                  <span className="text-[11px] text-slate-500">Membuat QR...</span>
+                )}
               </div>
-
-              {/* Kolom Kanan: Porsi Kecil vs Porsi Besar */}
-              <div className="lg:col-span-5 space-y-4">
-                <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-5">
-                  <div className="pb-3 border-b border-slate-100">
-                    <h3 className="text-sm font-bold text-slate-900">
-                      Standar Porsi: Porsi Kecil vs Porsi Besar
-                    </h3>
-                    <p className="text-[11px] text-slate-600">
-                      Pengaturan takaran yang berubah secara interaktif pada tombol toggle di halaman publik
-                    </p>
-                  </div>
-
-                  {/* Porsi Kecil */}
-                  <div className="p-4 rounded-lg border border-emerald-200 bg-emerald-50/40 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-emerald-900">1. Konfigurasi Porsi Kecil</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-200 text-emerald-800 font-semibold">
-                        PAUD & SD 1-3
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <label className="block text-[11px] text-slate-600 mb-0.5">Label Kategori</label>
-                        <input
-                          type="text"
-                          value={menuToday.portionSmall.tierName}
-                          onChange={e => setConfig(prev => ({
-                            ...prev,
-                            menuToday: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                              portionSmall: {
-                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
-                                tierName: e.target.value
-                              }
-                            }
-                          }))}
-                          className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] text-slate-600 mb-0.5">Total Gramatur</label>
-                        <input
-                          type="text"
-                          value={menuToday.portionSmall.totalGramature}
-                          onChange={e => setConfig(prev => ({
-                            ...prev,
-                            menuToday: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                              portionSmall: {
-                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
-                                totalGramature: e.target.value
-                              }
-                            }
-                          }))}
-                          className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="text-xs">
-                      <label className="block text-[11px] text-slate-600 mb-0.5">Target Kalori</label>
-                      <input
-                        type="text"
-                        value={menuToday.portionSmall.targetCalories}
-                        onChange={e => setConfig(prev => ({
-                          ...prev,
-                          menuToday: {
-                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                            portionSmall: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
-                              targetCalories: e.target.value
-                            }
-                          }
-                        }))}
-                        className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-4 gap-1.5 text-xs">
-                      <div>
-                        <label className="block text-[10px] text-slate-500 mb-0.5">Protein</label>
-                        <input
-                          type="text"
-                          value={menuToday.portionSmall.proteinGrams}
-                          onChange={e => setConfig(prev => ({
-                            ...prev,
-                            menuToday: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                              portionSmall: {
-                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
-                                proteinGrams: e.target.value
-                              }
-                            }
-                          }))}
-                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-slate-500 mb-0.5">Karbo</label>
-                        <input
-                          type="text"
-                          value={menuToday.portionSmall.carbGrams}
-                          onChange={e => setConfig(prev => ({
-                            ...prev,
-                            menuToday: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                              portionSmall: {
-                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
-                                carbGrams: e.target.value
-                              }
-                            }
-                          }))}
-                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-slate-500 mb-0.5">Lemak</label>
-                        <input
-                          type="text"
-                          value={menuToday.portionSmall.fatGrams}
-                          onChange={e => setConfig(prev => ({
-                            ...prev,
-                            menuToday: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                              portionSmall: {
-                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
-                                fatGrams: e.target.value
-                              }
-                            }
-                          }))}
-                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-slate-500 mb-0.5">Serat</label>
-                        <input
-                          type="text"
-                          value={menuToday.portionSmall.fiberGrams}
-                          onChange={e => setConfig(prev => ({
-                            ...prev,
-                            menuToday: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                              portionSmall: {
-                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
-                                fiberGrams: e.target.value
-                              }
-                            }
-                          }))}
-                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="text-xs">
-                      <label className="block text-[11px] text-slate-600 mb-0.5">Uraian / Pedoman Porsi Kecil</label>
-                      <textarea
-                        rows={2}
-                        value={menuToday.portionSmall.description}
-                        onChange={e => setConfig(prev => ({
-                          ...prev,
-                          menuToday: {
-                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                            portionSmall: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionSmall,
-                              description: e.target.value
-                            }
-                          }
-                        }))}
-                        className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Porsi Besar */}
-                  <div className="p-4 rounded-lg border border-sky-200 bg-sky-50/40 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-sky-900">2. Konfigurasi Porsi Besar</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-sky-200 text-sky-800 font-semibold">
-                        SD 4-6 & SMP
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <label className="block text-[11px] text-slate-600 mb-0.5">Label Kategori</label>
-                        <input
-                          type="text"
-                          value={menuToday.portionLarge.tierName}
-                          onChange={e => setConfig(prev => ({
-                            ...prev,
-                            menuToday: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                              portionLarge: {
-                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
-                                tierName: e.target.value
-                              }
-                            }
-                          }))}
-                          className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] text-slate-600 mb-0.5">Total Gramatur</label>
-                        <input
-                          type="text"
-                          value={menuToday.portionLarge.totalGramature}
-                          onChange={e => setConfig(prev => ({
-                            ...prev,
-                            menuToday: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                              portionLarge: {
-                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
-                                totalGramature: e.target.value
-                              }
-                            }
-                          }))}
-                          className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="text-xs">
-                      <label className="block text-[11px] text-slate-600 mb-0.5">Target Kalori</label>
-                      <input
-                        type="text"
-                        value={menuToday.portionLarge.targetCalories}
-                        onChange={e => setConfig(prev => ({
-                          ...prev,
-                          menuToday: {
-                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                            portionLarge: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
-                              targetCalories: e.target.value
-                            }
-                          }
-                        }))}
-                        className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-4 gap-1.5 text-xs">
-                      <div>
-                        <label className="block text-[10px] text-slate-500 mb-0.5">Protein</label>
-                        <input
-                          type="text"
-                          value={menuToday.portionLarge.proteinGrams}
-                          onChange={e => setConfig(prev => ({
-                            ...prev,
-                            menuToday: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                              portionLarge: {
-                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
-                                proteinGrams: e.target.value
-                              }
-                            }
-                          }))}
-                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-slate-500 mb-0.5">Karbo</label>
-                        <input
-                          type="text"
-                          value={menuToday.portionLarge.carbGrams}
-                          onChange={e => setConfig(prev => ({
-                            ...prev,
-                            menuToday: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                              portionLarge: {
-                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
-                                carbGrams: e.target.value
-                              }
-                            }
-                          }))}
-                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-slate-500 mb-0.5">Lemak</label>
-                        <input
-                          type="text"
-                          value={menuToday.portionLarge.fatGrams}
-                          onChange={e => setConfig(prev => ({
-                            ...prev,
-                            menuToday: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                              portionLarge: {
-                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
-                                fatGrams: e.target.value
-                              }
-                            }
-                          }))}
-                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-slate-500 mb-0.5">Serat</label>
-                        <input
-                          type="text"
-                          value={menuToday.portionLarge.fiberGrams}
-                          onChange={e => setConfig(prev => ({
-                            ...prev,
-                            menuToday: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                              portionLarge: {
-                                ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
-                                fiberGrams: e.target.value
-                              }
-                            }
-                          }))}
-                          className="w-full px-1.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800 font-mono"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="text-xs">
-                      <label className="block text-[11px] text-slate-600 mb-0.5">Uraian / Pedoman Porsi Besar</label>
-                      <textarea
-                        rows={2}
-                        value={menuToday.portionLarge.description}
-                        onChange={e => setConfig(prev => ({
-                          ...prev,
-                          menuToday: {
-                            ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                            portionLarge: {
-                              ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).portionLarge,
-                              description: e.target.value
-                            }
-                          }
-                        }))}
-                        className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-800"
-                      />
-                    </div>
-                  </div>
-                </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm font-bold text-slate-900">QR halaman menu hari ini</h2>
+                <p className="text-xs text-slate-600 mt-0.5">Ditempel di meja makan atau nampan. Isinya mengikuti pengaturan di bawah.</p>
+                <code className="inline-block mt-1.5 max-w-full truncate px-2 py-0.5 rounded bg-slate-100 font-mono text-[11px] text-slate-700 select-all">
+                  {targetPublicUrl}
+                </code>
               </div>
-            </div>
-
-            {/* Komposisi Bahan & Manfaat Kesehatan */}
-            <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">
-                    Bahan Pangan, Kandungan Gizi & Manfaat Kesehatan ({menuToday.ingredients.length} Bahan)
-                  </h3>
-                  <p className="text-[11px] text-slate-600">
-                    Rincian tiap komponen makanan yang ditampilkan dengan foto, takaran gramatur, dan manfaat kognitif bagi anak
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleOpenAddIngredient}
-                  className={`${BTN_PRIMARY} self-start sm:self-auto`}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Tambah Bahan Pangan</span>
+              <div className="flex flex-wrap gap-2 shrink-0">
+                <a href="/menu-mbg-hari-ini" target="_blank" rel="noopener noreferrer" className={BTN_SECONDARY}>
+                  <ExternalLink className="w-4 h-4" />
+                  Buka
+                </a>
+                <button type="button" onClick={handleCopyQrLink} className={BTN_SECONDARY}>
+                  {copiedQrLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {copiedQrLink ? 'Disalin' : 'Salin tautan'}
+                </button>
+                <button type="button" onClick={handleDownloadQrPng} disabled={!qrCodeDataUrl} className={BTN_SECONDARY}>
+                  <Download className="w-4 h-4" />
+                  Unduh PNG
+                </button>
+                <button type="button" onClick={() => setIsPrintStickerModalOpen(true)} className={BTN_SECONDARY}>
+                  <Printer className="w-4 h-4" />
+                  Cetak stiker meja
                 </button>
               </div>
-
-              {/* Grid Kartu Bahan */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {menuToday.ingredients.map((item, idx) => (
-                  <div
-                    key={item.id}
-                    className="p-4 rounded-lg border border-slate-200 bg-slate-50/40 hover:bg-white hover:border-emerald-300 transition-all space-y-3"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0">
-                        <img
-                          src={item.imageUrl}
-                          alt={item.name}
-                          className="w-full h-full object-cover"
-                          onError={e => {
-                            (e.currentTarget as HTMLImageElement).src = IMAGE_PRESETS[1].url;
-                          }}
-                        />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 capitalize">
-                            {item.category.replace('_', ' ')}
-                          </span>
-                          <span className="text-[10px] font-mono text-slate-400">#{idx + 1}</span>
-                        </div>
-                        <h4 className="font-semibold text-xs text-slate-900 truncate mt-1">
-                          {item.name}
-                        </h4>
-                        <div className="text-[10px] text-slate-500 mt-0.5">
-                          Pemasok: {item.supplier || 'Mitra Lokal SPPG'}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Takaran Porsi */}
-                    <div className="grid grid-cols-2 gap-2 text-[10px] bg-white p-2 rounded-lg border border-slate-100">
-                      <div>
-                        <span className="text-slate-400 block">Porsi Kecil:</span>
-                        <span className="font-medium text-slate-800">{item.portionSmall}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block">Porsi Besar:</span>
-                        <span className="font-medium text-slate-800">{item.portionLarge}</span>
-                      </div>
-                    </div>
-
-                    {/* Manfaat Kesehatan & Kandungan Gizi */}
-                    <div className="space-y-1.5 text-[11px]">
-                      <div>
-                        <span className="text-[10px] font-semibold text-emerald-800 block">Kandungan Gizi:</span>
-                        <span className="text-[11px] text-slate-700 font-medium">
-                          {item.nutritionHighlight}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-semibold text-emerald-800 block">Manfaat:</span>
-                        <p className="text-[11px] text-slate-600 line-clamp-2 leading-tight">
-                          {item.healthBenefits}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Tombol Aksi Bahan */}
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleMoveIngredient(idx, 'up')}
-                          disabled={idx === 0}
-                          className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
-                          aria-label="Naikkan urutan"
-                          title="Naikkan urutan"
-                        >
-                          <ChevronLeft className="w-3.5 h-3.5 rotate-90" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleMoveIngredient(idx, 'down')}
-                          disabled={idx === menuToday.ingredients.length - 1}
-                          className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`}
-                          aria-label="Turunkan urutan"
-                          title="Turunkan urutan"
-                        >
-                          <ChevronRight className="w-3.5 h-3.5 rotate-90" />
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditIngredient(item)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-medium cursor-pointer"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                          <span>Edit</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteIngredient(item.id)}
-                          className={`${ICON_BTN} text-rose-600 hover:bg-rose-50`}
-                          aria-label="Hapus bahan"
-                          title="Hapus bahan"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
 
-            {/* Konten edukasi anak: Pahlawan Gizi & Kebiasaan Baik */}
-            <MenuTodayKidsEditor
-              menuToday={menuToday}
-              onNotify={showNotification}
-              onChange={patch => setConfig(prev => ({
-                ...prev,
-                menuToday: {
-                  ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-                  ...patch
-                }
-              }))}
-            />
+            <CollapsibleCard
+              title="Menu & foto"
+              summary={`${menuToday.menuTitle || 'Judul belum diisi'}${menuToday.dateText ? ` · ${menuToday.dateText}` : ''}`}
+              defaultOpen
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="mt-date" className={FIELD_LABEL}>Tanggal sajian</label>
+                  <input id="mt-date" type="text" value={menuToday.dateText} onChange={e => patchMenuToday({ dateText: e.target.value })}
+                    placeholder="Rabu, 15 Oktober 2026" className={FIELD} />
+                </div>
+                <div>
+                  <label htmlFor="mt-subtitle" className={FIELD_LABEL}>Subjudul</label>
+                  <input id="mt-subtitle" type="text" value={menuToday.menuSubtitle} onChange={e => patchMenuToday({ menuSubtitle: e.target.value })}
+                    placeholder="Siklus hari ke-3" className={FIELD} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label htmlFor="mt-title" className={FIELD_LABEL}>Judul menu</label>
+                  <input id="mt-title" type="text" value={menuToday.menuTitle} onChange={e => patchMenuToday({ menuTitle: e.target.value })}
+                    placeholder="Nasi ayam ungkep bumbu kuning & sop sayur" className={FIELD} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label htmlFor="menu-b3" className={FIELD_LABEL}>Menu 3B (ibu hamil, ibu menyusui, balita)</label>
+                  <input id="menu-b3" type="text" value={menuToday.menuB3 || ''} onChange={e => patchMenuToday({ menuB3: e.target.value })}
+                    placeholder="Pisahkan dengan koma. Kosongkan bila tidak ada menu 3B" className={FIELD} />
+                </div>
+              </div>
 
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <div>
+                  <span className={FIELD_LABEL}>Foto sajian</span>
+                  <div className="flex items-start gap-3">
+                    <div className="w-32 h-24 rounded-lg overflow-hidden border border-slate-300 bg-slate-100 shrink-0">
+                      <img
+                        src={menuToday.imageUrl}
+                        alt="Foto menu hari ini"
+                        className="w-full h-full object-cover"
+                        onError={e => {
+                          (e.currentTarget as HTMLImageElement).src = IMAGE_PRESETS[1].url;
+                        }}
+                      />
+                    </div>
+                    <div className="min-w-0 space-y-2">
+                      <input type="file" ref={todayMenuPhotoFileRef} accept="image/*" onChange={handleUploadTodayMenuPhoto} className="hidden" />
+                      <button type="button" onClick={() => todayMenuPhotoFileRef.current?.click()} disabled={isUploadingTodayMenuPhoto} className={BTN_SECONDARY}>
+                        <Upload className="w-4 h-4" />
+                        {isUploadingTodayMenuPhoto ? 'Memproses...' : 'Unggah foto'}
+                      </button>
+                      <Select
+                        aria-label="Pakai foto contoh"
+                        size="sm"
+                        value={IMAGE_PRESETS.some(p => p.url === menuToday.imageUrl) ? menuToday.imageUrl : ''}
+                        onChange={e => e.target.value && patchMenuToday({ imageUrl: e.target.value })}
+                      >
+                        <option value="">Atau pilih foto contoh</option>
+                        {IMAGE_PRESETS.map(p => (
+                          <option key={p.id} value={p.url}>{p.label.split('(')[0].trim()}</option>
+                        ))}
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-end justify-between gap-2 mb-1">
+                    <label htmlFor="mt-desc" className={`${FIELD_LABEL} mb-0`}>Deskripsi sajian</label>
+                    <button type="button" onClick={handleAiDescription} disabled={aiBusy !== null}
+                      className={`inline-flex items-center gap-1 px-2 min-h-[44px] sm:min-h-[28px] rounded-md text-xs font-semibold text-emerald-800 hover:bg-emerald-50 disabled:text-slate-400 cursor-pointer disabled:cursor-wait ${FOCUS}`}>
+                      <PenLine className="w-3.5 h-3.5" />
+                      {aiBusy === 'description' ? 'Menulis...' : 'Tulis draf dengan AI'}
+                    </button>
+                  </div>
+                  <textarea id="mt-desc" rows={4} value={menuToday.description} onChange={e => patchMenuToday({ description: e.target.value })}
+                    placeholder="Penjelasan menu dan cara pengolahannya" className={`${FIELD} py-2`} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="mt-allergen" className={FIELD_LABEL}>Peringatan alergen</label>
+                  <input id="mt-allergen" type="text" value={menuToday.allergensWarning || ''} onChange={e => patchMenuToday({ allergensWarning: e.target.value })}
+                    placeholder="Mengandung kedelai" className={FIELD} />
+                </div>
+                <div>
+                  <label htmlFor="mt-qc" className={FIELD_LABEL}>Status QC & gizi</label>
+                  <input id="mt-qc" type="text" value={menuToday.qcStatus || ''} onChange={e => patchMenuToday({ qcStatus: e.target.value })}
+                    placeholder="Diperiksa ahli gizi SPPG" className={FIELD} />
+                </div>
+              </div>
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Gizi & porsi"
+              summary={[
+                energy.caloriesAvg && `Rata-rata ${energy.caloriesAvg}`,
+                (small.totalGramature || large.totalGramature) && `porsi kecil ${small.totalGramature || '-'}, besar ${large.totalGramature || '-'}`,
+              ].filter(Boolean).join(' · ') || 'Belum diisi'}
+            >
+              <div>
+                <span className={FIELD_LABEL}>Kandungan gizi rata-rata per porsi</span>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {ENERGY_FIELDS.map(f => (
+                    <div key={f.key}>
+                      <label htmlFor={`energy-${f.key}`} className="block text-[11px] text-slate-600 mb-1">{f.label}</label>
+                      <input id={`energy-${f.key}`} type="text" value={energy[f.key]} onChange={e => patchEnergy(f.key, e.target.value)} className={FIELD} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-separate border-spacing-y-1.5 min-w-[420px]">
+                  <thead>
+                    <tr className="text-left text-slate-600">
+                      <th scope="col" className="font-semibold w-28 pr-2">Takaran</th>
+                      <th scope="col" className="font-semibold px-1">Porsi kecil</th>
+                      <th scope="col" className="font-semibold px-1">Porsi besar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {PORTION_FIELDS.map(f => (
+                      <tr key={f.key} className="align-top">
+                        <th scope="row" className="font-medium text-slate-700 text-left pr-2 pt-2.5">{f.label}</th>
+                        {(['portionSmall', 'portionLarge'] as const).map(tier => (
+                          <td key={tier} className="px-1">
+                            {f.key === 'description' ? (
+                              <textarea rows={2} aria-label={`${f.label} ${tier === 'portionSmall' ? 'porsi kecil' : 'porsi besar'}`}
+                                value={menuToday[tier][f.key]} onChange={e => patchPortion(tier, f.key, e.target.value)} className={`${FIELD} py-2`} />
+                            ) : (
+                              <input type="text" aria-label={`${f.label} ${tier === 'portionSmall' ? 'porsi kecil' : 'porsi besar'}`}
+                                value={menuToday[tier][f.key]} onChange={e => patchPortion(tier, f.key, e.target.value)} className={FIELD} />
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Bahan pangan"
+              summary={menuToday.ingredients.length > 0
+                ? `${menuToday.ingredients.length} bahan: ${menuToday.ingredients.slice(0, 4).map(i => i.name).join(', ')}${menuToday.ingredients.length > 4 ? ', ...' : ''}`
+                : 'Belum ada bahan'}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-slate-600">Foto, takaran, dan manfaat tiap bahan. Urutan di sini sama dengan di halaman publik.</p>
+                <div className="flex flex-wrap justify-end gap-2 shrink-0">
+                  {menuToday.ingredients.length > 0 && (
+                    <button type="button" onClick={handleAiIngredients} disabled={aiBusy !== null} className={`${BTN_SECONDARY} disabled:cursor-wait disabled:text-slate-400`}>
+                      <PenLine className="w-4 h-4" />
+                      {aiBusy === 'ingredients' ? 'Menulis...' : 'Isi teks kosong dengan AI'}
+                    </button>
+                  )}
+                  <button type="button" onClick={handleOpenAddIngredient} className={BTN_PRIMARY}>
+                    <Plus className="w-4 h-4" />
+                    Tambah bahan
+                  </button>
+                </div>
+              </div>
+
+              {menuToday.ingredients.length === 0 ? (
+                <p className="text-xs text-slate-500 py-4 text-center border border-dashed border-slate-300 rounded-lg">
+                  Belum ada bahan. Pakai "Isi otomatis" di atas atau tambah manual.
+                </p>
+              ) : (
+                <ul className="divide-y divide-slate-200 border border-slate-200 rounded-lg">
+                  {menuToday.ingredients.map((item, idx) => {
+                    const incomplete = !item.nutritionHighlight.trim() || !item.healthBenefits.trim();
+                    return (
+                      <li key={item.id} className="flex items-center gap-3 px-3 py-2">
+                        <div className="w-10 h-10 rounded-md overflow-hidden border border-slate-200 bg-slate-100 shrink-0">
+                          {item.imageUrl && (
+                            <img src={item.imageUrl} alt="" className="w-full h-full object-cover"
+                              onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-slate-900 truncate">{item.name}</p>
+                          <p className="text-[11px] text-slate-600 truncate">
+                            {[item.category.replace('_', ' '), item.portionSmall && item.portionLarge ? `${item.portionSmall} / ${item.portionLarge}` : '']
+                              .filter(Boolean).join(' · ') || 'Takaran belum diisi'}
+                            {incomplete && <span className="text-amber-800"> · data gizi belum lengkap</span>}
+                          </p>
+                        </div>
+                        <div className="flex items-center shrink-0">
+                          <button type="button" onClick={() => handleMoveIngredient(idx, 'up')} disabled={idx === 0}
+                            className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`} aria-label={`Naikkan ${item.name}`}>
+                            <ChevronLeft className="w-4 h-4 rotate-90" />
+                          </button>
+                          <button type="button" onClick={() => handleMoveIngredient(idx, 'down')} disabled={idx === menuToday.ingredients.length - 1}
+                            className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`} aria-label={`Turunkan ${item.name}`}>
+                            <ChevronRight className="w-4 h-4 rotate-90" />
+                          </button>
+                          <button type="button" onClick={() => handleOpenEditIngredient(item)}
+                            className={`${ICON_BTN} text-slate-700 hover:bg-slate-100`} aria-label={`Ubah ${item.name}`}>
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button type="button" onClick={() => handleDeleteIngredient(item.id)}
+                            className={`${ICON_BTN} text-rose-700 hover:bg-rose-50`} aria-label={`Hapus ${item.name}`}>
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Konten anak"
+              summary={`${hero?.name?.trim() ? `Pahlawan gizi: ${hero.name}` : 'Pahlawan gizi disembunyikan'} · ${habitCount} kebiasaan baik`}
+            >
+              <MenuTodayKidsEditor menuToday={menuToday} onNotify={showNotification} onChange={patchMenuToday} />
+            </CollapsibleCard>
           </div>
         );
       })()}
@@ -2927,31 +2401,6 @@ export const WebsiteCmsModule: React.FC = () => {
         </div>
       )}
 
-      {/* Bar bawah: selalu terlihat walau halaman digulir jauh dari tombol Simpan di header */}
-      {isDirty && (
-        <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-4 pointer-events-none no-print">
-          <div className="max-w-3xl mx-auto pointer-events-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg bg-slate-900 text-white">
-            <p className="text-xs">
-              <span className="font-semibold">Ada perubahan yang belum disimpan.</span>{' '}
-              <span className="text-slate-300">Website publik belum berubah sampai kamu klik Simpan.</span>
-            </p>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={handleDiscardChanges}
-                disabled={isCloudSaving}
-                className={`px-3 py-2 min-h-[44px] sm:min-h-[34px] rounded-lg text-xs font-semibold text-slate-200 hover:text-white hover:bg-white/10 cursor-pointer disabled:opacity-50 ${FOCUS}`}
-              >
-                Batalkan
-              </button>
-              <button type="button" onClick={handleSaveAll} disabled={isCloudSaving} className={BTN_PRIMARY}>
-                <Save className="w-4 h-4" />
-                {isCloudSaving ? 'Menyimpan...' : 'Simpan'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
