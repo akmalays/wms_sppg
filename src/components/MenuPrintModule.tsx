@@ -12,7 +12,7 @@ import {FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY} from "./common/For
 import templateSingle from "../assets/poster-single.jpg";
 import templateDouble from "../assets/poster-double.jpg";
 import logoSppg from "../assets/logo sppg.png";
-import {drawGreenPoster, drawPurplePoster, type DrawnPosterInput, type PosterTrayBox} from "./print/menuPosterDesigns";
+import {drawGreenPoster, drawPurplePoster, greenLabelTexts, GREEN_LABEL_DEFAULTS, type DrawnPosterInput, type PosterTrayBox, type LabelPlacement} from "./print/menuPosterDesigns";
 
 interface NutritionValues {
   energy: string; // kkal
@@ -30,6 +30,8 @@ interface MenuCardData {
   photoOriginal?: string | null;
   largePortion: NutritionValues;
   smallPortion: NutritionValues;
+  /** Letak nama hidangan yang digeser di pratinjau (desain Hijau); null = letak bawaan desain. */
+  labelPlacements?: LabelPlacement[] | null;
 }
 
 const EMPTY_NUTRITION: NutritionValues = {energy: "", protein: "", fat: "", carb: "", fiber: ""};
@@ -248,6 +250,8 @@ interface PosterBase {
 interface DrawnPosterTemplate extends PosterBase {
   kind: "drawn";
   draw: (ctx: CanvasRenderingContext2D, input: DrawnPosterInput) => void;
+  /** Nama hidangan dan panahnya bisa digeser di pratinjau. */
+  labels?: {texts: (items: string[]) => string[]; defaults: LabelPlacement[]};
 }
 
 type PosterTemplate = ImagePosterTemplate | DrawnPosterTemplate;
@@ -307,7 +311,8 @@ const POSTER_TEMPLATES: PosterTemplate[] = [
     width: 1587,
     height: 2245,
     draw: drawGreenPoster,
-    itemsHint: "Desain Hijau menaruh hidangan di sekeliling nampan sesuai urutan baris: 1 kiri atas, 2 kanan atas, 3 kiri bawah, 4 kanan bawah, 5 dan seterusnya di bawah. Urutkan sesuai letaknya di foto.",
+    labels: {texts: greenLabelTexts, defaults: GREEN_LABEL_DEFAULTS},
+    itemsHint: "Desain Hijau menaruh hidangan di sekeliling nampan sesuai urutan baris: 1 kiri atas, 2 kanan atas, 3 kiri bawah, 4 kanan bawah, 5 dan seterusnya di bawah. Kalau letak makanan di foto berbeda, pakai \"Atur letak nama\" di pratinjau untuk menggeser nama dan pangkal panahnya.",
   },
   {
     id: "ceria",
@@ -647,6 +652,7 @@ async function drawCanvasPoster(canvas: HTMLCanvasElement, layout: DrawnPosterTe
     small: nutritionRowsFor(menu.smallPortion),
     logo,
     slhs: {img: slhsSource, ...SLHS_CROP},
+    labelPlacements: menu.labelPlacements ?? undefined,
     drawTray: (box: PosterTrayBox, placeholder) => {
       if (photo && menu.photoOriginal) drawTrayCutout(ctx, box, photo, null);
       else if (photo) drawTrayPhoto(ctx, box, photo);
@@ -654,6 +660,84 @@ async function drawCanvasPoster(canvas: HTMLCanvasElement, layout: DrawnPosterTe
     },
   });
 }
+
+// Pegangan yang bisa digeser di atas pratinjau: kotak bernomor untuk nama hidangan, bulatan untuk pangkal panah
+// (titik makanan di foto). Bisa dengan mouse, sentuhan, atau tombol panah keyboard (Shift untuk langkah besar).
+const LabelPlacementOverlay: React.FC<{
+  width: number;
+  height: number;
+  texts: string[];
+  placements: LabelPlacement[];
+  onChange: (next: LabelPlacement[]) => void;
+}> = ({width, height, texts, placements, onChange}) => {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{index: number; part: "label" | "tip"} | null>(null);
+
+  const move = (index: number, part: "label" | "tip", x: number, y: number) => {
+    const cx = Math.min(width, Math.max(0, Math.round(x)));
+    const cy = Math.min(height, Math.max(0, Math.round(y)));
+    onChange(placements.map((p, i) => (i !== index ? p : part === "label" ? {...p, x: cx, y: cy} : {...p, tipX: cx, tipY: cy})));
+  };
+
+  const toPoster = (e: React.PointerEvent) => {
+    const rect = boxRef.current!.getBoundingClientRect();
+    return [((e.clientX - rect.left) / rect.width) * width, ((e.clientY - rect.top) / rect.height) * height] as const;
+  };
+
+  const handlers = (index: number, part: "label" | "tip") => ({
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      drag.current = {index, part};
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (drag.current?.index !== index || drag.current.part !== part) return;
+      const [x, y] = toPoster(e);
+      move(index, part, x, y);
+    },
+    onPointerUp: () => {
+      drag.current = null;
+    },
+    onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => {
+      const step = e.shiftKey ? 60 : 15;
+      const d = {ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step]}[e.key];
+      if (!d) return;
+      e.preventDefault();
+      const p = placements[index];
+      if (part === "label") move(index, part, p.x + d[0], p.y + d[1]);
+      else move(index, part, p.tipX + d[0], p.tipY + d[1]);
+    },
+  });
+
+  const pos = (x: number, y: number) => ({left: `${(x / width) * 100}%`, top: `${(y / height) * 100}%`});
+
+  return (
+    <div ref={boxRef} className="absolute inset-0 no-print touch-none select-none">
+      {placements.map((p, i) => (
+        <React.Fragment key={i}>
+          <button
+            type="button"
+            {...handlers(i, "tip")}
+            aria-label={`Pangkal panah ${texts[i]}. Geser ke makanannya, atau pakai tombol panah.`}
+            className="absolute -translate-x-1/2 -translate-y-1/2 w-6 h-6 pointer-coarse:w-9 pointer-coarse:h-9 rounded-full bg-amber-300 border-2 border-white shadow cursor-grab active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-1"
+            style={pos(p.tipX, p.tipY)}
+          >
+            <span className="text-[10px] font-bold text-slate-900">{i + 1}</span>
+          </button>
+          <button
+            type="button"
+            {...handlers(i, "label")}
+            aria-label={`Nama ${texts[i]}. Geser ke tempat yang kosong, atau pakai tombol panah.`}
+            className="absolute -translate-x-1/2 -translate-y-1/2 max-w-[30%] px-2 min-h-[28px] pointer-coarse:min-h-[44px] rounded-md bg-white/90 border-2 border-amber-400 text-[11px] font-semibold text-slate-900 truncate shadow cursor-grab active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-1"
+            style={pos(p.x, p.y)}
+          >
+            {i + 1}. {texts[i]}
+          </button>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+};
 
 const THUMB_SCALE = 0.25;
 
@@ -733,6 +817,14 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [placingLabels, setPlacingLabels] = useState(false);
+  const placementSupported = (() => {
+    const t = findTemplate(printMode, templateIds[printMode]);
+    return isDrawnPoster(t) && Boolean(t.labels);
+  })();
+  useEffect(() => {
+    if (!placementSupported) setPlacingLabels(false);
+  }, [placementSupported]);
   const autoFilledRef = useRef(false);
 
   // Rencana menu bisa datang belakangan dari sinkronisasi cloud
@@ -752,6 +844,18 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
   const activeTemplate = findTemplate(printMode, templateIds[printMode]);
   const editingIndex = printMode === "SINGLE" ? 0 : activeMenu;
   const current = menus[editingIndex];
+  // Letak nama hidangan yang bisa digeser: hanya desain yang mendukung, dan jumlahnya mengikuti label yang tergambar.
+  const labelSetup = isDrawnPoster(activeTemplate) && activeTemplate.labels
+    ? {texts: activeTemplate.labels.texts(current.items), defaults: activeTemplate.labels.defaults}
+    : null;
+  const hasPlacements = Boolean(current.labelPlacements);
+  useEffect(() => {
+    if (!hasPlacements) setPlacingLabels(false);
+  }, [hasPlacements]);
+  // Jumlah hidangan bisa berubah setelah letak diatur: label baru memakai letak bawaan, label yang hilang dibuang.
+  const placementsForOverlay = labelSetup && current.labelPlacements
+    ? labelSetup.texts.map((_, i) => current.labelPlacements![i] ?? labelSetup.defaults[i])
+    : null;
 
   const updateMenu = (index: number, patch: Partial<MenuCardData>) =>
     setMenus((prev) => prev.map((m, i) => (i === index ? {...m, ...patch} : m)));
@@ -1244,13 +1348,56 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
               {renderError}
             </p>
           )}
-          <canvas
-            ref={canvasRef}
-            role="img"
-            aria-label={`Pratinjau poster menu ${formatPosterDate(selectedDate)}`}
-            className="poster-canvas block w-full h-auto rounded-lg border border-slate-200 bg-slate-50"
-            style={{aspectRatio: `${activeTemplate.width} / ${activeTemplate.height}`}}
-          />
+          {labelSetup && (
+            <div className="mb-3 no-print flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+              <p className="text-xs text-slate-700 min-w-0">
+                {placingLabels
+                  ? "Geser kotak nama ke tempat kosong dan bulatan kuning ke makanannya di foto."
+                  : current.labelPlacements
+                  ? "Letak nama sudah diatur sendiri."
+                  : "Letak nama mengikuti urutan baris hidangan."}
+              </p>
+              <div className="flex items-center gap-2 shrink-0">
+                {current.labelPlacements && (
+                  <button type="button" onClick={() => updateMenu(editingIndex, {labelPlacements: null})} className={BTN_SECONDARY}>
+                    Kembalikan bawaan
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-pressed={placingLabels}
+                  disabled={labelSetup.texts.length === 0}
+                  onClick={() => {
+                    if (!placingLabels && !current.labelPlacements) {
+                      updateMenu(editingIndex, {labelPlacements: labelSetup.defaults.slice(0, labelSetup.texts.length)});
+                    }
+                    setPlacingLabels((v) => !v);
+                  }}
+                  className={`${placingLabels ? BTN_PRIMARY : BTN_SECONDARY} disabled:opacity-50`}
+                >
+                  {placingLabels ? "Selesai" : "Atur letak nama"}
+                </button>
+              </div>
+            </div>
+          )}
+          <div className="relative">
+            <canvas
+              ref={canvasRef}
+              role="img"
+              aria-label={`Pratinjau poster menu ${formatPosterDate(selectedDate)}`}
+              className="poster-canvas block w-full h-auto rounded-lg border border-slate-200 bg-slate-50"
+              style={{aspectRatio: `${activeTemplate.width} / ${activeTemplate.height}`}}
+            />
+            {placingLabels && labelSetup && placementsForOverlay && (
+              <LabelPlacementOverlay
+                width={activeTemplate.width}
+                height={activeTemplate.height}
+                texts={labelSetup.texts}
+                placements={placementsForOverlay}
+                onChange={(next) => updateMenu(editingIndex, {labelPlacements: next})}
+              />
+            )}
+          </div>
         </section>
       </div>
     </div>

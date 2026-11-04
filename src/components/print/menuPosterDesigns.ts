@@ -3,6 +3,9 @@
 
 export interface PosterTrayBox {cx: number; cy: number; w: number; h: number; rot: number}
 
+/** Letak satu nama hidangan di poster (koordinat kanvas 1587 x 2245): titik tengah teks dan ujung panah. */
+export interface LabelPlacement {x: number; y: number; tipX: number; tipY: number}
+
 export interface DrawnPosterInput {
   /** "Selasa, 3 November 2026" */
   dateLong: string;
@@ -14,6 +17,8 @@ export interface DrawnPosterInput {
   slhs: {img: HTMLImageElement; sx: number; sy: number; sw: number; sh: number};
   /** Menggambar foto nampan (atau tempat foto bila belum diunggah) di kotak yang diberikan. */
   drawTray: (box: PosterTrayBox, placeholder: {fill: string; stroke: string; text: string}) => void;
+  /** Letak label yang digeser petugas, per urutan label; kosong atau null = letak bawaan desain. */
+  labelPlacements?: (LabelPlacement | null)[];
 }
 
 export const SOCIAL = {instagram: "sppgmalangtumpangjeru", tiktok: "sppg.jeru"};
@@ -169,12 +174,211 @@ const GREEN_LABEL_SLOTS = [
   {x: 793, y: 1610, from: [793, 1420], to: [793, 1540], bend: 26, wrapW: 640},
 ];
 
+/** Label desain Hijau: 4 hidangan pertama masing-masing satu label, sisanya digabung di label ke-5. */
+export function greenLabelTexts(items: string[]): string[] {
+  const clean = items.map((it) => it.trim()).filter(Boolean);
+  const labels = clean.slice(0, 4);
+  if (clean.length > 4) labels.push(clean.slice(4).join(", "));
+  return labels;
+}
+
+const GREEN_TRAY_CENTER = [793, 1205];
+
+/**
+ * Letak bawaan label Hijau dalam bentuk yang bisa digeser. tip adalah pangkal panah di makanan (panah berangkat
+ * dari nampan menuju teks), jadi petugas menggeser tip ke sekat yang benar di foto.
+ */
+export const GREEN_LABEL_DEFAULTS: LabelPlacement[] = GREEN_LABEL_SLOTS.map((s) => ({x: s.x, y: s.y, tipX: s.from[0], tipY: s.from[1]}));
+
+// Ukuran kotak teks label, dipakai untuk menentukan dari mana panah custom berangkat.
+function labelLines(ctx: CanvasRenderingContext2D, text: string, wrapW: number): {lines: string[]; px: number} {
+  let px = 46;
+  let lines: string[] = [];
+  for (; px >= 30; px -= 2) {
+    ctx.font = `500 ${px}px ${SANS}`;
+    lines = wrap(ctx, text, wrapW);
+    if (lines.length <= 3) break;
+  }
+  return {lines, px};
+}
+
+// Panah custom: berangkat dari titik makanan yang ditunjuk petugas menuju tepi kotak teks, sama seperti panah bawaan.
+// Lengkungan dibuat menjauhi tengah nampan agar tidak memotong foto.
+function drawPlacedArrow(ctx: CanvasRenderingContext2D, p: LabelPlacement, halfW: number, halfH: number) {
+  const dx = p.tipX - p.x;
+  const dy = p.tipY - p.y;
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return;
+  const exit = Math.min(dx ? halfW / Math.abs(dx) : Infinity, dy ? halfH / Math.abs(dy) : Infinity);
+  const ex = p.x + dx * exit + (dx / len) * 22;
+  const ey = p.y + dy * exit + (dy / len) * 22;
+  const ax = ex - p.tipX;
+  const ay = ey - p.tipY;
+  const alen = Math.hypot(ax, ay);
+  // Titik makanan di dalam atau terlalu dekat dengan teks: panah tidak digambar.
+  if (exit >= 1 || alen < 40) return;
+  const mx = (p.tipX + ex) / 2 - GREEN_TRAY_CENTER[0];
+  const my = (p.tipY + ey) / 2 - GREEN_TRAY_CENTER[1];
+  const away = (-ay / alen) * mx + (ax / alen) * my >= 0 ? 1 : -1;
+  drawArrow(ctx, p.tipX, p.tipY, ex, ey, Math.min(48, alen * 0.22) * away, "#ffffff", 8);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Ornamen sayur untuk desain Hijau, digambar vektor dengan bayangan agar tampak seperti potongan foto.
+// ---------------------------------------------------------------------------------------------
+
+function withShadow(ctx: CanvasRenderingContext2D, blur: number, offsetY: number, draw: () => void) {
+  ctx.save();
+  ctx.shadowColor = "rgba(0, 0, 0, 0.32)";
+  ctx.shadowBlur = blur;
+  ctx.shadowOffsetY = offsetY;
+  draw();
+  ctx.restore();
+}
+
+// Daun runcing (seperti daun salam/kemangi): pangkal di (x, y), memanjang ke arah angle sepanjang len.
+function drawLeaf(ctx: CanvasRenderingContext2D, x: number, y: number, len: number, angle: number, width = 0.36, tone: "dark" | "light" = "dark") {
+  const w = len * width;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  const grad = ctx.createLinearGradient(0, -w / 2, 0, w / 2);
+  if (tone === "light") {
+    grad.addColorStop(0, "#a6d65a");
+    grad.addColorStop(1, "#5d9e2c");
+  } else {
+    grad.addColorStop(0, "#7fbf45");
+    grad.addColorStop(1, "#3e7d23");
+  }
+  withShadow(ctx, len * 0.12, len * 0.05, () => {
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(len * 0.25, -w * 0.95, len * 0.7, -w * 0.75, len, 0);
+    ctx.bezierCurveTo(len * 0.7, w * 0.75, len * 0.25, w * 0.95, 0, 0);
+    ctx.fill();
+  });
+  // Tulang daun dan urat
+  ctx.strokeStyle = "rgba(225, 245, 190, 0.75)";
+  ctx.lineCap = "round";
+  ctx.lineWidth = Math.max(1.5, len * 0.012);
+  ctx.beginPath();
+  ctx.moveTo(-len * 0.06, 0);
+  ctx.quadraticCurveTo(len * 0.5, -w * 0.06, len * 0.94, 0);
+  ctx.stroke();
+  ctx.lineWidth = Math.max(1, len * 0.006);
+  ctx.strokeStyle = "rgba(225, 245, 190, 0.45)";
+  for (let i = 1; i <= 5; i++) {
+    const t = i / 6.2;
+    const bx = len * t;
+    const span = Math.sin(Math.PI * t) * w * 0.38;
+    ctx.beginPath();
+    ctx.moveTo(bx, 0);
+    ctx.quadraticCurveTo(bx + len * 0.06, -span * 0.6, bx + len * 0.11, -span);
+    ctx.moveTo(bx, 0);
+    ctx.quadraticCurveTo(bx + len * 0.06, span * 0.6, bx + len * 0.11, span);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawTomato(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+  ctx.save();
+  withShadow(ctx, r * 0.35, r * 0.14, () => {
+    const body = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.1, cx, cy, r * 1.05);
+    body.addColorStop(0, "#ff8a66");
+    body.addColorStop(0.45, "#e8392a");
+    body.addColorStop(1, "#a3170f");
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r * 1.06, r * 0.94, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  // Lekuk halus agar tidak terlihat seperti bola
+  ctx.strokeStyle = "rgba(120, 15, 8, 0.25)";
+  ctx.lineWidth = r * 0.04;
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.1, cy - r * 0.85);
+  ctx.quadraticCurveTo(cx - r * 0.45, cy, cx - r * 0.15, cy + r * 0.85);
+  ctx.moveTo(cx + r * 0.2, cy - r * 0.85);
+  ctx.quadraticCurveTo(cx + r * 0.55, cy, cx + r * 0.3, cy + r * 0.82);
+  ctx.stroke();
+  // Kilau
+  ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+  ctx.beginPath();
+  ctx.ellipse(cx - r * 0.42, cy - r * 0.45, r * 0.2, r * 0.1, -0.7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
+  ctx.beginPath();
+  ctx.arc(cx - r * 0.18, cy - r * 0.62, r * 0.05, 0, Math.PI * 2);
+  ctx.fill();
+  // Kelopak dan tangkai
+  const top = cy - r * 0.82;
+  ctx.fillStyle = "#2f7a26";
+  ctx.strokeStyle = "#235e1c";
+  ctx.lineWidth = r * 0.02;
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.3;
+    const tipX = cx + Math.cos(a) * r * 0.62;
+    const tipY = top + Math.sin(a) * r * 0.3;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a - 0.5) * r * 0.08, top + Math.sin(a - 0.5) * r * 0.05);
+    ctx.quadraticCurveTo(cx + Math.cos(a) * r * 0.35, top + Math.sin(a) * r * 0.25 - r * 0.06, tipX, tipY);
+    ctx.quadraticCurveTo(cx + Math.cos(a) * r * 0.3, top + Math.sin(a) * r * 0.12, cx + Math.cos(a + 0.5) * r * 0.08, top + Math.sin(a + 0.5) * r * 0.05);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "#2f6b22";
+  ctx.lineWidth = r * 0.07;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(cx, top);
+  ctx.quadraticCurveTo(cx + r * 0.05, top - r * 0.2, cx + r * 0.18, top - r * 0.28);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Rumpun daun lebar (selada/kemangi) di bawah tomat.
+function drawLeafCluster(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, flip = 1) {
+  const leaves: [number, number, number, number, "dark" | "light"][] = [
+    [-0.35, 0.1, 0.95, Math.PI * 0.95, "dark"],
+    [0.3, 0.15, 0.9, Math.PI * 0.05, "dark"],
+    [-0.1, 0.25, 1.0, Math.PI * 0.62, "light"],
+    [0.05, 0.2, 0.85, Math.PI * 0.3, "light"],
+    [-0.2, 0.15, 0.8, Math.PI * 0.8, "light"],
+  ];
+  for (const [dx, dy, l, a, tone] of leaves) {
+    const angle = flip === 1 ? a : Math.PI - a;
+    drawLeaf(ctx, cx + dx * size * flip, cy + dy * size, size * l, angle, 0.62, tone);
+  }
+}
+
+function drawGreenOrnaments(ctx: CanvasRenderingContext2D) {
+  // Kanan atas, di samping judul: rumpun daun dengan dua tomat
+  drawLeafCluster(ctx, 1420, 690, 260, -1);
+  drawTomato(ctx, 1540, 470, 120);
+  drawTomato(ctx, 1360, 590, 135);
+  // Kiri bawah, di antara label dan nilai gizi: rumpun daun dengan satu tomat yang terpotong tepi
+  drawLeafCluster(ctx, 30, 1610, 190, 1);
+  drawTomato(ctx, 40, 1530, 115);
+  // Daun lepas di tepi
+  drawLeaf(ctx, 30, 330, 190, -0.9, 0.38, "light");
+  drawLeaf(ctx, 1590, 1170, 170, Math.PI + 0.5, 0.38);
+  drawLeaf(ctx, -10, 1150, 150, 0.35, 0.38, "light");
+  // Kaki: kemangi di kedua sudut, di atas pil sosial media
+  drawLeaf(ctx, 0, 2060, 200, -0.25, 0.55);
+  drawLeaf(ctx, 20, 2110, 170, -0.7, 0.55, "light");
+  drawLeaf(ctx, 1590, 2040, 210, Math.PI + 0.3, 0.55);
+  drawLeaf(ctx, 1590, 2100, 170, Math.PI + 0.75, 0.55, "light");
+}
+
 export function drawGreenPoster(ctx: CanvasRenderingContext2D, input: DrawnPosterInput) {
   const bg = ctx.createLinearGradient(0, 0, 0, H);
   bg.addColorStop(0, "#2d6e3e");
   bg.addColorStop(1, "#1f5130");
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
+  drawGreenOrnaments(ctx);
 
   // Kepala: logo SPPG dan nama di kiri, SLHS di kanan. Kedua logo berlatar putih kotak, jadi
   // dipangkas di lingkaran putih agar sudutnya tidak menonjol di latar hijau.
@@ -216,23 +420,24 @@ export function drawGreenPoster(ctx: CanvasRenderingContext2D, input: DrawnPoste
   // Foto tegak memanjang diputar -90 derajat agar nampan tampil mendatar
   input.drawTray({cx: 793, cy: 1205, w: 540, h: 790, rot: -90}, {fill: "rgba(255,255,255,0.08)", stroke: "rgba(255,255,255,0.6)", text: "#ffffff"});
 
-  const items = input.items.map((it) => it.trim()).filter(Boolean);
-  const labels = items.slice(0, 4);
-  if (items.length > 4) labels.push(items.slice(4).join(", "));
+  const labels = greenLabelTexts(input.items);
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   labels.forEach((text, i) => {
     const slot = GREEN_LABEL_SLOTS[i];
-    let px = 46;
-    let lines: string[] = [];
-    for (; px >= 30; px -= 2) {
-      ctx.font = `500 ${px}px ${SANS}`;
-      lines = wrap(ctx, text, slot.wrapW);
-      if (lines.length <= 3) break;
+    const placed = input.labelPlacements?.[i];
+    const {lines, px} = labelLines(ctx, text, slot.wrapW);
+    ctx.font = `500 ${px}px ${SANS}`;
+    if (placed) {
+      drawCenteredLines(ctx, lines, placed.x, placed.y, px);
+      const halfW = Math.max(...lines.map((l) => ctx.measureText(l).width)) / 2;
+      const halfH = (lines.length * px * 1.15) / 2;
+      drawPlacedArrow(ctx, placed, halfW, halfH);
+    } else {
+      drawCenteredLines(ctx, lines, slot.x, slot.y, px);
+      drawArrow(ctx, slot.from[0], slot.from[1], slot.to[0], slot.to[1], slot.bend, "#ffffff", 8);
     }
-    drawCenteredLines(ctx, lines, slot.x, slot.y, px);
-    drawArrow(ctx, slot.from[0], slot.from[1], slot.to[0], slot.to[1], slot.bend, "#ffffff", 8);
   });
   ctx.textAlign = "left";
 
