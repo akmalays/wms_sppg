@@ -22,7 +22,7 @@ import { PicHandoverDoc } from './print/PicHandoverDoc';
 import { ExpenseReceiptDoc } from './print/ExpenseReceiptDoc';
 import { DailyPoSheetDoc } from './print/DailyPoSheetDoc';
 import { SalarySlipDoc } from './print/SalarySlipDoc';
-import { MealBoxLabelDoc, MealBoxLabelModel, MEAL_BOX_MODELS } from './print/MealBoxLabelDoc';
+import { MealBoxLabelDoc, MealBoxLabelModel, MEAL_BOX_MODELS, findMealBoxModel, formatMm } from './print/MealBoxLabelDoc';
 import {
   Printer,
   FileText,
@@ -117,7 +117,7 @@ const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
   { id: 'NONFOOD_ISSUE_FORM', label: 'Pengambilan Non-Food', hint: 'Log harian barang non-food yang diambil relawan dari gudang. Disalin ke Barang Keluar > Operasional.' },
   { id: 'WASTE_RECAP_FORM', label: 'Rekap Limbah', hint: 'Lembar timbang sisa makanan Senin-Jumat: 5 jenis limbah dan total per hari. Tanggal bisa tercetak otomatis atau diisi tangan.' },
   { id: 'EQUIPMENT_LABEL', label: 'Label Barang & Aset', hint: 'Stiker berkode QR untuk barang gudang dan aset dapur.' },
-  { id: 'MEAL_BOX_LABEL', label: 'Stiker Segel Makanan', hint: 'Stiker segel kotak makan / ompreng MBG: batas jam konsumsi dan larangan bawa pulang. Pilihan 2, 3, atau 4 kolom agar hemat kertas A4.' },
+  { id: 'MEAL_BOX_LABEL', label: 'Stiker Segel Makanan', hint: 'Stiker segel ompreng / kotak makan MBG: batas jam konsumsi dan larangan dibawa pulang. Pilih bentuk pita lebar seperti stiker lama, atau bentuk lebih kecil agar satu A4 muat lebih banyak.' },
   { id: 'ITEM_TAG_LABEL', label: 'Tag Bahan Datang', hint: 'Tag sementara untuk wadah bahan yang baru datang: jumlah, supplier, jam datang, dan batas pakai. Ganti tiap kali bahan datang.' },
   { id: 'RACK_LABEL', label: 'Plakat Rak', hint: 'Plakat rak berisi daftar barang dan aturan penyimpanan.' },
   { id: 'RACK_SIGN', label: 'Papan Nama Rak & Kategori', hint: 'Papan nama huruf besar untuk rak dan kategori barang, terbaca dari jauh. Pasang di atas rak; plakat rak tetap di samping setinggi mata.' },
@@ -839,13 +839,14 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   // =========================================================================
   // MEAL BOX LABELS (STIKER SEGEL KOTAK MAKAN & WAKTU KONSUMSI)
   // =========================================================================
-  const [mealBoxModel, setMealBoxModel] = useState<MealBoxLabelModel>('MODEL_B');
+  const [mealBoxModel, setMealBoxModel] = useState<MealBoxLabelModel>('STRIP_1');
   const [mealBoxConsumeTime, setMealBoxConsumeTime] = useState<string>('11.00');
   const [mealBoxSppgName, setMealBoxSppgName] = useState<string>('SPPG MALANG TUMPANG JERU');
   const [mealBoxSheetCount, setMealBoxSheetCount] = useState<number>(1);
   const [mealBoxShowCutLines, setMealBoxShowCutLines] = useState<boolean>(true);
-  const [mealBoxLabelCount, setMealBoxLabelCount] = useState<number>(30);
+  const [mealBoxLabelCount, setMealBoxLabelCount] = useState<number>(10);
   const [mealBoxIncludeQr, setMealBoxIncludeQr] = useState<boolean>(true);
+  const [mealBoxShowDoodle, setMealBoxShowDoodle] = useState<boolean>(true);
   const [mealBoxQrUrl, setMealBoxQrUrl] = useState<string>('/menu-mbg-hari-ini');
   const [mealBoxQrUseDomain, setMealBoxQrUseDomain] = useState<boolean>(true);
 
@@ -2620,111 +2621,147 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
             </>
           ) : activeForm === 'MEAL_BOX_LABEL' ? (
             <>
+              <fieldset className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
+                <legend className={LABEL_CLS}>Bentuk stiker</legend>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+                  {MEAL_BOX_MODELS.map(m => {
+                    const active = mealBoxModel === m.id;
+                    return (
+                      <label
+                        key={m.id}
+                        className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-emerald-600 ${
+                          active ? 'border-emerald-700 bg-emerald-50' : 'border-slate-300 bg-white hover:border-slate-400'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="meal-box-model"
+                          value={m.id}
+                          checked={active}
+                          onChange={() => setMealBoxModel(m.id)}
+                          className="sr-only"
+                        />
+                        {/* Denah mini satu lembar A4: jumlah kolom dan baris stiker */}
+                        <span
+                          aria-hidden="true"
+                          className={`grid shrink-0 w-[30px] h-[42px] p-[2px] gap-[1px] rounded-[2px] border ${active ? 'border-emerald-700 bg-white' : 'border-slate-300 bg-slate-50'}`}
+                          style={{ gridTemplateColumns: `repeat(${m.cols}, 1fr)`, gridTemplateRows: `repeat(${m.rows}, 1fr)` }}
+                        >
+                          {Array.from({ length: m.perSheet }).map((_, i) => (
+                            <span key={i} className={active ? 'bg-emerald-700' : 'bg-slate-400'} />
+                          ))}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-semibold text-slate-900">{m.name}</span>
+                          <span className="block text-slate-600 tabular-nums">
+                            {m.perSheet} per A4 · {formatMm(m.widthMm)} × {formatMm(m.heightMm)} mm
+                          </span>
+                          <span className="block text-slate-500 mt-0.5">{m.hint}</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
               <div>
-                <label className={LABEL_CLS}>Model desain stiker</label>
+                <label htmlFor="meal-box-time" className={LABEL_CLS}>Batas jam konsumsi</label>
+                <input
+                  id="meal-box-time"
+                  type="text"
+                  inputMode="decimal"
+                  value={mealBoxConsumeTime}
+                  onChange={e => setMealBoxConsumeTime(e.target.value)}
+                  placeholder="11.00"
+                  className={`${INPUT_CLS} tabular-nums`}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="meal-box-name" className={LABEL_CLS}>Nama SPPG</label>
+                <input
+                  id="meal-box-name"
+                  type="text"
+                  value={mealBoxSppgName}
+                  onChange={e => setMealBoxSppgName(e.target.value)}
+                  placeholder="SPPG MALANG TUMPANG JERU"
+                  className={INPUT_CLS}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="meal-box-sheets" className={LABEL_CLS}>Jumlah lembar A4</label>
                 <Select
+                  id="meal-box-sheets"
                   className="w-full"
-                  value={mealBoxModel}
-                  onChange={e => setMealBoxModel(e.target.value as MealBoxLabelModel)}
+                  value={mealBoxSheetCount}
+                  onChange={e => setMealBoxSheetCount(Number(e.target.value))}
                 >
-                  {MEAL_BOX_MODELS.map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} · {m.perSheet} pcs/A4 ({m.badge})
+                  {[1, 2, 3, 5, 10, 20].map(n => (
+                    <option key={n} value={n}>
+                      {n} lembar ({n * findMealBoxModel(mealBoxModel).perSheet} stiker)
                     </option>
                   ))}
                 </Select>
               </div>
 
-              <div>
-                <label className={LABEL_CLS}>Batas jam konsumsi</label>
-                <input
-                  type="text"
-                  value={mealBoxConsumeTime}
-                  onChange={e => setMealBoxConsumeTime(e.target.value)}
-                  placeholder="11.00"
-                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-mono font-bold"
-                />
-              </div>
-
-              <div>
-                <label className={LABEL_CLS}>Nama SPPG / Titik Layanan</label>
-                <input
-                  type="text"
-                  value={mealBoxSppgName}
-                  onChange={e => setMealBoxSppgName(e.target.value)}
-                  placeholder="SPPG MALANG TUMPANG JERU"
-                  className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-medium"
-                />
-              </div>
-
-              <div>
-                <label className={LABEL_CLS}>Jumlah lembar A4</label>
-                <Select
-                  className="w-full"
-                  value={mealBoxSheetCount}
-                  onChange={e => setMealBoxSheetCount(Number(e.target.value))}
-                >
-                  <option value={1}>1 lembar ({MEAL_BOX_MODELS.find(m => m.id === mealBoxModel)?.perSheet || 30} pcs)</option>
-                  <option value={2}>2 lembar ({(MEAL_BOX_MODELS.find(m => m.id === mealBoxModel)?.perSheet || 30) * 2} pcs)</option>
-                  <option value={3}>3 lembar ({(MEAL_BOX_MODELS.find(m => m.id === mealBoxModel)?.perSheet || 30) * 3} pcs)</option>
-                  <option value={5}>5 lembar ({(MEAL_BOX_MODELS.find(m => m.id === mealBoxModel)?.perSheet || 30) * 5} pcs)</option>
-                  <option value={10}>10 lembar ({(MEAL_BOX_MODELS.find(m => m.id === mealBoxModel)?.perSheet || 30) * 10} pcs)</option>
-                  <option value={20}>20 lembar ({(MEAL_BOX_MODELS.find(m => m.id === mealBoxModel)?.perSheet || 30) * 20} pcs)</option>
-                </Select>
-              </div>
-
-              <div className="sm:col-span-2 pt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-200 mt-1 pt-2">
-                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+              <div className="flex flex-col justify-end gap-2">
+                <label className="flex items-center gap-2 text-slate-700 cursor-pointer min-h-[44px] sm:min-h-[24px]">
                   <input
                     type="checkbox"
                     checked={mealBoxShowCutLines}
                     onChange={e => setMealBoxShowCutLines(e.target.checked)}
-                    className="w-4 h-4 accent-emerald-700 rounded cursor-pointer"
+                    className="w-4 h-4 accent-emerald-700 cursor-pointer"
                   />
-                  <span>Tampilkan garis putus-putus panduan potong</span>
+                  Garis potong putus-putus
                 </label>
-
-                <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                <label className="flex items-center gap-2 text-slate-700 cursor-pointer min-h-[44px] sm:min-h-[24px]">
                   <input
                     type="checkbox"
                     checked={mealBoxIncludeQr}
                     onChange={e => setMealBoxIncludeQr(e.target.checked)}
-                    className="w-4 h-4 accent-emerald-700 rounded cursor-pointer"
+                    className="w-4 h-4 accent-emerald-700 cursor-pointer"
                   />
-                  <span className="font-semibold text-slate-900">Sertakan QR Code Menu Hari Ini</span>
+                  QR menu hari ini
                 </label>
+                {findMealBoxModel(mealBoxModel).layout === 'ROW' && (
+                  <label className="flex items-center gap-2 text-slate-700 cursor-pointer min-h-[44px] sm:min-h-[24px]">
+                    <input
+                      type="checkbox"
+                      checked={mealBoxShowDoodle}
+                      onChange={e => setMealBoxShowDoodle(e.target.checked)}
+                      className="w-4 h-4 accent-emerald-700 cursor-pointer"
+                    />
+                    Hiasan doodle di tepi pita
+                  </label>
+                )}
               </div>
 
               {mealBoxIncludeQr && (
-                <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className={LABEL_CLS}>Target link QR Code</label>
+                    <label htmlFor="meal-box-qr" className={LABEL_CLS}>Link QR</label>
                     <input
+                      id="meal-box-qr"
                       type="text"
                       value={mealBoxQrUrl}
                       onChange={e => setMealBoxQrUrl(e.target.value)}
                       placeholder="/menu-mbg-hari-ini"
-                      className="w-full px-3 py-1.5 min-h-[44px] sm:min-h-[34px] rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 font-mono font-medium"
+                      className={`${INPUT_CLS} font-mono`}
                     />
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      Membuka halaman info menu MBG, foto menu, dan kandungan gizi hari ini.
-                    </p>
                   </div>
-                  <div className="flex flex-col justify-between">
-                    <div>
-                      <label className={LABEL_CLS}>Format link saat dicetak</label>
-                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer mt-1">
-                        <input
-                          type="checkbox"
-                          checked={mealBoxQrUseDomain}
-                          onChange={e => setMealBoxQrUseDomain(e.target.checked)}
-                          className="w-4 h-4 accent-emerald-700 rounded cursor-pointer"
-                        />
-                        <span>Sertakan domain (URL lengkap agar kamera HP langsung membuka link)</span>
-                      </label>
-                    </div>
-                    <p className="text-[10px] font-mono text-emerald-800 mt-1 truncate">
-                      Isi QR: {mealBoxEffectiveQrUrl}
+                  <div className="flex flex-col justify-end gap-1">
+                    <label className="flex items-center gap-2 text-slate-700 cursor-pointer min-h-[44px] sm:min-h-[24px]">
+                      <input
+                        type="checkbox"
+                        checked={mealBoxQrUseDomain}
+                        onChange={e => setMealBoxQrUseDomain(e.target.checked)}
+                        className="w-4 h-4 accent-emerald-700 cursor-pointer"
+                      />
+                      Pakai alamat lengkap (bisa langsung dibuka kamera HP)
+                    </label>
+                    <p className="text-slate-500 truncate">
+                      Isi QR: <span className="font-mono text-slate-700">{mealBoxEffectiveQrUrl}</span>
                     </p>
                   </div>
                 </div>
@@ -3391,12 +3428,12 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
         {activeForm === 'MEAL_BOX_LABEL' && (
           <MealBoxLabelDoc
             layoutModel={mealBoxModel}
-            onModelChange={setMealBoxModel}
             consumeTime={mealBoxConsumeTime}
             sppgName={mealBoxSppgName}
             sheetCount={mealBoxSheetCount}
             showCutLines={mealBoxShowCutLines}
             includeQrCode={mealBoxIncludeQr}
+            showDoodle={mealBoxShowDoodle}
             qrUrl={mealBoxEffectiveQrUrl}
             onCountChange={setMealBoxLabelCount}
           />
