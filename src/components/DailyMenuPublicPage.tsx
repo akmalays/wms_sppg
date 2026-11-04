@@ -46,7 +46,6 @@ import {
   Lightbulb,
   Trophy,
   Clock,
-  CalendarDays,
   ShieldCheck,
   PartyPopper,
   Sparkles,
@@ -251,6 +250,73 @@ const SectionHead: React.FC<{ id: string; title: string; eyebrow?: string; subti
 
 const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#15803d] focus-visible:ring-offset-2';
 const cardCls = 'min-w-0 rounded-3xl bg-white border border-[#e9e0cc] p-4 sm:p-6 scroll-mt-28';
+
+// Panah lengkung putih seperti di poster menu hijau; arah diatur dengan flip CSS.
+const CurvedArrow: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <svg viewBox="0 0 80 40" fill="none" aria-hidden="true" className={`shrink-0 ${className}`}>
+    <path d="M4 32Q38 2 72 18M60.5 9l11.5 9-13.5 4.5" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+// Panah dasar melengkung ke kanan atas. Label kiri menunjuk ke kanan, label kanan ke kiri; baris bawah dibalik vertikal.
+const ARROW_FLIP: Record<'left' | 'right', [string, string]> = {
+  left: ['', '-scale-y-100'],
+  right: ['-scale-x-100', 'rotate-180'],
+};
+
+// Foto nampan di tengah, nama hidangan di sekelilingnya: kiri atas, kanan atas, kiri bawah, kanan bawah,
+// sisanya di bawah foto. Urutan sama dengan poster menu. Di layar kecil: foto lalu daftar.
+const HeroTray: React.FC<{ dishes: string[]; photo: string | null }> = ({ dishes, photo }) => {
+  const slots = dishes.slice(0, 4);
+  const rest = dishes.slice(4);
+  const label = 'font-kids font-bold text-xl xl:text-2xl leading-tight';
+  const frame = (
+    <div className="rounded-2xl overflow-hidden bg-white/10 ring-4 ring-white/90 aspect-[4/3]">
+      {photo ? (
+        <SafeImg src={photo} fallbackSrc={trayImg1} alt={`Foto ompreng menu: ${dishes.join(', ')}`} className="w-full h-full object-cover" />
+      ) : (
+        <img src={menu3bImg} alt="Ilustrasi ibu hamil, ibu menyusui, dan balita" className="w-full h-full object-contain bg-white" />
+      )}
+    </div>
+  );
+  const side = (text: string | undefined, align: 'left' | 'right', low: boolean) =>
+    text ? (
+      <div className={`flex items-center gap-3 ${align === 'left' ? 'justify-end text-right' : 'flex-row-reverse justify-end text-left'}`}>
+        <p className={label}>{text}</p>
+        <CurvedArrow className={`w-16 text-white ${ARROW_FLIP[align][low ? 1 : 0]}`} />
+      </div>
+    ) : <div />;
+
+  return (
+    <>
+      <div className="hidden lg:grid grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)_minmax(0,1fr)] grid-rows-[1fr_1fr_auto] items-center gap-x-4 gap-y-2">
+        <div className="col-start-1 row-start-1">{side(slots[0], 'left', false)}</div>
+        <div className="col-start-2 row-start-1 row-span-2">{frame}</div>
+        <div className="col-start-3 row-start-1">{side(slots[1], 'right', false)}</div>
+        <div className="col-start-1 row-start-2">{side(slots[2], 'left', true)}</div>
+        <div className="col-start-3 row-start-2">{side(slots[3], 'right', true)}</div>
+        {rest.length > 0 && (
+          <div className="col-start-2 row-start-3 flex flex-col items-center text-center pt-1">
+            <CurvedArrow className="w-12 text-white -rotate-90" />
+            <p className={label}>{rest.join(', ')}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="lg:hidden">
+        {frame}
+        <ul aria-label="Isi menu" className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
+          {dishes.map(d => (
+            <li key={d} className="flex items-start gap-2.5 font-kids font-bold text-xl leading-tight">
+              <span className="mt-2 w-2 h-2 rounded-full bg-white shrink-0" aria-hidden="true" />
+              {d}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </>
+  );
+};
 
 function useEscape(onClose: () => void, active: boolean) {
   useEffect(() => {
@@ -1537,81 +1603,69 @@ export const DailyMenuPublicPage: React.FC = () => {
           <Sprig flip className="hidden xl:block absolute -z-10 -right-32 top-[1500px] w-40 text-[#1f8a4c]/20" />
           <Butterfly className="hidden xl:block absolute -left-24 top-[560px] w-10" />
           <Bee className="hidden xl:block absolute -right-20 top-[1460px] w-9" />
-          {/* Hero */}
-          <section aria-labelledby="hero-title" className="group rounded-3xl bg-white border border-[#e9e0cc] overflow-hidden grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
-            <div className="relative p-5 sm:p-7 flex flex-col justify-center order-2 lg:order-1">
-              <Sprig className="absolute bottom-3 right-3 w-14 sm:w-20 text-[#1f8a4c]/70" />
-              <Butterfly className="absolute bottom-16 right-12 sm:bottom-24 sm:right-20 w-8 sm:w-10" />
-              <ul className="flex flex-wrap gap-2 text-[13px] font-semibold">
-                <li className="inline-flex items-center gap-1.5 rounded-lg border border-[#e3dccb] bg-[#faf7ef] px-2.5 py-1 text-[#173d26]">
-                  <CalendarDays className="w-4 h-4" />
-                  {menuToday.dateText}
-                </li>
-                <li className="inline-flex items-center gap-1.5 rounded-lg bg-[#1f8a4c] px-2.5 py-1 text-white">
-                  {React.createElement(MENU_TYPES[activeType].Icon, { className: 'w-4 h-4', 'aria-hidden': true })}
-                  {MENU_TYPES[activeType].label}
-                </li>
-                {menuToday.qcStatus?.trim() && (
-                  <li className="inline-flex items-center gap-1.5 rounded-lg border border-[#cfe6d4] bg-[#eef8f0] px-2.5 py-1 text-[#1f6b3a]">
-                    <ShieldCheck className="w-4 h-4" />
-                    {menuToday.qcStatus}
-                  </li>
-                )}
-              </ul>
-              <h1 id="hero-title" className="font-kids text-[34px] sm:text-[44px] leading-[1.05] font-bold text-[#173d26] mt-3">Menu MBG Hari Ini</h1>
-              <p className="text-[15px] text-slate-700 mt-2 max-w-md">{subtitle}</p>
-              {dishes.length > 0 && (
-                <div className="mt-4 flex items-center gap-4 rounded-2xl bg-[#eef6ec] border border-[#d6e8d2] p-4">
-                  <span className="w-12 h-12 rounded-full bg-[#1f8a4c] text-white flex items-center justify-center shrink-0" aria-hidden="true">
-                    <UtensilsCrossed className="w-6 h-6" />
-                  </span>
-                  <ul aria-label="Isi menu" className="font-kids text-lg sm:text-xl font-bold text-[#173d26] leading-snug">
-                    {dishes.map(d => <li key={d}>{d}</li>)}
-                  </ul>
-                </div>
-              )}
-              {activeType === 'reguler' && (
-                <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2">
-                  <dl className="flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-slate-700">
-                    {numberOnly(activeTier.targetCalories) !== '-' && (
-                      <div className="flex gap-1"><dt className="sr-only">Energi</dt><dd><strong className="text-[#173d26] tabular-nums">{numberOnly(activeTier.targetCalories)}</strong> kkal</dd></div>
-                    )}
-                    {activeTier.totalGramature?.trim() && (
-                      <div className="flex gap-1"><dt className="sr-only">Berat porsi</dt><dd className="font-semibold tabular-nums">{activeTier.totalGramature}</dd></div>
-                    )}
-                    {ingredients.length > 0 && (
-                      <div className="flex gap-1"><dt className="sr-only">Jumlah komponen</dt><dd><strong className="text-[#173d26] tabular-nums">{ingredients.length}</strong> komponen</dd></div>
-                    )}
-                  </dl>
-                  <a href="#gizi" className={`inline-flex items-center gap-1 min-h-[44px] text-[13px] font-bold text-[#15803d] underline underline-offset-2 rounded ${focusRing}`}>
-                    Lihat detail gizi
-                  </a>
-                </div>
-              )}
+          {/* Hero: mengikuti poster menu hijau. Menu adalah pusatnya: nama hidangan mengelilingi foto nampan dengan panah,
+              ringkasan dua porsi di bawah garis. Tanpa hiasan di dalam kartu supaya mata langsung ke menu. */}
+          <section
+            aria-labelledby="hero-title"
+            className="rounded-3xl overflow-hidden bg-[linear-gradient(180deg,#2d6e3e_0%,#1f5130_100%)] text-white px-5 py-6 sm:px-8 sm:py-8"
+          >
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-semibold text-white/85">
+              <span className="inline-flex items-center gap-1.5">
+                {React.createElement(MENU_TYPES[activeType].Icon, { className: 'w-4 h-4', 'aria-hidden': true })}
+                {MENU_TYPES[activeType].label}
+              </span>
               {updatedLabel && (
-                <p className="flex items-center gap-1.5 text-xs text-slate-600 mt-3">
-                  <Clock className="w-3.5 h-3.5" />
+                <span className="inline-flex items-center gap-1.5 font-normal text-white/75">
+                  <Clock className="w-3.5 h-3.5" aria-hidden="true" />
                   {updatedLabel}
-                </p>
+                </span>
               )}
+            </p>
+            <h1 id="hero-title" className="font-kids font-extrabold leading-[0.95] text-[44px] sm:text-[64px] lg:text-[76px] mt-2">
+              Menu MBG<br />Hari ini
+            </h1>
+            <p className="text-lg sm:text-2xl mt-2">{menuToday.dateText}</p>
+
+            <div className="border-t border-white/60 mt-5 pt-6 sm:mt-6 sm:pt-8">
+              <HeroTray
+                dishes={dishes}
+                photo={activeType === 'b3' ? null : menuToday.imageUrl || trayImg1}
+              />
             </div>
-            <figure className="relative order-1 lg:order-2 min-h-[220px]">
-              {/* Foto ompreng hanya untuk menu reguler; menu 3B belum punya foto sendiri. */}
-              {activeType === 'b3' ? (
-                <div className="absolute inset-0 bg-[#eef6ec] flex items-center justify-center p-4">
-                  <img src={menu3bImg} alt="Ilustrasi ibu hamil, ibu menyusui, dan balita" className="h-full max-h-72 object-contain mix-blend-multiply" />
-                </div>
-              ) : (
-                <>
-                  <SafeImg src={menuToday.imageUrl || trayImg1} alt={`Foto ompreng menu: ${dishes.join(', ')}`} className="absolute inset-0 w-full h-full object-cover" />
-                  {/* Gradasi menyambungkan foto dengan kolom teks di desktop; tidak ada teks di atasnya. */}
-                  <div className="hidden lg:block absolute inset-y-0 left-0 w-28 bg-gradient-to-r from-white to-transparent" aria-hidden="true" />
-                  <p className="absolute top-3 right-3 sm:top-5 sm:right-5 max-w-[11rem] rotate-3 rounded-2xl border border-[#f2d98a] bg-[#fff6d6] px-3.5 py-2.5 font-kids text-sm sm:text-base font-bold leading-snug text-[#5c3d06] shadow-sm">
-                    Menu sehat untuk tubuh kuat dan semangat belajar!
-                  </p>
-                </>
-              )}
-            </figure>
+
+            {activeType === 'reguler' ? (
+              <div className="border-t border-white/60 mt-6 pt-5 sm:mt-8 sm:pt-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <dl className="grid grid-cols-2 gap-x-8 gap-y-1 sm:flex sm:gap-x-14">
+                  {[menuToday.portionLarge, menuToday.portionSmall].map((t, i) => {
+                    const kcal = numberOnly(t.targetCalories);
+                    return (
+                      <div key={i}>
+                        <dt className="font-kids text-xl sm:text-2xl font-extrabold">{i === 0 ? 'Porsi Besar' : 'Porsi Kecil'}</dt>
+                        <dd className="text-[15px] sm:text-base text-white/90 tabular-nums">
+                          {kcal !== '-' ? `${kcal} kkal` : 'Energi belum diisi'}
+                          {t.totalGramature?.trim() && <span className="block">{t.totalGramature}</span>}
+                        </dd>
+                      </div>
+                    );
+                  })}
+                </dl>
+                <a
+                  href="#gizi"
+                  className={`inline-flex items-center justify-center gap-1.5 self-start md:self-auto min-h-[44px] px-4 rounded-xl bg-white text-[#1f5130] text-sm font-bold hover:bg-[#eef6ec] ${focusRing}`}
+                >
+                  Lihat detail gizi
+                </a>
+              </div>
+            ) : (
+              <p className="border-t border-white/60 mt-6 pt-5 text-[15px] text-white/90">{subtitle}</p>
+            )}
+
+            {menuToday.qcStatus?.trim() && (
+              <p className="flex items-start gap-1.5 text-[13px] text-white/80 mt-4">
+                <ShieldCheck className="w-4 h-4 shrink-0 mt-px" aria-hidden="true" />
+                {menuToday.qcStatus}
+              </p>
+            )}
           </section>
 
           <MenuTypeCard menuType={activeType} hasB3={b3Dishes.length > 0} onChange={setMenuType} onExplain={() => setIsB3Open(true)} />

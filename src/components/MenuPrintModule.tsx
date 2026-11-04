@@ -495,6 +495,32 @@ function drawNutrition(ctx: CanvasRenderingContext2D, col: NutritionColumn, valu
 }
 
 // Buang tepi transparan hasil hapus background, agar nampan memenuhi kotak saat digambar.
+// Setelan hapus background. Bawaan library selalu menghitung di CPU dengan satu thread (situs tidak
+// crossOriginIsolated), sekitar 8 detik per foto. Dengan WebGPU, model yang sama selesai sekitar 0,5 sampai 2 detik.
+// Model tetap fp16 di kedua jalur: quint8 tidak lebih cepat di CPU dan justru lambat di WebGPU,
+// dan fp16 sudah tersimpan di cache browser petugas yang pernah memakai fitur ini.
+// Library menyimpan sesi model per setelan (JSON), jadi preload dan proses harus memakai setelan yang sama persis.
+type BgRemovalConfig = {device: "gpu" | "cpu"; model: "isnet_fp16"; output: {format: "image/png"}};
+let bgConfigPromise: Promise<BgRemovalConfig> | null = null;
+const bgRemovalConfig = () =>
+  (bgConfigPromise ??= (async () => {
+    const gpu = (navigator as Navigator & {gpu?: {requestAdapter: () => Promise<unknown>}}).gpu;
+    const hasGpu = Boolean(gpu && (await gpu.requestAdapter().catch(() => null)));
+    return {device: hasGpu ? "gpu" : "cpu", model: "isnet_fp16", output: {format: "image/png"}};
+  })());
+
+// Unduh dan siapkan model di belakang layar begitu ada foto nampan, supaya saat tombol ditekan tinggal menghitung.
+let bgPreloaded: Promise<void> | null = null;
+const preloadBgRemoval = () => {
+  bgPreloaded ??= (async () => {
+    const [{preload}, config] = await Promise.all([import("@imgly/background-removal"), bgRemovalConfig()]);
+    await preload(config);
+  })().catch(() => {
+    bgPreloaded = null; // gagal (mis. offline): coba lagi di kesempatan berikutnya
+  });
+  return bgPreloaded;
+};
+
 async function trimTransparent(blob: Blob): Promise<Blob> {
   const bitmap = await createImageBitmap(blob);
   const canvas = document.createElement("canvas");
@@ -824,12 +850,19 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
     try {
       const result = await compressImageToWebP(file, {maxDimension: 1200, quality: 0.85});
       updateMenu(index, {photo: result.dataUrl, photoOriginal: null});
+      preloadBgRemoval();
     } catch {
       toast.error("Foto gagal dibaca. Coba foto lain dengan format JPG atau PNG.", "Foto nampan");
     } finally {
       setUploadingIndex(null);
     }
   };
+
+  const editingPhoto = menus[editingIndex]?.photo;
+  const editingCutDone = Boolean(menus[editingIndex]?.photoOriginal);
+  useEffect(() => {
+    if (editingPhoto && !editingCutDone) preloadBgRemoval();
+  }, [editingPhoto, editingCutDone]);
 
   const handleRemoveBackground = async () => {
     const index = editingIndex;
@@ -838,9 +871,11 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
     setCutoutIndex(index);
     setCutoutStatus("Menyiapkan...");
     try {
-      // Dimuat saat dipakai saja: library dan modelnya besar. Model diunduh sekali lalu disimpan cache browser.
-      const {removeBackground} = await import("@imgly/background-removal");
+      // Library dimuat saat dipakai saja. Model diunduh sekali lalu disimpan cache browser; biasanya sudah
+      // disiapkan oleh preload sejak foto diunggah.
+      const [{removeBackground}, config] = await Promise.all([import("@imgly/background-removal"), bgRemovalConfig()]);
       const blob = await removeBackground(source, {
+        ...config,
         progress: (key: string, current: number, total: number) => {
           if (key.startsWith("fetch") && total > 0) setCutoutStatus(`Mengunduh model ${Math.round((current / total) * 100)}%`);
           else if (key.startsWith("compute")) setCutoutStatus("Menghapus background...");
