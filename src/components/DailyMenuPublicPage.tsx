@@ -5,8 +5,10 @@ import sawahImg from '../assets/sawah_padi.jpg';
 import kebunSayurImg from '../assets/kebun_sayur.jpg';
 import peternakanAyamImg from '../assets/peternakan_ayam.jpg';
 import trayImg1 from '../assets/tray_sample_1.jpg';
+import trayCutoutImg from '../assets/tray_sample_cutout.webp';
 import menu3bImg from '../assets/menu_3b_ilustrasi.jpg';
 import anakSehatImg from '../assets/anak_sehat_mbg.jpg';
+import heroBgImg from '../assets/penyaluran_siswa.jpg';
 
 import {
   getWebsiteConfig,
@@ -18,8 +20,10 @@ import {
   IngredientNutritionInfo,
   PortionTierConfig,
   NutritionHeroConfig,
-  DailyHabitItem
+  DailyHabitItem,
+  TrayLabelPlacement
 } from '../db/websiteConfigStorage';
+import { TrayStage, menuDishes, resolveTrayLabels, trayLabelTexts } from './menuPublic/TrayStage';
 import { isSupabaseConfigured } from '../lib/supabase';
 import QRCode from 'qrcode';
 import { Butterfly, Bee, FarmLandscape, HeaderSky, SunRays } from './menuPublic/NatureAccents';
@@ -55,7 +59,6 @@ import {
   Zap,
   Drumstick,
   Droplet,
-  BarChart3,
   CheckCircle2,
   UtensilsCrossed,
   QrCode,
@@ -178,7 +181,6 @@ function formatUpdatedAt(iso: string): string | null {
 const cleanList = (items: string[] | undefined) => (items || []).map(s => s.trim()).filter(Boolean);
 const splitSentences = (text: string) => text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
 const splitHighlights = (text: string) => text.split(/[•,;]/).map(s => s.trim()).filter(Boolean);
-const splitDishes = (text: string) => text.split(/[,;+\n]|\s+dan\s+/i).map(s => s.trim()).filter(Boolean);
 const shortName = (name: string) => name.trim().split(/\s+/)[0].toLowerCase();
 
 function readLocal(key: string): string | null {
@@ -251,69 +253,118 @@ const SectionHead: React.FC<{ id: string; title: string; eyebrow?: string; subti
 const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#15803d] focus-visible:ring-offset-2';
 const cardCls = 'min-w-0 rounded-3xl bg-white border border-[#e9e0cc] p-4 sm:p-6 scroll-mt-28';
 
-// Panah lengkung putih seperti di poster menu hijau; arah diatur dengan flip CSS.
-const CurvedArrow: React.FC<{ className?: string }> = ({ className = '' }) => (
-  <svg viewBox="0 0 80 40" fill="none" aria-hidden="true" className={`shrink-0 ${className}`}>
-    <path d="M4 32Q38 2 72 18M60.5 9l11.5 9-13.5 4.5" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-// Panah dasar melengkung ke kanan atas. Label kiri menunjuk ke kanan, label kanan ke kiri; baris bawah dibalik vertikal.
-const ARROW_FLIP: Record<'left' | 'right', [string, string]> = {
-  left: ['', '-scale-y-100'],
-  right: ['-scale-x-100', 'rotate-180'],
-};
-
-// Foto nampan di tengah, nama hidangan di sekelilingnya: kiri atas, kanan atas, kiri bawah, kanan bawah,
-// sisanya di bawah foto. Urutan sama dengan poster menu. Di layar kecil: foto lalu daftar.
-const HeroTray: React.FC<{ dishes: string[]; photo: string | null }> = ({ dishes, photo }) => {
-  const slots = dishes.slice(0, 4);
-  const rest = dishes.slice(4);
-  const label = 'font-kids font-bold text-xl xl:text-2xl leading-tight';
-  const frame = (
-    <div className="rounded-2xl overflow-hidden bg-white/10 ring-4 ring-white/90 aspect-[4/3]">
-      {photo ? (
-        <SafeImg src={photo} fallbackSrc={trayImg1} alt={`Foto ompreng menu: ${dishes.join(', ')}`} className="w-full h-full object-cover" />
-      ) : (
-        <img src={menu3bImg} alt="Ilustrasi ibu hamil, ibu menyusui, dan balita" className="w-full h-full object-contain bg-white" />
-      )}
-    </div>
-  );
-  const side = (text: string | undefined, align: 'left' | 'right', low: boolean) =>
-    text ? (
-      <div className={`flex items-center gap-3 ${align === 'left' ? 'justify-end text-right' : 'flex-row-reverse justify-end text-left'}`}>
-        <p className={label}>{text}</p>
-        <CurvedArrow className={`w-16 text-white ${ARROW_FLIP[align][low ? 1 : 0]}`} />
-      </div>
-    ) : <div />;
+// Ompreng dan nama hidangan disusun seperti poster menu hijau, dengan letak yang diatur petugas.
+// Di layar kecil teks poster terlalu kecil, jadi panah diganti nomor pada makanan dan daftar bernomor di bawahnya.
+const HeroTray: React.FC<{ dishes: string[]; photo: string | null; labels: TrayLabelPlacement[] | null | undefined }> = ({ dishes, photo, labels }) => {
+  const texts = useMemo(() => trayLabelTexts(dishes), [dishes]);
+  const placements = useMemo(() => resolveTrayLabels(texts, labels), [texts, labels]);
+  const stageProps = photo
+    ? { photo, fallbackPhoto: trayCutoutImg, alt: `Foto ompreng menu: ${dishes.join(', ')}` }
+    : { photo: menu3bImg, alt: 'Ilustrasi ibu hamil, ibu menyusui, dan balita', plain: true };
 
   return (
     <>
-      <div className="hidden lg:grid grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)_minmax(0,1fr)] grid-rows-[1fr_1fr_auto] items-center gap-x-4 gap-y-2">
-        <div className="col-start-1 row-start-1">{side(slots[0], 'left', false)}</div>
-        <div className="col-start-2 row-start-1 row-span-2">{frame}</div>
-        <div className="col-start-3 row-start-1">{side(slots[1], 'right', false)}</div>
-        <div className="col-start-1 row-start-2">{side(slots[2], 'left', true)}</div>
-        <div className="col-start-3 row-start-2">{side(slots[3], 'right', true)}</div>
-        {rest.length > 0 && (
-          <div className="col-start-2 row-start-3 flex flex-col items-center text-center pt-1">
-            <CurvedArrow className="w-12 text-white -rotate-90" />
-            <p className={label}>{rest.join(', ')}</p>
-          </div>
-        )}
+      <div className="hidden lg:block">
+        <TrayStage {...stageProps} texts={texts} placements={placements} />
+        <ul className="sr-only" aria-label="Isi menu">
+          {texts.map(t => <li key={t}>{t}</li>)}
+        </ul>
       </div>
 
       <div className="lg:hidden">
-        {frame}
-        <ul aria-label="Isi menu" className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
-          {dishes.map(d => (
-            <li key={d} className="flex items-start gap-2.5 font-kids font-bold text-xl leading-tight">
-              <span className="mt-2 w-2 h-2 rounded-full bg-white shrink-0" aria-hidden="true" />
-              {d}
+        <TrayStage {...stageProps} compact texts={texts} placements={photo ? placements : []} />
+        <ol aria-label="Isi menu" className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
+          {texts.map((t, i) => (
+            <li key={t} className="flex items-start gap-2.5 font-kids font-bold text-lg leading-tight">
+              <span className="mt-px w-6 h-6 rounded-full bg-white text-[#0d474c] text-sm font-extrabold flex items-center justify-center shrink-0" aria-hidden="true">{i + 1}</span>
+              {t}
             </li>
           ))}
-        </ul>
+        </ol>
       </div>
+    </>
+  );
+};
+
+// Daun kemangi di sisi hero, digambar supaya tidak bergantung pada file gambar.
+const HeroLeaves: React.FC<{ className?: string; flip?: boolean }> = ({ className = '', flip }) => {
+  const id = `leaf${React.useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const leaves: [number, number, number][] = [[60, 90, -140], [70, 96, -95], [66, 92, -48], [58, 100, -180], [74, 104, -15]];
+  return (
+    <svg viewBox="0 0 140 140" aria-hidden="true" className={`pointer-events-none ${flip ? '-scale-x-100' : ''} ${className}`}>
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#8fcb55" />
+          <stop offset="1" stopColor="#3b7d27" />
+        </linearGradient>
+      </defs>
+      {leaves.map(([x, y, rot], i) => (
+        <g key={i} transform={`translate(${x} ${y}) rotate(${rot})`}>
+          <path d="M0 0C14-20 46-22 66 0 46 22 14 20 0 0z" fill={`url(#${id})`} />
+          <path d="M2 0H60M18 0l9-9M18 0l9 9M36 0l8-8M36 0l8 8" stroke="#e6f6cf" strokeOpacity="0.55" strokeWidth="1.2" fill="none" strokeLinecap="round" />
+        </g>
+      ))}
+    </svg>
+  );
+};
+
+// Tabel kandungan gizi dua porsi. Lebar: kolom per zat gizi. Sempit: dibalik, kolom per porsi, supaya angka tetap terbaca.
+const HERO_NUTRIENTS: { label: string; value: (t: PortionTierConfig) => string }[] = [
+  { label: 'Energi', value: t => t.targetCalories },
+  { label: 'Karbohidrat', value: t => t.carbGrams },
+  { label: 'Protein', value: t => t.proteinGrams },
+  { label: 'Lemak', value: t => t.fatGrams },
+  { label: 'Serat', value: t => t.fiberGrams },
+];
+
+const HeroNutritionTable: React.FC<{ large: PortionTierConfig; small: PortionTierConfig }> = ({ large, small }) => {
+  const tiers = [
+    { name: 'Porsi Besar', group: splitTierName(large.tierName).group, config: large },
+    { name: 'Porsi Kecil', group: splitTierName(small.tierName).group, config: small },
+  ];
+  const head = 'rounded-lg bg-[#6b5a2c] text-white font-bold text-[13px] sm:text-sm px-2 py-2.5 text-center';
+  const cell = 'rounded-lg bg-[#c3ebe0] text-[#173d26] font-semibold text-[13px] sm:text-[15px] tabular-nums px-2 py-2.5 text-center';
+  const show = (v: string) => v?.trim() || '-';
+  return (
+    <>
+      <table className="hidden md:table w-full border-separate border-spacing-1.5">
+        <caption className="sr-only">Kandungan gizi per porsi</caption>
+        <thead>
+          <tr>
+            <th scope="col" className={head}>Porsi</th>
+            {HERO_NUTRIENTS.map(n => <th key={n.label} scope="col" className={head}>{n.label}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {tiers.map(t => (
+            <tr key={t.name}>
+              <th scope="row" className={`${cell} font-bold`}>
+                {t.name}
+                {t.group && <span className="block text-[11px] font-medium text-[#2c5346]">{t.group}</span>}
+              </th>
+              {HERO_NUTRIENTS.map(n => <td key={n.label} className={cell}>{show(n.value(t.config))}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <table className="md:hidden w-full border-separate border-spacing-1">
+        <caption className="sr-only">Kandungan gizi per porsi</caption>
+        <thead>
+          <tr>
+            <th scope="col" className={head}>Gizi</th>
+            {tiers.map(t => <th key={t.name} scope="col" className={head}>{t.name}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {HERO_NUTRIENTS.map(n => (
+            <tr key={n.label}>
+              <th scope="row" className={`${cell} font-bold`}>{n.label}</th>
+              {tiers.map(t => <td key={t.name} className={cell}>{show(n.value(t.config))}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </>
   );
 };
@@ -779,7 +830,30 @@ const PlateCard: React.FC<{ ingredients: IngredientNutritionInfo[] }> = ({ ingre
 /* ------------------------------------------------------------------ */
 /* Rincian bahan                                                        */
 /* ------------------------------------------------------------------ */
-const IngredientStrip: React.FC<{ ingredients: IngredientNutritionInfo[]; portion: PortionKey; onOpen: (index: number) => void }> = ({ ingredients, portion, onOpen }) => (
+type PortionTier = { key: PortionKey; config: PortionTierConfig };
+
+// Porsi kecil/besar mengubah angka gizi dan takaran bahan di halaman ini.
+const PortionSwitch: React.FC<{ tiers: PortionTier[]; portion: PortionKey; onChange: (p: PortionKey) => void }> = ({ tiers, portion, onChange }) => (
+  <div role="radiogroup" aria-label="Pilih porsi" className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[#f4efe3] sm:w-auto">
+    {tiers.map(t => {
+      const on = portion === t.key;
+      return (
+        <button
+          key={t.key}
+          type="button"
+          role="radio"
+          aria-checked={on}
+          onClick={() => onChange(t.key)}
+          className={`min-h-[44px] px-4 rounded-lg text-sm font-bold cursor-pointer transition-colors duration-150 ${focusRing} ${on ? 'bg-[#15803d] text-white' : 'text-slate-700 hover:bg-white/70'}`}
+        >
+          {splitTierName(t.config.tierName).name}
+        </button>
+      );
+    })}
+  </div>
+);
+
+const IngredientStrip: React.FC<{ ingredients: IngredientNutritionInfo[]; tiers: PortionTier[]; portion: PortionKey; onPortionChange: (p: PortionKey) => void; onOpen: (index: number) => void }> = ({ ingredients, tiers, portion, onPortionChange, onOpen }) => (
   <section id="menu" aria-labelledby="bahan-title" className={cardCls}>
     <CardTitle
       id="bahan-title"
@@ -795,10 +869,16 @@ const IngredientStrip: React.FC<{ ingredients: IngredientNutritionInfo[]; portio
         ) : undefined
       }
     />
+    {/* Tanpa takaran, pilihan porsi tidak mengubah apa pun di kartu ini. */}
+    {ingredients.some(i => i.portionLarge?.trim() || i.portionSmall?.trim()) && (
+      <div className="mb-3 flex">
+        <PortionSwitch tiers={tiers} portion={portion} onChange={onPortionChange} />
+      </div>
+    )}
     {ingredients.length === 0 ? (
       <p className="rounded-2xl border border-dashed border-[#d9cfb9] px-4 py-8 text-center text-sm text-slate-600">Rincian menu belum diisi petugas.</p>
     ) : (
-      <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+      <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
         {ingredients.map((item, i) => (
           <li key={item.id}>
             <button
@@ -833,15 +913,22 @@ const NUTRIENT_TILES = [
 
 const numberOnly = (raw: string | undefined) => (raw || '').replace(/\s*(kkal|gram|g)\s*$/i, '').trim() || '-';
 
-const NutritionCard: React.FC<{
-  tiers: { key: PortionKey; config: PortionTierConfig }[];
+const NutritionDialog: React.FC<{
+  tiers: PortionTier[];
   portion: PortionKey;
   onPortionChange: (p: PortionKey) => void;
   calcium: string;
   iron: string;
   bodyWeight?: string;
-}> = ({ tiers, portion, onPortionChange, calcium, iron, bodyWeight }) => {
-  const [showDetail, setShowDetail] = useState(false);
+  onClose: () => void;
+}> = ({ tiers, portion, onPortionChange, calcium, iron, bodyWeight, onClose }) => {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEscape(onClose, true);
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    return () => previouslyFocused?.focus();
+  }, []);
   const tier = tiers.find(t => t.key === portion)!.config;
   const kcal = parseNumber(tier.targetCalories);
   const kg = parseNumber(bodyWeight);
@@ -862,38 +949,25 @@ const NutritionCard: React.FC<{
   const macroTotal = parts.reduce((sum, p) => sum + Math.max(p.kcal, 0), 0);
 
   return (
-    <section id="gizi" aria-labelledby="gizi-title" className={cardCls}>
-      <CardTitle
-        id="gizi-title"
-        icon={<BarChart3 className="w-6 h-6" />}
-        title="Informasi Gizi per Porsi"
-        subtitle="Nilai gizi ditampilkan berdasarkan resep dan takaran yang tercatat."
-        action={
-          <button type="button" onClick={() => setShowDetail(v => !v)} aria-expanded={showDetail} aria-controls="gizi-detail" className={`${pillBtn} max-sm:hidden`}>
-            {showDetail ? 'Tutup detail' : 'Lihat detail gizi'}
-            <ChevronRight className={`w-4 h-4 transition-transform ${showDetail ? 'rotate-90' : ''}`} />
-          </button>
-        }
-      />
-      {/* Porsi kecil/besar mengubah angka gizi dan takaran bahan di halaman ini. */}
-      <div className="mb-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-        <div role="radiogroup" aria-label="Pilih porsi" className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[#f4efe3] sm:w-auto">
-          {tiers.map(t => {
-            const on = portion === t.key;
-            return (
-              <button
-                key={t.key}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                onClick={() => onPortionChange(t.key)}
-                className={`min-h-[44px] px-4 rounded-lg text-sm font-bold cursor-pointer transition-colors duration-150 ${focusRing} ${on ? 'bg-[#15803d] text-white' : 'text-slate-700 hover:bg-white/70'}`}
-              >
-                {splitTierName(t.config.tierName).name}
-              </button>
-            );
-          })}
+    <div className="fixed inset-0 z-50 bg-[#0a1e12]/50 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="gizi-title"
+        onClick={e => e.stopPropagation()}
+        className="bg-white w-full sm:max-w-2xl max-h-[90dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-4 sm:p-6"
+      >
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="min-w-0">
+          <h2 id="gizi-title" className="font-kids text-2xl font-bold text-[#173d26] leading-tight">Informasi Gizi per Porsi</h2>
+          <p className="text-[13px] text-slate-600 mt-0.5">Nilai gizi ditampilkan berdasarkan resep dan takaran yang tercatat.</p>
         </div>
+        <button ref={closeRef} type="button" onClick={onClose} aria-label="Tutup informasi gizi" className={`w-11 h-11 shrink-0 rounded-full hover:bg-[#f4efe3] flex items-center justify-center cursor-pointer ${focusRing}`}>
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      <div className="mb-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+        <PortionSwitch tiers={tiers} portion={portion} onChange={onPortionChange} />
         <p className="text-[13px] text-slate-600 leading-snug">
           {[splitTierName(tier.tierName).group, tier.totalGramature].filter(Boolean).join(' · ')}
         </p>
@@ -912,12 +986,7 @@ const NutritionCard: React.FC<{
           </div>
         ))}
       </dl>
-      <button type="button" onClick={() => setShowDetail(v => !v)} aria-expanded={showDetail} aria-controls="gizi-detail" className={`${pillBtn} sm:hidden mt-3 w-full justify-center`}>
-        {showDetail ? 'Tutup detail gizi' : 'Lihat detail gizi'}
-      </button>
-
-      {showDetail && (
-        <div id="gizi-detail" className="mt-4 pt-4 border-t border-[#efe8d8] space-y-4">
+        <div className="mt-4 pt-4 border-t border-[#efe8d8] space-y-4">
           {tier.description?.trim() && (
             <div>
               <p className="text-[13px] font-bold text-slate-700">Kenapa porsinya berbeda?</p>
@@ -963,8 +1032,8 @@ const NutritionCard: React.FC<{
             {canEstimate && ` Perkiraan aktivitas untuk anak ${String(kg).replace('.', ',')} kg (acuan AKG 2019), nilai MET dari Compendium of Physical Activities 2011.`}
           </p>
         </div>
-      )}
-    </section>
+      </div>
+    </div>
   );
 };
 
@@ -1444,6 +1513,7 @@ export const DailyMenuPublicPage: React.FC = () => {
   const [portion, setPortion] = useState<PortionKey>('large');
   const [menuType, setMenuType] = useState<MenuType>('reguler');
   const [isB3Open, setIsB3Open] = useState(false);
+  const [isNutritionOpen, setIsNutritionOpen] = useState(false);
   const [detailIndex, setDetailIndex] = useState<number | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState('');
@@ -1497,6 +1567,7 @@ export const DailyMenuPublicPage: React.FC = () => {
   const closeDetail = useCallback(() => setDetailIndex(null), []);
   const closeQr = useCallback(() => setIsQrOpen(false), []);
   const closeB3 = useCallback(() => setIsB3Open(false), []);
+  const closeNutrition = useCallback(() => setIsNutritionOpen(false), []);
   useEscape(closeQr, isQrOpen);
 
   const handleCopyLink = async () => {
@@ -1521,17 +1592,15 @@ export const DailyMenuPublicPage: React.FC = () => {
     handleCopyLink();
   };
 
-  const tiers: { key: PortionKey; config: PortionTierConfig }[] = [
+  const tiers: PortionTier[] = [
     { key: 'small', config: menuToday.portionSmall },
     { key: 'large', config: menuToday.portionLarge }
   ];
   const activeTier = portion === 'large' ? menuToday.portionLarge : menuToday.portionSmall;
   const bodyWeight = portion === 'large' ? menuToday.bodyWeightLargeKg : menuToday.bodyWeightSmallKg;
-  // Daftar hidangan: dari rincian bahan bila ada, selain itu dari judul menu.
-  const regularDishes = ingredients.length > 0
-    ? ingredients.map(i => i.name)
-    : splitDishes(menuToday.menuTitle);
-  const b3Dishes = splitDishes(menuToday.menuB3 || '');
+  const { regular: regularDishes, b3: b3Dishes } = useMemo(() => menuDishes(menuToday), [menuToday]);
+  // Foto contoh bawaan berlatar putih, jadi yang tampil versi potongannya.
+  const regularPhoto = !menuToday.imageUrl || menuToday.imageUrl === trayImg1 ? trayCutoutImg : menuToday.imageUrl;
   // Data lama atau menu baru tanpa 3B: kembali ke reguler agar pilihan tidak menunjuk ke menu kosong.
   const activeType: MenuType = menuType === 'b3' && b3Dishes.length > 0 ? 'b3' : 'reguler';
   const dishes = activeType === 'b3' ? b3Dishes : regularDishes;
@@ -1603,69 +1672,71 @@ export const DailyMenuPublicPage: React.FC = () => {
           <Sprig flip className="hidden xl:block absolute -z-10 -right-32 top-[1500px] w-40 text-[#1f8a4c]/20" />
           <Butterfly className="hidden xl:block absolute -left-24 top-[560px] w-10" />
           <Bee className="hidden xl:block absolute -right-20 top-[1460px] w-9" />
-          {/* Hero: mengikuti poster menu hijau. Menu adalah pusatnya: nama hidangan mengelilingi foto nampan dengan panah,
-              ringkasan dua porsi di bawah garis. Tanpa hiasan di dalam kartu supaya mata langsung ke menu. */}
-          <section
-            aria-labelledby="hero-title"
-            className="rounded-3xl overflow-hidden bg-[linear-gradient(180deg,#2d6e3e_0%,#1f5130_100%)] text-white px-5 py-6 sm:px-8 sm:py-8"
-          >
-            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-semibold text-white/85">
-              <span className="inline-flex items-center gap-1.5">
-                {React.createElement(MENU_TYPES[activeType].Icon, { className: 'w-4 h-4', 'aria-hidden': true })}
-                {MENU_TYPES[activeType].label}
-              </span>
-              {updatedLabel && (
-                <span className="inline-flex items-center gap-1.5 font-normal text-white/75">
-                  <Clock className="w-3.5 h-3.5" aria-hidden="true" />
-                  {updatedLabel}
-                </span>
-              )}
-            </p>
-            <h1 id="hero-title" className="font-kids font-extrabold leading-[0.95] text-[44px] sm:text-[64px] lg:text-[76px] mt-2">
-              Menu MBG<br />Hari ini
-            </h1>
-            <p className="text-lg sm:text-2xl mt-2">{menuToday.dateText}</p>
+          {/* Hero: nampan sebagai pusat, nama hidangan dengan panah seperti poster menu hijau, lalu tabel gizi.
+              Latar foto diburamkan dan diberi warna gelap supaya teks putih tetap terbaca. */}
+          <section aria-labelledby="hero-title" className="overflow-hidden rounded-3xl bg-[#e9f7f1]">
+            <div className="relative isolate overflow-hidden px-4 pt-6 pb-12 sm:px-8 sm:pt-8 sm:pb-16 text-white">
+              {/* Foto dokumentasi pertama dari CMS (Hero, foto slide), bukan ilustrasi. Ilustrasi hanya cadangan bila belum ada foto. */}
+              <SafeImg src={config.hero.photoSlides?.find(s => s.imageUrl)?.imageUrl || heroBgImg} fallbackSrc={heroBgImg} alt="" aria-hidden="true" className="absolute -z-20 inset-0 h-full w-full object-cover blur-[3px] scale-105" />
+              <div className="absolute -z-10 inset-0 bg-[linear-gradient(180deg,rgba(13,71,76,0.93)_0%,rgba(24,104,106,0.89)_55%,rgba(30,116,114,0.92)_100%)]" aria-hidden="true" />
+              {/* Peralihan ke bagian tabel gizi; tingginya tetap, tidak ada teks di atasnya. */}
+              <div className="absolute -z-10 inset-x-0 bottom-0 h-10 sm:h-14 bg-gradient-to-b from-transparent to-[#e9f7f1]" aria-hidden="true" />
+              <HeroLeaves className="hidden sm:block absolute -left-5 bottom-2 w-28 xl:w-36" />
+              <HeroLeaves flip className="hidden sm:block absolute -right-5 bottom-6 w-24 xl:w-32" />
 
-            <div className="border-t border-white/60 mt-5 pt-6 sm:mt-6 sm:pt-8">
-              <HeroTray
-                dishes={dishes}
-                photo={activeType === 'b3' ? null : menuToday.imageUrl || trayImg1}
-              />
+              <div className="text-center">
+                <h1 id="hero-title" className="font-kids font-extrabold uppercase leading-[1] text-[38px] sm:text-[56px] lg:text-[68px] [text-shadow:0_3px_14px_rgba(6,40,44,0.5)]">
+                  Menu MBG<br />Hari Ini
+                </h1>
+                <p className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mt-3 text-[15px] sm:text-lg font-semibold">
+                  <span>{menuToday.dateText}</span>
+                  <span className="inline-flex items-center gap-1.5 text-sm font-medium text-white/90">
+                    {React.createElement(MENU_TYPES[activeType].Icon, { className: 'w-4 h-4', 'aria-hidden': true })}
+                    {MENU_TYPES[activeType].label}
+                  </span>
+                </p>
+              </div>
+
+              <div className="mt-5 sm:mt-6">
+                <HeroTray
+                  dishes={dishes}
+                  photo={activeType === 'b3' ? menuToday.imageUrlB3 || null : regularPhoto}
+                  labels={activeType === 'b3' ? menuToday.trayLabelsB3 : menuToday.trayLabels}
+                />
+              </div>
             </div>
 
-            {activeType === 'reguler' ? (
-              <div className="border-t border-white/60 mt-6 pt-5 sm:mt-8 sm:pt-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
-                <dl className="grid grid-cols-2 gap-x-8 gap-y-1 sm:flex sm:gap-x-14">
-                  {[menuToday.portionLarge, menuToday.portionSmall].map((t, i) => {
-                    const kcal = numberOnly(t.targetCalories);
-                    return (
-                      <div key={i}>
-                        <dt className="font-kids text-xl sm:text-2xl font-extrabold">{i === 0 ? 'Porsi Besar' : 'Porsi Kecil'}</dt>
-                        <dd className="text-[15px] sm:text-base text-white/90 tabular-nums">
-                          {kcal !== '-' ? `${kcal} kkal` : 'Energi belum diisi'}
-                          {t.totalGramature?.trim() && <span className="block">{t.totalGramature}</span>}
-                        </dd>
-                      </div>
-                    );
-                  })}
-                </dl>
-                <a
-                  href="#gizi"
-                  className={`inline-flex items-center justify-center gap-1.5 self-start md:self-auto min-h-[44px] px-4 rounded-xl bg-white text-[#1f5130] text-sm font-bold hover:bg-[#eef6ec] ${focusRing}`}
-                >
-                  Lihat detail gizi
-                </a>
-              </div>
-            ) : (
-              <p className="border-t border-white/60 mt-6 pt-5 text-[15px] text-white/90">{subtitle}</p>
-            )}
-
-            {menuToday.qcStatus?.trim() && (
-              <p className="flex items-start gap-1.5 text-[13px] text-white/80 mt-4">
-                <ShieldCheck className="w-4 h-4 shrink-0 mt-px" aria-hidden="true" />
-                {menuToday.qcStatus}
-              </p>
-            )}
+            <div className="px-3 pb-5 sm:px-8 sm:pb-8 text-[#173d26]">
+              {activeType === 'reguler' ? (
+                <div className="max-w-4xl mx-auto">
+                  <h2 className="font-kids font-extrabold uppercase text-center text-2xl sm:text-3xl">Kandungan Gizi</h2>
+                  <div className="mt-3">
+                    <HeroNutritionTable large={menuToday.portionLarge} small={menuToday.portionSmall} />
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-1.5 text-[13px] text-[#21453a]">
+                    <div className="space-y-1 min-w-0">
+                      {menuToday.qcStatus?.trim() && (
+                        <p className="flex items-start gap-1.5">
+                          <ShieldCheck className="w-4 h-4 shrink-0 mt-px" aria-hidden="true" />
+                          {menuToday.qcStatus}
+                        </p>
+                      )}
+                      {updatedLabel && (
+                        <p className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+                          {updatedLabel}
+                        </p>
+                      )}
+                    </div>
+                    <button type="button" onClick={() => setIsNutritionOpen(true)} className={`inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl bg-[#1f4d2f] hover:bg-[#173d26] text-white text-sm font-bold cursor-pointer ${focusRing}`}>
+                      Lihat detail gizi
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="max-w-2xl mx-auto text-center text-[15px]">{subtitle}</p>
+              )}
+            </div>
           </section>
 
           <MenuTypeCard menuType={activeType} hasB3={b3Dishes.length > 0} onChange={setMenuType} onExplain={() => setIsB3Open(true)} />
@@ -1673,21 +1744,10 @@ export const DailyMenuPublicPage: React.FC = () => {
           {activeType === 'b3' ? (
             <B3MenuCard dishes={b3Dishes} onExplain={() => setIsB3Open(true)} />
           ) : (
-            <>
-              <div className="grid lg:grid-cols-[minmax(0,1fr)_280px] gap-3.5 lg:gap-5 items-start">
-                <NutritionCard
-                  tiers={tiers}
-                  portion={portion}
-                  onPortionChange={setPortion}
-                  calcium={menuToday.energySummary.calciumAvg}
-                  iron={menuToday.energySummary.ironAvg}
-                  bodyWeight={bodyWeight}
-                />
-                <BenefitsCard />
-              </div>
-
-              <IngredientStrip ingredients={ingredients} portion={portion} onOpen={setDetailIndex} />
-            </>
+            <div className="grid lg:grid-cols-[minmax(0,1fr)_280px] gap-3.5 lg:gap-5 items-start">
+              <IngredientStrip ingredients={ingredients} tiers={tiers} portion={portion} onPortionChange={setPortion} onOpen={setDetailIndex} />
+              <BenefitsCard />
+            </div>
           )}
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3.5 lg:gap-5 items-start">
@@ -1798,6 +1858,17 @@ export const DailyMenuPublicPage: React.FC = () => {
 
       {detailIndex !== null && (
         <IngredientSheet ingredients={ingredients} index={detailIndex} portion={portion} onIndexChange={setDetailIndex} onClose={closeDetail} />
+      )}
+      {isNutritionOpen && (
+        <NutritionDialog
+          tiers={tiers}
+          portion={portion}
+          onPortionChange={setPortion}
+          calcium={menuToday.energySummary.calciumAvg}
+          iron={menuToday.energySummary.ironAvg}
+          bodyWeight={bodyWeight}
+          onClose={closeNutrition}
+        />
       )}
     </div>
   );

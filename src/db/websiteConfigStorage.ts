@@ -151,6 +151,15 @@ export const HABIT_WEEKDAY_LABELS: Record<number, string> = {
   6: 'Sabtu'
 };
 
+/** Letak satu nama hidangan di sekitar ompreng, dalam koordinat panggung hero (lihat TrayStage). Dicocokkan lewat text, bukan urutan. */
+export interface TrayLabelPlacement {
+  text: string;
+  x: number;
+  y: number;
+  tipX: number;
+  tipY: number;
+}
+
 export interface WebsiteMenuTodayConfig {
   dateText: string;
   menuTitle: string;
@@ -160,6 +169,11 @@ export interface WebsiteMenuTodayConfig {
   menuB3?: string;
   description: string;
   imageUrl: string;
+  /** Letak nama dan panah di hero halaman publik; kosong = letak bawaan poster */
+  trayLabels?: TrayLabelPlacement[] | null;
+  /** Foto ompreng menu 3B tanpa background; kosong = ilustrasi 3B yang tampil */
+  imageUrlB3?: string;
+  trayLabelsB3?: TrayLabelPlacement[] | null;
   energySummary: {
     caloriesAvg: string;
     proteinAvg: string;

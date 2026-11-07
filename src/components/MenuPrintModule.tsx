@@ -2,6 +2,11 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {warehouseDb} from "../db/storage";
 import {MenuOrder} from "../types/warehouse";
 import {compressImageToWebP} from "../utils/imageCompressor";
+import {cutoutTrayPhoto, preloadBgRemoval} from "../utils/trayCutout";
+import {publishTrays, type TrayPublish} from "../utils/menuTrayPublish";
+import {fetchWebsiteConfigFromCloud, getWebsiteConfig, WEBSITE_CONFIG_UPDATED_EVENT} from "../db/websiteConfigStorage";
+import {LabelPlacementOverlay} from "./print/LabelPlacementOverlay";
+import {posterLabelToStage} from "./menuPublic/TrayStage";
 import {localDateIso} from "../utils/localDate";
 import {useToast} from "../context/ToastContext";
 import {FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY} from "./common/FormDialog";
@@ -12,7 +17,7 @@ import {FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY} from "./common/For
 import templateSingle from "../assets/poster-single.jpg";
 import templateDouble from "../assets/poster-double.jpg";
 import logoSppg from "../assets/logo sppg.png";
-import {drawGreenPoster, drawGreenDoublePoster, drawPurplePoster, drawPurpleDoublePoster, greenLabelTexts, greenDoubleLabelDefaults, GREEN_LABEL_DEFAULTS, type DrawnMenu, type DrawnPosterInput, type PosterTrayBox, type LabelPlacement} from "./print/menuPosterDesigns";
+import {drawGreenPoster, drawGreenDoublePoster, drawPurplePoster, drawPurpleDoublePoster, greenLabelTexts, greenDoubleLabelDefaults, greenDoubleToSingle, GREEN_LABEL_DEFAULTS, type DrawnMenu, type DrawnPosterInput, type PosterTrayBox, type LabelPlacement} from "./print/menuPosterDesigns";
 
 interface NutritionValues {
   energy: string; // kkal
@@ -521,61 +526,6 @@ function drawNutrition(ctx: CanvasRenderingContext2D, col: NutritionColumn, valu
   ctx.restore();
 }
 
-// Buang tepi transparan hasil hapus background, agar nampan memenuhi kotak saat digambar.
-// Setelan hapus background. Bawaan library selalu menghitung di CPU dengan satu thread (situs tidak
-// crossOriginIsolated), sekitar 8 detik per foto. Dengan WebGPU, model yang sama selesai sekitar 0,5 sampai 2 detik.
-// Model tetap fp16 di kedua jalur: quint8 tidak lebih cepat di CPU dan justru lambat di WebGPU,
-// dan fp16 sudah tersimpan di cache browser petugas yang pernah memakai fitur ini.
-// Library menyimpan sesi model per setelan (JSON), jadi preload dan proses harus memakai setelan yang sama persis.
-type BgRemovalConfig = {device: "gpu" | "cpu"; model: "isnet_fp16"; output: {format: "image/png"}};
-let bgConfigPromise: Promise<BgRemovalConfig> | null = null;
-const bgRemovalConfig = () =>
-  (bgConfigPromise ??= (async () => {
-    const gpu = (navigator as Navigator & {gpu?: {requestAdapter: () => Promise<unknown>}}).gpu;
-    const hasGpu = Boolean(gpu && (await gpu.requestAdapter().catch(() => null)));
-    return {device: hasGpu ? "gpu" : "cpu", model: "isnet_fp16", output: {format: "image/png"}};
-  })());
-
-// Unduh dan siapkan model di belakang layar begitu ada foto nampan, supaya saat tombol ditekan tinggal menghitung.
-let bgPreloaded: Promise<void> | null = null;
-const preloadBgRemoval = () => {
-  bgPreloaded ??= (async () => {
-    const [{preload}, config] = await Promise.all([import("@imgly/background-removal"), bgRemovalConfig()]);
-    await preload(config);
-  })().catch(() => {
-    bgPreloaded = null; // gagal (mis. offline): coba lagi di kesempatan berikutnya
-  });
-  return bgPreloaded;
-};
-
-async function trimTransparent(blob: Blob): Promise<Blob> {
-  const bitmap = await createImageBitmap(blob);
-  const canvas = document.createElement("canvas");
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return blob;
-  ctx.drawImage(bitmap, 0, 0);
-  const {data, width, height} = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  let minX = width, minY = height, maxX = -1, maxY = -1;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (data[(y * width + x) * 4 + 3] > 16) {
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-    }
-  }
-  if (maxX < 0) throw new Error("Nampan tidak terdeteksi.");
-  const out = document.createElement("canvas");
-  out.width = maxX - minX + 1;
-  out.height = maxY - minY + 1;
-  out.getContext("2d")?.drawImage(canvas, minX, minY, out.width, out.height, 0, 0, out.width, out.height);
-  return new Promise((resolve, reject) => out.toBlob((b) => (b ? resolve(b) : reject(new Error("Gagal memotong gambar."))), "image/png"));
-}
-
 const imageCache = new Map<string, Promise<HTMLImageElement>>();
 function loadImage(src: string): Promise<HTMLImageElement> {
   let p = imageCache.get(src);
@@ -690,84 +640,6 @@ async function drawCanvasPoster(canvas: HTMLCanvasElement, layout: DrawnPosterTe
   };
   layout.draw(ctx, input);
 }
-
-// Pegangan yang bisa digeser di atas pratinjau: kotak bernomor untuk nama hidangan, bulatan untuk pangkal panah
-// (titik makanan di foto). Bisa dengan mouse, sentuhan, atau tombol panah keyboard (Shift untuk langkah besar).
-const LabelPlacementOverlay: React.FC<{
-  width: number;
-  height: number;
-  texts: string[];
-  placements: LabelPlacement[];
-  onChange: (next: LabelPlacement[]) => void;
-}> = ({width, height, texts, placements, onChange}) => {
-  const boxRef = useRef<HTMLDivElement>(null);
-  const drag = useRef<{index: number; part: "label" | "tip"} | null>(null);
-
-  const move = (index: number, part: "label" | "tip", x: number, y: number) => {
-    const cx = Math.min(width, Math.max(0, Math.round(x)));
-    const cy = Math.min(height, Math.max(0, Math.round(y)));
-    onChange(placements.map((p, i) => (i !== index ? p : part === "label" ? {...p, x: cx, y: cy} : {...p, tipX: cx, tipY: cy})));
-  };
-
-  const toPoster = (e: React.PointerEvent) => {
-    const rect = boxRef.current!.getBoundingClientRect();
-    return [((e.clientX - rect.left) / rect.width) * width, ((e.clientY - rect.top) / rect.height) * height] as const;
-  };
-
-  const handlers = (index: number, part: "label" | "tip") => ({
-    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
-      e.preventDefault();
-      e.currentTarget.setPointerCapture(e.pointerId);
-      drag.current = {index, part};
-    },
-    onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (drag.current?.index !== index || drag.current.part !== part) return;
-      const [x, y] = toPoster(e);
-      move(index, part, x, y);
-    },
-    onPointerUp: () => {
-      drag.current = null;
-    },
-    onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => {
-      const step = e.shiftKey ? 60 : 15;
-      const d = {ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step]}[e.key];
-      if (!d) return;
-      e.preventDefault();
-      const p = placements[index];
-      if (part === "label") move(index, part, p.x + d[0], p.y + d[1]);
-      else move(index, part, p.tipX + d[0], p.tipY + d[1]);
-    },
-  });
-
-  const pos = (x: number, y: number) => ({left: `${(x / width) * 100}%`, top: `${(y / height) * 100}%`});
-
-  return (
-    <div ref={boxRef} className="absolute inset-0 no-print touch-none select-none">
-      {placements.map((p, i) => (
-        <React.Fragment key={i}>
-          <button
-            type="button"
-            {...handlers(i, "tip")}
-            aria-label={`Pangkal panah ${texts[i]}. Geser ke makanannya, atau pakai tombol panah.`}
-            className="absolute -translate-x-1/2 -translate-y-1/2 w-6 h-6 pointer-coarse:w-9 pointer-coarse:h-9 rounded-full bg-amber-300 border-2 border-white shadow cursor-grab active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-1"
-            style={pos(p.tipX, p.tipY)}
-          >
-            <span className="text-[10px] font-bold text-slate-900">{i + 1}</span>
-          </button>
-          <button
-            type="button"
-            {...handlers(i, "label")}
-            aria-label={`Nama ${texts[i]}. Geser ke tempat yang kosong, atau pakai tombol panah.`}
-            className="absolute -translate-x-1/2 -translate-y-1/2 max-w-[30%] px-2 min-h-[28px] pointer-coarse:min-h-[44px] rounded-md bg-white/90 border-2 border-amber-400 text-[11px] font-semibold text-slate-900 truncate shadow cursor-grab active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-1"
-            style={pos(p.x, p.y)}
-          >
-            {i + 1}. {texts[i]}
-          </button>
-        </React.Fragment>
-      ))}
-    </div>
-  );
-};
 
 const THUMB_SCALE = 0.25;
 
@@ -984,7 +856,8 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
     try {
       const result = await compressImageToWebP(file, {maxDimension: 1200, quality: 0.85});
       updateMenu(index, {photo: result.dataUrl, photoOriginal: null});
-      preloadBgRemoval();
+      setUploadingIndex(null);
+      await removeBackground(index, result.dataUrl);
     } catch {
       toast.error("Foto gagal dibaca. Coba foto lain dengan format JPG atau PNG.", "Foto nampan");
     } finally {
@@ -998,24 +871,16 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
     if (editingPhoto && !editingCutDone) preloadBgRemoval();
   }, [editingPhoto, editingCutDone]);
 
-  const handleRemoveBackground = async () => {
-    const index = editingIndex;
-    const source = menus[index]?.photo;
-    if (!source) return;
+  const handleRemoveBackground = () => {
+    const source = menus[editingIndex]?.photo;
+    if (source) removeBackground(editingIndex, source);
+  };
+
+  async function removeBackground(index: number, source: string) {
     setCutoutIndex(index);
     setCutoutStatus("Menyiapkan...");
     try {
-      // Library dimuat saat dipakai saja. Model diunduh sekali lalu disimpan cache browser; biasanya sudah
-      // disiapkan oleh preload sejak foto diunggah.
-      const [{removeBackground}, config] = await Promise.all([import("@imgly/background-removal"), bgRemovalConfig()]);
-      const blob = await removeBackground(source, {
-        ...config,
-        progress: (key: string, current: number, total: number) => {
-          if (key.startsWith("fetch") && total > 0) setCutoutStatus(`Mengunduh model ${Math.round((current / total) * 100)}%`);
-          else if (key.startsWith("compute")) setCutoutStatus("Menghapus background...");
-        },
-      });
-      const trimmed = await trimTransparent(blob);
+      const trimmed = await cutoutTrayPhoto(source, setCutoutStatus);
       const result = await compressImageToWebP(new File([trimmed], "nampan.png", {type: "image/png"}), {maxDimension: 1200, quality: 0.9});
       updateMenu(index, {photo: result.dataUrl, photoOriginal: source});
     } catch {
@@ -1024,7 +889,64 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
       setCutoutIndex(null);
       setCutoutStatus("");
     }
-  };
+  }
+
+  // Foto tanpa background otomatis tampil di halaman menu publik, selama tanggal poster sama dengan tanggal halaman.
+  // Tanggal berbeda: petugas memutuskan sendiri, supaya poster besok tidak tampil sebagai menu hari ini.
+  const [pageDateText, setPageDateText] = useState(() => getWebsiteConfig().menuToday.dateText);
+  useEffect(() => {
+    const refresh = () => setPageDateText(getWebsiteConfig().menuToday.dateText);
+    window.addEventListener(WEBSITE_CONFIG_UPDATED_EVENT, refresh);
+    fetchWebsiteConfigFromCloud().then((res) => setPageDateText(res.config.menuToday.dateText));
+    return () => window.removeEventListener(WEBSITE_CONFIG_UPDATED_EVENT, refresh);
+  }, []);
+  const posterDateLong = formatPosterDateLong(selectedDate);
+  const dateMatchesPage = pageDateText.toLowerCase().includes((posterDateLong.split(", ").pop() ?? "").toLowerCase());
+
+  const trayPublishes = useMemo<TrayPublish[]>(() => {
+    const labelSource = isDrawnPoster(activeTemplate) ? activeTemplate.labels : undefined;
+    return visibleMenus.flatMap((menu, i): TrayPublish[] => {
+      if (!menu.photo || !menu.photoOriginal) return [];
+      const target = i === 0 ? "reguler" : "b3";
+      if (!labelSource || !menu.labelPlacements) return [{target, photo: menu.photo}];
+      const defaults = labelSource.defaults(i);
+      const labels = labelSource.texts(menu.items).map((text, n) => {
+        const placed = menu.labelPlacements?.[n] ?? defaults[n];
+        return {text, ...posterLabelToStage(printMode === "DOUBLE" ? greenDoubleToSingle(placed, i) : placed)};
+      });
+      return [{target, photo: menu.photo, labels}];
+    });
+  }, [visibleMenus, activeTemplate, printMode]);
+  const trayKey = useMemo(() => JSON.stringify(trayPublishes), [trayPublishes]);
+  const [trayStatus, setTrayStatus] = useState<{state: "idle" | "sending" | "sent" | "failed"; key: string; message?: string}>({state: "idle", key: ""});
+  const trayQueue = useRef<Promise<void>>(Promise.resolve());
+  const trayHasLabels = useRef<Record<string, boolean>>({});
+
+  const sendTrays = useCallback((items: TrayPublish[], key: string) => {
+    setTrayStatus({state: "sending", key});
+    // Letak nama yang dikembalikan ke bawaan di poster juga dikembalikan di halaman menu.
+    const withResets = items.map((item) => (item.labels === undefined && trayHasLabels.current[item.target] ? {...item, labels: null} : item));
+    trayQueue.current = trayQueue.current.then(async () => {
+      try {
+        await publishTrays(withResets);
+        withResets.forEach((item) => {
+          trayHasLabels.current[item.target] = Boolean(item.labels);
+        });
+        setTrayStatus((s) => (s.key === key ? {state: "sent", key} : s));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Koneksi bermasalah.";
+        setTrayStatus((s) => (s.key === key ? {state: "failed", key, message} : s));
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (trayPublishes.length === 0 || !dateMatchesPage) return;
+    const timer = setTimeout(() => sendTrays(trayPublishes, trayKey), 1000);
+    return () => clearTimeout(timer);
+    // trayKey sudah mewakili isi trayPublishes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trayKey, dateMatchesPage, sendTrays]);
 
   const handleDownload = async (format: "jpg" | "png") => {
     const canvas = canvasRef.current;
@@ -1328,8 +1250,26 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
                   <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" tabIndex={-1} aria-hidden="true" />
                 </div>
                 <p className="mt-1 text-[11px] text-slate-600">Foto diambil dari atas, nampan tegak memanjang. Foto menutupi nampan contoh di template.</p>
-                {current.photo && !current.photoOriginal && (
-                  <p className="mt-0.5 text-[11px] text-slate-600">Hapus background membuat nampan menyatu dengan poster. Pertama kali perlu mengunduh model sekitar 80 MB; foto tetap diproses di perangkat ini.</p>
+                {!current.photoOriginal && (
+                  <p className="mt-0.5 text-[11px] text-slate-600">Background dihapus otomatis setelah foto diunggah, supaya nampan menyatu dengan poster dan halaman menu. Pertama kali perlu mengunduh model sekitar 80 MB; foto tetap diproses di perangkat ini.</p>
+                )}
+                {current.photo && !current.photoOriginal && cutoutIndex === null && (
+                  <p className="mt-1 text-[11px] font-medium text-amber-800">Foto ini belum dikirim ke halaman menu, karena halaman menu hanya memakai foto tanpa background.</p>
+                )}
+                {trayPublishes.length > 0 && (
+                  <div aria-live="polite" className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+                    <p className="text-xs text-slate-700 min-w-0">
+                      {trayStatus.key === trayKey && trayStatus.state === "sending" && "Mengirim ke halaman menu..."}
+                      {trayStatus.key === trayKey && trayStatus.state === "sent" && "Foto dan letak nama sudah tampil di halaman menu."}
+                      {trayStatus.key === trayKey && trayStatus.state === "failed" && `Belum terkirim ke halaman menu. ${trayStatus.message ?? ""}`}
+                      {trayStatus.key !== trayKey && (dateMatchesPage ? "Menunggu dikirim ke halaman menu..." : `Halaman menu masih untuk ${pageDateText || "tanggal lain"}, poster ini ${posterDateLong}. Foto belum dikirim agar tidak salah tanggal.`)}
+                    </p>
+                    {(trayStatus.key === trayKey ? trayStatus.state === "failed" : !dateMatchesPage) && (
+                      <button type="button" onClick={() => sendTrays(trayPublishes, trayKey)} className={`${BTN_SECONDARY} shrink-0`}>
+                        {trayStatus.key === trayKey ? "Coba kirim lagi" : "Tetap kirim ke halaman menu"}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -1420,8 +1360,7 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
             />
             {placingLabels && labelSetup && placementsForOverlay && (
               <LabelPlacementOverlay
-                width={activeTemplate.width}
-                height={activeTemplate.height}
+                view={{x: 0, y: 0, w: activeTemplate.width, h: activeTemplate.height}}
                 texts={labelSetup.texts}
                 placements={placementsForOverlay}
                 onChange={(next) => updateMenu(editingIndex, {labelPlacements: next})}

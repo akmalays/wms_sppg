@@ -81,28 +81,30 @@ function drawSlhs(ctx: CanvasRenderingContext2D, slhs: CroppedImage, x: number, 
 }
 
 // Panah lengkung dari (x1, y1) ke (x2, y2); bend menggeser titik kendali tegak lurus garis.
-function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, bend: number, color: string, width: number) {
+/** Bentuk panah sebagai path SVG, supaya halaman publik menggambar panah yang sama dengan poster. */
+export function arrowPaths(x1: number, y1: number, x2: number, y2: number, bend: number, width: number): {line: string; head: string} {
   const mx = (x1 + x2) / 2;
   const my = (y1 + y2) / 2;
   const len = Math.hypot(x2 - x1, y2 - y1) || 1;
   const cx = mx + (-(y2 - y1) / len) * bend;
   const cy = my + ((x2 - x1) / len) * bend;
+  const angle = Math.atan2(y2 - cy, x2 - cx);
+  const head = width * 4.2;
+  return {
+    line: `M${x1} ${y1}Q${cx} ${cy} ${x2} ${y2}`,
+    head: `M${x2 - head * Math.cos(angle - 0.55)} ${y2 - head * Math.sin(angle - 0.55)}L${x2} ${y2}L${x2 - head * Math.cos(angle + 0.55)} ${y2 - head * Math.sin(angle + 0.55)}`,
+  };
+}
+
+function drawArrow(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number, bend: number, color: string, width: number) {
+  const {line, head} = arrowPaths(x1, y1, x2, y2, bend, width);
   ctx.save();
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.quadraticCurveTo(cx, cy, x2, y2);
-  ctx.stroke();
-  const angle = Math.atan2(y2 - cy, x2 - cx);
-  const head = width * 4.2;
-  ctx.beginPath();
-  ctx.moveTo(x2 - head * Math.cos(angle - 0.55), y2 - head * Math.sin(angle - 0.55));
-  ctx.lineTo(x2, y2);
-  ctx.lineTo(x2 - head * Math.cos(angle + 0.55), y2 - head * Math.sin(angle + 0.55));
-  ctx.stroke();
+  ctx.stroke(new Path2D(line));
+  ctx.stroke(new Path2D(head));
   ctx.restore();
 }
 
@@ -256,7 +258,16 @@ export function greenLabelTexts(items: string[]): string[] {
   return labels;
 }
 
-const GREEN_TRAY_CENTER = [793, 1205];
+export const GREEN_TRAY_CENTER = [793, 1205];
+
+/** Kotak foto nampan Hijau sebelum diputar -90 derajat. */
+export const GREEN_TRAY_BOX = {w: 540, h: 790};
+
+/** Bagian poster Hijau yang berisi nampan dan nama hidangan (di antara dua garis mendatar). */
+export const GREEN_TRAY_BAND = {x: 0, y: 790, w: W, h: 890};
+
+/** Lebar teks label bawaan Hijau, per urutan label. */
+export const GREEN_LABEL_WRAP = GREEN_LABEL_SLOTS.map((s) => s.wrapW);
 
 /**
  * Letak bawaan label Hijau dalam bentuk yang bisa digeser. tip adalah pangkal panah di makanan (panah berangkat
@@ -265,36 +276,43 @@ const GREEN_TRAY_CENTER = [793, 1205];
 export const GREEN_LABEL_DEFAULTS: LabelPlacement[] = GREEN_LABEL_SLOTS.map((s) => ({x: s.x, y: s.y, tipX: s.from[0], tipY: s.from[1]}));
 
 // Ukuran kotak teks label, dipakai untuk menentukan dari mana panah custom berangkat.
-function labelLines(ctx: CanvasRenderingContext2D, text: string, wrapW: number, maxPx: number, minPx: number): {lines: string[]; px: number} {
+export function labelLines(ctx: CanvasRenderingContext2D, text: string, wrapW: number, maxPx: number, minPx: number, fontOf: (px: number) => string = (px) => `500 ${px}px ${SANS}`): {lines: string[]; px: number} {
   let px = maxPx;
   let lines: string[] = [];
   for (; px >= minPx; px -= 2) {
-    ctx.font = `500 ${px}px ${SANS}`;
+    ctx.font = fontOf(px);
     lines = wrap(ctx, text, wrapW);
     if (lines.length <= 3) break;
   }
   return {lines, px};
 }
 
-// Panah custom: berangkat dari titik makanan yang ditunjuk petugas menuju tepi kotak teks, sama seperti panah bawaan.
-// Lengkungan dibuat menjauhi tengah nampan agar tidak memotong foto.
-function drawPlacedArrow(ctx: CanvasRenderingContext2D, p: LabelPlacement, halfW: number, halfH: number, center: number[], arrowW: number) {
+/**
+ * Panah custom: berangkat dari titik makanan yang ditunjuk petugas menuju tepi kotak teks, sama seperti panah bawaan.
+ * Lengkungan dibuat menjauhi tengah nampan agar tidak memotong foto. Null bila titik makanan di dalam atau terlalu
+ * dekat dengan teks, panahnya tidak digambar.
+ */
+export function placedArrow(p: LabelPlacement, halfW: number, halfH: number, center: number[]): {x1: number; y1: number; x2: number; y2: number; bend: number} | null {
   const dx = p.tipX - p.x;
   const dy = p.tipY - p.y;
   const len = Math.hypot(dx, dy);
-  if (len === 0) return;
+  if (len === 0) return null;
   const exit = Math.min(dx ? halfW / Math.abs(dx) : Infinity, dy ? halfH / Math.abs(dy) : Infinity);
   const ex = p.x + dx * exit + (dx / len) * 22;
   const ey = p.y + dy * exit + (dy / len) * 22;
   const ax = ex - p.tipX;
   const ay = ey - p.tipY;
   const alen = Math.hypot(ax, ay);
-  // Titik makanan di dalam atau terlalu dekat dengan teks: panah tidak digambar.
-  if (exit >= 1 || alen < 40) return;
+  if (exit >= 1 || alen < 40) return null;
   const mx = (p.tipX + ex) / 2 - center[0];
   const my = (p.tipY + ey) / 2 - center[1];
   const away = (-ay / alen) * mx + (ax / alen) * my >= 0 ? 1 : -1;
-  drawArrow(ctx, p.tipX, p.tipY, ex, ey, Math.min(48, alen * 0.22) * away, "#ffffff", arrowW);
+  return {x1: p.tipX, y1: p.tipY, x2: ex, y2: ey, bend: Math.min(48, alen * 0.22) * away};
+}
+
+function drawPlacedArrow(ctx: CanvasRenderingContext2D, p: LabelPlacement, halfW: number, halfH: number, center: number[], arrowW: number) {
+  const arrow = placedArrow(p, halfW, halfH, center);
+  if (arrow) drawArrow(ctx, arrow.x1, arrow.y1, arrow.x2, arrow.y2, arrow.bend, "#ffffff", arrowW);
 }
 
 type GreenSlot = (typeof GREEN_LABEL_SLOTS)[number];
@@ -523,7 +541,7 @@ export function drawGreenPoster(ctx: CanvasRenderingContext2D, input: DrawnPoste
   ctx.stroke();
 
   // Foto tegak memanjang diputar -90 derajat agar nampan tampil mendatar
-  input.drawTray({cx: 793, cy: 1205, w: 540, h: 790, rot: -90}, {fill: "rgba(255,255,255,0.08)", stroke: "rgba(255,255,255,0.6)", text: "#ffffff"});
+  input.drawTray({cx: GREEN_TRAY_CENTER[0], cy: GREEN_TRAY_CENTER[1], ...GREEN_TRAY_BOX, rot: -90}, {fill: "rgba(255,255,255,0.08)", stroke: "rgba(255,255,255,0.6)", text: "#ffffff"});
 
   drawGreenLabels(ctx, input, GREEN_LABEL_SLOTS, GREEN_TRAY_CENTER, {maxPx: 46, minPx: 30, arrowW: 8});
 
@@ -583,6 +601,15 @@ const greenDoubleSlots = (menuIndex: number): GreenSlot[] => {
 
 export const greenDoubleLabelDefaults = (menuIndex: number): LabelPlacement[] =>
   greenDoubleSlots(menuIndex).map((s) => ({x: s.x, y: s.y, tipX: s.from[0], tipY: s.from[1]}));
+
+/** Ubah letak label poster Hijau 2 menu ke koordinat poster 1 menu, dengan nampan sebagai acuan. */
+export function greenDoubleToSingle(p: LabelPlacement, menuIndex: number): LabelPlacement {
+  const scale = GREEN_TRAY_BOX.h / GREEN_DOUBLE_TRAY.h;
+  const cx = GREEN_DOUBLE_TRAY.cx + menuIndex * GREEN_DOUBLE_PANEL_W;
+  const mapX = (x: number) => Math.round(GREEN_TRAY_CENTER[0] + (x - cx) * scale);
+  const mapY = (y: number) => Math.round(GREEN_TRAY_CENTER[1] + (y - GREEN_DOUBLE_TRAY.cy) * scale);
+  return {x: mapX(p.x), y: mapY(p.y), tipX: mapX(p.tipX), tipY: mapY(p.tipY)};
+}
 
 function drawYayasanText(ctx: CanvasRenderingContext2D, rightX: number, y: number, px: number, color: string) {
   ctx.save();

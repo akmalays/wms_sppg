@@ -24,6 +24,8 @@ import { useConfirm } from '../context/ConfirmContext';
 import { MenuTodayKidsEditor } from './MenuTodayKidsEditor';
 import { compressImageToWebP } from '../utils/imageCompressor';
 import { requestMenuAiDraft, MenuAiDraft } from '../utils/menuAiDraft';
+import { cutoutTrayPhoto } from '../utils/trayCutout';
+import { TrayLabelEditor } from './menuPublic/TrayLabelEditor';
 import {
   Video,
   Image as ImageIcon,
@@ -762,13 +764,43 @@ export const WebsiteCmsModule: React.FC = () => {
     showNotification('QR Code diunduh.');
   };
 
+  // Nampan tanpa latar supaya menonjol di hero halaman publik. Hasilnya diunggah seperti foto biasa.
+  const [trayCutoutStatus, setTrayCutoutStatus] = useState('');
+  const handleCutoutTodayMenuPhoto = async () => {
+    const source = (config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).imageUrl;
+    if (!source) return;
+    setTrayCutoutStatus('Menyiapkan...');
+    try {
+      const blob = await cutoutTrayPhoto(source, setTrayCutoutStatus);
+      const result = await uploadCmsMedia(new File([blob], 'nampan.png', { type: 'image/png' }), 'menu');
+      patchMenuToday({ imageUrl: result.url });
+      notifyImageUpload(result, 'Foto nampan tanpa latar');
+    } catch {
+      showError('Background gagal dihapus. Periksa koneksi internet (model diunduh saat pertama kali), lalu coba lagi.');
+    } finally {
+      setTrayCutoutStatus('');
+    }
+  };
+
   const handleUploadTodayMenuPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
       setIsUploadingTodayMenuPhoto(true);
-      const result = await uploadCmsMedia(file, 'menu');
+      // Background dihapus otomatis agar ompreng menyatu dengan hero. Bila gagal, foto asli tetap dipakai dan
+      // petugas diberi tahu, tombol Hapus background bisa dicoba lagi.
+      let upload: File = file;
+      try {
+        const { dataUrl } = await compressImageToWebP(file, { maxDimension: 1600, quality: 0.9 });
+        const blob = await cutoutTrayPhoto(dataUrl, setTrayCutoutStatus);
+        upload = new File([blob], 'nampan.png', { type: 'image/png' });
+      } catch {
+        showError('Background gagal dihapus, foto diunggah apa adanya. Coba tombol Hapus background lagi saat koneksi baik.');
+      } finally {
+        setTrayCutoutStatus('');
+      }
+      const result = await uploadCmsMedia(upload, 'menu');
       setConfig(prev => ({
         ...prev,
         menuToday: {
@@ -1628,7 +1660,10 @@ export const WebsiteCmsModule: React.FC = () => {
                       <input type="file" ref={todayMenuPhotoFileRef} accept="image/*" onChange={handleUploadTodayMenuPhoto} className="hidden" />
                       <button type="button" onClick={() => todayMenuPhotoFileRef.current?.click()} disabled={isUploadingTodayMenuPhoto} className={BTN_SECONDARY}>
                         <Upload className="w-4 h-4" />
-                        {isUploadingTodayMenuPhoto ? 'Memproses...' : 'Unggah foto'}
+                        {isUploadingTodayMenuPhoto ? (trayCutoutStatus || 'Memproses...') : 'Unggah foto'}
+                      </button>
+                      <button type="button" onClick={handleCutoutTodayMenuPhoto} disabled={Boolean(trayCutoutStatus) || !menuToday.imageUrl} className={`${BTN_SECONDARY} disabled:opacity-60 disabled:cursor-wait`}>
+                        {!isUploadingTodayMenuPhoto && trayCutoutStatus ? trayCutoutStatus : 'Hapus background'}
                       </button>
                       <Select
                         aria-label="Pakai foto contoh"
@@ -1657,6 +1692,8 @@ export const WebsiteCmsModule: React.FC = () => {
                     placeholder="Penjelasan menu dan cara pengolahannya" className={`${FIELD} py-2`} />
                 </div>
               </div>
+
+              <TrayLabelEditor menuToday={menuToday} onChange={patchMenuToday} />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
