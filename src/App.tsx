@@ -25,6 +25,7 @@ import { LoginPage } from './components/LoginPage';
 import { LandingPage } from './components/LandingPage';
 import { WebsiteCmsModule } from './components/WebsiteCmsModule';
 import { DailyMenuPublicPage } from './components/DailyMenuPublicPage';
+import { AiAssistantModule } from './components/ai/AiAssistantModule';
 import { HedonicRecapModule } from './components/HedonicRecapModule';
 import { ScanResultModule } from './components/ScanResultModule';
 import { QrScannerDialog } from './components/common/QrScannerDialog';
@@ -284,6 +285,7 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'hedonic_recap' && <HedonicRecapModule />}
+          {activeTab === 'ai_assistant' && <AiAssistantModule />}
 
           {/* Kelola Pengguna digabung ke halaman Karyawan sebagai tab "Akun aplikasi". */}
           {(activeTab === 'employees' || activeTab === 'user_management') && (
@@ -367,7 +369,7 @@ const MainLayout: React.FC = () => {
   );
 };
 
-const SELF_SYNCING_TABS = new Set(['profile', 'menu_print', 'receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'hedonic_recap', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit', 'scan', 'document_signers']);
+const SELF_SYNCING_TABS = new Set(['profile', 'menu_print', 'receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'hedonic_recap', 'ai_assistant', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit', 'scan', 'document_signers']);
 
 export default function App() {
   return (

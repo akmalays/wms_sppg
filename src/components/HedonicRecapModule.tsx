@@ -5,6 +5,8 @@ import { BTN_SECONDARY, FIELD_INPUT, FOCUS_RING } from './common/FormDialog';
 import { useConfirm } from '../context/ConfirmContext';
 import { useToast } from '../context/ToastContext';
 import { localDateIso } from '../utils/localDate';
+import { AiInsightPanel } from './ai/AiInsightPanel';
+import { buildHedonicStats } from '../utils/aiStats';
 import {
   HEDONIC_PARAMS,
   HEDONIC_SAMPLES,
@@ -199,6 +201,15 @@ export const HedonicRecapModule: React.FC = () => {
           </p>
         )}
       </div>
+
+      {state === 'ready' && (
+        <AiInsightPanel
+          topic="hedonik"
+          periodLabel={`${PERIOD_LABEL[period]}, ${schoolFilter === 'ALL' ? 'semua sekolah' : schools.find(([id]) => id === schoolFilter)?.[1] || 'sekolah terpilih'}`}
+          getStats={() => buildHedonicStats(filtered)}
+          emptyReason={filtered.length === 0 ? 'Belum ada penilaian pada periode ini untuk diringkas.' : undefined}
+        />
+      )}
 
       {state === 'error' && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">

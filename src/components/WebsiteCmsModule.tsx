@@ -26,9 +26,12 @@ import { compressImageToWebP } from '../utils/imageCompressor';
 import { requestMenuAiDraft, MenuAiDraft } from '../utils/menuAiDraft';
 import { cutoutTrayPhoto } from '../utils/trayCutout';
 import { TrayLabelEditor } from './menuPublic/TrayLabelEditor';
+import { AiIngredientTidyDialog } from './ai/AiIngredientTidyDialog';
+import { requestIngredientTidy, type AiIngredientSuggestion } from '../utils/aiAssist';
 import {
   Video,
   Image as ImageIcon,
+  ListChecks,
   Sliders,
   Play,
   Plus,
@@ -707,6 +710,21 @@ export const WebsiteCmsModule: React.FC = () => {
     if (!draft?.description.trim()) return;
     patchMenuToday({ description: draft.description.trim() });
     showNotification('Draf deskripsi masuk. Baca dan perbaiki dulu sebelum Simpan.');
+  };
+
+  // Usulan AI untuk bahan dari data belanja; baru berubah setelah petugas memeriksa di dialog.
+  const [tidySuggestions, setTidySuggestions] = useState<AiIngredientSuggestion[] | null>(null);
+  const [isTidying, setIsTidying] = useState(false);
+  const handleAiTidyIngredients = async () => {
+    const mt = config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+    setIsTidying(true);
+    try {
+      setTidySuggestions(await requestIngredientTidy(mt.menuTitle, mt.ingredients.map(i => i.name)));
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Bahan gagal dirapikan AI.');
+    } finally {
+      setIsTidying(false);
+    }
   };
 
   // Hanya mengisi kolom teks bahan yang masih kosong, supaya tulisan petugas tidak tertimpa.
@@ -1769,6 +1787,12 @@ export const WebsiteCmsModule: React.FC = () => {
                 <p className="text-xs text-slate-600">Foto, takaran, dan manfaat tiap bahan. Urutan di sini sama dengan di halaman publik.</p>
                 <div className="flex flex-wrap justify-end gap-2 shrink-0">
                   {menuToday.ingredients.length > 0 && (
+                    <button type="button" onClick={handleAiTidyIngredients} disabled={isTidying} className={`${BTN_SECONDARY} disabled:cursor-wait disabled:text-slate-400`}>
+                      <ListChecks className="w-4 h-4" />
+                      {isTidying ? 'Merapikan...' : 'Rapikan bahan dengan AI'}
+                    </button>
+                  )}
+                  {menuToday.ingredients.length > 0 && (
                     <button type="button" onClick={handleAiIngredients} disabled={aiBusy !== null} className={`${BTN_SECONDARY} disabled:cursor-wait disabled:text-slate-400`}>
                       <PenLine className="w-4 h-4" />
                       {aiBusy === 'ingredients' ? 'Menulis...' : 'Isi teks kosong dengan AI'}
@@ -2114,6 +2138,19 @@ export const WebsiteCmsModule: React.FC = () => {
       )}
 
       {/* 8. MODAL FORM: EDIT / TAMBAH BAHAN PANGAN MENU HARI INI */}
+      {tidySuggestions && (
+        <AiIngredientTidyDialog
+          ingredients={(config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).ingredients}
+          suggestions={tidySuggestions}
+          onClose={() => setTidySuggestions(null)}
+          onApply={next => {
+            patchMenuToday({ ingredients: next });
+            setTidySuggestions(null);
+            showNotification('Daftar bahan dirapikan. Periksa lagi sebelum Simpan.');
+          }}
+        />
+      )}
+
       {isIngredientModalOpen && editingIngredient && (
         <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl border border-slate-200 max-w-xl w-full p-4 sm:p-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">

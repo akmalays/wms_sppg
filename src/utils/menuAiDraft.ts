@@ -26,7 +26,7 @@ export interface KidsAiDraftInput extends MenuAiDraftInput {
   otherHabitTitles: string[];
 }
 
-async function invokeDraft<T>(body: Record<string, unknown>): Promise<T> {
+export async function invokeDraft<T>(body: Record<string, unknown>): Promise<T> {
   if (!isSupabaseConfigured()) throw new Error('Supabase belum diatur, fitur AI tidak tersedia.');
 
   const { data: session } = await supabase.auth.getSession();

@@ -4,7 +4,8 @@ import trayCutoutImg from '../../assets/tray_sample_cutout.webp';
 import type { WebsiteMenuTodayConfig } from '../../db/websiteConfigStorage';
 import { BTN_PRIMARY, BTN_SECONDARY } from '../common/FormDialog';
 import { LabelPlacementOverlay } from '../print/LabelPlacementOverlay';
-import { TRAY_STAGE_VIEW, TrayStage, menuDishes, resolveTrayLabels, trayLabelTexts } from './TrayStage';
+import { AiTrayPointsButton } from '../ai/AiTrayPointsButton';
+import { TRAY_STAGE_VIEW, TrayStage, menuDishes, photoPointToStage, resolveTrayLabels, trayLabelTexts } from './TrayStage';
 
 type Target = 'reguler' | 'b3';
 
@@ -42,7 +43,22 @@ export const TrayLabelEditor: React.FC<{
                 : 'Letak nama mengikuti poster menu.'}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-start gap-2 min-w-0">
+          <AiTrayPointsButton
+            photo={photo}
+            texts={texts}
+            onPoints={(points, natural) => {
+              onChange({
+                [labelsKey]: placements.map((p, i) => {
+                  const point = points[i];
+                  if (!point) return { text: texts[i], ...p };
+                  const { x, y } = photoPointToStage(point, natural);
+                  return { text: texts[i], ...p, tipX: x, tipY: y };
+                }),
+              });
+              setPlacing(true);
+            }}
+          />
           {saved && (
             <button type="button" onClick={() => onChange({ [labelsKey]: null })} className={BTN_SECONDARY}>
               Kembalikan bawaan

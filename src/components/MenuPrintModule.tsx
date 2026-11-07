@@ -7,6 +7,7 @@ import {publishTrays, type TrayPublish} from "../utils/menuTrayPublish";
 import {fetchWebsiteConfigFromCloud, getWebsiteConfig, WEBSITE_CONFIG_UPDATED_EVENT} from "../db/websiteConfigStorage";
 import {LabelPlacementOverlay} from "./print/LabelPlacementOverlay";
 import {posterLabelToStage} from "./menuPublic/TrayStage";
+import {AiTrayPointsButton} from "./ai/AiTrayPointsButton";
 import {localDateIso} from "../utils/localDate";
 import {useToast} from "../context/ToastContext";
 import {FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY} from "./common/FormDialog";
@@ -17,7 +18,7 @@ import {FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY} from "./common/For
 import templateSingle from "../assets/poster-single.jpg";
 import templateDouble from "../assets/poster-double.jpg";
 import logoSppg from "../assets/logo sppg.png";
-import {drawGreenPoster, drawGreenDoublePoster, drawPurplePoster, drawPurpleDoublePoster, greenLabelTexts, greenDoubleLabelDefaults, greenDoubleToSingle, GREEN_LABEL_DEFAULTS, type DrawnMenu, type DrawnPosterInput, type PosterTrayBox, type LabelPlacement} from "./print/menuPosterDesigns";
+import {drawGreenPoster, drawGreenDoublePoster, drawPurplePoster, drawPurpleDoublePoster, greenLabelTexts, greenDoubleLabelDefaults, greenDoubleToSingle, greenTrayBox, photoPointToBox, GREEN_LABEL_DEFAULTS, type DrawnMenu, type DrawnPosterInput, type PosterTrayBox, type LabelPlacement} from "./print/menuPosterDesigns";
 
 interface NutritionValues {
   energy: string; // kkal
@@ -1327,7 +1328,25 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
                   ? "Letak nama sudah diatur sendiri."
                   : "Letak nama mengikuti urutan baris hidangan."}
               </p>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-start gap-2 min-w-0">
+                {current.photo && (
+                  <AiTrayPointsButton
+                    photo={current.photo}
+                    texts={labelSetup.texts}
+                    onPoints={(points, natural) => {
+                      const box = greenTrayBox(printMode, editingIndex);
+                      const base = placementsForOverlay ?? labelSetup.defaults.slice(0, labelSetup.texts.length);
+                      updateMenu(editingIndex, {
+                        labelPlacements: base.map((p, i) => {
+                          const point = points[i];
+                          if (!point) return p;
+                          const {x, y} = photoPointToBox(point, natural, box, true);
+                          return {...p, tipX: x, tipY: y};
+                        }),
+                      });
+                    }}
+                  />
+                )}
                 {current.labelPlacements && (
                   <button type="button" onClick={() => updateMenu(editingIndex, {labelPlacements: null})} className={BTN_SECONDARY}>
                     Kembalikan bawaan

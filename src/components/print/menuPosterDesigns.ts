@@ -602,6 +602,25 @@ const greenDoubleSlots = (menuIndex: number): GreenSlot[] => {
 export const greenDoubleLabelDefaults = (menuIndex: number): LabelPlacement[] =>
   greenDoubleSlots(menuIndex).map((s) => ({x: s.x, y: s.y, tipX: s.from[0], tipY: s.from[1]}));
 
+/** Kotak foto nampan Hijau sebelum diputar, untuk poster 1 menu atau menu ke-n di poster 2 menu. */
+export const greenTrayBox = (mode: "SINGLE" | "DOUBLE", menuIndex: number) =>
+  mode === "SINGLE"
+    ? {cx: GREEN_TRAY_CENTER[0], cy: GREEN_TRAY_CENTER[1], ...GREEN_TRAY_BOX}
+    : {...GREEN_DOUBLE_TRAY, cx: GREEN_DOUBLE_TRAY.cx + menuIndex * GREEN_DOUBLE_PANEL_W};
+
+/**
+ * Titik di foto (0 sampai 1 dari kiri atas) ke koordinat gambar, untuk foto yang digambar pas di dalam kotak.
+ * rotated: foto diputar -90 derajat agar nampan mendatar.
+ */
+export function photoPointToBox(point: {nx: number; ny: number}, natural: {w: number; h: number}, box: {cx: number; cy: number; w: number; h: number}, rotated: boolean): {x: number; y: number} {
+  const fit = Math.min(box.w / natural.w, box.h / natural.h);
+  const dx = (point.nx - 0.5) * natural.w * fit;
+  const dy = (point.ny - 0.5) * natural.h * fit;
+  return rotated
+    ? {x: Math.round(box.cx + dy), y: Math.round(box.cy - dx)}
+    : {x: Math.round(box.cx + dx), y: Math.round(box.cy + dy)};
+}
+
 /** Ubah letak label poster Hijau 2 menu ke koordinat poster 1 menu, dengan nampan sebagai acuan. */
 export function greenDoubleToSingle(p: LabelPlacement, menuIndex: number): LabelPlacement {
   const scale = GREEN_TRAY_BOX.h / GREEN_DOUBLE_TRAY.h;

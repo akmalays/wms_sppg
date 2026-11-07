@@ -64,6 +64,7 @@ import { PoEditModal } from './PoEditModal';
 import { useToast } from '../context/ToastContext';
 import { ConfirmationModal, ConfirmationItemSummary } from './common/ConfirmationModal';
 import { LoadingOverlay } from './common/LoadingOverlay';
+import { AiReceiptReader } from './ai/AiReceiptReader';
 import { ActionDropdown } from './common/ActionDropdown';
 import { angkaTerbilang } from './ToolsPrintModule';
 import { generateNextPoNumber } from '../utils/poNumberGenerator';
@@ -2023,6 +2024,18 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                   </button>
                 </div>
               </div>
+
+              <AiReceiptReader
+                items={items}
+                suppliers={suppliers}
+                onApply={({ lines: read, supplierId, documentNo, photoUrl }) => {
+                  // Baris yang sudah terisi petugas tetap; baris kosong diganti hasil baca.
+                  setLines(prev => [...prev.filter(l => l.itemId), ...read]);
+                  if (supplierId) setFormSupplierId(prev => prev || supplierId);
+                  if (documentNo) setFormDeliveryNote(prev => prev || documentNo);
+                  if (photoUrl) setFormPhotos(prev => [...prev, photoUrl]);
+                }}
+              />
 
               {/* Satu markup untuk semua layar: kartu bertumpuk di HP, baris tabel di layar lebar. */}
               <div className="border border-slate-200 rounded-xl overflow-hidden">

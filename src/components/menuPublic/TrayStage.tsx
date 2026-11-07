@@ -7,6 +7,7 @@ import {
   GREEN_TRAY_CENTER,
   greenLabelTexts,
   labelLines,
+  photoPointToBox,
   placedArrow,
   type LabelPlacement,
 } from '../print/menuPosterDesigns';
@@ -49,6 +50,12 @@ export function posterLabelToStage(p: LabelPlacement): LabelPlacement {
   const scaleX = (x: number) => Math.round(CX + (x - CX) * TRAY_SCALE);
   const scaleY = (y: number) => Math.round(CY + (y - CY) * TRAY_SCALE);
   return { x: clampTo(scaleX(p.x), STAGE_LABEL_X), y: clampTo(scaleY(p.y), STAGE_LABEL_Y), tipX: scaleX(p.tipX), tipY: scaleY(p.tipY) };
+}
+
+/** Titik di foto ke koordinat panggung, dengan aturan putar yang sama seperti saat foto digambar. */
+export function photoPointToStage(point: { nx: number; ny: number }, natural: { w: number; h: number }): { x: number; y: number } {
+  const rotated = natural.w <= natural.h;
+  return photoPointToBox(point, natural, { cx: CX, cy: CY, w: rotated ? STAGE_BOX.w : STAGE_BOX.h, h: rotated ? STAGE_BOX.h : STAGE_BOX.w }, rotated);
 }
 
 /** Letak tiap label: yang tersimpan untuk hidangan itu, atau letak bawaan bila hidangannya berganti. */

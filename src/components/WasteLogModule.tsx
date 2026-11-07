@@ -20,6 +20,8 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { SppgLogo } from './SppgLogo';
+import { AiInsightPanel } from './ai/AiInsightPanel';
+import { buildWasteStats } from '../utils/aiStats';
 import { localDateIso } from '../utils/localDate';
 import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatureImg';
 
@@ -1017,6 +1019,13 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
             )}
           </div>
         )}
+
+        <AiInsightPanel
+          topic="limbah"
+          periodLabel={activeRange.label}
+          getStats={() => buildWasteStats(activeRange.start, activeRange.end)}
+          emptyReason={periodLogs.length === 0 ? 'Belum ada catatan limbah pada periode ini untuk diringkas.' : undefined}
+        />
 
         {/* TAMPILAN */}
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
