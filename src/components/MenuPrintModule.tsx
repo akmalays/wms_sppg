@@ -12,7 +12,7 @@ import {FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY} from "./common/For
 import templateSingle from "../assets/poster-single.jpg";
 import templateDouble from "../assets/poster-double.jpg";
 import logoSppg from "../assets/logo sppg.png";
-import {drawGreenPoster, drawPurplePoster, greenLabelTexts, GREEN_LABEL_DEFAULTS, type DrawnPosterInput, type PosterTrayBox, type LabelPlacement} from "./print/menuPosterDesigns";
+import {drawGreenPoster, drawGreenDoublePoster, drawPurplePoster, drawPurpleDoublePoster, greenLabelTexts, greenDoubleLabelDefaults, GREEN_LABEL_DEFAULTS, type DrawnMenu, type DrawnPosterInput, type PosterTrayBox, type LabelPlacement} from "./print/menuPosterDesigns";
 
 interface NutritionValues {
   energy: string; // kkal
@@ -246,12 +246,12 @@ interface PosterBase {
   itemsHint?: string;
 }
 
-// Desain yang digambar langsung di kanvas (lihat print/menuPosterDesigns.ts); hanya untuk poster 1 menu.
+// Desain yang digambar langsung di kanvas (lihat print/menuPosterDesigns.ts).
 interface DrawnPosterTemplate extends PosterBase {
   kind: "drawn";
   draw: (ctx: CanvasRenderingContext2D, input: DrawnPosterInput) => void;
   /** Nama hidangan dan panahnya bisa digeser di pratinjau. */
-  labels?: {texts: (items: string[]) => string[]; defaults: LabelPlacement[]};
+  labels?: {texts: (items: string[]) => string[]; defaults: (menuIndex: number) => LabelPlacement[]};
 }
 
 type PosterTemplate = ImagePosterTemplate | DrawnPosterTemplate;
@@ -311,7 +311,7 @@ const POSTER_TEMPLATES: PosterTemplate[] = [
     width: 1587,
     height: 2245,
     draw: drawGreenPoster,
-    labels: {texts: greenLabelTexts, defaults: GREEN_LABEL_DEFAULTS},
+    labels: {texts: greenLabelTexts, defaults: () => GREEN_LABEL_DEFAULTS},
     itemsHint: "Desain Hijau menaruh hidangan di sekeliling nampan sesuai urutan baris: 1 kiri atas, 2 kanan atas, 3 kiri bawah, 4 kanan bawah, 5 dan seterusnya di bawah. Kalau letak makanan di foto berbeda, pakai \"Atur letak nama\" di pratinjau untuk menggeser nama dan pangkal panahnya.",
   },
   {
@@ -323,10 +323,32 @@ const POSTER_TEMPLATES: PosterTemplate[] = [
     height: 2245,
     draw: drawPurplePoster,
   },
+  {
+    id: "hijau",
+    name: "Hijau",
+    mode: "DOUBLE",
+    kind: "drawn",
+    width: 2245,
+    height: 1587,
+    draw: drawGreenDoublePoster,
+    labels: {texts: greenLabelTexts, defaults: greenDoubleLabelDefaults},
+    itemsHint: "Desain Hijau menaruh hidangan di sekeliling nampan sesuai urutan baris: 1 kiri atas, 2 kanan atas, 3 kiri bawah, 4 kanan bawah, 5 dan seterusnya di bawah. Kalau letak makanan di foto berbeda, pakai \"Atur letak nama\" di pratinjau; tiap menu diatur di tabnya masing-masing.",
+  },
+  {
+    id: "ceria",
+    name: "Ceria",
+    mode: "DOUBLE",
+    kind: "drawn",
+    width: 2245,
+    height: 1587,
+    draw: drawPurpleDoublePoster,
+  },
 ];
 
 // Logo SLHS diambil dari template SPPG 1 menu (berlatar putih) agar semua desain memakai logo yang sama.
 const SLHS_CROP = {sx: 1380, sy: 52, sw: 146, sh: 112};
+// Logo yayasan diambil dari template SPPG 2 menu.
+const YAYASAN_CROP = {sx: 2096, sy: 48, sw: 92, sh: 94};
 
 const templatesFor = (mode: PosterMode) => POSTER_TEMPLATES.filter((t) => t.mode === mode);
 const DEFAULT_TEMPLATE_IDS: Record<PosterMode, string> = {SINGLE: templatesFor("SINGLE")[0].id, DOUBLE: templatesFor("DOUBLE")[0].id};
@@ -594,7 +616,7 @@ const ensureFonts = () => {
 // scale < 1 untuk gambar kecil pilihan desain. isStale dicek setelah gambar termuat agar gambar
 // dari isian lama tidak menimpa yang baru.
 async function drawPoster(canvas: HTMLCanvasElement, layout: PosterTemplate, date: string, menus: MenuCardData[], scale = 1, isStale?: () => boolean) {
-  if (isDrawnPoster(layout)) return drawCanvasPoster(canvas, layout, date, menus[0], scale, isStale);
+  if (isDrawnPoster(layout)) return drawCanvasPoster(canvas, layout, date, menus, scale, isStale);
   const [template, ...photos] = await Promise.all([
     loadImage(layout.src),
     ...menus.map((m) => (m.photo ? loadImage(m.photo).catch(() => null) : Promise.resolve(null))),
@@ -632,11 +654,12 @@ async function drawPoster(canvas: HTMLCanvasElement, layout: PosterTemplate, dat
   });
 }
 
-async function drawCanvasPoster(canvas: HTMLCanvasElement, layout: DrawnPosterTemplate, date: string, menu: MenuCardData, scale: number, isStale?: () => boolean) {
-  const [logo, slhsSource, photo] = await Promise.all([
+async function drawCanvasPoster(canvas: HTMLCanvasElement, layout: DrawnPosterTemplate, date: string, menus: MenuCardData[], scale: number, isStale?: () => boolean) {
+  const [logo, slhsSource, yayasanSource, photos] = await Promise.all([
     loadImage(logoSppg),
     loadImage(templateSingle),
-    menu.photo ? loadImage(menu.photo).catch(() => null) : Promise.resolve(null),
+    loadImage(templateDouble),
+    Promise.all(menus.map((m) => (m.photo ? loadImage(m.photo).catch(() => null) : Promise.resolve(null)))),
     ensureFonts(),
   ]);
   if (isStale?.()) return;
@@ -645,20 +668,27 @@ async function drawCanvasPoster(canvas: HTMLCanvasElement, layout: DrawnPosterTe
   canvas.width = Math.round(layout.width * scale);
   canvas.height = Math.round(layout.height * scale);
   ctx.scale(scale, scale);
-  layout.draw(ctx, {
-    dateLong: formatPosterDateLong(date),
+  const drawnMenus: DrawnMenu[] = menus.map((menu, i) => ({
     items: menu.items,
     large: nutritionRowsFor(menu.largePortion),
     small: nutritionRowsFor(menu.smallPortion),
-    logo,
-    slhs: {img: slhsSource, ...SLHS_CROP},
     labelPlacements: menu.labelPlacements ?? undefined,
     drawTray: (box: PosterTrayBox, placeholder) => {
+      const photo = photos[i];
       if (photo && menu.photoOriginal) drawTrayCutout(ctx, box, photo, null);
       else if (photo) drawTrayPhoto(ctx, box, photo);
       else drawTrayPlaceholder(ctx, box, placeholder);
     },
-  });
+  }));
+  const input: DrawnPosterInput = {
+    ...drawnMenus[0],
+    menus: drawnMenus,
+    dateLong: formatPosterDateLong(date),
+    logo,
+    slhs: {img: slhsSource, ...SLHS_CROP},
+    yayasan: {img: yayasanSource, ...YAYASAN_CROP},
+  };
+  layout.draw(ctx, input);
 }
 
 // Pegangan yang bisa digeser di atas pratinjau: kotak bernomor untuk nama hidangan, bulatan untuk pangkal panah
@@ -846,7 +876,7 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
   const current = menus[editingIndex];
   // Letak nama hidangan yang bisa digeser: hanya desain yang mendukung, dan jumlahnya mengikuti label yang tergambar.
   const labelSetup = isDrawnPoster(activeTemplate) && activeTemplate.labels
-    ? {texts: activeTemplate.labels.texts(current.items), defaults: activeTemplate.labels.defaults}
+    ? {texts: activeTemplate.labels.texts(current.items), defaults: activeTemplate.labels.defaults(editingIndex)}
     : null;
   const hasPlacements = Boolean(current.labelPlacements);
   useEffect(() => {
