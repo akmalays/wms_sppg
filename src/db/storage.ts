@@ -8,6 +8,7 @@ import {
   ItemMaster,
   Supplier,
   ReceivingDocument,
+  ReceivingLine,
   InventoryTransaction,
   StockOpnameSession,
   EquipmentItem,
@@ -51,6 +52,8 @@ import { placeNewItem } from '../utils/itemPlacement';
 import { EXTRA_COST_CATEGORY, EXTRA_COST_NOTE, EXTRA_COST_UNIT, extraCostToPoItem, isExtraCostPoItem } from '../utils/extraCosts';
 
 const MAX_AUDIT_LOGS = 2000;
+/** Awalan catatan koreksi jumlah penerimaan; dipakai untuk menjumlah stok yang berasal dari satu baris penerimaan. */
+const RECEIVING_QTY_FIX_NOTE = 'Koreksi jumlah penerimaan';
 
 const EQUIPMENT_CONDITION_TEXT: Record<string, string> = { GOOD: 'baik', NEEDS_INSPECTION: 'perlu dicek', DAMAGED: 'rusak' };
 const EQUIPMENT_STATUS_TEXT: Record<string, string> = { ACTIVE: 'dipakai', IN_REPAIR: 'diservis', LOST: 'hilang', RETIRED: 'tidak dipakai lagi' };
@@ -2968,6 +2971,21 @@ class WarehouseDatabase {
     return this.receivings.find(r => r.id === id);
   }
 
+  /** Ganti daftar foto (nota, surat jalan, timbangan) pada dokumen penerimaan yang sudah tersimpan. */
+  public updateReceivingPhotos(receivingId: string, photos: string[], user: User): ReceivingDocument {
+    const idx = this.receivings.findIndex(r => r.id === receivingId);
+    if (idx < 0) throw new Error('Dokumen penerimaan tidak ditemukan.');
+    const before = this.receivings[idx].documentationPhotos?.length || 0;
+    const updated: ReceivingDocument = { ...this.receivings[idx], documentationPhotos: photos.length > 0 ? photos : undefined };
+    this.receivings[idx] = updated;
+    this.pushCloud(`foto penerimaan ${receivingId}`, () =>
+      supabase.from('receiving_documents').update({ documentation_photos: photos.length > 0 ? photos : null }).eq('id', receivingId)
+    );
+    this.notifyAllChanged();
+    this.logAudit(user, 'RECEIVING_PHOTOS_UPDATED', 'RECEIVING', receivingId, `Foto penerimaan ${receivingId}: ${before} jadi ${photos.length} foto.`);
+    return updated;
+  }
+
   public getTransactions(): InventoryTransaction[] {
     return [...this.transactions].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
@@ -4094,6 +4112,178 @@ class WarehouseDatabase {
   }
 
   /**
+   * Stok yang saat ini berasal dari satu barang di dokumen penerimaan: transaksi penerimaannya ditambah
+   * koreksi jumlah sesudahnya. Tanpa transaksi penerimaan (stok tidak ditambah saat diterima) hasilnya undefined.
+   */
+  private receivingLineStock(receivingId: string, itemId: string): { stockQty: number } | undefined {
+    // Penerimaan lewat PO mencatat transaksinya dengan nomor PO, penerimaan langsung dengan nomor GR.
+    const po = this.purchaseOrders.find(p => p.relatedReceivingId === receivingId);
+    const refs = [receivingId, po?.poNumber].filter(Boolean) as string[];
+    const receivedTx = this.transactions.find(
+      t => t.transactionType === 'RECEIVING' && t.itemId === itemId && refs.includes(t.referenceDocument)
+    );
+    if (!receivedTx) return undefined;
+    const corrected = this.transactions
+      .filter(
+        t =>
+          t.transactionType === 'ADJUSTMENT' &&
+          t.itemId === itemId &&
+          t.referenceDocument === receivingId &&
+          t.notes?.startsWith(RECEIVING_QTY_FIX_NOTE)
+      )
+      .reduce((sum, t) => sum + t.quantity, 0);
+    return { stockQty: Math.round((receivedTx.quantity + corrected) * 1000) / 1000 };
+  }
+
+  /**
+   * Ubah atau buang (edit mengembalikan null) baris barang di nota yang dibuat dari dokumen penerimaan,
+   * lalu hitung ulang totalnya. Nota hanya diubah di memori; pemanggil yang menyimpannya ke cloud.
+   */
+  private editReceivingNotaItem(
+    receivingId: string,
+    line: ReceivingLine,
+    edit: (it: PurchaseOrderItem) => PurchaseOrderItem | null,
+    droppedExpenseId?: string
+  ): PurchaseOrderNota | undefined {
+    const poIdx = this.purchaseOrders.findIndex(p => p.relatedReceivingId === receivingId);
+    if (poIdx < 0) return undefined;
+    const po = this.purchaseOrders[poIdx];
+    const norm = (s: string) => s.trim().toLowerCase();
+    const itemPos = po.items.findIndex(
+      it => !isExtraCostPoItem(it) && ((it.itemId && it.itemId === line.itemId) || norm(it.name) === norm(line.itemName))
+    );
+    if (itemPos < 0) return undefined;
+
+    const edited = edit(po.items[itemPos]);
+    const items = edited ? po.items.map((it, i) => (i === itemPos ? edited : it)) : po.items.filter((_, i) => i !== itemPos);
+    const subtotal = items.reduce((sum, it) => sum + (it.subtotal || it.quantity * it.unitPrice), 0);
+    const grandTotal = Math.max(0, subtotal - (po.discount || 0) + (po.tax || 0));
+    const updated: PurchaseOrderNota = {
+      ...po,
+      items,
+      subtotal,
+      grandTotal,
+      terbilang: angkaTerbilang(grandTotal),
+      relatedExpenseIds: droppedExpenseId ? po.relatedExpenseIds?.filter(id => id !== droppedExpenseId) : po.relatedExpenseIds,
+      updatedAt: new Date().toISOString(),
+    };
+    this.purchaseOrders[poIdx] = updated;
+    return updated;
+  }
+
+  /**
+   * Betulkan jumlah satu barang yang sudah diterima. Selisihnya dicatat sebagai koreksi stok di Buku Mutasi,
+   * lalu belanja tertaut dan nota penerimaan ikut disesuaikan agar nilai di Barang Masuk dan laporan tetap cocok.
+   */
+  public updateReceivingLineQuantity(
+    receivingId: string,
+    lineId: string,
+    newQty: number,
+    user: User,
+    linkedExpenseId?: string
+  ): { stockDelta?: number; stockUnit?: string } {
+    const docIdx = this.receivings.findIndex(r => r.id === receivingId);
+    if (docIdx < 0) throw new Error('Dokumen penerimaan tidak ditemukan.');
+    const doc = this.receivings[docIdx];
+    const line = doc.lines.find(l => l.id === lineId);
+    if (!line) throw new Error('Baris penerimaan tidak ditemukan.');
+    if (!(newQty > 0)) throw new Error('Jumlah harus lebih dari 0. Kalau barangnya tidak jadi diterima, hapus barisnya.');
+    const oldQty = Number(line.quantity) || 0;
+    if (newQty === oldQty) return {};
+
+    // 1. Stok: selisih dikonversi lewat perbandingan stok yang dulu masuk dengan jumlah di baris,
+    // sehingga konversi satuan saat penerimaan (mis. ikat ke kg) tetap terbawa.
+    const trail = this.receivingLineStock(receivingId, line.itemId);
+    const itemIdx = this.items.findIndex(i => i.id === line.itemId);
+    let correctionTx: InventoryTransaction | undefined;
+    if (trail && itemIdx >= 0 && oldQty > 0) {
+      const item = this.items[itemIdx];
+      const delta = Math.round(((trail.stockQty / oldQty) * newQty - trail.stockQty) * 1000) / 1000;
+      const newStock = Math.round((item.currentStock + delta) * 1000) / 1000;
+      if (newStock < 0) {
+        throw new Error(
+          `Stok ${item.name} tinggal ${item.currentStock} ${item.baseUnit}, kurang dari ${-delta} ${item.baseUnit} yang akan dikurangi. ` +
+            'Sebagian sudah terpakai, jadi catat dulu koreksi stoknya di Buku Mutasi.'
+        );
+      }
+      if (delta !== 0) {
+        const nowIso = new Date().toISOString();
+        this.items[itemIdx] = { ...item, currentStock: newStock, updatedAt: nowIso };
+        correctionTx = {
+          id: uniqueId('TX'),
+          timestamp: localTimestamp(),
+          itemId: item.id,
+          itemName: item.name,
+          itemType: item.itemType,
+          category: item.category,
+          location: item.location,
+          quantity: delta,
+          unit: item.baseUnit,
+          transactionType: 'ADJUSTMENT',
+          referenceDocument: receivingId,
+          userId: user.id,
+          userName: user.name,
+          userRole: user.role,
+          notes: `${RECEIVING_QTY_FIX_NOTE} ${receivingId}: ${line.itemName} ${oldQty} ${line.unit} jadi ${newQty} ${line.unit}.`,
+          balanceAfter: newStock,
+        };
+        this.transactions.unshift(correctionTx);
+      }
+    }
+
+    // 2. Baris penerimaan
+    const updatedLine = { ...line, quantity: newQty };
+    this.receivings[docIdx] = { ...doc, lines: doc.lines.map(l => (l.id === lineId ? updatedLine : l)) };
+
+    // 3. Belanja tertaut: harga satuan tetap, total mengikuti jumlah baru
+    const expIdx = linkedExpenseId ? this.nonFoodExpenses.findIndex(e => e.id === linkedExpenseId) : -1;
+    let updatedExpense: NonFoodExpense | undefined;
+    if (expIdx >= 0) {
+      const exp = this.nonFoodExpenses[expIdx];
+      updatedExpense = { ...exp, quantity: newQty, totalCost: Math.round(newQty * (exp.unitPrice || 0)) };
+      this.nonFoodExpenses[expIdx] = updatedExpense;
+    }
+
+    // 4. Nota yang dibuat dari penerimaan ini
+    const updatedPo = this.editReceivingNotaItem(receivingId, line, it => ({
+      ...it,
+      quantity: newQty,
+      subtotal: Math.round(newQty * (Number(it.unitPrice) || 0)),
+    }));
+
+    if (correctionTx) {
+      const item = this.items[itemIdx];
+      const tx = correctionTx;
+      this.pushCloud('koreksi stok jumlah penerimaan', () => supabase.from('inventory_transactions').insert(mapTxToSupabase(tx)));
+      this.pushCloud(`stok ${item.name}`, () =>
+        supabase.from('item_master').update({ current_stock: item.currentStock, updated_at: item.updatedAt }).eq('id', item.id)
+      );
+    }
+    this.pushCloud('jumlah baris penerimaan', () => supabase.from('receiving_lines').upsert(mapLineToSupabase(updatedLine, receivingId)));
+    if (updatedExpense) {
+      const exp = updatedExpense;
+      this.pushCloud(`belanja "${exp.itemName}"`, () => supabase.from('non_food_expenses').upsert(mapExpenseToSupabase(exp)));
+    }
+    if (updatedPo) {
+      const po = updatedPo;
+      this.pushCloud(`nota ${po.poNumber}`, () => upsertPurchaseOrderRow(po));
+    }
+
+    this.notifyAllChanged();
+    this.logAudit(
+      user,
+      'RECEIVING_LINE_QTY_UPDATED',
+      'RECEIVING',
+      receivingId,
+      `Mengubah jumlah ${line.itemName} di ${receivingId} dari ${oldQty} jadi ${newQty} ${line.unit}` +
+        (correctionTx ? `; stok ${correctionTx.quantity > 0 ? '+' : ''}${correctionTx.quantity} ${correctionTx.unit}` : '; stok tidak berubah') +
+        (updatedExpense ? `; belanja jadi Rp ${(updatedExpense.totalCost || 0).toLocaleString('id-ID')}` : '') +
+        (updatedPo ? `; nota ${updatedPo.poNumber} ikut diperbarui.` : '.')
+    );
+    return correctionTx ? { stockDelta: correctionTx.quantity, stockUnit: correctionTx.unit } : {};
+  }
+
+  /**
    * Hapus satu baris penerimaan yang salah catat. Stok yang dulu ditambahkan baris ini dikurangi lagi
    * lewat transaksi koreksi (riwayat penerimaan tetap terlihat di Buku Mutasi), dan belanja yang tertaut
    * ikut dihapus agar nominalnya tidak tetap terhitung.
@@ -4105,21 +4295,16 @@ class WarehouseDatabase {
     const line = doc.lines.find(l => l.id === lineId);
     if (!line) throw new Error('Baris penerimaan tidak ditemukan.');
 
-    // Penerimaan lewat PO mencatat transaksinya dengan nomor PO, penerimaan langsung dengan nomor GR.
-    const po = this.purchaseOrders.find(p => p.relatedReceivingId === receivingId);
-    const refs = [receivingId, po?.poNumber].filter(Boolean) as string[];
-    const receivedTx = this.transactions.find(
-      t => t.transactionType === 'RECEIVING' && t.itemId === line.itemId && refs.includes(t.referenceDocument)
-    );
+    const trail = this.receivingLineStock(receivingId, line.itemId);
     const itemIdx = this.items.findIndex(i => i.id === line.itemId);
 
     let reversalTx: InventoryTransaction | undefined;
-    if (receivedTx && itemIdx >= 0) {
+    if (trail && itemIdx >= 0) {
       const item = this.items[itemIdx];
-      const newStock = Math.round((item.currentStock - receivedTx.quantity) * 1000) / 1000;
+      const newStock = Math.round((item.currentStock - trail.stockQty) * 1000) / 1000;
       if (newStock < 0) {
         throw new Error(
-          `Stok ${item.name} tinggal ${item.currentStock} ${item.baseUnit}, kurang dari ${receivedTx.quantity} ${item.baseUnit} yang akan dibatalkan. ` +
+          `Stok ${item.name} tinggal ${item.currentStock} ${item.baseUnit}, kurang dari ${trail.stockQty} ${item.baseUnit} yang akan dibatalkan. ` +
             'Sebagian sudah terpakai, jadi catat dulu koreksi stoknya di Buku Mutasi.'
         );
       }
@@ -4133,7 +4318,7 @@ class WarehouseDatabase {
         itemType: item.itemType,
         category: item.category,
         location: item.location,
-        quantity: -receivedTx.quantity,
+        quantity: -trail.stockQty,
         unit: item.baseUnit,
         transactionType: 'ADJUSTMENT',
         referenceDocument: receivingId,
@@ -4155,6 +4340,13 @@ class WarehouseDatabase {
 
     const expIdx = linkedExpenseId ? this.nonFoodExpenses.findIndex(e => e.id === linkedExpenseId) : -1;
     if (expIdx >= 0) this.nonFoodExpenses.splice(expIdx, 1);
+
+    // Barang yang dihapus juga dibuang dari nota penerimaan ini, agar nota tidak menagih barang yang tidak ada
+    const updatedPo = this.editReceivingNotaItem(receivingId, line, () => null, linkedExpenseId);
+    if (updatedPo) {
+      const po = updatedPo;
+      this.pushCloud(`nota ${po.poNumber}`, () => upsertPurchaseOrderRow(po));
+    }
 
     if (reversalTx) {
       const item = this.items[itemIdx];
@@ -4181,7 +4373,8 @@ class WarehouseDatabase {
       'RECEIVING',
       receivingId,
       `Menghapus baris penerimaan ${line.itemName} (${line.quantity} ${line.unit}) dari ${receivingId}` +
-        (reversalTx ? `; stok dikurangi ${-reversalTx.quantity} ${reversalTx.unit}.` : '; stok tidak berubah (tidak ada transaksi penerimaan).')
+        (reversalTx ? `; stok dikurangi ${-reversalTx.quantity} ${reversalTx.unit}` : '; stok tidak berubah (tidak ada transaksi penerimaan)') +
+        (updatedPo ? `; dibuang dari nota ${updatedPo.poNumber}.` : '.')
     );
   }
 
@@ -4258,6 +4451,7 @@ class WarehouseDatabase {
     // Tanggal baru atau pindah tanggal bisa menggeser nomor nota hari lain; nota lain yang berubah disimpan di sini
     const renumbered = this.renumberPurchaseOrders(updatedPoData.id);
     const saved = renumbered.get(updatedPoData.id) || updatedPoData;
+    const repricedExpenses = idx >= 0 ? this.syncLinkedExpensePrices(saved) : [];
 
     // Direct save to Supabase Cloud
     if (isSupabaseConfigured()) {
@@ -4274,10 +4468,49 @@ class WarehouseDatabase {
         idx >= 0 ? 'PO_UPDATED' : 'PO_CREATED',
         'RECEIVING',
         order.id,
-        `Nota Pesanan / PO ${saved.poNumber} untuk ${order.supplierName} total Rp ${order.grandTotal.toLocaleString('id-ID')}`
+        `Nota Pesanan / PO ${saved.poNumber} untuk ${order.supplierName} total Rp ${order.grandTotal.toLocaleString('id-ID')}` +
+          (repricedExpenses.length > 0 ? `; harga belanja ikut diperbarui: ${repricedExpenses.join(', ')}` : '')
       );
     }
     return saved;
+  }
+
+  /**
+   * Nota yang barangnya sudah diterima: harga yang diubah di nota disalin ke catatan belanja tertautnya,
+   * karena nilai di Barang Masuk dan laporan pengeluaran dibaca dari catatan belanja, bukan dari nota.
+   * Mengembalikan nama barang yang harganya berubah.
+   */
+  private syncLinkedExpensePrices(po: PurchaseOrderNota): string[] {
+    const ids = new Set(po.relatedExpenseIds || []);
+    const grTag = po.relatedReceivingId ? `[GR: ${po.relatedReceivingId}]` : '';
+    if (ids.size === 0 && !grTag) return [];
+
+    const norm = (s: string) => s.trim().toLowerCase();
+    const pool = this.nonFoodExpenses.filter(e => ids.has(e.id) || (grTag && e.notes?.includes(grTag)));
+    const changed: string[] = [];
+
+    po.items.forEach(it => {
+      const isCost = isExtraCostPoItem(it);
+      // Baris barang tidak boleh mengambil belanja biaya tambahan bernama sama (mis. kresek), dan sebaliknya
+      const matchIdx = pool.findIndex(
+        e => (e.category === EXTRA_COST_CATEGORY) === isCost && ((it.itemId && e.itemId === it.itemId) || norm(e.itemName) === norm(it.name))
+      );
+      if (matchIdx < 0) return;
+      const exp = pool.splice(matchIdx, 1)[0];
+
+      const unitPrice = Number(it.unitPrice) || 0;
+      const qty = typeof exp.quantity === 'number' ? exp.quantity : parseFloat(String(exp.quantity).replace(',', '.')) || 0;
+      // Jumlah di nota sama dengan yang diterima, jadi subtotal nota dipakai; selain itu dihitung dari jumlah belanja
+      const totalCost = it.subtotal && Number(it.quantity) === qty ? it.subtotal : Math.round(qty * unitPrice);
+      if ((exp.unitPrice || 0) === unitPrice && (exp.totalCost || 0) === totalCost) return;
+
+      const expIdx = this.nonFoodExpenses.findIndex(e => e.id === exp.id);
+      const updated: NonFoodExpense = { ...exp, unitPrice, totalCost };
+      this.nonFoodExpenses[expIdx] = updated;
+      this.pushCloud(`harga belanja "${exp.itemName}"`, () => supabase.from('non_food_expenses').upsert(mapExpenseToSupabase(updated)));
+      changed.push(`${exp.itemName} Rp ${totalCost.toLocaleString('id-ID')}`);
+    });
+    return changed;
   }
 
   /**

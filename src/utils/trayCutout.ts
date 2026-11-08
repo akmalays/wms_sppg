@@ -53,6 +53,133 @@ async function trimTransparent(blob: Blob): Promise<Blob> {
   return new Promise((resolve, reject) => out.toBlob((b) => (b ? resolve(b) : reject(new Error("Gagal memotong gambar."))), "image/png"));
 }
 
+// Pita terang di sekeliling nampan (wadah plastik putih, alas, atau pantulan meja) sering ikut dianggap nampan oleh model.
+// Pita itu putih keabu-abuan, sedangkan bibir logam nampan lebih gelap atau kebiruan, jadi pita dikupas dari luar
+// sampai bertemu bibir logam.
+const RIM_MIN_BRIGHTNESS = 214;
+const RIM_MAX_TINT = 16; // selisih kanal warna terbesar; pita hampir netral
+// Di sisi bayangan pita lebih gelap. Di sana kupasan boleh berlanjut selama warnanya berubah halus;
+// batas pita dengan bibir logam biasanya berupa loncatan terang-gelap, jadi kupasan berhenti di situ.
+// Batas 185 dipilih dari uji foto: di 175 ke bawah bibir logam yang terang mulai ikut terkikis.
+const RIM_SHADOW_MIN_BRIGHTNESS = 185;
+const RIM_SHADOW_MAX_STEP = 10;
+const RIM_MAX_DEPTH = 0.08; // dari sisi terpendek nampan
+const RIM_MAX_SHARE = 0.25; // lebih dari ini berarti yang terkupas nampannya sendiri, jadi dibatalkan
+
+/**
+ * Kupas pita terang di tepi luar bagian component === id. Hanya piksel yang tersambung ke luar gambar yang dikupas,
+ * jadi isi sekat yang terang (nasi, pantulan) tidak tersentuh. Mengubah data dan component; mengembalikan jumlah piksel terkupas.
+ */
+export function peelLightRim(data: Uint8ClampedArray | Uint8Array, width: number, height: number, component: Int32Array, id: number): number {
+  const total = width * height;
+  const isTray = (i: number) => component[i] === id;
+  const brightness = (i: number) => (data[i * 4] + data[i * 4 + 1] + data[i * 4 + 2]) / 3;
+  const isNeutral = (i: number) => {
+    const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+    return Math.max(r, g, b) - Math.min(r, g, b) <= RIM_MAX_TINT;
+  };
+  const isLight = (i: number) => isNeutral(i) && brightness(i) >= RIM_MIN_BRIGHTNESS;
+  // Piksel n bersambung dengan piksel pita from: terang, atau di sisi bayangan dengan perubahan warna yang halus
+  const continuesRim = (from: number, n: number) =>
+    isLight(n) ||
+    (isNeutral(n) && brightness(n) >= RIM_SHADOW_MIN_BRIGHTNESS && Math.abs(brightness(n) - brightness(from)) <= RIM_SHADOW_MAX_STEP);
+  const forNeighbours = (i: number, visit: (n: number) => void) => {
+    const x = i % width;
+    if (x > 0) visit(i - 1);
+    if (x < width - 1) visit(i + 1);
+    if (i >= width) visit(i - width);
+    if (i < total - width) visit(i + width);
+  };
+
+  let trayCount = 0, minX = width, minY = height, maxX = -1, maxY = -1;
+  for (let i = 0; i < total; i++) {
+    if (!isTray(i)) continue;
+    trayCount++;
+    const x = i % width, y = (i - x) / width;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  if (!trayCount) return 0;
+  const maxDepth = Math.max(4, Math.round(RIM_MAX_DEPTH * Math.min(maxX - minX + 1, maxY - minY + 1)));
+
+  // Luar nampan: menyebar dari tepi gambar lewat piksel bukan nampan
+  const outside = new Uint8Array(total);
+  const stack: number[] = [];
+  const reach = (i: number) => {
+    if (!isTray(i) && !outside[i]) {
+      outside[i] = 1;
+      stack.push(i);
+    }
+  };
+  for (let x = 0; x < width; x++) {
+    reach(x);
+    reach(total - width + x);
+  }
+  for (let y = 0; y < height; y++) {
+    reach(y * width);
+    reach(y * width + width - 1);
+  }
+  while (stack.length) forNeighbours(stack.pop()!, reach);
+
+  // Kupas lapis demi lapis dari tepi luar
+  const peeled = new Uint8Array(total);
+  let layer: number[] = [];
+  for (let i = 0; i < total; i++) {
+    if (!isTray(i) || !isLight(i)) continue;
+    let touchesOutside = false;
+    forNeighbours(i, (n) => {
+      if (outside[n]) touchesOutside = true;
+    });
+    if (touchesOutside) {
+      peeled[i] = 1;
+      layer.push(i);
+    }
+  }
+  // Lapis berikutnya juga lewat diagonal, supaya pita di sudut nampan terkupas setebal di sisi lurus
+  const forNeighbours8 = (i: number, visit: (n: number) => void) => {
+    const x = i % width;
+    for (let dy = -width; dy <= width; dy += width) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const n = i + dy + dx;
+        if ((dx || dy) && n >= 0 && n < total && x + dx >= 0 && x + dx < width) visit(n);
+      }
+    }
+  };
+  let count = layer.length;
+  for (let depth = 1; depth < maxDepth && layer.length; depth++) {
+    const next: number[] = [];
+    for (const i of layer) {
+      forNeighbours8(i, (n) => {
+        if (!peeled[n] && isTray(n) && continuesRim(i, n)) {
+          peeled[n] = 1;
+          next.push(n);
+        }
+      });
+    }
+    count += next.length;
+    layer = next;
+  }
+  if (count === 0 || count > trayCount * RIM_MAX_SHARE) return 0;
+
+  for (let i = 0; i < total; i++) {
+    if (!peeled[i]) continue;
+    component[i] = 0;
+    data[i * 4 + 3] = 0;
+  }
+  // Satu piksel tepi baru dibuat agak transparan supaya pinggir nampan tidak bergerigi
+  for (let i = 0; i < total; i++) {
+    if (!isTray(i)) continue;
+    let nextToPeel = false;
+    forNeighbours(i, (n) => {
+      if (peeled[n]) nextToPeel = true;
+    });
+    if (nextToPeel) data[i * 4 + 3] = Math.min(data[i * 4 + 3], 170);
+  }
+  return count;
+}
+
 const SOLID_ALPHA = 128;
 // Lebar tepi lembut yang dibiarkan apa adanya, supaya pinggir nampan tidak jadi bergerigi.
 const EDGE_PX = 3;
@@ -108,6 +235,7 @@ async function cleanCutout(blob: Blob, source: string): Promise<Blob> {
     }
   }
   if (!bestId) return blob;
+  peelLightRim(data, width, height, component, bestId);
 
   // Area luar: menyebar dari tepi gambar lewat piksel yang bukan nampan. Yang tidak terjangkau berarti di dalam nampan.
   const outside = new Uint8Array(total);

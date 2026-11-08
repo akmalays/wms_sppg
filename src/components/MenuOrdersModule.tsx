@@ -396,8 +396,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   // Tanggal Hari Ini (otomatis sesuai jam sistem)
   const todayStr = useMemo(() => getTodayIso(), []);
 
-  // Period filter states: DEFAULT KE HARI INI (DAILY)
-  const [periodType, setPeriodType] = useState<PeriodType>("DAILY");
+  // Filter periode bawaan: bulan berjalan
+  const [periodType, setPeriodType] = useState<PeriodType>("MONTHLY");
   const [selectedDailyDate, setSelectedDailyDate] = useState<string>(todayStr);
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
@@ -424,7 +424,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     if (initialView === "PORSI_HARI_INI") onNavigate?.("menu_orders");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const [beneficiaryPeriodPreset, setBeneficiaryPeriodPreset] = useState<"ALL_ORDERS" | "LAST_7_DAYS" | "THIS_MONTH" | "CUSTOM">("ALL_ORDERS");
+  const [beneficiaryPeriodPreset, setBeneficiaryPeriodPreset] = useState<"ALL_ORDERS" | "LAST_7_DAYS" | "THIS_MONTH" | "CUSTOM">("THIS_MONTH");
   const [beneficiaryStartDate, setBeneficiaryStartDate] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
@@ -598,9 +598,10 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     setOrders(warehouseDb.getMenuOrders());
   };
 
-  // Kartu terbuka secara bawaan, jadi id yang belum tercatat dianggap terbuka.
-  const toggleExpandOrder = (id: string) => {
-    setExpandedOrderIds((prev) => ({...prev, [id]: !(prev[id] ?? true)}));
+  // Hanya kartu menu hari ini yang terbuka secara bawaan; hari lain tertutup sampai dibuka.
+  const isOrderExpanded = (order: MenuOrder) => expandedOrderIds[order.id] ?? order.date === todayStr;
+  const toggleExpandOrder = (order: MenuOrder) => {
+    setExpandedOrderIds((prev) => ({...prev, [order.id]: !(prev[order.id] ?? order.date === todayStr)}));
   };
 
   // Date range evaluation
@@ -676,6 +677,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
         return da - db;
       });
   }, [orders, effectiveDateRange, showCancelled, searchQuery]);
+
+  // Daftar kartu menu dari tanggal terbaru. Sort stabil, jadi urutan sesi dalam satu hari tetap.
+  const newestFirstOrders = useMemo(
+    () => [...filteredOrders].sort((a, b) => (parseMenuDate(b.date)?.getTime() || 0) - (parseMenuDate(a.date)?.getTime() || 0)),
+    [filteredOrders],
+  );
 
   // Distinct dates in the active filtered orders
   const activeOrderDates = useMemo(() => {
@@ -3028,8 +3035,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredOrders.map((order, oIdx) => {
-                const isExpanded = expandedOrderIds[order.id] ?? true;
+              {newestFirstOrders.map((order, oIdx) => {
+                const isExpanded = isOrderExpanded(order);
                 const poItems = order.poArrivalItems || [];
                 const arrivalConfirmed = isArrivalConfirmed(order.id);
                 const isCancelled = order.status === "CANCELLED";
@@ -3184,7 +3191,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                         {/* Expand / Collapse */}
                         <button
                           type="button"
-                          onClick={() => toggleExpandOrder(order.id)}
+                          onClick={() => toggleExpandOrder(order)}
                           className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[32px] sm:min-h-[32px] text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer ${FOCUS_RING}`}
                           aria-expanded={isExpanded}
                           aria-label={isExpanded ? "Tutup rincian" : "Buka rincian"}

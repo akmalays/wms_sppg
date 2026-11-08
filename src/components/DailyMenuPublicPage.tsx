@@ -23,7 +23,7 @@ import {
   DailyHabitItem,
   TrayLabelPlacement
 } from '../db/websiteConfigStorage';
-import { TrayStage, menuDishes, resolveTrayLabels, trayLabelTexts } from './menuPublic/TrayStage';
+import { TrayStage, menuDishes, resolveTrayLabels, shownTrayLabels, trayLabelTexts } from './menuPublic/TrayStage';
 import { isSupabaseConfigured } from '../lib/supabase';
 import QRCode from 'qrcode';
 import { Butterfly, Bee, FarmLandscape, HeaderSky, SunRays } from './menuPublic/NatureAccents';
@@ -256,15 +256,19 @@ const cardCls = 'min-w-0 rounded-3xl bg-white border border-[#e9e0cc] p-4 sm:p-6
 // Ompreng dan nama hidangan disusun seperti poster menu hijau, dengan letak yang diatur petugas.
 // Di layar kecil teks poster terlalu kecil, jadi panah diganti nomor pada makanan dan daftar bernomor di bawahnya.
 const HeroTray: React.FC<{ dishes: string[]; photo: string | null; labels: TrayLabelPlacement[] | null | undefined }> = ({ dishes, photo, labels }) => {
-  const texts = useMemo(() => trayLabelTexts(dishes), [dishes]);
-  const placements = useMemo(() => resolveTrayLabels(texts, labels), [texts, labels]);
+  const dishTexts = useMemo(() => trayLabelTexts(dishes), [dishes]);
+  const placements = useMemo(() => resolveTrayLabels(dishTexts, labels), [dishTexts, labels]);
+  // Nama yang ditulis petugas di Atur Website atau poster menggantikan nama hidangan di panah dan daftar bernomor
+  const texts = useMemo(() => shownTrayLabels(dishTexts, placements), [dishTexts, placements]);
   const stageProps = photo
     ? { photo, fallbackPhoto: trayCutoutImg, alt: `Foto ompreng menu: ${dishes.join(', ')}` }
     : { photo: menu3bImg, alt: 'Ilustrasi ibu hamil, ibu menyusui, dan balita', plain: true };
 
+  // Lebar panggung dibatasi, bukan skala omprengnya: ompreng, nama, dan panah mengecil bersama sehingga panah tetap
+  // menunjuk makanan. Lebar layar penuh membuat ompreng terlalu besar; 4xl menyamakan dengan tabel gizi di bawahnya.
   return (
     <>
-      <div className="hidden lg:block">
+      <div className="hidden lg:block max-w-4xl mx-auto">
         <TrayStage {...stageProps} texts={texts} placements={placements} />
         <ul className="sr-only" aria-label="Isi menu">
           {texts.map(t => <li key={t}>{t}</li>)}
@@ -272,7 +276,9 @@ const HeroTray: React.FC<{ dishes: string[]; photo: string | null; labels: TrayL
       </div>
 
       <div className="lg:hidden">
-        <TrayStage {...stageProps} compact texts={texts} placements={photo ? placements : []} />
+        <div className="max-w-md mx-auto">
+          <TrayStage {...stageProps} compact texts={texts} placements={photo ? placements : []} />
+        </div>
         <ol aria-label="Isi menu" className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
           {texts.map((t, i) => (
             <li key={t} className="flex items-start gap-2.5 font-kids font-bold text-lg leading-tight">

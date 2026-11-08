@@ -9,6 +9,7 @@ import {
   labelLines,
   photoPointToBox,
   placedArrow,
+  shownLabel,
   type LabelPlacement,
 } from '../print/menuPosterDesigns';
 
@@ -49,7 +50,13 @@ const clampTo = (v: number, [from, to]: number[]) => Math.min(to, Math.max(from,
 export function posterLabelToStage(p: LabelPlacement): LabelPlacement {
   const scaleX = (x: number) => Math.round(CX + (x - CX) * TRAY_SCALE);
   const scaleY = (y: number) => Math.round(CY + (y - CY) * TRAY_SCALE);
-  return { x: clampTo(scaleX(p.x), STAGE_LABEL_X), y: clampTo(scaleY(p.y), STAGE_LABEL_Y), tipX: scaleX(p.tipX), tipY: scaleY(p.tipY) };
+  return {
+    x: clampTo(scaleX(p.x), STAGE_LABEL_X),
+    y: clampTo(scaleY(p.y), STAGE_LABEL_Y),
+    tipX: scaleX(p.tipX),
+    tipY: scaleY(p.tipY),
+    ...(p.label ? { label: p.label, labelFor: p.labelFor } : {}),
+  };
 }
 
 /** Titik di foto ke koordinat panggung, dengan aturan putar yang sama seperti saat foto digambar. */
@@ -62,11 +69,15 @@ export function photoPointToStage(point: { nx: number; ny: number }, natural: { 
 export function resolveTrayLabels(texts: string[], saved: TrayLabelPlacement[] | null | undefined): LabelPlacement[] {
   return texts.map((text, i) => {
     const hit = saved?.find(l => sameText(l.text, text));
-    return hit ? { x: hit.x, y: hit.y, tipX: hit.tipX, tipY: hit.tipY } : STAGE_DEFAULTS[i];
+    return hit ? { x: hit.x, y: hit.y, tipX: hit.tipX, tipY: hit.tipY, label: hit.label, labelFor: hit.labelFor } : STAGE_DEFAULTS[i];
   });
 }
 
 export { greenLabelTexts as trayLabelTexts, GREEN_TRAY_BAND as TRAY_STAGE_VIEW };
+
+/** Nama yang tampil per label: tulisan petugas bila ada, selain itu nama hidangan. */
+export const shownTrayLabels = (texts: string[], placements: (LabelPlacement | null | undefined)[]) =>
+  texts.map((t, i) => shownLabel(t, placements[i]));
 
 const LABEL_FONT = (px: number) => `700 ${px}px "Baloo 2", sans-serif`;
 const ARROW_WIDTH = 8;

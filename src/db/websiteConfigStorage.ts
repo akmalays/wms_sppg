@@ -158,6 +158,9 @@ export interface TrayLabelPlacement {
   y: number;
   tipX: number;
   tipY: number;
+  /** Nama yang ditulis petugas sebagai pengganti text; kosong = text. */
+  label?: string;
+  labelFor?: string;
 }
 
 export interface WebsiteMenuTodayConfig {

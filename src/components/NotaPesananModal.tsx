@@ -618,12 +618,14 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                       </td>
                       {!isSecondCopy && (
                         <td className="border border-black py-0.5 px-1 text-center no-print">
-                          {formData.items.length > 1 && !itemsReadOnly && (
+                          {/* Nota yang sudah diterima: baris berjumlah kosong tidak menyangkut stok, jadi boleh dibuang di sini */}
+                          {formData.items.length > 1 && (!itemsReadOnly || (isReceivedNota && !(Number(it.quantity) > 0))) && (
                             <button
                               type="button"
                               onClick={() => handleRemoveItem(idx)}
-                              className="text-slate-400 hover:text-rose-600 p-0.5 transition-colors cursor-pointer"
+                              className="text-slate-400 hover:text-rose-600 p-0.5 transition-colors cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                               title="Hapus baris"
+                              aria-label={`Hapus baris ${it.name}`}
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
@@ -991,7 +993,7 @@ export const NotaPesananModal: React.FC<NotaPesananModalProps> = ({
                 {itemsReadOnly && (
                   <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700 leading-relaxed">
                     {isReceivedNota
-                      ? 'Bahan dan jumlah mengikuti barang yang sudah diterima. Bila ada yang salah, koreksi catatannya di Barang Masuk.'
+                      ? 'Bahan dan jumlah mengikuti barang yang sudah diterima. Bila ada yang salah, koreksi catatannya di Barang Masuk. Baris yang jumlahnya kosong bisa dihapus di sini.'
                       : 'Untuk mengubah bahan, jumlah, atau supplier, pakai tombol Ubah di kartu PO pada Barang Masuk supaya tercatat sebagai revisi.'}{' '}
                     Harga dan tanggal masih bisa diubah di sini.
                   </p>

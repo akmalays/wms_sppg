@@ -895,6 +895,44 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
     }
   };
 
+  // Betulkan jumlah barang yang sudah masuk stok: stok, belanja tertaut, dan notanya ikut disesuaikan.
+  const [qtyEdit, setQtyEdit] = useState<{ record: UnifiedRecord; value: string } | null>(null);
+  const [qtyEditError, setQtyEditError] = useState('');
+  const parseQtyInput = (v: string) => parseFloat(v.replace(',', '.'));
+
+  const openQtyEdit = (r: UnifiedRecord) => {
+    setQtyEditError('');
+    setQtyEdit({ record: r, value: String(r.quantity) });
+  };
+
+  const handleSaveQtyEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!qtyEdit) return;
+    const r = qtyEdit.record;
+    const qty = parseQtyInput(qtyEdit.value);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setQtyEditError('Isi jumlah lebih dari 0. Kalau barangnya tidak jadi diterima, hapus barisnya.');
+      return;
+    }
+    if (isCountableUnit(r.unit) && !Number.isInteger(qty)) {
+      setQtyEditError(`Satuan ${r.unit} harus bilangan bulat.`);
+      return;
+    }
+    try {
+      if (!r.rawDoc || !r.lineId) throw new Error('Baris penerimaan ini tidak bisa diubah.');
+      const res = warehouseDb.updateReceivingLineQuantity(r.rawDoc.id, r.lineId, qty, currentUser, r.linkedExpenseId);
+      const stockNote =
+        res.stockDelta !== undefined
+          ? ` Stok ${res.stockDelta > 0 ? 'bertambah' : 'berkurang'} ${formatRecordQty(Math.abs(res.stockDelta))} ${res.stockUnit}.`
+          : '';
+      toast.success(`${r.itemName} jadi ${formatRecordQty(qty)} ${r.unit}.${stockNote}`, 'Jumlah diperbarui');
+      setQtyEdit(null);
+      refreshAll();
+    } catch (err: any) {
+      setQtyEditError(err?.message || 'Gagal mengubah jumlah.');
+    }
+  };
+
   // Hapus catatan yang salah: penerimaan mengurangi lagi stoknya, belanja langsung hanya dihapus.
   const handleDeleteRecord = (r: UnifiedRecord) => {
     const isStock = r.source === 'DELIVERY_ORDER';
@@ -907,7 +945,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
         (isStock
           ? `Stok ${r.itemName} akan dikurangi ${qty}, dan catatan pembatalannya masuk Buku Mutasi.${r.linkedExpenseId ? ' Catatan belanjanya ikut dihapus.' : ''}`
           : `Catatan belanja ${r.itemName} (${qty}) akan dihapus. Stok tidak berubah.`) +
-        (nota ? ` Nota ${nota.poNumber} masih mencantumkan barang ini, jadi edit notanya setelah ini.` : ''),
+        (nota ? ` Barang ini juga dibuang dari nota ${nota.poNumber}.` : ''),
       confirmText: 'Hapus',
       cancelText: 'Batal',
       variant: 'danger',
@@ -2783,6 +2821,17 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                                       Detail
                                     </button>
                                   ) : null}
+                                  {canDeleteRecords && isStock && r.rawDoc && r.lineId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openQtyEdit(r)}
+                                      aria-label={`Ubah jumlah ${r.itemName}`}
+                                      title="Ubah jumlah"
+                                      className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-emerald-800 hover:bg-emerald-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                   {canDeleteRecords && (
                                     <button
                                       type="button"
@@ -2840,11 +2889,11 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                               <p className="mt-1 text-[11px] text-slate-600 truncate">
                                 {r.supplierOrStore !== '-' ? r.supplierOrStore : 'Supplier tidak diisi'} · {r.picOrUser}
                               </p>
-                              <div className="mt-2 flex items-center justify-between gap-2">
+                              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                                 <span className="font-mono text-xs font-semibold text-slate-900">
                                   {r.nominal > 0 ? `Rp ${r.nominal.toLocaleString('id-ID')}` : ''}
                                 </span>
-                                <div className="flex items-center gap-1">
+                                <div className="flex flex-wrap items-center justify-end gap-1">
                                   {matchingNota && (
                                     <button
                                       type="button"
@@ -2861,6 +2910,16 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                                       className="px-2.5 rounded-lg text-[11px] font-semibold text-slate-700 border border-slate-300 cursor-pointer min-h-[44px]"
                                     >
                                       Detail
+                                    </button>
+                                  )}
+                                  {canDeleteRecords && isStock && r.rawDoc && r.lineId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openQtyEdit(r)}
+                                      aria-label={`Ubah jumlah ${r.itemName}`}
+                                      className={`px-2.5 rounded-lg text-[11px] font-semibold text-slate-700 border border-slate-300 cursor-pointer min-h-[44px] ${FOCUS_RING}`}
+                                    >
+                                      Ubah
                                     </button>
                                   )}
                                   {canDeleteRecords && (
@@ -2926,6 +2985,68 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
           )}
         </div>
     )}
+
+      {qtyEdit && (() => {
+        const r = qtyEdit.record;
+        const oldQty = Number(r.quantity) || 0;
+        const qty = parseQtyInput(qtyEdit.value);
+        const valid = Number.isFinite(qty) && qty > 0;
+        const diff = valid ? Math.round((qty - oldQty) * 1000) / 1000 : 0;
+        const nota = getMatchingNotaForRecord(r);
+        const newValue = Math.round(qty * r.unitPrice);
+        return (
+          <FormDialog
+            title={`Ubah jumlah ${r.itemName}`}
+            description={`Diterima ${r.date} dari ${r.supplierOrStore}. Tercatat ${formatRecordQty(oldQty)} ${r.unit}.`}
+            onClose={() => setQtyEdit(null)}
+            onSubmit={handleSaveQtyEdit}
+            submitLabel="Simpan jumlah"
+            submitDisabled={!valid || diff === 0}
+            error={qtyEditError}
+          >
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="qty-edit" className={FIELD_LABEL}>Jumlah diterima</label>
+                <div className="relative">
+                  <input
+                    id="qty-edit"
+                    type="text"
+                    inputMode="decimal"
+                    value={qtyEdit.value}
+                    onChange={e => {
+                      setQtyEditError('');
+                      setQtyEdit({ record: r, value: e.target.value });
+                    }}
+                    className={`${FIELD_INPUT} pr-14 font-mono`}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-600 pointer-events-none">{r.unit}</span>
+                </div>
+              </div>
+              {valid && diff !== 0 && (
+                <ul className="space-y-1 text-xs text-slate-700 leading-relaxed">
+                  <li>
+                    Stok {diff > 0 ? 'bertambah' : 'berkurang'}{' '}
+                    <span className="font-mono font-semibold text-slate-900">{formatRecordQty(Math.abs(diff))} {r.unit}</span>, dicatat sebagai
+                    koreksi di Buku Mutasi.
+                  </li>
+                  {r.unitPrice > 0 ? (
+                    <li>
+                      Nilai <span className="font-mono">Rp {r.nominal.toLocaleString('id-ID')}</span> jadi{' '}
+                      <span className="font-mono font-semibold text-slate-900">Rp {newValue.toLocaleString('id-ID')}</span>{' '}
+                      <span className="text-slate-600">(@ Rp {r.unitPrice.toLocaleString('id-ID')})</span>.
+                    </li>
+                  ) : (
+                    <li className="text-slate-600">
+                      Harganya belum tercatat, jadi nilainya tetap kosong.{nota ? ' Isi harganya lewat Lihat nota.' : ''}
+                    </li>
+                  )}
+                  {nota && <li>Nota {nota.poNumber} ikut diperbarui.</li>}
+                </ul>
+              )}
+            </div>
+          </FormDialog>
+        );
+      })()}
 
       {/* ========================================================================= */}
       {/* MODAL: POST-INPUT NOTA PESANAN PROMPT (CTA TAMBAHAN)                     */}

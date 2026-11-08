@@ -1664,28 +1664,31 @@ export const WebsiteCmsModule: React.FC = () => {
                 <div>
                   <span className={FIELD_LABEL}>Foto sajian</span>
                   <div className="flex items-start gap-3">
+                    {/* contain: ompreng tanpa latar tampil utuh seperti di halaman publik, tidak terpotong */}
                     <div className="w-32 h-24 rounded-lg overflow-hidden border border-slate-300 bg-slate-100 shrink-0">
                       <img
                         src={menuToday.imageUrl}
                         alt="Foto menu hari ini"
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-contain"
                         onError={e => {
                           (e.currentTarget as HTMLImageElement).src = IMAGE_PRESETS[1].url;
                         }}
                       />
                     </div>
-                    <div className="min-w-0 space-y-2">
+                    <div className="min-w-0 flex-1 space-y-2">
                       <input type="file" ref={todayMenuPhotoFileRef} accept="image/*" onChange={handleUploadTodayMenuPhoto} className="hidden" />
-                      <button type="button" onClick={() => todayMenuPhotoFileRef.current?.click()} disabled={isUploadingTodayMenuPhoto} className={BTN_SECONDARY}>
-                        <Upload className="w-4 h-4" />
-                        {isUploadingTodayMenuPhoto ? (trayCutoutStatus || 'Memproses...') : 'Unggah foto'}
-                      </button>
-                      <button type="button" onClick={handleCutoutTodayMenuPhoto} disabled={Boolean(trayCutoutStatus) || !menuToday.imageUrl} className={`${BTN_SECONDARY} disabled:opacity-60 disabled:cursor-wait`}>
-                        {!isUploadingTodayMenuPhoto && trayCutoutStatus ? trayCutoutStatus : 'Hapus background'}
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => todayMenuPhotoFileRef.current?.click()} disabled={isUploadingTodayMenuPhoto} className={BTN_SECONDARY}>
+                          <Upload className="w-4 h-4" />
+                          {isUploadingTodayMenuPhoto ? (trayCutoutStatus || 'Memproses...') : 'Unggah foto'}
+                        </button>
+                        <button type="button" onClick={handleCutoutTodayMenuPhoto} disabled={Boolean(trayCutoutStatus) || !menuToday.imageUrl} className={`${BTN_SECONDARY} disabled:opacity-60 disabled:cursor-wait`}>
+                          {!isUploadingTodayMenuPhoto && trayCutoutStatus ? trayCutoutStatus : 'Hapus background'}
+                        </button>
+                      </div>
                       <Select
                         aria-label="Pakai foto contoh"
-                        size="sm"
+                        className="w-full max-w-xs"
                         value={IMAGE_PRESETS.some(p => p.url === menuToday.imageUrl) ? menuToday.imageUrl : ''}
                         onChange={e => e.target.value && patchMenuToday({ imageUrl: e.target.value })}
                       >

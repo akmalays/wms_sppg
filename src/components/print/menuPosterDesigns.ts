@@ -3,8 +3,20 @@
 
 export interface PosterTrayBox {cx: number; cy: number; w: number; h: number; rot: number}
 
-/** Letak satu nama hidangan di poster (koordinat kanvas 1587 x 2245): titik tengah teks dan ujung panah. */
-export interface LabelPlacement {x: number; y: number; tipX: number; tipY: number}
+/**
+ * Letak satu nama hidangan di poster (koordinat kanvas 1587 x 2245): titik tengah teks dan ujung panah.
+ * label: nama yang ditulis petugas, menggantikan nama dari daftar hidangan. labelFor: nama hidangan saat label ditulis,
+ * supaya label tidak menempel ke hidangan lain bila daftar hidangan berubah.
+ */
+export interface LabelPlacement {x: number; y: number; tipX: number; tipY: number; label?: string; labelFor?: string}
+
+/** Nama yang ditampilkan untuk satu label: tulisan petugas bila masih untuk hidangan yang sama, selain itu nama hidangan. */
+export function shownLabel(text: string, placed: LabelPlacement | null | undefined): string {
+  const custom = placed?.label?.trim();
+  if (!custom) return text;
+  if (placed?.labelFor && placed.labelFor.trim().toLowerCase() !== text.trim().toLowerCase()) return text;
+  return custom;
+}
 
 /** Satu menu di poster: hidangan, nilai gizi, dan cara menggambar foto nampannya. */
 export interface DrawnMenu {
@@ -330,7 +342,7 @@ function drawGreenLabels(
   greenLabelTexts(menu.items).forEach((text, i) => {
     const slot = slots[i];
     const placed = menu.labelPlacements?.[i];
-    const {lines, px} = labelLines(ctx, text, slot.wrapW, type.maxPx, type.minPx);
+    const {lines, px} = labelLines(ctx, shownLabel(text, placed), slot.wrapW, type.maxPx, type.minPx);
     ctx.font = `500 ${px}px ${SANS}`;
     if (placed) {
       drawCenteredLines(ctx, lines, placed.x, placed.y, px);
@@ -627,7 +639,7 @@ export function greenDoubleToSingle(p: LabelPlacement, menuIndex: number): Label
   const cx = GREEN_DOUBLE_TRAY.cx + menuIndex * GREEN_DOUBLE_PANEL_W;
   const mapX = (x: number) => Math.round(GREEN_TRAY_CENTER[0] + (x - cx) * scale);
   const mapY = (y: number) => Math.round(GREEN_TRAY_CENTER[1] + (y - GREEN_DOUBLE_TRAY.cy) * scale);
-  return {x: mapX(p.x), y: mapY(p.y), tipX: mapX(p.tipX), tipY: mapY(p.tipY)};
+  return {x: mapX(p.x), y: mapY(p.y), tipX: mapX(p.tipX), tipY: mapY(p.tipY), ...(p.label ? {label: p.label, labelFor: p.labelFor} : {})};
 }
 
 function drawYayasanText(ctx: CanvasRenderingContext2D, rightX: number, y: number, px: number, color: string) {

@@ -167,3 +167,16 @@ export async function uploadDocumentationPhoto(
     return { url: dataUrl, error: errorMsg, isLocalFallback: true };
   }
 }
+
+/**
+ * Hapus foto dari bucket dokumentasi berdasarkan URL publiknya, agar foto yang dibuang tidak terus memakan kuota.
+ * URL data lokal (fallback tanpa Supabase) tidak perlu dihapus dari mana pun.
+ */
+export async function deleteDocumentationPhoto(url: string): Promise<void> {
+  const marker = '/object/public/sppg-documentation/';
+  const at = url.indexOf(marker);
+  if (!isSupabaseConfigured() || at < 0) return;
+  const path = decodeURIComponent(url.slice(at + marker.length).split('?')[0]);
+  const { error } = await supabase.storage.from('sppg-documentation').remove([path]);
+  if (error) console.warn('Gagal menghapus foto dari storage:', error.message);
+}

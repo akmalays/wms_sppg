@@ -6,6 +6,7 @@ import {cutoutTrayPhoto, preloadBgRemoval} from "../utils/trayCutout";
 import {publishTrays, type TrayPublish} from "../utils/menuTrayPublish";
 import {fetchWebsiteConfigFromCloud, getWebsiteConfig, WEBSITE_CONFIG_UPDATED_EVENT} from "../db/websiteConfigStorage";
 import {LabelPlacementOverlay} from "./print/LabelPlacementOverlay";
+import {LabelNameFields} from "./print/LabelNameFields";
 import {posterLabelToStage} from "./menuPublic/TrayStage";
 import {AiTrayPointsButton} from "./ai/AiTrayPointsButton";
 import {localDateIso} from "../utils/localDate";
@@ -18,7 +19,7 @@ import {FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY} from "./common/For
 import templateSingle from "../assets/poster-single.jpg";
 import templateDouble from "../assets/poster-double.jpg";
 import logoSppg from "../assets/logo sppg.png";
-import {drawGreenPoster, drawGreenDoublePoster, drawPurplePoster, drawPurpleDoublePoster, greenLabelTexts, greenDoubleLabelDefaults, greenDoubleToSingle, greenTrayBox, photoPointToBox, GREEN_LABEL_DEFAULTS, type DrawnMenu, type DrawnPosterInput, type PosterTrayBox, type LabelPlacement} from "./print/menuPosterDesigns";
+import {drawGreenPoster, drawGreenDoublePoster, drawPurplePoster, drawPurpleDoublePoster, greenLabelTexts, greenDoubleLabelDefaults, greenDoubleToSingle, greenTrayBox, photoPointToBox, shownLabel, GREEN_LABEL_DEFAULTS, type DrawnMenu, type DrawnPosterInput, type PosterTrayBox, type LabelPlacement} from "./print/menuPosterDesigns";
 
 interface NutritionValues {
   energy: string; // kkal
@@ -318,7 +319,7 @@ const POSTER_TEMPLATES: PosterTemplate[] = [
     height: 2245,
     draw: drawGreenPoster,
     labels: {texts: greenLabelTexts, defaults: () => GREEN_LABEL_DEFAULTS},
-    itemsHint: "Desain Hijau menaruh hidangan di sekeliling nampan sesuai urutan baris: 1 kiri atas, 2 kanan atas, 3 kiri bawah, 4 kanan bawah, 5 dan seterusnya di bawah. Kalau letak makanan di foto berbeda, pakai \"Atur letak nama\" di pratinjau untuk menggeser nama dan pangkal panahnya.",
+    itemsHint: "Desain Hijau menaruh hidangan di sekeliling nampan sesuai urutan baris: 1 kiri atas, 2 kanan atas, 3 kiri bawah, 4 kanan bawah, 5 dan seterusnya di bawah. Kalau letak makanan di foto berbeda, pakai \"Atur nama dan letak\" di pratinjau untuk menggeser atau mengganti nama dan pangkal panahnya.",
   },
   {
     id: "ceria",
@@ -338,7 +339,7 @@ const POSTER_TEMPLATES: PosterTemplate[] = [
     height: 1587,
     draw: drawGreenDoublePoster,
     labels: {texts: greenLabelTexts, defaults: greenDoubleLabelDefaults},
-    itemsHint: "Desain Hijau menaruh hidangan di sekeliling nampan sesuai urutan baris: 1 kiri atas, 2 kanan atas, 3 kiri bawah, 4 kanan bawah, 5 dan seterusnya di bawah. Kalau letak makanan di foto berbeda, pakai \"Atur letak nama\" di pratinjau; tiap menu diatur di tabnya masing-masing.",
+    itemsHint: "Desain Hijau menaruh hidangan di sekeliling nampan sesuai urutan baris: 1 kiri atas, 2 kanan atas, 3 kiri bawah, 4 kanan bawah, 5 dan seterusnya di bawah. Kalau letak makanan di foto berbeda, pakai \"Atur nama dan letak\" di pratinjau; tiap menu diatur di tabnya masing-masing.",
   },
   {
     id: "ceria",
@@ -759,6 +760,7 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
   const placementsForOverlay = labelSetup && current.labelPlacements
     ? labelSetup.texts.map((_, i) => current.labelPlacements![i] ?? labelSetup.defaults[i])
     : null;
+  const shownLabelTexts = labelSetup ? labelSetup.texts.map((t, i) => shownLabel(t, current.labelPlacements?.[i])) : [];
 
   const updateMenu = (index: number, patch: Partial<MenuCardData>) =>
     setMenus((prev) => prev.map((m, i) => (i === index ? {...m, ...patch} : m)));
@@ -1323,7 +1325,7 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
             <div className="mb-3 no-print flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
               <p className="text-xs text-slate-700 min-w-0">
                 {placingLabels
-                  ? "Geser kotak nama ke tempat kosong dan bulatan kuning ke makanannya di foto."
+                  ? "Geser kotak nama ke tempat kosong dan bulatan kuning ke makanannya di foto. Namanya bisa diganti di bawah pratinjau."
                   : current.labelPlacements
                   ? "Letak nama sudah diatur sendiri."
                   : "Letak nama mengikuti urutan baris hidangan."}
@@ -1332,7 +1334,7 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
                 {current.photo && (
                   <AiTrayPointsButton
                     photo={current.photo}
-                    texts={labelSetup.texts}
+                    texts={shownLabelTexts}
                     onPoints={(points, natural) => {
                       const box = greenTrayBox(printMode, editingIndex);
                       const base = placementsForOverlay ?? labelSetup.defaults.slice(0, labelSetup.texts.length);
@@ -1364,7 +1366,7 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
                   }}
                   className={`${placingLabels ? BTN_PRIMARY : BTN_SECONDARY} disabled:opacity-50`}
                 >
-                  {placingLabels ? "Selesai" : "Atur letak nama"}
+                  {placingLabels ? "Selesai" : "Atur nama dan letak"}
                 </button>
               </div>
             </div>
@@ -1380,12 +1382,20 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
             {placingLabels && labelSetup && placementsForOverlay && (
               <LabelPlacementOverlay
                 view={{x: 0, y: 0, w: activeTemplate.width, h: activeTemplate.height}}
-                texts={labelSetup.texts}
+                texts={shownLabelTexts}
                 placements={placementsForOverlay}
                 onChange={(next) => updateMenu(editingIndex, {labelPlacements: next})}
               />
             )}
           </div>
+          {placingLabels && labelSetup && placementsForOverlay && (
+            <LabelNameFields
+              idPrefix={`poster-${editingIndex}`}
+              texts={labelSetup.texts}
+              placements={placementsForOverlay}
+              onChange={(next) => updateMenu(editingIndex, {labelPlacements: next})}
+            />
+          )}
         </section>
       </div>
     </div>

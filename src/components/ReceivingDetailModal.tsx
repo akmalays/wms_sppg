@@ -1,7 +1,12 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { warehouseDb } from '../db/storage';
 import { ReceivingDocument } from '../types/warehouse';
-import { Printer } from 'lucide-react';
+import { Camera, ImagePlus, Printer } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
+import { isSupabaseConfigured } from '../lib/supabase';
+import { compressImageToWebP, deleteDocumentationPhoto, uploadDocumentationPhoto } from '../utils/imageCompressor';
 import { DialogShell, BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './common/FormDialog';
 import { isExtraCostExpense } from '../utils/extraCosts';
 
@@ -29,6 +34,151 @@ const Fact: React.FC<{ label: string; children: React.ReactNode }> = ({ label, c
     <dd className="text-xs font-semibold text-slate-900 mt-0.5 break-words">{children}</dd>
   </div>
 );
+
+const MAX_PHOTOS = 6;
+
+// Foto nota supplier sebagai cadangan bila kertasnya hilang. Foto dikompres ke WebP di HP sebelum diunggah,
+// dan yang dihapus ikut dibuang dari storage, karena kuota Supabase gratis terbatas.
+const ReceivingPhotos: React.FC<{ document: ReceivingDocument }> = ({ document }) => {
+  const { currentUser, can } = useAuth();
+  const toast = useToast();
+  const askConfirm = useConfirm();
+  const canEdit = can('RECEIVE_GOODS');
+  const [photos, setPhotos] = useState<string[]>(document.documentationPhotos || []);
+  const [progress, setProgress] = useState('');
+  const [error, setError] = useState('');
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setPhotos(document.documentationPhotos || []);
+    setError('');
+  }, [document.id]);
+
+  const save = (next: string[]) => {
+    warehouseDb.updateReceivingPhotos(document.id, next, currentUser);
+    setPhotos(next);
+  };
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setError('');
+    const picked = Array.from(files).slice(0, MAX_PHOTOS - photos.length);
+    const uploaded: string[] = [];
+    let totalKb = 0;
+    const failed: string[] = [];
+    for (const [i, file] of picked.entries()) {
+      setProgress(`Mengunggah foto ${i + 1} dari ${picked.length}...`);
+      try {
+        // 1600 px di sisi terpanjang masih cukup untuk membaca angka kecil di nota
+        const compressed = await compressImageToWebP(file, { maxDimension: 1600, quality: 0.7 });
+        const res = await uploadDocumentationPhoto(compressed.blob, 'receiving');
+        // Fallback base64 akan masuk ke baris database dan memakan kuota, jadi ditolak bila Supabase aktif
+        if (res.isLocalFallback && isSupabaseConfigured()) throw new Error(res.error || 'penyimpanan foto belum siap');
+        uploaded.push(res.url);
+        totalKb += compressed.compressedSizeKb;
+      } catch (err: any) {
+        failed.push(`${file.name}: ${err?.message || 'gagal diproses'}`);
+      }
+    }
+    setProgress('');
+    if (cameraRef.current) cameraRef.current.value = '';
+    if (galleryRef.current) galleryRef.current.value = '';
+
+    if (uploaded.length > 0) {
+      try {
+        save([...photos, ...uploaded]);
+        toast.success(`${uploaded.length} foto tersimpan, total ${totalKb.toLocaleString('id-ID')} KB.`, 'Foto nota');
+      } catch (err: any) {
+        failed.push(err?.message || 'Gagal menyimpan foto ke dokumen.');
+      }
+    }
+    if (failed.length > 0) setError(`Foto tidak tersimpan. ${failed.join('. ')}`);
+  };
+
+  const handleRemove = async (index: number) => {
+    const ok = await askConfirm({
+      title: `Hapus foto ${index + 1}?`,
+      message: 'Foto dihapus dari dokumen dan dari penyimpanan, jadi tidak bisa dikembalikan.',
+      confirmText: 'Hapus',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    const url = photos[index];
+    try {
+      save(photos.filter((_, i) => i !== index));
+      void deleteDocumentationPhoto(url);
+    } catch (err: any) {
+      setError(err?.message || 'Gagal menghapus foto.');
+    }
+  };
+
+  if (!canEdit && photos.length === 0) return null;
+  const busy = progress !== '';
+
+  return (
+    <section>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <h3 className="text-sm font-semibold text-slate-800">
+          Foto nota dan penerimaan <span className="font-normal text-slate-600">({photos.length}/{MAX_PHOTOS})</span>
+        </h3>
+        {canEdit && photos.length < MAX_PHOTOS && (
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={busy} onClick={() => cameraRef.current?.click()} className={BTN_SECONDARY}>
+              <Camera className="w-3.5 h-3.5" />
+              Ambil foto
+            </button>
+            <button type="button" disabled={busy} onClick={() => galleryRef.current?.click()} className={BTN_SECONDARY}>
+              <ImagePlus className="w-3.5 h-3.5" />
+              Pilih dari galeri
+            </button>
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => handleFiles(e.target.files)} />
+            <input ref={galleryRef} type="file" accept="image/*" multiple className="hidden" onChange={e => handleFiles(e.target.files)} />
+          </div>
+        )}
+      </div>
+
+      <p aria-live="polite" className={busy ? 'text-[11px] text-slate-700 mb-2' : 'sr-only'}>
+        {progress}
+      </p>
+      {error && (
+        <p role="alert" className="text-[11px] text-rose-700 bg-rose-50 rounded-lg px-3 py-2 mb-2">
+          {error}
+        </p>
+      )}
+
+      {photos.length > 0 ? (
+        <ul className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {photos.map((url, i) => (
+            <li key={url} className="rounded-lg border border-slate-200 overflow-hidden bg-white">
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Buka foto ${i + 1} ukuran penuh`}
+                className="block bg-slate-100 aspect-4/3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600"
+              >
+                <img src={url} alt={`Foto penerimaan ${i + 1}`} loading="lazy" className="w-full h-full object-cover" />
+              </a>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => handleRemove(i)}
+                  disabled={busy}
+                  className="w-full min-h-[44px] sm:min-h-[30px] border-t border-slate-200 text-[11px] font-medium text-slate-700 hover:text-rose-700 hover:bg-rose-50 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600"
+                >
+                  Hapus foto {i + 1}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[11px] text-slate-600">Belum ada foto. Simpan foto nota supplier di sini untuk jaga-jaga bila kertasnya hilang.</p>
+      )}
+    </section>
+  );
+};
 
 // Bukti barang sudah diterima dan masuk stok: dicocokkan dengan nota supplier dan dicetak sebagai BA penerimaan.
 export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ document, onClose, onPrint }) => {
@@ -169,25 +319,7 @@ export const ReceivingDetailModal: React.FC<ReceivingDetailModalProps> = ({ docu
         )}
       </section>
 
-      {document.documentationPhotos && document.documentationPhotos.length > 0 && (
-        <section>
-          <h3 className="text-sm font-semibold text-slate-800 mb-2">Foto penerimaan ({document.documentationPhotos.length})</h3>
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-            {document.documentationPhotos.map((url, i) => (
-              <a
-                key={i}
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`Buka foto ${i + 1}`}
-                className="block rounded-lg border border-slate-200 overflow-hidden bg-slate-100 aspect-4/3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-              >
-                <img src={url} alt={`Foto penerimaan ${i + 1}`} className="w-full h-full object-cover" />
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
+      <ReceivingPhotos document={document} />
 
       {/* Tanda tangan hanya tampil bila memang direkam di aplikasi; selain itu ditandatangani di BA cetak. */}
       {signatures.length > 0 ? (
