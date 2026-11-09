@@ -2732,7 +2732,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
                       onChange={e => setMealBoxShowDoodle(e.target.checked)}
                       className="w-4 h-4 accent-emerald-700 cursor-pointer"
                     />
-                    Hiasan doodle di tepi pita
+                    Hiasan doodle di tepi kiri pita
                   </label>
                 )}
               </div>

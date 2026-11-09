@@ -1069,6 +1069,28 @@ export async function listCmsImages(): Promise<{ name: string; url: string }[]> 
 }
 
 /**
+ * Tempat gambar bank masih dipakai, atau null bila aman dihapus. Membaca cloud langsung, bukan fetchWebsiteConfigFromCloud,
+ * supaya pengecekan tidak menimpa data lokal. Gagal membaca berarti throw: tidak boleh dianggap tidak terpakai.
+ */
+export async function findCmsImageUsage(name: string): Promise<'website' | 'poster' | null> {
+  const [site, orders] = await Promise.all([
+    supabase.from('website_cms_config').select('config').eq('id', 'default').maybeSingle(),
+    supabase.from('menu_orders').select('*'),
+  ]);
+  if (site.error) throw site.error;
+  if (orders.error) throw orders.error;
+  if (JSON.stringify(site.data?.config ?? null).includes(name) || JSON.stringify(getWebsiteConfig()).includes(name)) return 'website';
+  return JSON.stringify(orders.data ?? []).includes(name) ? 'poster' : null;
+}
+
+export async function deleteCmsImage(name: string): Promise<void> {
+  const { data, error } = await supabase.storage.from(SUPABASE_BUCKET_NAME).remove([`menu/${name}`]);
+  if (error) throw error;
+  // Storage tidak mengembalikan error bila penghapusan ditolak izin: hasil kosong berarti tidak ada yang terhapus.
+  if (!data?.length) throw new Error('Gambar tidak terhapus');
+}
+
+/**
  * Ekspor konfigurasi website saat ini sebagai berkas file JSON cadangan
  */
 export function exportWebsiteConfigAsJson(): void {

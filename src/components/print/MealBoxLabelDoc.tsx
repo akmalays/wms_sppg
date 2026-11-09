@@ -87,10 +87,10 @@ const NoTakeawayIcon: React.FC<{ size: string }> = ({ size }) => (
   </svg>
 );
 
-// Hiasan doodle makanan di tepi pita, menggantikan pola gambar di stiker lama. Satu ubin 32 x 32 unit
-// diulang lewat <pattern>; digambar garis tipis agar tidak bersaing dengan teks.
+// Hiasan doodle makanan di tepi kiri pita, menggantikan pola gambar di stiker lama. Satu ubin 32 x 32 unit;
+// garisnya tipis agar tidak bersaing dengan teks, dan hitam penuh agar printer hitam-putih tidak mencetaknya sebagai titik halftone.
 const DOODLE_TILE = (
-  <g fill="none" stroke="#1f2937" strokeWidth="0.7" strokeLinecap="round" strokeLinejoin="round">
+  <g fill="none" stroke="#000" strokeWidth="0.7" strokeLinecap="round" strokeLinejoin="round">
     {/* mangkuk nasi berasap */}
     <path d="M2 10h11a5.5 5 0 01-11 0z" />
     <path d="M5 7.5q1-1.5 0-3M8 7.5q1-1.5 0-3M11 7.5q1-1.5 0-3" />
@@ -108,15 +108,17 @@ const DOODLE_TILE = (
     <path d="M21.5 29c0-3 4-4 6-2 3 0 3 4 0 4-1 2-5 2-6-2z" />
     <circle cx="25" cy="28.6" r="1.2" />
     {/* titik pengisi */}
-    <circle cx="16" cy="12" r="0.5" fill="#1f2937" />
-    <circle cx="30.5" cy="13" r="0.5" fill="#1f2937" />
-    <circle cx="16.5" cy="30" r="0.5" fill="#1f2937" />
+    <circle cx="16" cy="12" r="0.5" fill="#000" />
+    <circle cx="30.5" cy="13" r="0.5" fill="#000" />
+    <circle cx="16.5" cy="30" r="0.5" fill="#000" />
   </g>
 );
 
-const DoodleStrip: React.FC<{ widthMm: number; heightMm: number; tileMm: number; offset?: number }> = ({ widthMm, heightMm, tileMm, offset = 0 }) => {
-  const id = `doodle${React.useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+// Ubin digambar satu per satu, bukan lewat <pattern>: Chrome mencetak <pattern> sebagai bitmap sehingga garisnya kabur.
+const DoodleStrip: React.FC<{ widthMm: number; heightMm: number; tileMm: number }> = ({ widthMm, heightMm, tileMm }) => {
   const u = 32 / tileMm; // unit SVG per mm
+  const cols = Math.ceil(widthMm / tileMm);
+  const rows = Math.ceil(heightMm / tileMm);
   return (
     <svg
       aria-hidden="true"
@@ -124,12 +126,11 @@ const DoodleStrip: React.FC<{ widthMm: number; heightMm: number; tileMm: number;
       style={{ width: `${widthMm}mm`, height: `${heightMm}mm` }}
       className="block shrink-0"
     >
-      <defs>
-        <pattern id={id} width="32" height="32" x={offset} y={offset / 2} patternUnits="userSpaceOnUse">
+      {Array.from({ length: cols * rows }, (_, i) => (
+        <g key={i} transform={`translate(${(i % cols) * 32} ${Math.floor(i / cols) * 32})`}>
           {DOODLE_TILE}
-        </pattern>
-      </defs>
-      <rect width="100%" height="100%" fill={`url(#${id})`} />
+        </g>
+      ))}
     </svg>
   );
 };
@@ -200,7 +201,7 @@ const StickerBody: React.FC<{
     const wide = info.id === 'STRIP_1';
     const doodleMm = wide ? 14 : 5;
     return (
-      <div className={`h-full flex items-center ${wide ? 'gap-[3mm]' : 'gap-[2mm]'} ${showDoodle ? '' : 'px-[3mm]'}`}>
+      <div className={`h-full flex items-center ${wide ? 'gap-[3mm]' : 'gap-[2mm]'} ${showDoodle ? 'pr-[3mm]' : 'px-[3mm]'}`}>
         {showDoodle && <DoodleStrip widthMm={doodleMm} heightMm={info.heightMm} tileMm={wide ? 12.5 : 9} />}
         <div className={`flex items-start shrink-0 ${wide ? 'gap-[3mm]' : 'gap-[2mm]'}`}>
           {consumeBlock}
@@ -208,7 +209,6 @@ const StickerBody: React.FC<{
         </div>
         {nameBlock(wide ? '24mm' : '20mm')}
         {qrBlock}
-        {showDoodle && <DoodleStrip widthMm={doodleMm} heightMm={info.heightMm} tileMm={wide ? 12.5 : 9} offset={16} />}
       </div>
     );
   }

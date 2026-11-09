@@ -52,6 +52,8 @@ import { convertQty, unitKey } from '../utils/unitConversion';
 import { placeNewItem } from '../utils/itemPlacement';
 import { EXTRA_COST_CATEGORY, EXTRA_COST_NOTE, EXTRA_COST_UNIT, extraCostToPoItem, isExtraCostPoItem } from '../utils/extraCosts';
 
+type CloudStep = [label: string, run: () => PromiseLike<{ error: any }>];
+
 const MAX_AUDIT_LOGS = 2000;
 /** Awalan catatan koreksi jumlah penerimaan; dipakai untuk menjumlah stok yang berasal dari satu baris penerimaan. */
 const RECEIVING_QTY_FIX_NOTE = 'Koreksi jumlah penerimaan';
@@ -2275,6 +2277,7 @@ class WarehouseDatabase {
   private schoolBeneficiaries: SchoolBeneficiaryAllocation[] = [];
   private isCloudInitialized = false;
   private realtimeChannel: any = null;
+  private pendingReceivingIds = new Set<string>();
 
   constructor() {
     // 1. Bersihkan seluruh data operasional dari localStorage sesuai instruksi
@@ -2379,29 +2382,42 @@ class WarehouseDatabase {
    * merujuk dokumen induk, jadi tidak boleh tiba di server sebelum dokumennya tersimpan.
    * Koneksi putus (sinyal lemah di gudang) dicoba ulang sampai 3 kali; error dari database tidak.
    */
-  private pushCloudSequence(steps: Array<[label: string, run: () => PromiseLike<{ error: any }>]>): void {
-    if (!isSupabaseConfigured()) return;
+  private pushCloudSequence(steps: CloudStep[], onSettled?: () => void): void {
+    if (!isSupabaseConfigured()) {
+      onSettled?.();
+      return;
+    }
     // Error jaringan tidak membawa kode Postgres/PostgREST.
     const isNetworkError = (error: any) =>
       !error?.code || /fetch|network|timeout|load failed/i.test(String(error?.message || ''));
     void (async () => {
-      for (const [label, run] of steps) {
-        let attempt = 0;
-        for (;;) {
-          const { error } = await run();
-          if (!error) break;
-          // Baris sudah tersimpan pada percobaan sebelumnya, hanya balasannya yang hilang.
-          if (attempt > 0 && error.code === '23505') break;
-          if (attempt < 2 && isNetworkError(error)) {
-            attempt++;
-            await new Promise(resolve => setTimeout(resolve, attempt * 2000));
-            continue;
+      try {
+        for (const [label, run] of steps) {
+          let attempt = 0;
+          for (;;) {
+            const { error } = await run();
+            if (!error) break;
+            // Baris sudah tersimpan pada percobaan sebelumnya, hanya balasannya yang hilang.
+            if (attempt > 0 && error.code === '23505') break;
+            if (attempt < 2 && isNetworkError(error)) {
+              attempt++;
+              await new Promise(resolve => setTimeout(resolve, attempt * 2000));
+              continue;
+            }
+            reportCloudWriteError(label, error);
+            return;
           }
-          reportCloudWriteError(label, error);
-          return;
         }
+      } finally {
+        onSettled?.();
       }
     })();
+  }
+
+  /** Selama pengirimannya berjalan, dokumen penerimaan ini tidak boleh hilang saat daftar dimuat ulang dari cloud. */
+  private pushReceivingSequence(docId: string, steps: CloudStep[]): void {
+    this.pendingReceivingIds.add(docId);
+    this.pushCloudSequence(steps, () => this.pendingReceivingIds.delete(docId));
   }
 
   /** Nomor GR berikutnya dari nomor terbesar tahun ini; "jumlah + 1" bentrok setelah ada yang dihapus. */
@@ -2750,8 +2766,76 @@ class WarehouseDatabase {
     }, 800);
   }
 
+  private receivingsTimer: ReturnType<typeof setTimeout> | null = null;
+  private receivingsLoadSeq = 0;
+  private refreshReceivings(): void {
+    if (this.receivingsTimer) clearTimeout(this.receivingsTimer);
+    this.receivingsTimer = setTimeout(() => {
+      this.receivingsTimer = null;
+      void this.loadReceivingsFromCloud();
+    }, 500);
+  }
+
+  // Dokumen sampai di server lebih dulu dari rinciannya, jadi muatan ini bisa memuat dokumen tanpa rincian
+  // atau belum memuat dokumen yang baru dikirim. Data di browser dipertahankan untuk dua keadaan itu.
+  private async loadReceivingsFromCloud(): Promise<void> {
+    const seq = ++this.receivingsLoadSeq;
+    const { data: dbRecs } = await supabase
+      .from('receiving_documents')
+      .select('*, receiving_lines(*)')
+      .order('date', { ascending: false });
+    // Balasan lama yang tiba belakangan tidak boleh menimpa hasil muatan yang lebih baru.
+    if (!dbRecs || seq !== this.receivingsLoadSeq) return;
+
+    const localById = new Map(this.receivings.map(r => [r.id, r]));
+    const cloud: ReceivingDocument[] = dbRecs.map((row: any) => {
+      const lines = Array.isArray(row.receiving_lines)
+        ? row.receiving_lines.map((l: any) => ({
+            id: l.id,
+            itemId: l.item_id,
+            itemName: l.item_name,
+            category: l.category,
+            quantity: Number(l.quantity) || 1,
+            unit: l.unit,
+            conditionNote: l.condition_note || undefined,
+            batchNumber: l.batch_number || undefined,
+            expiryDate: l.expiry_date || undefined,
+          }))
+        : [];
+      return {
+        id: row.id,
+        date: row.date,
+        arrivalTime: row.arrival_time,
+        supplierId: row.supplier_id,
+        supplierName: row.supplier_name || '',
+        deliveryNoteNo: row.delivery_note_no || '',
+        receiverId: row.receiver_id || 'USR-003',
+        receiverName: row.receiver_name || 'Akmal',
+        receiverRole: row.receiver_role || 'ADMIN',
+        status: row.status || 'VERIFIED_POSTED',
+        notes: row.notes || undefined,
+        supplierSignature: row.supplier_signature || undefined,
+        receiverSignature: row.receiver_signature || undefined,
+        documentationPhotos: row.documentation_photos || undefined,
+        createdAt: row.created_at,
+        lines: lines.length > 0 ? lines : localById.get(row.id)?.lines ?? [],
+      };
+    });
+    const cloudIds = new Set(cloud.map(r => r.id));
+    const stillSending = this.receivings.filter(r => this.pendingReceivingIds.has(r.id) && !cloudIds.has(r.id));
+    this.receivings = [...stillSending, ...cloud];
+    this.notifyAllChanged();
+  }
+
   private initRealtimeSubscriptions(): void {
     if (this.realtimeChannel || !isSupabaseConfigured()) return;
+
+    // Kanal sendiri: bila tabel ini belum terdaftar di publikasi realtime, langganan yang ditolak tidak ikut
+    // mematikan sinkronisasi tabel lain di kanal utama.
+    supabase
+      .channel('sppg_receiving_lines_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'receiving_lines' }, () => this.refreshReceivings())
+      .subscribe();
 
     this.realtimeChannel = supabase
       .channel('sppg_warehouse_realtime_sync')
@@ -2816,45 +2900,7 @@ class WarehouseDatabase {
         }
         this.notifyAllChanged();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'receiving_documents' }, async () => {
-        const { data: dbRecs } = await supabase
-          .from('receiving_documents')
-          .select('*, receiving_lines(*)')
-          .order('date', { ascending: false });
-        if (dbRecs) {
-          this.receivings = dbRecs.map((row: any) => ({
-            id: row.id,
-            date: row.date,
-            arrivalTime: row.arrival_time,
-            supplierId: row.supplier_id,
-            supplierName: row.supplier_name || '',
-            deliveryNoteNo: row.delivery_note_no || '',
-            receiverId: row.receiver_id || 'USR-003',
-            receiverName: row.receiver_name || 'Akmal',
-            receiverRole: row.receiver_role || 'ADMIN',
-            status: row.status || 'VERIFIED_POSTED',
-            notes: row.notes || undefined,
-            supplierSignature: row.supplier_signature || undefined,
-            receiverSignature: row.receiver_signature || undefined,
-            documentationPhotos: row.documentation_photos || undefined,
-            createdAt: row.created_at,
-            lines: Array.isArray(row.receiving_lines)
-              ? row.receiving_lines.map((l: any) => ({
-                  id: l.id,
-                  itemId: l.item_id,
-                  itemName: l.item_name,
-                  category: l.category,
-                  quantity: Number(l.quantity) || 1,
-                  unit: l.unit,
-                  conditionNote: l.condition_note || undefined,
-                  batchNumber: l.batch_number || undefined,
-                  expiryDate: l.expiry_date || undefined,
-                }))
-              : [],
-          }));
-          this.notifyAllChanged();
-        }
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'receiving_documents' }, () => this.refreshReceivings())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_transactions' }, (payload) => {
         if (payload.eventType === 'INSERT') {
           const row = payload.new;
@@ -3148,7 +3194,7 @@ class WarehouseDatabase {
         .map(item => [item.id, item] as const)
     ).values()];
     const supplierRow = mapSupplierToSupabase(supplier);
-    this.pushCloudSequence([
+    this.pushReceivingSequence(docId, [
       [`simpan supplier "${supplier.name}"`, () => supabase.from('suppliers').upsert(supplierRow)],
       [`simpan penerimaan ${docId}`, () => supabase.from('receiving_documents').insert(docRow)],
       ...receivedItems.map(item => {
@@ -5124,7 +5170,7 @@ class WarehouseDatabase {
 
     this.purchaseOrders[poIndex] = updatedPo;
 
-    this.pushCloudSequence([
+    this.pushReceivingSequence(receivingId, [
       ...cloudSteps,
       [`simpan rincian penerimaan ${receivingId}`, () => supabase.from('receiving_lines').insert(lineRows)],
       ...txSteps,
