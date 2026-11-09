@@ -1,9 +1,9 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {warehouseDb} from "../db/storage";
-import {MenuOrder} from "../types/warehouse";
+import {MenuOrder, type MenuPosterMenu} from "../types/warehouse";
 import {compressImageToWebP} from "../utils/imageCompressor";
 import {cutoutTrayPhoto, preloadBgRemoval} from "../utils/trayCutout";
-import {publishTrays, type TrayPublish} from "../utils/menuTrayPublish";
+import {publishTrays, uploadPosterPhoto, type TrayPublish} from "../utils/menuTrayPublish";
 import {fetchWebsiteConfigFromCloud, getWebsiteConfig, WEBSITE_CONFIG_UPDATED_EVENT} from "../db/websiteConfigStorage";
 import {LabelPlacementOverlay} from "./print/LabelPlacementOverlay";
 import {LabelNameFields} from "./print/LabelNameFields";
@@ -43,6 +43,23 @@ interface MenuCardData {
 
 const EMPTY_NUTRITION: NutritionValues = {energy: "", protein: "", fat: "", carb: "", fiber: ""};
 const emptyMenu = (): MenuCardData => ({items: [], photo: null, largePortion: {...EMPTY_NUTRITION}, smallPortion: {...EMPTY_NUTRITION}});
+
+/** Isi poster tersimpan (Order Menu) ke kartu menu di layar. */
+const posterMenuToCard = (m: MenuPosterMenu | undefined): MenuCardData =>
+  m
+    ? {
+        items: m.items ?? [],
+        photo: m.photoUrl,
+        photoOriginal: m.photoOriginalUrl,
+        largePortion: {...EMPTY_NUTRITION, ...m.largePortion},
+        smallPortion: {...EMPTY_NUTRITION, ...m.smallPortion},
+        labelPlacements: m.labelPlacements,
+      }
+    : emptyMenu();
+
+/** Pembanding isi poster, agar yang tidak berubah (mis. baru dimuat) tidak disimpan ulang. */
+const posterSnapshot = (menus: MenuCardData[], printMode: string, templateIds: Record<string, string>) =>
+  JSON.stringify({menus, printMode, templateIds});
 
 const NUTRITION_ROWS: {key: keyof NutritionValues; label: string; unit: string}[] = [
   {key: "energy", label: "Energi", unit: "kkal"},
@@ -534,6 +551,8 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   if (!p) {
     p = new Promise((resolve, reject) => {
       const img = new Image();
+      // Foto poster tersimpan di storage Supabase; tanpa CORS kanvas terkunci dan poster tidak bisa diunduh
+      if (/^https?:\/\//.test(src)) img.crossOrigin = "anonymous";
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error("Gambar gagal dimuat."));
       img.src = src;
@@ -729,7 +748,8 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
   useEffect(() => {
     if (!placementSupported) setPlacingLabels(false);
   }, [placementSupported]);
-  const autoFilledRef = useRef(false);
+  const [posterSave, setPosterSave] = useState<{state: "idle" | "saving" | "saved" | "failed"; message?: string}>({state: "idle"});
+  const [saveRetry, setSaveRetry] = useState(0);
 
   // Rencana menu bisa datang belakangan dari sinkronisasi cloud
   useEffect(() => {
@@ -788,12 +808,34 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
     setFilledFromOrderId(order.id);
   }, []);
 
-  // Saat halaman dibuka, isi dari rencana menu hari ini bila ada (sekali saja, agar ketikan tidak tertimpa)
+  // Isi poster tersimpan di order tanggalnya. Saat tanggal (atau ordernya) berganti: muat poster yang tersimpan, atau
+  // mulai dari rencana menu. Isi dari tanggal lain dibuang dulu supaya foto dan gizinya tidak ikut tersimpan ke sini.
+  const loadedKeyRef = useRef<string | null>(null);
+  const loadedOrderIdRef = useRef<string | null>(null);
+  const lastSavedRef = useRef("");
   useEffect(() => {
-    if (autoFilledRef.current || !orderForDate) return;
-    autoFilledRef.current = true;
+    const key = `${selectedDate}|${orderForDate?.id ?? ""}`;
+    if (loadedKeyRef.current === key) return;
+    loadedKeyRef.current = key;
+    if (!orderForDate) return;
+    const fromOtherOrder = loadedOrderIdRef.current !== null && loadedOrderIdRef.current !== orderForDate.id;
+    loadedOrderIdRef.current = orderForDate.id;
+    const saved = orderForDate.poster;
+    if (saved) {
+      const nextMenus = [0, 1].map((i) => posterMenuToCard(saved.menus[i]));
+      const nextTemplates = {...DEFAULT_TEMPLATE_IDS, ...(saved.templateIds as Partial<Record<PosterMode, string>> | undefined)};
+      setMenus(nextMenus);
+      setPrintMode(saved.printMode);
+      setTemplateIds(nextTemplates);
+      setFilledFromOrderId(orderForDate.id);
+      lastSavedRef.current = posterSnapshot(nextMenus, saved.printMode, nextTemplates);
+      setPosterSave({state: "saved"});
+      return;
+    }
+    if (fromOtherOrder) setMenus([emptyMenu(), emptyMenu()]);
     fillFromOrder(orderForDate);
-  }, [orderForDate, fillFromOrder]);
+    setPosterSave({state: "idle"});
+  }, [selectedDate, orderForDate, fillFromOrder]);
 
   // Gambar ulang pratinjau setiap ada perubahan; permintaan yang tertinggal diabaikan.
   const drawSeq = useRef(0);
@@ -906,20 +948,64 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
   const posterDateLong = formatPosterDateLong(selectedDate);
   const dateMatchesPage = pageDateText.toLowerCase().includes((posterDateLong.split(", ").pop() ?? "").toLowerCase());
 
-  const trayPublishes = useMemo<TrayPublish[]>(() => {
-    const labelSource = isDrawnPoster(activeTemplate) ? activeTemplate.labels : undefined;
-    return visibleMenus.flatMap((menu, i): TrayPublish[] => {
-      if (!menu.photo || !menu.photoOriginal) return [];
-      const target = i === 0 ? "reguler" : "b3";
-      if (!labelSource || !menu.labelPlacements) return [{target, photo: menu.photo}];
+  // Letak nama poster diubah ke koordinat panggung halaman publik; undefined = letak bawaan.
+  const stageLabelsOf = useCallback(
+    (menu: MenuCardData, i: number) => {
+      const labelSource = isDrawnPoster(activeTemplate) ? activeTemplate.labels : undefined;
+      if (!labelSource || !menu.labelPlacements) return undefined;
       const defaults = labelSource.defaults(i);
-      const labels = labelSource.texts(menu.items).map((text, n) => {
+      return labelSource.texts(menu.items).map((text, n) => {
         const placed = menu.labelPlacements?.[n] ?? defaults[n];
         return {text, ...posterLabelToStage(printMode === "DOUBLE" ? greenDoubleToSingle(placed, i) : placed)};
       });
-      return [{target, photo: menu.photo, labels}];
-    });
-  }, [visibleMenus, activeTemplate, printMode]);
+    },
+    [activeTemplate, printMode]
+  );
+
+  const trayPublishes = useMemo<TrayPublish[]>(
+    () =>
+      visibleMenus.flatMap((menu, i): TrayPublish[] => {
+        if (!menu.photo || !menu.photoOriginal) return [];
+        const target = i === 0 ? "reguler" : "b3";
+        const labels = stageLabelsOf(menu, i);
+        return [labels ? {target, photo: menu.photo, labels} : {target, photo: menu.photo}];
+      }),
+    [visibleMenus, stageLabelsOf]
+  );
+
+  // Simpan isi poster ke Order Menu tanggal ini setiap ada perubahan (jeda 1,2 detik), supaya poster bisa dibuka lagi
+  // dari perangkat mana pun dan Atur Website bisa mengambil foto, gizi, dan letak namanya.
+  const busyPhoto = uploadingIndex !== null || cutoutIndex !== null;
+  useEffect(() => {
+    if (!orderForDate || loadedKeyRef.current !== `${selectedDate}|${orderForDate.id}` || busyPhoto) return;
+    const snapshot = posterSnapshot(menus, printMode, templateIds);
+    if (snapshot === lastSavedRef.current) return;
+    const orderId = orderForDate.id;
+    const timer = setTimeout(async () => {
+      setPosterSave({state: "saving"});
+      try {
+        const posterMenus = await Promise.all(
+          menus.map(async (m, i) => ({
+            items: m.items,
+            photoUrl: m.photo ? await uploadPosterPhoto(m.photo) : null,
+            photoOriginalUrl: m.photoOriginal ? await uploadPosterPhoto(m.photoOriginal) : null,
+            largePortion: m.largePortion,
+            smallPortion: m.smallPortion,
+            labelPlacements: m.labelPlacements ?? null,
+            stageLabels: stageLabelsOf(m, i) ?? null,
+          }))
+        );
+        warehouseDb.saveMenuOrderPoster(orderId, {menus: posterMenus, printMode, templateIds, updatedAt: new Date().toISOString()});
+        lastSavedRef.current = snapshot;
+        setPosterSave({state: "saved"});
+      } catch (err) {
+        setPosterSave({state: "failed", message: err instanceof Error ? err.message : "Koneksi bermasalah."});
+      }
+    }, 1200);
+    return () => clearTimeout(timer);
+    // orderForDate berganti objek setiap kali tersimpan; yang menentukan hanya id-nya.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menus, printMode, templateIds, orderForDate?.id, selectedDate, busyPhoto, stageLabelsOf, saveRetry]);
   const trayKey = useMemo(() => JSON.stringify(trayPublishes), [trayPublishes]);
   const [trayStatus, setTrayStatus] = useState<{state: "idle" | "sending" | "sent" | "failed"; key: string; message?: string}>({state: "idle", key: ""});
   const trayQueue = useRef<Promise<void>>(Promise.resolve());
@@ -1129,11 +1215,32 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
                 </div>
               ) : (
                 <p className="mt-1.5 text-[11px] text-slate-600">
-                  Belum ada rencana menu untuk tanggal ini.{" "}
+                  Belum ada rencana menu untuk tanggal ini, jadi isi poster tidak tersimpan dan hilang saat halaman dimuat ulang.{" "}
                   {onNavigate && (
                     <button type="button" onClick={() => onNavigate("menu_orders")} className="font-semibold text-emerald-800 underline cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
                       Buka Order Menu
                     </button>
+                  )}
+                </p>
+              )}
+              {orderForDate && posterSave.state !== "idle" && (
+                <p role={posterSave.state === "failed" ? "alert" : undefined} aria-live="polite" className={`mt-1.5 text-[11px] ${posterSave.state === "failed" ? "text-rose-700" : "text-slate-600"}`}>
+                  {posterSave.state === "saving" && "Menyimpan isi poster ke Order Menu..."}
+                  {posterSave.state === "saved" && "Foto, gizi, dan letak nama tersimpan di Order Menu tanggal ini. Atur Website bisa mengambilnya lewat Isi otomatis."}
+                  {posterSave.state === "failed" && (
+                    <>
+                      Isi poster belum tersimpan. {posterSave.message}{" "}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          lastSavedRef.current = "";
+                          setSaveRetry((n) => n + 1);
+                        }}
+                        className="font-semibold underline cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                      >
+                        Coba lagi
+                      </button>
+                    </>
                   )}
                 </p>
               )}

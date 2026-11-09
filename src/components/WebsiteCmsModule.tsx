@@ -13,12 +13,14 @@ import {
   fetchWebsiteConfigFromCloud,
   uploadCmsMedia,
   VIDEO_PRESETS,
-  IMAGE_PRESETS
+  IMAGE_PRESETS,
+  EMPTY_PORTION_TIER,
+  hasPortionNutrition
 } from '../db/websiteConfigStorage';
 import QRCode from 'qrcode';
 import { warehouseDb } from '../db/storage';
 import { localDateIso } from '../utils/localDate';
-import type { MenuOrder } from '../types/warehouse';
+import type { MenuOrder, MenuPosterMenu, MenuPosterNutrition } from '../types/warehouse';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
 import { MenuTodayKidsEditor } from './MenuTodayKidsEditor';
@@ -26,6 +28,8 @@ import { compressImageToWebP } from '../utils/imageCompressor';
 import { requestMenuAiDraft, MenuAiDraft } from '../utils/menuAiDraft';
 import { cutoutTrayPhoto } from '../utils/trayCutout';
 import { TrayLabelEditor } from './menuPublic/TrayLabelEditor';
+import { menuDishes } from './menuPublic/TrayStage';
+import { detectAllergens } from '../utils/allergens';
 import { AiIngredientTidyDialog } from './ai/AiIngredientTidyDialog';
 import { requestIngredientTidy, type AiIngredientSuggestion } from '../utils/aiAssist';
 import {
@@ -61,6 +65,30 @@ const ICON_BTN = `inline-flex items-center justify-center min-w-[44px] min-h-[44
 
 const FIELD = `w-full px-3 min-h-[44px] sm:min-h-[36px] rounded-lg border border-slate-300 bg-white text-xs text-slate-800 ${FOCUS}`;
 const FIELD_LABEL = 'block text-xs font-semibold text-slate-700 mb-1';
+
+const AllergenPreview: React.FC<{ menuToday: WebsiteMenuTodayConfig }> = ({ menuToday }) => {
+  const { regular, b3 } = menuDishes(menuToday);
+  const regularFound = detectAllergens([...regular, ...menuToday.ingredients.map(i => i.name)]);
+  const b3Found = b3.length > 0 ? detectAllergens(b3) : null;
+  const show = (found: string[]) => (found.length > 0 ? found.join(', ') : 'tidak ada yang terdeteksi, baris alergen tidak ditampilkan');
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700">
+      <p>
+        <span className="font-semibold text-slate-800">Alergen di halaman publik: </span>
+        {show(regularFound)}
+      </p>
+      {b3Found && (
+        <p className="mt-0.5">
+          <span className="font-semibold text-slate-800">Menu 3B: </span>
+          {show(b3Found)}
+        </p>
+      )}
+      <p className="mt-1 text-[11px] text-slate-600">
+        Dibaca otomatis dari nama menu dan bahan. Tulis nama bahan dengan jelas, mis. "bumbu kacang" atau "saus mayo", supaya ikut terbaca.
+      </p>
+    </div>
+  );
+};
 
 type EnergyKey = 'caloriesAvg' | 'proteinAvg' | 'carbsAvg' | 'fatAvg' | 'fiberAvg';
 const ENERGY_FIELDS: { key: EnergyKey; label: string }[] = [
@@ -160,6 +188,8 @@ export const WebsiteCmsModule: React.FC = () => {
 
   const [isUploadingTodayMenuPhoto, setIsUploadingTodayMenuPhoto] = useState(false);
   const todayMenuPhotoFileRef = useRef<HTMLInputElement>(null);
+  const [isUploadingB3Photo, setIsUploadingB3Photo] = useState(false);
+  const b3PhotoFileRef = useRef<HTMLInputElement>(null);
 
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [copiedQrLink, setCopiedQrLink] = useState(false);
@@ -588,11 +618,19 @@ export const WebsiteCmsModule: React.FC = () => {
 
   // Menu hari ini dari Rekap Order Menu, supaya tidak perlu diketik dua kali.
   const todayIso = localDateIso();
+  // Dibaca ulang saat data gudang tersinkron, supaya poster yang baru disimpan langsung bisa diambil
+  const [ordersVersion, setOrdersVersion] = useState(0);
+  useEffect(() => {
+    const bump = () => setOrdersVersion(v => v + 1);
+    window.addEventListener('sppg_warehouse_sync', bump);
+    return () => window.removeEventListener('sppg_warehouse_sync', bump);
+  }, []);
   const todayOrders = useMemo(
     () => warehouseDb.getMenuOrders()
       .filter(o => o.date === todayIso && o.status !== 'CANCELLED')
       .sort((a, b) => SESSION_ORDER[a.mealSession] - SESSION_ORDER[b.mealSession]),
-    [todayIso]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [todayIso, ordersVersion]
   );
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const selectedOrder = todayOrders.find(o => o.id === selectedOrderId) ?? todayOrders[0];
@@ -601,7 +639,9 @@ export const WebsiteCmsModule: React.FC = () => {
     const current = config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
     const ok = await askConfirm({
       title: `Isi dari menu "${order.menuTitle}"?`,
-      message: 'Tanggal, nama menu, menu 3B, deskripsi, dan daftar bahan diganti. Data gizi bahan yang namanya sama tetap dipakai.',
+      message: order.poster
+        ? 'Tanggal, nama menu, menu 3B, deskripsi, dan daftar bahan diganti. Nilai gizi per porsi, foto ompreng, dan letak nama diambil dari poster menu tanggal ini. Data gizi bahan yang namanya sama tetap dipakai.'
+        : 'Tanggal, nama menu, menu 3B, deskripsi, dan daftar bahan diganti. Data gizi bahan yang namanya sama tetap dipakai. Poster menu tanggal ini belum dibuat, jadi gizi per porsi dan foto ompreng tidak berubah.',
       confirmText: 'Isi otomatis',
       variant: 'warning',
     });
@@ -636,12 +676,51 @@ export const WebsiteCmsModule: React.FC = () => {
       };
     });
 
+    // Dari poster menu: nilai gizi per porsi (poster menyimpan angka saja, website dengan satuan), foto ompreng tanpa
+    // background, dan letak nama yang sudah diubah ke panggung halaman publik. Kolom poster yang kosong tidak menimpa.
+    const poster = order.poster;
+    const withUnit = (value: string | undefined, unit: string, fallback: string) => (value?.trim() ? `${value.trim()} ${unit}` : fallback);
+    const portionFromPoster = (tier: PortionTierConfig, n: MenuPosterNutrition | undefined): PortionTierConfig =>
+      n
+        ? {
+            ...tier,
+            targetCalories: withUnit(n.energy, 'kkal', tier.targetCalories),
+            proteinGrams: withUnit(n.protein, 'g', tier.proteinGrams),
+            carbGrams: withUnit(n.carb, 'g', tier.carbGrams),
+            fatGrams: withUnit(n.fat, 'g', tier.fatGrams),
+            fiberGrams: withUnit(n.fiber, 'g', tier.fiberGrams),
+          }
+        : tier;
+    const cutoutOf = (m: MenuPosterMenu | undefined) => (m?.photoUrl && m.photoOriginalUrl ? m : undefined);
+    const regularTray = cutoutOf(poster?.menus[0]);
+    const b3Tray = poster?.printMode === 'DOUBLE' ? cutoutOf(poster.menus[1]) : undefined;
+    const fromPoster: string[] = [];
+    if (poster?.menus[0] && [poster.menus[0].largePortion, poster.menus[0].smallPortion].some(n => Object.values(n || {}).some(v => String(v).trim()))) {
+      fromPoster.push('gizi per porsi');
+    }
+    if (regularTray) fromPoster.push('foto ompreng');
+    if (b3Tray) fromPoster.push('foto ompreng 3B');
+    // Poster dua menu menyimpan gizi 3B di menus[1]; poster satu menu tidak punya data 3B sama sekali.
+    const b3Poster = poster?.printMode === 'DOUBLE' ? poster.menus[1] : undefined;
+    const b3HasNutrition = Boolean(b3Poster && [b3Poster.largePortion, b3Poster.smallPortion].some(n => Object.values(n || {}).some(v => String(v).trim())));
+    if (b3HasNutrition) fromPoster.push('gizi 3B');
+
     setConfig(prev => {
       const c = prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
       return {
         ...prev,
         menuToday: {
           ...c,
+          portionLarge: portionFromPoster(c.portionLarge, poster?.menus[0]?.largePortion),
+          portionSmall: portionFromPoster(c.portionSmall, poster?.menus[0]?.smallPortion),
+          ...(regularTray ? { imageUrl: regularTray.photoUrl!, trayLabels: regularTray.stageLabels ?? null } : {}),
+          ...(b3Tray ? { imageUrlB3: b3Tray.photoUrl!, trayLabelsB3: b3Tray.stageLabels ?? null } : {}),
+          ...(b3HasNutrition
+            ? {
+                portionLargeB3: portionFromPoster(c.portionLargeB3 ?? EMPTY_PORTION_TIER, b3Poster!.largePortion),
+                portionSmallB3: portionFromPoster(c.portionSmallB3 ?? EMPTY_PORTION_TIER, b3Poster!.smallPortion),
+              }
+            : {}),
           dateText: formatMenuDate(order.date),
           menuTitle: order.menuTitle,
           menuB3: order.specialDietB3?.trim() || '',
@@ -652,10 +731,11 @@ export const WebsiteCmsModule: React.FC = () => {
       };
     });
 
+    const posterNote = fromPoster.length > 0 ? ` Dari poster menu: ${fromPoster.join(', ')}.` : '';
     if (missingNutrition.length > 0) {
-      showNotification(`Menu terisi. ${missingNutrition.length} bahan belum punya data gizi: ${missingNutrition.join(', ')}.`, 'warning');
+      showNotification(`Menu terisi.${posterNote} ${missingNutrition.length} bahan belum punya data gizi: ${missingNutrition.join(', ')}.`, 'warning');
     } else {
-      showNotification('Menu hari ini terisi dari Rekap Order Menu.');
+      showNotification(`Menu hari ini terisi dari Rekap Order Menu.${posterNote}`);
     }
   };
 
@@ -668,10 +748,14 @@ export const WebsiteCmsModule: React.FC = () => {
       return { ...prev, menuToday: { ...mt, energySummary: { ...mt.energySummary, [key]: value } } };
     });
 
-  const patchPortion = (tier: 'portionSmall' | 'portionLarge', key: keyof PortionTierConfig, value: string) =>
+  const patchPortion = (
+    tier: 'portionSmall' | 'portionLarge' | 'portionSmallB3' | 'portionLargeB3',
+    key: keyof PortionTierConfig,
+    value: string
+  ) =>
     setConfig(prev => {
       const mt = prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
-      return { ...prev, menuToday: { ...mt, [tier]: { ...mt[tier], [key]: value } } };
+      return { ...prev, menuToday: { ...mt, [tier]: { ...(mt[tier] ?? EMPTY_PORTION_TIER), [key]: value } } };
     });
 
   // Draf teks dari Gemini. Hasil masuk ke draf halaman ini dan baru tampil di website setelah Simpan.
@@ -783,57 +867,61 @@ export const WebsiteCmsModule: React.FC = () => {
   };
 
   // Nampan tanpa latar supaya menonjol di hero halaman publik. Hasilnya diunggah seperti foto biasa.
+  // Menu reguler dan 3B memakai alur yang sama, hanya kolom foto dan status prosesnya yang berbeda.
   const [trayCutoutStatus, setTrayCutoutStatus] = useState('');
-  const handleCutoutTodayMenuPhoto = async () => {
-    const source = (config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday).imageUrl;
+  const [trayCutoutStatusB3, setTrayCutoutStatusB3] = useState('');
+  type TrayPhotoKey = 'imageUrl' | 'imageUrlB3';
+  const trayStatusSetter = (key: TrayPhotoKey) => (key === 'imageUrl' ? setTrayCutoutStatus : setTrayCutoutStatusB3);
+
+  const cutoutTrayPhotoFor = async (key: TrayPhotoKey) => {
+    const source = (config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday)[key];
     if (!source) return;
-    setTrayCutoutStatus('Menyiapkan...');
+    const setStatus = trayStatusSetter(key);
+    setStatus('Menyiapkan...');
     try {
-      const blob = await cutoutTrayPhoto(source, setTrayCutoutStatus);
+      const blob = await cutoutTrayPhoto(source, setStatus);
       const result = await uploadCmsMedia(new File([blob], 'nampan.png', { type: 'image/png' }), 'menu');
-      patchMenuToday({ imageUrl: result.url });
-      notifyImageUpload(result, 'Foto nampan tanpa latar');
+      patchMenuToday({ [key]: result.url });
+      notifyImageUpload(result, key === 'imageUrl' ? 'Foto nampan tanpa latar' : 'Foto ompreng 3B tanpa latar');
     } catch {
       showError('Background gagal dihapus. Periksa koneksi internet (model diunduh saat pertama kali), lalu coba lagi.');
     } finally {
-      setTrayCutoutStatus('');
+      setStatus('');
     }
   };
+  const handleCutoutTodayMenuPhoto = () => cutoutTrayPhotoFor('imageUrl');
 
-  const handleUploadTodayMenuPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const uploadTrayPhotoFor = async (key: TrayPhotoKey, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const setBusy = key === 'imageUrl' ? setIsUploadingTodayMenuPhoto : setIsUploadingB3Photo;
+    const setStatus = trayStatusSetter(key);
 
     try {
-      setIsUploadingTodayMenuPhoto(true);
+      setBusy(true);
       // Background dihapus otomatis agar ompreng menyatu dengan hero. Bila gagal, foto asli tetap dipakai dan
       // petugas diberi tahu, tombol Hapus background bisa dicoba lagi.
       let upload: File = file;
       try {
         const { dataUrl } = await compressImageToWebP(file, { maxDimension: 1600, quality: 0.9 });
-        const blob = await cutoutTrayPhoto(dataUrl, setTrayCutoutStatus);
+        const blob = await cutoutTrayPhoto(dataUrl, setStatus);
         upload = new File([blob], 'nampan.png', { type: 'image/png' });
       } catch {
         showError('Background gagal dihapus, foto diunggah apa adanya. Coba tombol Hapus background lagi saat koneksi baik.');
       } finally {
-        setTrayCutoutStatus('');
+        setStatus('');
       }
       const result = await uploadCmsMedia(upload, 'menu');
-      setConfig(prev => ({
-        ...prev,
-        menuToday: {
-          ...(prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday),
-          imageUrl: result.url
-        }
-      }));
-      notifyImageUpload(result, 'Foto menu hari ini');
+      patchMenuToday({ [key]: result.url });
+      notifyImageUpload(result, key === 'imageUrl' ? 'Foto menu hari ini' : 'Foto ompreng 3B');
     } catch {
       showError('Gagal mengunggah foto menu.');
     } finally {
-      setIsUploadingTodayMenuPhoto(false);
+      setBusy(false);
       if (e.target) e.target.value = '';
     }
   };
+  const handleUploadTodayMenuPhoto = (e: React.ChangeEvent<HTMLInputElement>) => uploadTrayPhotoFor('imageUrl', e);
 
   const handleOpenAddIngredient = () => {
     const newId = `ing-${Date.now()}`;
@@ -1550,6 +1638,7 @@ export const WebsiteCmsModule: React.FC = () => {
         const energy = menuToday.energySummary;
         const small = menuToday.portionSmall;
         const large = menuToday.portionLarge;
+        const b3Dishes = menuDishes(menuToday).b3;
         const hero = menuToday.nutritionHero;
         const habitCount = (menuToday.dailyHabits || []).filter(h => h.title.trim()).length;
 
@@ -1564,6 +1653,7 @@ export const WebsiteCmsModule: React.FC = () => {
                     Menu {todayOrders.length > 1 ? `${selectedOrder.mealSession.toLowerCase()} ` : ''}hari ini:{' '}
                     <span className="font-semibold text-slate-900">{selectedOrder.menuTitle}</span>
                     {' · '}{(selectedOrder.keyIngredients?.length || selectedOrder.poArrivalItems?.length || 0)} bahan
+                    {selectedOrder.poster ? ' · gizi dan foto dari poster menu' : ' · poster menu belum dibuat'}
                   </p>
                 ) : (
                   <p className="text-xs text-slate-600 mt-0.5">
@@ -1653,11 +1743,6 @@ export const WebsiteCmsModule: React.FC = () => {
                   <input id="mt-title" type="text" value={menuToday.menuTitle} onChange={e => patchMenuToday({ menuTitle: e.target.value })}
                     placeholder="Nasi ayam ungkep bumbu kuning & sop sayur" className={FIELD} />
                 </div>
-                <div className="sm:col-span-2">
-                  <label htmlFor="menu-b3" className={FIELD_LABEL}>Menu 3B (ibu hamil, ibu menyusui, balita)</label>
-                  <input id="menu-b3" type="text" value={menuToday.menuB3 || ''} onChange={e => patchMenuToday({ menuB3: e.target.value })}
-                    placeholder="Pisahkan dengan koma. Kosongkan bila tidak ada menu 3B" className={FIELD} />
-                </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -1716,18 +1801,8 @@ export const WebsiteCmsModule: React.FC = () => {
 
               <TrayLabelEditor menuToday={menuToday} onChange={patchMenuToday} />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="mt-allergen" className={FIELD_LABEL}>Peringatan alergen</label>
-                  <input id="mt-allergen" type="text" value={menuToday.allergensWarning || ''} onChange={e => patchMenuToday({ allergensWarning: e.target.value })}
-                    placeholder="Mengandung kedelai" className={FIELD} />
-                </div>
-                <div>
-                  <label htmlFor="mt-qc" className={FIELD_LABEL}>Status QC & gizi</label>
-                  <input id="mt-qc" type="text" value={menuToday.qcStatus || ''} onChange={e => patchMenuToday({ qcStatus: e.target.value })}
-                    placeholder="Diperiksa ahli gizi SPPG" className={FIELD} />
-                </div>
-              </div>
+              {/* Alergen dibaca dari nama menu dan bahan, bukan diketik: tidak bisa tertinggal saat menu berganti. */}
+              <AllergenPreview menuToday={menuToday} />
             </CollapsibleCard>
 
             <CollapsibleCard
@@ -1778,6 +1853,91 @@ export const WebsiteCmsModule: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Menu 3B"
+              summary={b3Dishes.length === 0
+                ? 'Tidak ada menu 3B'
+                : [
+                    `${b3Dishes.length} hidangan`,
+                    menuToday.imageUrlB3 ? 'foto ompreng ada' : 'belum ada foto ompreng',
+                    hasPortionNutrition(menuToday.portionLargeB3) || hasPortionNutrition(menuToday.portionSmallB3) ? 'gizi terisi' : 'gizi belum diisi',
+                  ].join(' · ')}
+            >
+              <div>
+                <label htmlFor="menu-b3" className={FIELD_LABEL}>Hidangan 3B (ibu hamil, ibu menyusui, balita)</label>
+                <input id="menu-b3" type="text" value={menuToday.menuB3 || ''} onChange={e => patchMenuToday({ menuB3: e.target.value })}
+                  placeholder="Pisahkan dengan koma. Kosongkan bila tidak ada menu 3B" className={FIELD} />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Foto dan gizi 3B ikut terisi saat memakai Ambil dari Rekap Order Menu, asalkan poster menunya dicetak dua menu.
+                </p>
+              </div>
+
+              <fieldset disabled={b3Dishes.length === 0} className="space-y-4 disabled:opacity-60">
+                <div>
+                  <span className={FIELD_LABEL}>Foto ompreng 3B</span>
+                  <div className="flex items-start gap-3">
+                    <div className="w-32 h-24 rounded-lg overflow-hidden border border-slate-300 bg-slate-100 shrink-0 flex items-center justify-center">
+                      {menuToday.imageUrlB3 ? (
+                        <img src={menuToday.imageUrlB3} alt="Foto ompreng menu 3B" className="w-full h-full object-contain" />
+                      ) : (
+                        <span className="text-[11px] text-slate-500 text-center px-2">Kosong: ilustrasi 3B yang tampil</span>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <input type="file" ref={b3PhotoFileRef} accept="image/*" onChange={e => uploadTrayPhotoFor('imageUrlB3', e)} className="hidden" />
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => b3PhotoFileRef.current?.click()} disabled={isUploadingB3Photo} className={BTN_SECONDARY}>
+                          <Upload className="w-4 h-4" />
+                          {isUploadingB3Photo ? (trayCutoutStatusB3 || 'Memproses...') : 'Unggah foto'}
+                        </button>
+                        <button type="button" onClick={() => cutoutTrayPhotoFor('imageUrlB3')} disabled={Boolean(trayCutoutStatusB3) || !menuToday.imageUrlB3} className={`${BTN_SECONDARY} disabled:opacity-60 disabled:cursor-wait`}>
+                          {!isUploadingB3Photo && trayCutoutStatusB3 ? trayCutoutStatusB3 : 'Hapus background'}
+                        </button>
+                        {menuToday.imageUrlB3 && (
+                          <button type="button" onClick={() => patchMenuToday({ imageUrlB3: '', trayLabelsB3: null })} className={`${BTN_SECONDARY} text-rose-700`}>
+                            <Trash2 className="w-4 h-4" />
+                            Hapus foto
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500">Nama hidangan dan panahnya diatur di bagian Menu &amp; foto, pilih Menu 3B.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <span className={FIELD_LABEL}>Gizi per porsi menu 3B</span>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border-separate border-spacing-y-1.5 min-w-[420px]">
+                      <thead>
+                        <tr className="text-left text-slate-600">
+                          <th scope="col" className="font-semibold w-28 pr-2">Takaran</th>
+                          <th scope="col" className="font-semibold px-1">Porsi kecil</th>
+                          <th scope="col" className="font-semibold px-1">Porsi besar</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {PORTION_FIELDS.filter(f => f.key !== 'description').map(f => (
+                          <tr key={f.key} className="align-top">
+                            <th scope="row" className="font-medium text-slate-700 text-left pr-2 pt-2.5">{f.label}</th>
+                            {(['portionSmallB3', 'portionLargeB3'] as const).map(tier => (
+                              <td key={tier} className="px-1">
+                                <input type="text" aria-label={`${f.label} 3B ${tier === 'portionSmallB3' ? 'porsi kecil' : 'porsi besar'}`}
+                                  value={(menuToday[tier] ?? EMPTY_PORTION_TIER)[f.key]} onChange={e => patchPortion(tier, f.key, e.target.value)}
+                                  placeholder={f.key === 'tierName' ? (tier === 'portionSmallB3' ? 'Porsi Kecil (Balita)' : 'Porsi Besar (Ibu hamil & menyusui)') : undefined}
+                                  className={FIELD} />
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">Kosongkan semua angka untuk menyembunyikan tabel gizi 3B di halaman publik.</p>
+                </div>
+              </fieldset>
             </CollapsibleCard>
 
             <CollapsibleCard

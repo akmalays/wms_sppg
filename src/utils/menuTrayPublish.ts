@@ -1,4 +1,5 @@
 import {fetchWebsiteConfigFromCloud, saveWebsiteConfigToCloud, uploadCmsMedia, type TrayLabelPlacement} from "../db/websiteConfigStorage";
+import {isSupabaseConfigured} from "../lib/supabase";
 
 export type TrayTarget = "reguler" | "b3";
 
@@ -10,17 +11,26 @@ export interface TrayPublish {
   labels?: TrayLabelPlacement[] | null;
 }
 
-// Letak nama bisa berubah berkali-kali untuk satu foto; fotonya cukup diunggah sekali.
+// Letak nama bisa berubah berkali-kali untuk satu foto; fotonya cukup diunggah sekali. Dipakai bersama oleh
+// penyimpanan poster dan pengiriman ke halaman publik.
 const uploaded = new Map<string, string>();
 
-async function uploadPhoto(photo: string): Promise<string> {
+/**
+ * Foto poster ke storage, mengembalikan alamatnya. Alamat yang sudah http(s) dikembalikan apa adanya.
+ * Bila Supabase aktif tapi unggahan gagal, dilempar galat: data URL tidak boleh masuk ke baris database.
+ */
+export async function uploadPosterPhoto(photo: string): Promise<string> {
+  if (/^https?:\/\//.test(photo)) return photo;
   const known = uploaded.get(photo);
   if (known) return known;
   const blob = await (await fetch(photo)).blob();
   const result = await uploadCmsMedia(new File([blob], "nampan.webp", {type: blob.type}), "menu");
+  if (!result.isCloudStorage && isSupabaseConfigured()) throw new Error(result.warning || "Foto gagal diunggah ke storage.");
   uploaded.set(photo, result.url);
   return result.url;
 }
+
+const uploadPhoto = uploadPosterPhoto;
 
 /**
  * Pasang foto ompreng dari modul poster ke halaman menu publik. Config diambil ulang dari cloud lebih dulu agar

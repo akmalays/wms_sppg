@@ -120,6 +120,21 @@ export interface PortionTierConfig {
   fiberGrams: string;
 }
 
+export const EMPTY_PORTION_TIER: PortionTierConfig = {
+  tierName: '',
+  targetCalories: '',
+  totalGramature: '',
+  description: '',
+  proteinGrams: '',
+  carbGrams: '',
+  fatGrams: '',
+  fiberGrams: '',
+};
+
+/** Ada angka gizi yang terisi (energi atau makro); nama kelompok dan uraian saja tidak dihitung. */
+export const hasPortionNutrition = (t: PortionTierConfig | undefined): boolean =>
+  Boolean(t && [t.targetCalories, t.proteinGrams, t.carbGrams, t.fatGrams, t.fiberGrams].some(v => v?.trim()));
+
 export interface NutritionHeroConfig {
   name: string;
   category: string;
@@ -177,6 +192,9 @@ export interface WebsiteMenuTodayConfig {
   /** Foto ompreng menu 3B tanpa background; kosong = ilustrasi 3B yang tampil */
   imageUrlB3?: string;
   trayLabelsB3?: TrayLabelPlacement[] | null;
+  /** Gizi per porsi menu 3B, terpisah dari menu sekolah; kosong = tabel gizi 3B tidak tampil */
+  portionSmallB3?: PortionTierConfig;
+  portionLargeB3?: PortionTierConfig;
   energySummary: {
     caloriesAvg: string;
     proteinAvg: string;
@@ -188,7 +206,9 @@ export interface WebsiteMenuTodayConfig {
   };
   portionSmall: PortionTierConfig;
   portionLarge: PortionTierConfig;
+  /** Tidak dipakai lagi: alergen dibaca otomatis dari nama bahan (utils/allergens). Disimpan agar data lama tetap terbaca. */
   allergensWarning: string;
+  /** Tidak dipakai lagi: kalimat QC tetap tanpa catatan pemeriksaan harian. Disimpan agar data lama tetap terbaca. */
   qcStatus: string;
   qrTargetUrl: string;
   ingredients: IngredientNutritionInfo[];

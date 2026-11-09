@@ -21,13 +21,16 @@ import {
   PortionTierConfig,
   NutritionHeroConfig,
   DailyHabitItem,
-  TrayLabelPlacement
+  TrayLabelPlacement,
+  EMPTY_PORTION_TIER,
+  hasPortionNutrition
 } from '../db/websiteConfigStorage';
 import { TrayStage, menuDishes, resolveTrayLabels, shownTrayLabels, trayLabelTexts } from './menuPublic/TrayStage';
 import { isSupabaseConfigured } from '../lib/supabase';
 import QRCode from 'qrcode';
 import { Butterfly, Bee, FarmLandscape, HeaderSky, SunRays } from './menuPublic/NatureAccents';
 import { FoodIllustration, FoodImage } from './menuPublic/FoodIllustrations';
+import { detectAllergens } from '../utils/allergens';
 
 import {
   X,
@@ -50,7 +53,6 @@ import {
   Lightbulb,
   Trophy,
   Clock,
-  ShieldCheck,
   PartyPopper,
   Sparkles,
   Users,
@@ -340,6 +342,24 @@ const HERO_NUTRIENTS: { label: string; value: (t: PortionTierConfig) => string }
   { label: 'Serat', value: t => t.fiberGrams },
 ];
 
+/**
+ * "Mengandung: ..." dari nama hidangan dan bahan menu. Tidak tampil bila tidak ada yang cocok: nama bahan tidak
+ * cukup untuk menyatakan menu bebas alergen.
+ */
+const AllergenNote: React.FC<{ names: string[]; className?: string }> = ({ names, className = '' }) => {
+  const found = useMemo(() => detectAllergens(names), [names]);
+  if (found.length === 0) return null;
+  return (
+    <p className={`flex items-start gap-1.5 ${className}`}>
+      <AlertTriangle className="w-4 h-4 shrink-0 mt-px text-[#a15c07]" aria-hidden="true" />
+      <span>
+        <strong className="font-semibold">Mengandung {found.join(', ')}.</strong>{' '}
+        <span className="text-[#3b5d55]">Dibaca dari nama bahan; untuk alergi berat, tanyakan langsung ke dapur SPPG.</span>
+      </span>
+    </p>
+  );
+};
+
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 
@@ -404,9 +424,17 @@ const CountUpValue: React.FC<{ text: string }> = ({ text }) => {
       { threshold: 0.4 }
     );
     io.observe(el);
+    // Dicetak sebelum tabel pernah terlihat: tampilkan nilai akhir, bukan 0
+    const showFinal = () => {
+      io.disconnect();
+      cancelAnimationFrame(raf);
+      setShown(text);
+    };
+    window.addEventListener('beforeprint', showFinal);
     return () => {
       io.disconnect();
       cancelAnimationFrame(raf);
+      window.removeEventListener('beforeprint', showFinal);
     };
   }, [text]);
   return (
@@ -1138,8 +1166,8 @@ const NutritionDialog: React.FC<{
   );
 };
 
-// Menu 3B hanya tercatat sebagai daftar hidangan; angka gizi dan takarannya belum ada di data.
-const B3MenuCard: React.FC<{ dishes: string[]; onExplain: () => void }> = ({ dishes, onExplain }) => (
+// Gizi 3B tampil di hero bila petugas mengisinya; kartu ini hanya daftar hidangan dan catatan takaran.
+const B3MenuCard: React.FC<{ dishes: string[]; hasNutrition: boolean; onExplain: () => void }> = ({ dishes, hasNutrition, onExplain }) => (
   <section id="menu" aria-labelledby="menu-3b-title" className={cardCls}>
     <CardTitle
       id="menu-3b-title"
@@ -1162,7 +1190,9 @@ const B3MenuCard: React.FC<{ dishes: string[]; onExplain: () => void }> = ({ dis
       ))}
     </ul>
     <p className="mt-3 text-[13px] text-slate-600 leading-relaxed">
-      Takaran dan nilai gizi menu 3B disesuaikan untuk tiap sasaran dan belum ditampilkan di halaman ini. Tanyakan rinciannya kepada petugas SPPG.
+      {hasNutrition
+        ? 'Takaran menu 3B disesuaikan untuk tiap sasaran. Tanyakan rinciannya kepada petugas SPPG.'
+        : 'Takaran dan nilai gizi menu 3B disesuaikan untuk tiap sasaran dan belum ditampilkan di halaman ini. Tanyakan rinciannya kepada petugas SPPG.'}
     </p>
   </section>
 );
@@ -1705,7 +1735,15 @@ export const DailyMenuPublicPage: React.FC = () => {
   // Data lama atau menu baru tanpa 3B: kembali ke reguler agar pilihan tidak menunjuk ke menu kosong.
   const activeType: MenuType = menuType === 'b3' && b3Dishes.length > 0 ? 'b3' : 'reguler';
   const dishes = activeType === 'b3' ? b3Dishes : regularDishes;
+  const b3Large = menuToday.portionLargeB3 ?? EMPTY_PORTION_TIER;
+  const b3Small = menuToday.portionSmallB3 ?? EMPTY_PORTION_TIER;
+  const hasB3Nutrition = hasPortionNutrition(b3Large) || hasPortionNutrition(b3Small);
   const subtitle = menuToday.menuSubtitle?.trim() || 'Makanan bergizi untuk mendukung tumbuh kembang dan semangat belajar.';
+  // Menu 3B hanya punya daftar hidangan; menu reguler juga punya daftar bahan
+  const allergenNames = useMemo(
+    () => (activeType === 'b3' ? b3Dishes : [...regularDishes, ...ingredients.map(i => i.name)]),
+    [activeType, b3Dishes, regularDishes, ingredients]
+  );
   // Kartu baru bisa muncul setelah data dimuat atau jenis menu diganti, jadi pengamatnya dipasang ulang.
   useRevealCards([syncState, activeType, ingredients.length]);
 
@@ -1818,12 +1856,7 @@ export const DailyMenuPublicPage: React.FC = () => {
                   </div>
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-1.5 text-[13px] text-[#21453a]">
                     <div className="space-y-1 min-w-0">
-                      {menuToday.qcStatus?.trim() && (
-                        <p className="flex items-start gap-1.5">
-                          <ShieldCheck className="w-4 h-4 shrink-0 mt-px" aria-hidden="true" />
-                          {menuToday.qcStatus}
-                        </p>
-                      )}
+                      <AllergenNote names={allergenNames} />
                       {updatedLabel && (
                         <p className="flex items-center gap-1.5">
                           <Clock className="w-3.5 h-3.5" aria-hidden="true" />
@@ -1836,8 +1869,19 @@ export const DailyMenuPublicPage: React.FC = () => {
                     </button>
                   </div>
                 </div>
+              ) : hasB3Nutrition ? (
+                <div className="max-w-4xl mx-auto">
+                  <h2 className="font-kids font-extrabold uppercase text-center text-2xl sm:text-3xl">Kandungan Gizi 3B</h2>
+                  <div className="mt-3">
+                    <HeroNutritionTable large={b3Large} small={b3Small} />
+                  </div>
+                  <AllergenNote names={allergenNames} className="mt-3 px-1.5 text-[13px] text-[#21453a]" />
+                </div>
               ) : (
-                <p className="max-w-2xl mx-auto text-center text-[15px]">{subtitle}</p>
+                <>
+                  <p className="max-w-2xl mx-auto text-center text-[15px]">{subtitle}</p>
+                  <AllergenNote names={allergenNames} className="max-w-2xl mx-auto mt-2 justify-center text-[13px] text-[#21453a]" />
+                </>
               )}
             </div>
           </section>
@@ -1845,7 +1889,7 @@ export const DailyMenuPublicPage: React.FC = () => {
           <MenuTypeCard menuType={activeType} hasB3={b3Dishes.length > 0} onChange={setMenuType} onExplain={() => setIsB3Open(true)} />
 
           {activeType === 'b3' ? (
-            <B3MenuCard dishes={b3Dishes} onExplain={() => setIsB3Open(true)} />
+            <B3MenuCard dishes={b3Dishes} hasNutrition={hasB3Nutrition} onExplain={() => setIsB3Open(true)} />
           ) : (
             <div className="grid lg:grid-cols-[minmax(0,1fr)_280px] gap-3.5 lg:gap-5 items-start">
               <IngredientStrip ingredients={ingredients} tiers={tiers} portion={portion} onPortionChange={setPortion} onOpen={setDetailIndex} />

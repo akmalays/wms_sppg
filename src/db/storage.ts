@@ -17,6 +17,7 @@ import {
   UserRole,
   NonFoodExpense,
   MenuOrder,
+  MenuOrderPoster,
   MenuPoArrivalItem,
   WasteLog,
   DisposalMethod,
@@ -5197,7 +5198,25 @@ class WarehouseDatabase {
     this.pushCloud('menu_orders', () => supabase.from('menu_orders').upsert(mapMenuOrderToSupabase(order)));
   }
 
-  public saveMenuOrder(order: MenuOrder, user: User, isNew: boolean = false): MenuOrder {
+  /**
+   * Simpan isi poster menu ke order tanggalnya. Dipanggil berkali-kali saat poster diubah, jadi tanpa catatan audit;
+   * foto harus sudah berupa alamat storage, bukan data URL, agar baris order tidak membengkak.
+   */
+  public saveMenuOrderPoster(orderId: string, poster: MenuOrderPoster): MenuOrder {
+    const idx = this.menuOrders.findIndex(o => o.id === orderId);
+    if (idx < 0) throw new Error('Order menu tanggal ini tidak ditemukan.');
+    const updated: MenuOrder = { ...this.menuOrders[idx], poster };
+    this.menuOrders[idx] = updated;
+    setStored(STORAGE_KEYS.MENU_ORDERS, this.menuOrders);
+    this.pushMenuOrder(updated);
+    this.notifyAllChanged();
+    return updated;
+  }
+
+  public saveMenuOrder(incoming: MenuOrder, user: User, isNew: boolean = false): MenuOrder {
+    // Form Order Menu tidak memuat isi poster; tanpa ini, menyimpan order dari form menghapus poster tanggal itu
+    const previous = this.menuOrders.find(o => o.id === incoming.id);
+    const order: MenuOrder = incoming.poster || !previous?.poster ? incoming : { ...incoming, poster: previous.poster };
     if (isNew) {
       this.menuOrders.unshift(order);
       this.logAudit(

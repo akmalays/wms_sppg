@@ -342,6 +342,48 @@ export interface MenuPoArrivalItem {
   notes?: string;
 }
 
+/** Nilai gizi satu porsi di poster, angka saja (satuan kkal dan gram ditambahkan saat tampil). */
+export interface MenuPosterNutrition {
+  energy: string;
+  protein: string;
+  fat: string;
+  carb: string;
+  fiber: string;
+}
+
+/** Letak satu nama hidangan; label menggantikan nama dari daftar hidangan bila diisi. */
+export interface MenuPosterLabel {
+  x: number;
+  y: number;
+  tipX: number;
+  tipY: number;
+  label?: string;
+  labelFor?: string;
+}
+
+export interface MenuPosterMenu {
+  items: string[];
+  /** Alamat foto nampan di storage; null = foto contoh template. */
+  photoUrl: string | null;
+  /** Foto asli sebelum background dihapus; terisi berarti photoUrl adalah potongan tanpa background. */
+  photoOriginalUrl: string | null;
+  largePortion: MenuPosterNutrition;
+  smallPortion: MenuPosterNutrition;
+  /** Letak nama di poster (koordinat poster); null = letak bawaan desain. */
+  labelPlacements: MenuPosterLabel[] | null;
+  /** Letak nama yang sudah diubah ke panggung halaman publik, siap disalin Atur Website. */
+  stageLabels?: (MenuPosterLabel & { text: string })[] | null;
+}
+
+/** Isi poster menu untuk tanggal order ini, supaya poster bisa dibuka lagi dan diambil Atur Website. */
+export interface MenuOrderPoster {
+  /** [0] menu sekolah, [1] menu 3B */
+  menus: MenuPosterMenu[];
+  printMode: 'SINGLE' | 'DOUBLE';
+  templateIds?: Record<string, string>;
+  updatedAt: string;
+}
+
 export interface MenuOrder {
   id: string; // e.g. ORD-2026-001
   date: string; // YYYY-MM-DD
@@ -359,6 +401,8 @@ export interface MenuOrder {
   chefInCharge?: string;
   notes?: string;
   createdAt: string;
+  /** Isi poster menu tanggal ini; tersimpan di kolom data menu_orders, tanpa kolom baru. */
+  poster?: MenuOrderPoster;
 }
 
 export type WasteCategory =

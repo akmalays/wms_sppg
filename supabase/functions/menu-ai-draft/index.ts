@@ -1,12 +1,13 @@
 // Semua fitur AI aplikasi lewat satu fungsi ini, supaya kunci Gemini dan pemeriksaan login ada di satu tempat.
 // mode "menu": deskripsi sajian dan teks tiap bahan. mode "kids": Pahlawan Gizi, kebiasaan baik, tips Isi Piringku.
 // mode "ingredients": rapikan bahan belanja. mode "tray_labels": cari letak hidangan di foto ompreng.
-// mode "receipt": baca foto nota. mode "insights": ringkasan limbah atau hedonik. mode "query": terjemahkan
+// mode "kids_image": gambar kartun Pahlawan Gizi atau kebiasaan baik. mode "receipt": baca foto nota. mode "insights": ringkasan limbah atau hedonik. mode "query": terjemahkan
 // pertanyaan menjadi spesifikasi hitungan. mode "report": narasi laporan dari angka yang dikirim aplikasi.
 // Hanya menulis teks naratif (deskripsi, manfaat, fakta menarik). Angka gizi, gramatur, alergen,
 // dan status QC sengaja tidak diminta: data itu harus dari ahli gizi, bukan karangan model.
 //
-// Secret yang dibutuhkan: GEMINI_API_KEY. Opsional: GEMINI_MODEL (bawaan gemini-2.5-flash).
+// Secret yang dibutuhkan: GEMINI_API_KEY. Opsional: GEMINI_MODEL (bawaan gemini-2.5-flash) dan
+// GEMINI_IMAGE_MODEL (bawaan gemini-2.5-flash-image). Model gambar butuh proyek Gemini berbayar.
 // SUPABASE_URL dan SUPABASE_ANON_KEY sudah disediakan otomatis oleh Supabase.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -20,7 +21,7 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
 
 interface DraftRequest {
-  mode?: 'menu' | 'kids' | 'ingredients' | 'tray_labels' | 'receipt' | 'insights' | 'query' | 'report';
+  mode?: 'menu' | 'kids' | 'kids_image' | 'ingredients' | 'tray_labels' | 'receipt' | 'insights' | 'query' | 'report';
   /** tray_labels dan receipt: foto dalam base64, tanpa awalan data: */
   image?: { mimeType?: string; data?: string };
   /** tray_labels: nama hidangan yang dicari di foto */
@@ -37,6 +38,12 @@ interface DraftRequest {
   habitDay?: string;
   /** mode kids: judul kebiasaan hari lain, supaya tidak berulang */
   otherHabitTitles?: string[];
+  /** kids_image: gambar untuk Pahlawan Gizi (hero) atau kebiasaan baik (habit) */
+  imageKind?: 'hero' | 'habit';
+  /** kids_image: nama bahan atau judul kebiasaan */
+  subject?: string;
+  /** kids_image: penjelasan singkat, supaya gambarnya sesuai isi kartu */
+  detail?: string;
   menuTitle?: string;
   menuB3?: string;
   dateText?: string;
@@ -350,6 +357,25 @@ Tulis:
 ${SHARED_RULES}
 `.trim();
 
+// Teks di dalam gambar sengaja dilarang: model gambar sering salah eja kata Bahasa Indonesia,
+// dan judul sudah tampil sebagai teks HTML di halaman publik.
+const IMAGE_STYLE = `
+Gaya: ilustrasi kartun datar untuk buku cerita anak SD, garis tepi tebal dan rapi, warna cerah tapi tidak menyilaukan, bentuk sederhana.
+Dilarang: tulisan, huruf, angka, logo, merek, tanda air, bingkai. Jangan realistis seperti foto.`.trim();
+
+const buildKidsImagePrompt = (kind: 'hero' | 'habit', subject: string, detail: string) =>
+  kind === 'hero'
+    ? `
+Gambar satu "${subject}" sebagai bahan makanan yang ramah dan menggemaskan, untuk kartu "Pahlawan Gizi Hari Ini" di halaman menu makan siang sekolah.
+${detail ? `Konteks: ${detail}` : ''}
+Bahan itu berada di tengah, utuh, mengisi sekitar 70 persen bidang gambar. Boleh diberi wajah tersenyum sederhana. Latar putih polos tanpa bayangan lantai.
+${IMAGE_STYLE}`.trim()
+    : `
+Gambar seorang anak SD Indonesia berseragam merah putih yang sedang melakukan kebiasaan baik: "${subject}".
+${detail ? `Konteks: ${detail}` : ''}
+Pose dan benda yang dipakai harus jelas menunjukkan kebiasaan itu. Tokoh berada agak ke kiri, sudut kanan bawah dibiarkan lega karena akan ditimpa balon kalimat. Latar biru muda polos (#e0f2fe) dengan sedikit benda pendukung.
+${IMAGE_STYLE}`.trim();
+
 const buildPrompt = (menuTitle: string, menuB3: string, dateText: string, ingredients: { name: string; category: string }[]) => `
 Kamu menulis teks untuk halaman "Menu MBG Hari Ini" milik SPPG (dapur Makan Bergizi Gratis) di Kabupaten Malang.
 Halaman ini dibuka siswa SD/SMP dan orang tua dengan memindai QR di meja makan.
@@ -414,6 +440,45 @@ Deno.serve(async req => {
     const text = JSON.stringify(body.stats ?? null);
     return text.length > 40_000 ? null : text;
   };
+
+  // Gambar memakai model dan bentuk jawaban yang berbeda, jadi ditangani sebelum alur teks.
+  if (mode === 'kids_image') {
+    const kind = body.imageKind === 'habit' ? 'habit' : 'hero';
+    const subject = clip(body.subject, 80);
+    if (!subject) {
+      return json({ error: kind === 'hero' ? 'Isi nama bahan dulu.' : 'Isi judul kebiasaan dulu.' }, 400);
+    }
+    const imageModel = Deno.env.get('GEMINI_IMAGE_MODEL') || 'gemini-2.5-flash-image';
+    const imgRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${imageModel}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: buildKidsImagePrompt(kind, subject, clip(body.detail, 300)) }] }],
+        generationConfig: {
+          responseModalities: ['IMAGE'],
+          imageConfig: { aspectRatio: kind === 'hero' ? '1:1' : '16:9' },
+        },
+      }),
+    });
+    if (!imgRes.ok) {
+      const detail = await imgRes.text();
+      console.error('Gemini image error', imgRes.status, detail.slice(0, 500));
+      if (imgRes.status === 429) return json({ error: 'Kuota gambar Gemini habis, coba lagi nanti.' }, 502);
+      if (imgRes.status === 403 || imgRes.status === 404) {
+        return json({ error: 'Model gambar Gemini tidak bisa dipakai. Pastikan proyek Gemini sudah berbayar.' }, 502);
+      }
+      return json({ error: 'Gemini gagal membuat gambar.' }, 502);
+    }
+    const imgResult = await imgRes.json();
+    const parts: { inlineData?: { mimeType?: string; data?: string }; inline_data?: { mime_type?: string; data?: string } }[] =
+      imgResult?.candidates?.[0]?.content?.parts || [];
+    for (const part of parts) {
+      const data = part.inlineData?.data || part.inline_data?.data;
+      if (data) return json({ mimeType: part.inlineData?.mimeType || part.inline_data?.mime_type || 'image/png', data });
+    }
+    console.error('Jawaban gambar tanpa data', JSON.stringify(imgResult).slice(0, 500));
+    return json({ error: 'Gemini tidak mengirim gambar. Ubah judulnya sedikit lalu coba lagi.' }, 502);
+  }
 
   let prompt: string;
   let schema: unknown;
