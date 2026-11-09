@@ -1,7 +1,45 @@
-import {fetchWebsiteConfigFromCloud, saveWebsiteConfigToCloud, uploadCmsMedia, type TrayLabelPlacement} from "../db/websiteConfigStorage";
+import {EMPTY_PORTION_TIER, fetchWebsiteConfigFromCloud, saveWebsiteConfigToCloud, uploadCmsMedia, type PortionTierConfig, type TrayLabelPlacement} from "../db/websiteConfigStorage";
 import {isSupabaseConfigured} from "../lib/supabase";
+import type {MenuPosterNutrition} from "../types/warehouse";
 
 export type TrayTarget = "reguler" | "b3";
+
+export interface NutritionPublish {
+  target: TrayTarget;
+  large: MenuPosterNutrition;
+  small: MenuPosterNutrition;
+}
+
+const withUnit = (value: string | undefined, unit: string) => (value?.trim() ? `${value.trim()} ${unit}` : "");
+
+/** Angka gizi poster (tanpa satuan) ke porsi website. Kolom poster yang kosong ikut kosong, supaya angka menu lama tidak tertinggal. */
+export const portionFromPoster = (tier: PortionTierConfig, n: MenuPosterNutrition | undefined): PortionTierConfig => ({
+  ...tier,
+  targetCalories: withUnit(n?.energy, "kkal"),
+  proteinGrams: withUnit(n?.protein, "g"),
+  carbGrams: withUnit(n?.carb, "g"),
+  fatGrams: withUnit(n?.fat, "g"),
+  fiberGrams: withUnit(n?.fiber, "g"),
+});
+
+/**
+ * Angka gizi poster ke halaman menu publik. Tanggal diperiksa lagi pada config terbaru agar poster tidak mengisi menu
+ * hari lain, dan tidak disimpan bila angkanya sudah sama supaya "Diperbarui pukul" tidak berubah hanya karena poster dibuka.
+ */
+export async function publishPosterNutrition(items: NutritionPublish[], posterDate: string): Promise<void> {
+  const {config, error} = await fetchWebsiteConfigFromCloud();
+  if (error) throw new Error(error);
+  if (!config.menuToday.dateText.toLowerCase().includes(posterDate.toLowerCase())) throw new Error("Halaman menu sudah berganti tanggal.");
+  const menuToday = {...config.menuToday};
+  items.forEach((item) => {
+    const [largeKey, smallKey] = item.target === "b3" ? (["portionLargeB3", "portionSmallB3"] as const) : (["portionLarge", "portionSmall"] as const);
+    menuToday[largeKey] = portionFromPoster(menuToday[largeKey] ?? EMPTY_PORTION_TIER, item.large);
+    menuToday[smallKey] = portionFromPoster(menuToday[smallKey] ?? EMPTY_PORTION_TIER, item.small);
+  });
+  if (JSON.stringify(menuToday) === JSON.stringify(config.menuToday)) return;
+  const saved = await saveWebsiteConfigToCloud({...config, menuToday});
+  if (saved.cloudFailed) throw new Error(saved.message);
+}
 
 export interface TrayPublish {
   target: TrayTarget;

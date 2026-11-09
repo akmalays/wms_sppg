@@ -28,6 +28,8 @@ import {
 import { TrayStage, menuDishes, resolveTrayLabels, shownTrayLabels, trayLabelTexts } from './menuPublic/TrayStage';
 import { isSupabaseConfigured } from '../lib/supabase';
 import QRCode from 'qrcode';
+import { QrSvg } from './common/QrSvg';
+import { HEDONIC_ENTRY_PATH } from '../utils/hedonic';
 import { Butterfly, Bee, FarmLandscape, HeaderSky, SunRays } from './menuPublic/NatureAccents';
 import { FoodIllustration, FoodImage } from './menuPublic/FoodIllustrations';
 import { detectAllergens } from '../utils/allergens';
@@ -35,7 +37,6 @@ import { detectAllergens } from '../utils/allergens';
 import {
   X,
   Check,
-  Copy,
   Share2,
   RefreshCw,
   AlertTriangle,
@@ -1654,11 +1655,14 @@ export const DailyMenuPublicPage: React.FC = () => {
   const ingredients = menuToday.ingredients;
   const pageUrl = `${window.location.origin}${MENU_PATH}`;
   const pageHost = `${window.location.host}${MENU_PATH}`;
+  const feedbackUrl = `${window.location.origin}${HEDONIC_ENTRY_PATH}`;
 
   const isSampleData = menuToday === DEFAULT_WEBSITE_CONFIG.menuToday;
   const menuDate = parseIndonesianDate(menuToday.dateText);
   const isOutdated = menuDate !== null && !isSameDay(menuDate, new Date());
   const updatedLabel = isSampleData ? null : formatUpdatedAt(config.lastUpdated);
+  // Menu contoh bawaan tidak untuk dinilai
+  const canRateMenu = isSupabaseConfigured() && !(isSampleData && syncState !== 'loading');
   const hero = menuToday.nutritionHero;
   const funFact = hero.funFact?.trim() || menuToday.plateTip?.trim() || '';
 
@@ -1766,9 +1770,9 @@ export const DailyMenuPublicPage: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button type="button" onClick={handleShare} className={`inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-xl border border-[#c9e3da] bg-white text-sm font-semibold hover:bg-[#e9f7f1] cursor-pointer ${focusRing}`}>
-              <Share2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Bagikan</span>
+            <button type="button" onClick={handleShare} aria-label={copiedLink ? 'Tautan disalin' : 'Bagikan'} className={`inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-xl border border-[#c9e3da] bg-white text-sm font-semibold hover:bg-[#e9f7f1] cursor-pointer ${focusRing}`}>
+              {copiedLink ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+              <span className="hidden sm:inline">{copiedLink ? 'Tautan disalin' : 'Bagikan'}</span>
             </button>
             <button type="button" onClick={() => setIsQrOpen(true)} className={`inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-xl bg-[#155e5f] hover:bg-[#0d474c] text-white text-sm font-semibold cursor-pointer ${focusRing}`}>
               <QrCode className="w-4 h-4" />
@@ -1930,22 +1934,21 @@ export const DailyMenuPublicPage: React.FC = () => {
         {/* Daun mengulang motif ikon judul kartu; di belakang teks dan sangat samar agar kontras tetap aman. */}
         <Leaf className="absolute -bottom-8 -right-6 w-44 h-44 -rotate-12 text-teal-200/10 pointer-events-none" aria-hidden="true" />
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-6 grid md:grid-cols-[auto_minmax(0,1fr)_auto] gap-5 md:gap-8 items-center">
-          <div className="flex items-center gap-4 min-w-0">
-            {qrDataUrl && <img src={qrDataUrl} alt="QR code halaman menu hari ini" className="w-24 h-24 rounded-xl bg-white p-1.5 shrink-0" />}
-            <div className="min-w-0">
-              <h2 className="text-base font-bold">Akses Menu Ini Kapan Saja</h2>
-              <p className="text-[13px] text-teal-100/90 mt-0.5">Scan QR code atau buka tautan ini untuk melihat menu terbaru.</p>
-              <button
-                type="button"
-                onClick={handleCopyLink}
-                className={`mt-2 inline-flex items-center gap-2 max-w-full min-h-[40px] px-3.5 rounded-full bg-white text-[#0d474c] text-[13px] font-semibold cursor-pointer ${focusRing}`}
-              >
-                <span className="truncate">{pageHost}</span>
-                {copiedLink ? <Check className="w-4 h-4 shrink-0" /> : <Copy className="w-4 h-4 shrink-0" />}
-                <span className="sr-only">{copiedLink ? 'Tautan tersalin' : 'Salin tautan'}</span>
-              </button>
-            </div>
-          </div>
+          {canRateMenu && (
+            <section aria-labelledby="penilaian-title" className="flex items-center gap-4 min-w-0">
+              <div className="w-32 h-32 shrink-0 rounded-2xl bg-white p-2">
+                <QrSvg value={feedbackUrl} className="w-full h-full" color="#0d474c" />
+              </div>
+              <div className="min-w-0">
+                <h2 id="penilaian-title" className="font-kids text-xl font-extrabold leading-tight">Bagaimana rasa menu hari ini?</h2>
+                <p className="text-[13px] text-teal-100/90 mt-1 leading-snug">Scan QR ini untuk memberi nilai, kritik, dan saran. Masukanmu dibaca ahli gizi SPPG.</p>
+                {/* Untuk yang membuka halaman dari HP: QR tidak bisa dipindai dari layar HP sendiri. Kuning kelopak bunga hanya dipakai di sini. */}
+                <a href={feedbackUrl} className={`mt-2 inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl bg-[#fcd34d] hover:bg-[#fde68a] text-[#0d474c] text-sm font-bold ${focusRing}`}>
+                  Isi penilaian menu
+                </a>
+              </div>
+            </section>
+          )}
           <div className="hidden md:block" />
           <dl className="grid grid-cols-2 gap-5 text-[13px]">
             <div className="flex items-start gap-2">

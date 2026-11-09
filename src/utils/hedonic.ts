@@ -5,6 +5,8 @@ import { MenuOrder, SchoolBeneficiaryAllocation } from '../types/warehouse';
 // Kode, parameter, dan skala sama dengan Formulir Uji Organoleptik kertas.
 
 export const HEDONIC_PATH = '/nilai/';
+/** Pintu masuk tanpa kode (QR di halaman menu hari ini): penilai memilih sekolah, lalu diarahkan ke /nilai/<kode>. */
+export const HEDONIC_ENTRY_PATH = '/nilai';
 
 export const HEDONIC_SAMPLES: { code: string; label: string }[] = [
   { code: 'MP', label: 'Makanan pokok' },
@@ -55,6 +57,9 @@ export interface HedonicResponse {
   created_at: string;
 }
 
+export type HedonicMenu = Pick<MenuOrder, 'id' | 'date' | 'mealSession' | 'menuTitle' | 'menuDescription'>;
+export type HedonicSchool = Pick<SchoolBeneficiaryAllocation, 'id' | 'schoolName' | 'category'>;
+
 export const hedonicUrl = (token: string) => `${window.location.origin}${HEDONIC_PATH}${token}`;
 
 export const hedonicTokenFromPath = (pathname: string) => {
@@ -74,7 +79,7 @@ const newToken = () => {
  * Kode QR per sekolah untuk satu menu. Kode yang sudah ada dipakai lagi, jadi cetak ulang menghasilkan QR yang sama
  * dan isian yang sudah masuk tetap terhubung.
  */
-export async function ensureHedonicLinks(order: MenuOrder, schools: SchoolBeneficiaryAllocation[]): Promise<Record<string, string>> {
+export async function ensureHedonicLinks(order: HedonicMenu, schools: HedonicSchool[]): Promise<Record<string, string>> {
   if (!isSupabaseConfigured() || schools.length === 0) return {};
   const ids = schools.map(s => s.id);
   const { data: existing, error } = await supabase
@@ -117,6 +122,29 @@ export async function ensureHedonicLinks(order: MenuOrder, schools: SchoolBenefi
     });
   }
   return tokens;
+}
+
+/** Menu terbaru dalam rentang tanggal yang masih menerima penilaian. Status menu tidak dipakai karena tidak selalu dimajukan petugas. */
+export async function fetchOpenHedonicMenu(from: string, to: string): Promise<HedonicMenu | null> {
+  const { data, error } = await supabase
+    .from('menu_orders')
+    .select('id, date, meal_session, menu_title, menu_description')
+    .gte('date', from)
+    .lte('date', to)
+    .neq('status', 'CANCELLED')
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return { id: data.id, date: data.date, mealSession: data.meal_session, menuTitle: data.menu_title, menuDescription: data.menu_description };
+}
+
+// Halaman ini publik: kontak PIC sekolah sengaja tidak ikut diambil
+export async function fetchHedonicSchools(): Promise<HedonicSchool[]> {
+  const { data, error } = await supabase.from('school_beneficiaries').select('id, school_name, category').order('school_name');
+  if (error) throw error;
+  return (data || []).map(s => ({ id: s.id, schoolName: s.school_name, category: s.category }));
 }
 
 export async function fetchHedonicLink(token: string): Promise<HedonicLink | null> {

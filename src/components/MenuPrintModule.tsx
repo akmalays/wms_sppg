@@ -3,7 +3,7 @@ import {warehouseDb} from "../db/storage";
 import {MenuOrder, type MenuPosterMenu} from "../types/warehouse";
 import {compressImageToWebP} from "../utils/imageCompressor";
 import {cutoutTrayPhoto, preloadBgRemoval} from "../utils/trayCutout";
-import {publishTrays, uploadPosterPhoto, type TrayPublish} from "../utils/menuTrayPublish";
+import {publishPosterNutrition, publishTrays, uploadPosterPhoto, type NutritionPublish, type TrayPublish} from "../utils/menuTrayPublish";
 import {fetchWebsiteConfigFromCloud, getWebsiteConfig, WEBSITE_CONFIG_UPDATED_EVENT} from "../db/websiteConfigStorage";
 import {LabelPlacementOverlay} from "./print/LabelPlacementOverlay";
 import {LabelNameFields} from "./print/LabelNameFields";
@@ -1037,6 +1037,45 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trayKey, dateMatchesPage, sendTrays]);
 
+  // Angka gizi ikut terkirim seperti foto, tanpa tombol. Gizi 3B diambil dari menus[1] di mode apa pun, karena poster
+  // satu menu pun bisa punya menu 3B. Menu yang gizinya kosong semua dilewati agar poster baru tidak mengosongkan halaman.
+  const nutritionPublishes = useMemo<NutritionPublish[]>(
+    () =>
+      menus.flatMap((m, i): NutritionPublish[] =>
+        hasAnyNutrition(m.largePortion) || hasAnyNutrition(m.smallPortion)
+          ? [{target: i === 0 ? "reguler" : "b3", large: m.largePortion, small: m.smallPortion}]
+          : []
+      ),
+    [menus]
+  );
+  const nutritionKey = useMemo(() => JSON.stringify(nutritionPublishes), [nutritionPublishes]);
+  const [nutritionStatus, setNutritionStatus] = useState<{state: "idle" | "sending" | "sent" | "failed"; key: string; message?: string}>({state: "idle", key: ""});
+  const posterDay = posterDateLong.split(", ").pop() ?? "";
+
+  const sendNutrition = useCallback((items: NutritionPublish[], key: string, day: string) => {
+    setNutritionStatus({state: "sending", key});
+    // Antrean yang sama dengan foto: keduanya membaca lalu menulis config yang sama
+    trayQueue.current = trayQueue.current.then(async () => {
+      try {
+        await publishPosterNutrition(items, day);
+        setNutritionStatus((s) => (s.key === key ? {state: "sent", key} : s));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Koneksi bermasalah.";
+        setNutritionStatus((s) => (s.key === key ? {state: "failed", key, message} : s));
+      }
+    });
+  }, []);
+
+  // Hanya setelah poster tanggal ini termuat, supaya isian tanggal lain yang masih di layar tidak ikut terkirim.
+  const orderIdForDate = orderForDate?.id;
+  useEffect(() => {
+    if (nutritionPublishes.length === 0 || !dateMatchesPage || !orderIdForDate || loadedKeyRef.current !== `${selectedDate}|${orderIdForDate}`) return;
+    const timer = setTimeout(() => sendNutrition(nutritionPublishes, nutritionKey, posterDay), 1000);
+    return () => clearTimeout(timer);
+    // nutritionKey sudah mewakili isi nutritionPublishes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nutritionKey, dateMatchesPage, orderIdForDate, selectedDate, posterDay, sendNutrition]);
+
   const handleDownload = async (format: "jpg" | "png") => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1076,6 +1115,39 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
     if (!m.items.some((it) => it.trim())) missing.push(`daftar ${name.toLowerCase()}`);
     if (!hasAnyNutrition(m.largePortion) && !hasAnyNutrition(m.smallPortion)) missing.push(`nilai gizi ${name.toLowerCase()}`);
   });
+  const showB3NutritionOnly = printMode === "SINGLE" && Boolean(orderForDate?.specialDietB3?.trim());
+  if (showB3NutritionOnly && !hasAnyNutrition(menus[1].largePortion) && !hasAnyNutrition(menus[1].smallPortion)) {
+    missing.push("nilai gizi 3B untuk halaman menu");
+  }
+
+  const nutritionInputs = (index: number) => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {(["largePortion", "smallPortion"] as const).map((portion) => {
+        const id = `nutrition-${index}-${portion}`;
+        const values = menus[index][portion];
+        const unread = NUTRITION_ROWS.filter((row) => !values[row.key]).map((row) => row.label.toLowerCase());
+        return (
+          <div key={portion}>
+            <label htmlFor={id} className="block text-xs font-medium text-slate-700 mb-1">
+              {portion === "largePortion" ? "Porsi besar" : "Porsi kecil"}
+            </label>
+            <textarea
+              id={id}
+              rows={5}
+              value={nutritionDrafts[`${index}-${portion}`] ?? formatNutritionText(values)}
+              onChange={(e) => setNutritionText(index, portion, e.target.value)}
+              onBlur={() => clearNutritionDraft(index, portion)}
+              placeholder={portion === "largePortion" ? "Energi: 763,1\nProtein: 28,4\nLemak: 22,5\nKarbohidrat: 110,2\nSerat: 6,3" : "Energi: 560\nProtein: 20,1\nLemak: 16,8\nKarbohidrat: 80,5\nSerat: 4,7"}
+              className="w-full p-2.5 text-xs font-mono tabular-nums rounded-lg border border-slate-300 bg-white text-slate-900 leading-relaxed placeholder:text-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+            />
+            <p className={`mt-0.5 text-[11px] ${hasAnyNutrition(values) && unread.length > 0 ? "text-amber-700" : "text-slate-600"}`}>
+              {!hasAnyNutrition(values) ? "Belum diisi" : unread.length === 0 ? "Kelima zat gizi terbaca" : `Belum terbaca: ${unread.join(", ")}`}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
 
   const segmentBtn = (active: boolean) =>
     `flex-1 sm:flex-none min-h-[44px] sm:min-h-[32px] px-3 py-1 rounded-md text-xs leading-tight transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
@@ -1385,34 +1457,33 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
 
               <div>
                 <span className={FIELD_LABEL}>Nilai gizi</span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {(["largePortion", "smallPortion"] as const).map((portion) => {
-                    const id = `nutrition-${portion}`;
-                    const values = current[portion];
-                    const missing = NUTRITION_ROWS.filter((row) => !values[row.key]).map((row) => row.label.toLowerCase());
-                    return (
-                      <div key={portion}>
-                        <label htmlFor={id} className="block text-xs font-medium text-slate-700 mb-1">
-                          {portion === "largePortion" ? "Porsi besar" : "Porsi kecil"}
-                        </label>
-                        <textarea
-                          id={id}
-                          rows={5}
-                          value={nutritionDrafts[`${editingIndex}-${portion}`] ?? formatNutritionText(values)}
-                          onChange={(e) => setNutritionText(editingIndex, portion, e.target.value)}
-                          onBlur={() => clearNutritionDraft(editingIndex, portion)}
-                          placeholder={portion === "largePortion" ? "Energi: 763,1\nProtein: 28,4\nLemak: 22,5\nKarbohidrat: 110,2\nSerat: 6,3" : "Energi: 560\nProtein: 20,1\nLemak: 16,8\nKarbohidrat: 80,5\nSerat: 4,7"}
-                          className="w-full p-2.5 text-xs font-mono tabular-nums rounded-lg border border-slate-300 bg-white text-slate-900 leading-relaxed placeholder:text-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                        />
-                        <p className={`mt-0.5 text-[11px] ${hasAnyNutrition(values) && missing.length > 0 ? "text-amber-700" : "text-slate-600"}`}>
-                          {!hasAnyNutrition(values) ? "Belum diisi" : missing.length === 0 ? "Kelima zat gizi terbaca" : `Belum terbaca: ${missing.join(", ")}`}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
+                {nutritionInputs(editingIndex)}
                 <p className="mt-1 text-[11px] text-slate-600">Tempel dari pesan ahli gizi, atau tulis satu zat gizi per baris. Tanpa nama zat gizi, angka dibaca berurutan: energi, protein, lemak, karbohidrat, serat. Pakai koma untuk desimal, misalnya 763,1.</p>
               </div>
+
+              {showB3NutritionOnly && (
+                <div className="border-t border-slate-200 pt-4">
+                  <span className={FIELD_LABEL}>Nilai gizi menu 3B</span>
+                  {nutritionInputs(1)}
+                  <p className="mt-1 text-[11px] text-slate-600">Tidak tercetak di poster satu menu, hanya tampil di halaman menu.</p>
+                </div>
+              )}
+
+              {orderForDate && nutritionPublishes.length > 0 && (
+                <div aria-live="polite" className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+                  <p className="text-xs text-slate-700 min-w-0">
+                    {nutritionStatus.key === nutritionKey && nutritionStatus.state === "sending" && "Mengirim angka gizi ke halaman menu..."}
+                    {nutritionStatus.key === nutritionKey && nutritionStatus.state === "sent" && "Angka gizi sudah tampil di halaman menu."}
+                    {nutritionStatus.key === nutritionKey && nutritionStatus.state === "failed" && `Angka gizi belum terkirim ke halaman menu. ${nutritionStatus.message ?? ""}`}
+                    {nutritionStatus.key !== nutritionKey && (dateMatchesPage ? "Menunggu dikirim ke halaman menu..." : `Halaman menu masih untuk ${pageDateText || "tanggal lain"}, poster ini ${posterDateLong}. Angka gizi ikut saat memakai Isi otomatis di Atur Website.`)}
+                  </p>
+                  {nutritionStatus.key === nutritionKey && nutritionStatus.state === "failed" && (
+                    <button type="button" onClick={() => sendNutrition(nutritionPublishes, nutritionKey, posterDay)} className={`${BTN_SECONDARY} shrink-0`}>
+                      Coba kirim lagi
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </section>
         </div>

@@ -20,7 +20,8 @@ import {
 import QRCode from 'qrcode';
 import { warehouseDb } from '../db/storage';
 import { localDateIso } from '../utils/localDate';
-import type { MenuOrder, MenuPosterMenu, MenuPosterNutrition } from '../types/warehouse';
+import type { MenuOrder, MenuPosterMenu } from '../types/warehouse';
+import { portionFromPoster } from '../utils/menuTrayPublish';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
 import { MenuTodayKidsEditor } from './MenuTodayKidsEditor';
@@ -641,7 +642,7 @@ export const WebsiteCmsModule: React.FC = () => {
       title: `Isi dari menu "${order.menuTitle}"?`,
       message: order.poster
         ? 'Tanggal, nama menu, menu 3B, deskripsi, dan daftar bahan diganti. Nilai gizi per porsi, foto ompreng, dan letak nama diambil dari poster menu tanggal ini. Data gizi bahan yang namanya sama tetap dipakai.'
-        : 'Tanggal, nama menu, menu 3B, deskripsi, dan daftar bahan diganti. Data gizi bahan yang namanya sama tetap dipakai. Poster menu tanggal ini belum dibuat, jadi gizi per porsi dan foto ompreng tidak berubah.',
+        : 'Tanggal, nama menu, menu 3B, deskripsi, dan daftar bahan diganti. Data gizi bahan yang namanya sama tetap dipakai. Poster menu tanggal ini belum dibuat, jadi gizi per porsi dikosongkan dan foto ompreng tidak berubah.',
       confirmText: 'Isi otomatis',
       variant: 'warning',
     });
@@ -676,21 +677,9 @@ export const WebsiteCmsModule: React.FC = () => {
       };
     });
 
-    // Dari poster menu: nilai gizi per porsi (poster menyimpan angka saja, website dengan satuan), foto ompreng tanpa
-    // background, dan letak nama yang sudah diubah ke panggung halaman publik. Kolom poster yang kosong tidak menimpa.
+    // Dari poster menu: nilai gizi per porsi, foto ompreng tanpa background, dan letak nama yang sudah diubah ke panggung
+    // halaman publik. Gizi yang tidak ada di poster dikosongkan, supaya angka menu hari lain tidak tampil di menu ini.
     const poster = order.poster;
-    const withUnit = (value: string | undefined, unit: string, fallback: string) => (value?.trim() ? `${value.trim()} ${unit}` : fallback);
-    const portionFromPoster = (tier: PortionTierConfig, n: MenuPosterNutrition | undefined): PortionTierConfig =>
-      n
-        ? {
-            ...tier,
-            targetCalories: withUnit(n.energy, 'kkal', tier.targetCalories),
-            proteinGrams: withUnit(n.protein, 'g', tier.proteinGrams),
-            carbGrams: withUnit(n.carb, 'g', tier.carbGrams),
-            fatGrams: withUnit(n.fat, 'g', tier.fatGrams),
-            fiberGrams: withUnit(n.fiber, 'g', tier.fiberGrams),
-          }
-        : tier;
     const cutoutOf = (m: MenuPosterMenu | undefined) => (m?.photoUrl && m.photoOriginalUrl ? m : undefined);
     const regularTray = cutoutOf(poster?.menus[0]);
     const b3Tray = poster?.printMode === 'DOUBLE' ? cutoutOf(poster.menus[1]) : undefined;
@@ -700,8 +689,8 @@ export const WebsiteCmsModule: React.FC = () => {
     }
     if (regularTray) fromPoster.push('foto ompreng');
     if (b3Tray) fromPoster.push('foto ompreng 3B');
-    // Poster dua menu menyimpan gizi 3B di menus[1]; poster satu menu tidak punya data 3B sama sekali.
-    const b3Poster = poster?.printMode === 'DOUBLE' ? poster.menus[1] : undefined;
+    // Gizi 3B ada di menus[1] pada poster satu menu maupun dua menu; fotonya hanya dari poster dua menu.
+    const b3Poster = poster?.menus[1];
     const b3HasNutrition = Boolean(b3Poster && [b3Poster.largePortion, b3Poster.smallPortion].some(n => Object.values(n || {}).some(v => String(v).trim())));
     if (b3HasNutrition) fromPoster.push('gizi 3B');
 
@@ -715,12 +704,8 @@ export const WebsiteCmsModule: React.FC = () => {
           portionSmall: portionFromPoster(c.portionSmall, poster?.menus[0]?.smallPortion),
           ...(regularTray ? { imageUrl: regularTray.photoUrl!, trayLabels: regularTray.stageLabels ?? null } : {}),
           ...(b3Tray ? { imageUrlB3: b3Tray.photoUrl!, trayLabelsB3: b3Tray.stageLabels ?? null } : {}),
-          ...(b3HasNutrition
-            ? {
-                portionLargeB3: portionFromPoster(c.portionLargeB3 ?? EMPTY_PORTION_TIER, b3Poster!.largePortion),
-                portionSmallB3: portionFromPoster(c.portionSmallB3 ?? EMPTY_PORTION_TIER, b3Poster!.smallPortion),
-              }
-            : {}),
+          portionLargeB3: portionFromPoster(c.portionLargeB3 ?? EMPTY_PORTION_TIER, b3Poster?.largePortion),
+          portionSmallB3: portionFromPoster(c.portionSmallB3 ?? EMPTY_PORTION_TIER, b3Poster?.smallPortion),
           dateText: formatMenuDate(order.date),
           menuTitle: order.menuTitle,
           menuB3: order.specialDietB3?.trim() || '',
@@ -1853,6 +1838,7 @@ export const WebsiteCmsModule: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+              <p className="text-[11px] text-slate-500 mt-1">Angka gizi terisi otomatis dari poster menu. Angka yang diubah di sini tertimpa setiap poster tanggal ini dibuka atau diubah.</p>
             </CollapsibleCard>
 
             <CollapsibleCard
@@ -1870,7 +1856,7 @@ export const WebsiteCmsModule: React.FC = () => {
                 <input id="menu-b3" type="text" value={menuToday.menuB3 || ''} onChange={e => patchMenuToday({ menuB3: e.target.value })}
                   placeholder="Pisahkan dengan koma. Kosongkan bila tidak ada menu 3B" className={FIELD} />
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Foto dan gizi 3B ikut terisi saat memakai Ambil dari Rekap Order Menu, asalkan poster menunya dicetak dua menu.
+                  Gizi 3B terisi otomatis dari poster menu. Foto 3B ikut bila posternya dicetak dua menu.
                 </p>
               </div>
 

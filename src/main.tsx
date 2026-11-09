@@ -7,8 +7,8 @@ import './index.css';
 // Panduan area (/panduan/<area>, dari QR papan nama rak) juga terpisah dan tanpa login.
 const isAttendancePage = /^\/absen\/?$/i.test(window.location.pathname);
 const isAreaGuidePage = /^\/panduan(\/|$)/i.test(window.location.pathname);
-// Uji hedonik (/nilai/<kode>, dari QR di surat jalan) diisi guru/PIC sekolah tanpa login.
-const isHedonicPage = /^\/nilai\//i.test(window.location.pathname);
+// Uji hedonik diisi tanpa login: /nilai (dari QR di halaman menu hari ini, pilih sekolah dulu) atau /nilai/<kode>.
+const isHedonicPage = /^\/nilai(\/|$)/i.test(window.location.pathname);
 
 const App = lazy(() => import('./App.tsx'));
 const AttendanceSelfCheckIn = lazy(() => import('./components/AttendanceSelfCheckIn'));

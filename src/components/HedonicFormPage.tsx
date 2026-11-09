@@ -7,15 +7,22 @@ import {
   HEDONIC_ROLES,
   HEDONIC_SAMPLES,
   HEDONIC_SCALE,
+  HEDONIC_PATH,
   HedonicLink,
+  HedonicMenu,
   HedonicParam,
+  HedonicSchool,
   HedonicScores,
+  ensureHedonicLinks,
   fetchHedonicLink,
+  fetchHedonicSchools,
+  fetchOpenHedonicMenu,
   hedonicTokenFromPath,
   submitHedonicResponse,
 } from '../utils/hedonic';
 
-// Halaman uji hedonik (/nilai/<kode>): dibuka dari QR di surat jalan, tanpa login.
+// Halaman uji hedonik tanpa login. /nilai/<kode> langsung ke form; /nilai (QR di halaman menu hari ini) pilih sekolah dulu,
+// karena isian direkap per sekolah per menu.
 // Satu HP bisa dipakai bergantian: setelah terkirim, "Nilai lagi" mengosongkan isian untuk penilai berikutnya.
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
@@ -30,7 +37,7 @@ const addDays = (iso: string, days: number) => {
   return localDateIso(new Date(y, m - 1, d + days));
 };
 
-type Status = 'loading' | 'missing' | 'closed' | 'ready' | 'sent' | 'error';
+type Status = 'loading' | 'pick' | 'no_menu' | 'missing' | 'closed' | 'ready' | 'sent' | 'error';
 
 // Lima tombol nilai 1–5; yang terpilih berwarna, label skala tampil di bawah baris
 const ScoreRow: React.FC<{ label: string; value?: number; onChange: (v: number) => void; name: string }> = ({ label, value, onChange, name }) => (
@@ -79,11 +86,21 @@ const HedonicFormPage: React.FC = () => {
   const [error, setError] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [sentCount, setSentCount] = useState(0);
+  const [openMenu, setOpenMenu] = useState<HedonicMenu | null>(null);
+  const [schools, setSchools] = useState<HedonicSchool[]>([]);
+  const [schoolId, setSchoolId] = useState('');
 
   useEffect(() => {
     document.title = 'Penilaian Menu MBG · SPPG Tumpang Jeru';
     if (!token) {
-      setStatus('missing');
+      const today = localDateIso();
+      Promise.all([fetchOpenHedonicMenu(addDays(today, -HEDONIC_DAYS_OPEN), today), fetchHedonicSchools()])
+        .then(([menu, list]) => {
+          setOpenMenu(menu);
+          setSchools(list);
+          setStatus(menu && list.length > 0 ? 'pick' : 'no_menu');
+        })
+        .catch(() => setStatus('error'));
       return;
     }
     fetchHedonicLink(token)
@@ -100,6 +117,24 @@ const HedonicFormPage: React.FC = () => {
     setScores(prev => ({ ...prev, [code]: { ...prev[code], [param]: value } }));
   const setAll = (code: string, value: number) =>
     setScores(prev => ({ ...prev, [code]: { rasa: value, warna: value, aroma: value, tekstur: value } }));
+
+  const handlePickSchool = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!openMenu || isSending) return;
+    setError('');
+    const school = schools.find(s => s.id === schoolId);
+    if (!school) return setError('Pilih sekolah atau kelompok penerima dulu.');
+
+    setIsSending(true);
+    try {
+      const tokens = await ensureHedonicLinks(openMenu, [school]);
+      if (!tokens[school.id]) throw new Error('Kode penilaian tidak terbentuk');
+      window.location.assign(`${HEDONIC_PATH}${tokens[school.id]}`);
+    } catch {
+      setError('Form penilaian gagal dibuka. Periksa sinyal internet lalu coba lagi.');
+      setIsSending(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,6 +184,11 @@ const HedonicFormPage: React.FC = () => {
                 {link.school_name} · {formatLongDate(link.delivery_date)}
               </p>
             </>
+          ) : openMenu ? (
+            <>
+              <h1 className="text-xl font-bold leading-tight">{openMenu.menuTitle}</h1>
+              <p className="text-sm opacity-90">{formatLongDate(openMenu.date)}</p>
+            </>
           ) : (
             <h1 className="text-xl font-bold leading-tight">Penilaian menu Makan Bergizi Gratis</h1>
           )}
@@ -157,6 +197,50 @@ const HedonicFormPage: React.FC = () => {
 
       <main className="max-w-xl mx-auto px-4 py-5 space-y-4">
         {status === 'loading' && <p className="text-sm text-slate-600">Memuat…</p>}
+
+        {status === 'pick' && (
+          <form onSubmit={handlePickSchool} className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <div>
+              <label htmlFor="hedonic-school" className="block text-base font-bold">
+                Menu ini Anda terima di mana?
+              </label>
+              <p className="text-sm text-slate-600 mt-0.5">Orang tua memilih sekolah anaknya. Nilai dan kritik direkap per sekolah.</p>
+            </div>
+            <select
+              id="hedonic-school"
+              value={schoolId}
+              onChange={e => setSchoolId(e.target.value)}
+              className={`w-full px-3 min-h-[48px] rounded-lg border border-slate-300 bg-white text-base cursor-pointer ${FOCUS}`}
+            >
+              <option value="">Pilih sekolah atau kelompok</option>
+              {[...new Set(schools.map(s => s.category))].map(category => (
+                <optgroup key={category} label={category}>
+                  {schools.filter(s => s.category === category).map(s => (
+                    <option key={s.id} value={s.id}>{s.schoolName}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            {error && (
+              <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">
+                {error}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={isSending}
+              className={`w-full min-h-[48px] rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-400 text-white text-sm font-semibold cursor-pointer ${FOCUS}`}
+            >
+              {isSending ? 'Membuka form…' : 'Lanjut ke form penilaian'}
+            </button>
+          </form>
+        )}
+
+        {status === 'no_menu' && (
+          <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+            Belum ada menu yang bisa dinilai. Penilaian dibuka sejak hari menu dibagikan sampai {HEDONIC_DAYS_OPEN} hari sesudahnya.
+          </div>
+        )}
 
         {status === 'missing' && (
           <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
