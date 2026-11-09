@@ -1,9 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import logoSppgImg from '../assets/logo sppg.png';
 import wortelMaskotImg from '../assets/sayur_wortel_mbg.jpg';
-import sawahImg from '../assets/sawah_padi.jpg';
-import kebunSayurImg from '../assets/kebun_sayur.jpg';
-import peternakanAyamImg from '../assets/peternakan_ayam.jpg';
 import trayImg1 from '../assets/tray_sample_1.jpg';
 import trayCutoutImg from '../assets/tray_sample_cutout.webp';
 import menu3bImg from '../assets/menu_3b_ilustrasi.jpg';
@@ -23,7 +20,8 @@ import {
   DailyHabitItem,
   TrayLabelPlacement,
   EMPTY_PORTION_TIER,
-  hasPortionNutrition
+  hasPortionNutrition,
+  heroSlideIngredients
 } from '../db/websiteConfigStorage';
 import { TrayStage, menuDishes, resolveTrayLabels, shownTrayLabels, trayLabelTexts } from './menuPublic/TrayStage';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -56,14 +54,12 @@ import {
   Clock,
   PartyPopper,
   Sparkles,
-  Users,
   School,
   Baby,
   Zap,
   Drumstick,
   Droplet,
   CheckCircle2,
-  UtensilsCrossed,
   QrCode,
   Download,
   FileText
@@ -112,16 +108,6 @@ const tintOf = (category: string) => {
   const group = groupOfCategory(category);
   return group ? FOOD_GROUPS[group].soft : '#e9f7f1';
 };
-
-// Foto ilustrasi lahan untuk tab "Asal bahan"; diberi keterangan bahwa ini bukan lokasi pemasok.
-function originIllustration(category: string): string | null {
-  const c = category.toLowerCase();
-  if (c.includes('hewani')) return peternakanAyamImg;
-  const group = groupOfCategory(category);
-  if (group === 'pokok') return sawahImg;
-  if (group === 'sayur') return kebunSayurImg;
-  return null;
-}
 
 /* ------------------------------------------------------------------ */
 /* Perkiraan energi setara aktivitas                                   */
@@ -256,6 +242,59 @@ const SectionHead: React.FC<{ id: string; title: string; eyebrow?: string; subti
 const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#18686a] focus-visible:ring-offset-2';
 const cardCls = 'menu-card min-w-0 rounded-3xl bg-white border border-[#cfe8df] p-4 sm:p-6 scroll-mt-28';
 
+const DishList: React.FC<{ texts: string[] }> = ({ texts }) => (
+  <ol aria-label="Isi menu" className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
+    {texts.map((t, i) => (
+      <li key={t} className="flex items-start gap-2.5 font-kids font-bold text-lg leading-tight">
+        <span className="mt-px w-6 h-6 rounded-full bg-white text-[#0d474c] text-sm font-extrabold flex items-center justify-center shrink-0" aria-hidden="true">{i + 1}</span>
+        {t}
+      </li>
+    ))}
+  </ol>
+);
+
+// Susunan sekat mengikuti ompreng 5 sekat di foto: nasi di sekat besar, lalu sekat kanan atas dan tiga sekat bawah.
+const TRAY_SLOTS = [
+  { x: 36, y: 36, w: 560, h: 290 },
+  { x: 620, y: 36, w: 344, h: 290 },
+  { x: 36, y: 350, w: 296, h: 254 },
+  { x: 352, y: 350, w: 296, h: 254 },
+  { x: 668, y: 350, w: 296, h: 254 },
+];
+
+// Pengganti saat menu belum punya foto (sering terjadi pada 3B). Isinya digambar dari nama hidangan menu itu sendiri,
+// bukan memakai foto menu reguler, karena hidangan 3B bisa berbeda. Lebih dari lima hidangan: sisanya digabung di nomor 5, sama seperti poster.
+const IllustratedTray: React.FC<{ dishes: string[]; texts: string[] }> = ({ dishes, texts }) => (
+  <div className="max-w-xl mx-auto">
+    <svg
+      viewBox="0 0 1000 640"
+      role="img"
+      aria-label={`Ilustrasi ompreng berisi ${dishes.join(', ')}`}
+      className="block w-full h-auto [filter:drop-shadow(0_18px_22px_rgba(6,40,44,0.45))]"
+    >
+      <rect x="6" y="6" width="988" height="628" rx="72" fill="#dfe6e6" stroke="#b9c6c6" strokeWidth="6" />
+      {TRAY_SLOTS.map((slot, i) => {
+        const dish = dishes[i];
+        const size = Math.min(slot.w, slot.h) * 0.72;
+        return (
+          <g key={i}>
+            <rect x={slot.x} y={slot.y} width={slot.w} height={slot.h} rx="48" fill="#f4f7f7" stroke="#c3cece" strokeWidth="4" />
+            {dish && (
+              <>
+                <FoodIllustration name={dish} x={slot.x + (slot.w - size) / 2} y={slot.y + (slot.h - size) / 2} width={size} height={size} />
+                <circle cx={slot.x + 46} cy={slot.y + 46} r="27" fill="#ffffff" stroke="#0d474c" strokeWidth="4" />
+                <text x={slot.x + 46} y={slot.y + 46} textAnchor="middle" dominantBaseline="central" fontSize="32" fontWeight="800" fill="#0d474c" className="font-kids">{i + 1}</text>
+              </>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+    <p className="mt-3 text-center text-[13px] text-white/90">Ilustrasi isi menu. Foto ompreng belum tersedia.</p>
+    <DishList texts={texts} />
+  </div>
+);
+
 // Ompreng dan nama hidangan disusun seperti poster menu hijau, dengan letak yang diatur petugas.
 // Di layar kecil teks poster terlalu kecil, jadi panah diganti nomor pada makanan dan daftar bernomor di bawahnya.
 const HeroTray: React.FC<{ dishes: string[]; photo: string | null; labels: TrayLabelPlacement[] | null | undefined }> = ({ dishes, photo, labels }) => {
@@ -263,9 +302,8 @@ const HeroTray: React.FC<{ dishes: string[]; photo: string | null; labels: TrayL
   const placements = useMemo(() => resolveTrayLabels(dishTexts, labels), [dishTexts, labels]);
   // Nama yang ditulis petugas di Atur Website atau poster menggantikan nama hidangan di panah dan daftar bernomor
   const texts = useMemo(() => shownTrayLabels(dishTexts, placements), [dishTexts, placements]);
-  const stageProps = photo
-    ? { photo, fallbackPhoto: trayCutoutImg, alt: `Foto ompreng menu: ${dishes.join(', ')}` }
-    : { photo: menu3bImg, alt: 'Ilustrasi ibu hamil, ibu menyusui, dan balita', plain: true };
+  if (!photo) return <IllustratedTray dishes={dishes} texts={texts} />;
+  const stageProps = { photo, fallbackPhoto: trayCutoutImg, alt: `Foto ompreng menu: ${dishes.join(', ')}` };
 
   // Ompreng sedikit miring mengikuti kursor supaya anak tertarik melihat isinya. Nama dan panah ikut miring
   // bersama ompreng, jadi panah tetap menunjuk makanan. Gaya diubah langsung agar tidak memicu render ulang.
@@ -297,16 +335,9 @@ const HeroTray: React.FC<{ dishes: string[]; photo: string | null; labels: TrayL
 
       <div className="lg:hidden">
         <div className="max-w-md mx-auto">
-          <TrayStage {...stageProps} compact texts={texts} placements={photo ? placements : []} />
+          <TrayStage {...stageProps} compact texts={texts} placements={placements} />
         </div>
-        <ol aria-label="Isi menu" className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5">
-          {texts.map((t, i) => (
-            <li key={t} className="flex items-start gap-2.5 font-kids font-bold text-lg leading-tight">
-              <span className="mt-px w-6 h-6 rounded-full bg-white text-[#0d474c] text-sm font-extrabold flex items-center justify-center shrink-0" aria-hidden="true">{i + 1}</span>
-              {t}
-            </li>
-          ))}
-        </ol>
+        <DishList texts={texts} />
       </div>
     </>
   );
@@ -517,7 +548,7 @@ function useEscape(onClose: () => void, active: boolean) {
 /* ------------------------------------------------------------------ */
 /* Detail bahan (lembar dari bawah di HP, dialog di desktop)            */
 /* ------------------------------------------------------------------ */
-type DetailTab = 'manfaat' | 'kandungan' | 'asal';
+type DetailTab = 'manfaat' | 'kandungan';
 
 const IngredientSheet: React.FC<{
   ingredients: IngredientNutritionInfo[];
@@ -542,13 +573,11 @@ const IngredientSheet: React.FC<{
 
   const whyGood = cleanList(item.whyGood).length ? cleanList(item.whyGood) : splitSentences(item.healthBenefits);
   const highlights = splitHighlights(item.nutritionHighlight);
-  const origin = originIllustration(item.category);
   const group = groupOfCategory(item.category);
   const tint = group ? FOOD_GROUPS[group] : FOOD_GROUPS.lauk;
   const tabs: { key: DetailTab; label: string }[] = [
     { key: 'manfaat', label: 'Manfaat' },
-    { key: 'kandungan', label: 'Kandungan gizi' },
-    { key: 'asal', label: 'Asal bahan' }
+    { key: 'kandungan', label: 'Kandungan gizi' }
   ];
 
   return (
@@ -589,7 +618,7 @@ const IngredientSheet: React.FC<{
           </p>
           {item.notes && <p className="text-[15px] text-slate-700 mt-2 leading-relaxed">{item.notes}</p>}
 
-          <div className="mt-4 grid grid-cols-3 gap-1 p-1 rounded-xl bg-[#e9f7f1]" role="group" aria-label="Pilih informasi">
+          <div className="mt-4 grid grid-cols-2 gap-1 p-1 rounded-xl bg-[#e9f7f1]" role="group" aria-label="Pilih informasi">
             {tabs.map(t => (
               <button
                 key={t.key}
@@ -638,20 +667,6 @@ const IngredientSheet: React.FC<{
                   ))}
                 </ul>
               )
-            )}
-            {tab === 'asal' && (
-              <div className="space-y-3">
-                <div className="rounded-xl bg-[#e9f7f1] p-3.5">
-                  <div className="text-xs font-bold text-slate-600">Pemasok</div>
-                  <div className="text-base font-bold mt-0.5">{item.supplier || 'Belum diisi petugas'}</div>
-                </div>
-                {origin && (
-                  <figure>
-                    <img src={origin} alt="" loading="lazy" className="w-full h-36 rounded-xl object-cover" />
-                    <figcaption className="text-xs text-slate-600 mt-1">Foto ilustrasi, bukan lokasi pemasok.</figcaption>
-                  </figure>
-                )}
-              </div>
             )}
           </div>
 
@@ -742,15 +757,13 @@ const Sprig: React.FC<{ className?: string; flower?: boolean; flip?: boolean }> 
   </svg>
 );
 
-const CardTitle: React.FC<{ id: string; icon: React.ReactNode; title: string; subtitle?: string; action?: React.ReactNode }> = ({ id, icon, title, subtitle, action }) => (
+const CardTitle: React.FC<{ id: string; title: string; subtitle?: string; action?: React.ReactNode }> = ({ id, title, subtitle, action }) => (
   <div className="flex items-start justify-between gap-3 mb-4">
-    <div className="flex items-start gap-2.5 min-w-0">
-      {/* Kotak mint mengulang sel tabel gizi di hero, jadi semua kartu terasa satu keluarga dengan bagian ompreng */}
-      <span className="w-10 h-10 rounded-xl bg-[#e9f7f1] text-[#145a5c] flex items-center justify-center shrink-0 [&>svg]:w-5 [&>svg]:h-5" aria-hidden="true">{icon}</span>
-      <div className="min-w-0">
-        <h2 id={id} className="font-kids text-xl sm:text-2xl font-extrabold text-[#0d474c] leading-tight">{title}</h2>
-        {subtitle && <p className="text-[13px] text-slate-600 mt-0.5">{subtitle}</p>}
-      </div>
+    <div className="min-w-0">
+      <h2 id={id} className="font-kids text-xl sm:text-2xl font-extrabold text-[#0d474c] leading-tight">
+        <span className="title-marker">{title}</span>
+      </h2>
+      {subtitle && <p className="text-[13px] text-slate-600 mt-1">{subtitle}</p>}
     </div>
     {action}
   </div>
@@ -769,7 +782,7 @@ const MENU_TYPES: Record<MenuType, { label: string; audience: string; Icon: type
 const MenuTypeCard: React.FC<{ menuType: MenuType; hasB3: boolean; onChange: (t: MenuType) => void; onExplain: () => void }> = ({ menuType, hasB3, onChange, onExplain }) => (
   <div className="grid lg:grid-cols-[minmax(0,1fr)_280px] gap-3.5 lg:gap-5">
     <section aria-labelledby="jenis-title" className={cardCls}>
-      <CardTitle id="jenis-title" icon={<Users className="w-6 h-6" />} title="Pilih Jenis Menu" subtitle="Informasi ditampilkan sesuai kelompok penerima manfaat." />
+      <CardTitle id="jenis-title" title="Pilih Jenis Menu" subtitle="Informasi ditampilkan sesuai kelompok penerima manfaat." />
       <div role="radiogroup" aria-labelledby="jenis-title" className="grid sm:grid-cols-2 gap-3">
         {(Object.keys(MENU_TYPES) as MenuType[]).map(key => {
           const { label, audience, Icon } = MENU_TYPES[key];
@@ -806,9 +819,9 @@ const MenuTypeCard: React.FC<{ menuType: MenuType; hasB3: boolean; onChange: (t:
         })}
       </div>
     </section>
-    <aside aria-labelledby="beda-3b-title" className="menu-card rounded-3xl bg-[#e9f7f1] border border-[#c3ebe0] p-4 sm:p-5 flex flex-col">
-      <h2 id="beda-3b-title" className="text-[15px] font-bold text-[#0d474c]">Mau tahu perbedaan menu 3B?</h2>
-      <img src={menu3bImg} alt="" className="mx-auto my-2 h-28 object-contain mix-blend-multiply" />
+    <aside aria-labelledby="beda-3b-title" className={`${cardCls} flex flex-col`}>
+      <CardTitle id="beda-3b-title" title="Mau tahu perbedaan menu 3B?" />
+      <img src={menu3bImg} alt="" className="mx-auto mb-3 h-28 object-contain mix-blend-multiply" />
       <button type="button" onClick={onExplain} className={`${pillBtn} self-center mt-auto`}>
         Lihat penjelasan menu 3B
         <ChevronRight className="w-4 h-4" />
@@ -891,7 +904,7 @@ const PlateCard: React.FC<{ ingredients: IngredientNutritionInfo[] }> = ({ ingre
 
   return (
     <section aria-labelledby="piring-title" className={cardCls}>
-      <CardTitle id="piring-title" icon={<Leaf className="w-6 h-6" />} title="Kenali Isi Piringmu" subtitle="Ketuk bagian piring untuk melihat perannya." />
+      <CardTitle id="piring-title" title="Kenali Isi Piringmu" subtitle="Ketuk bagian piring untuk melihat perannya." />
       <div className="grid grid-cols-[minmax(0,140px)_minmax(0,1fr)] sm:grid-cols-[160px_minmax(0,1fr)] gap-4 items-center">
         <svg viewBox="0 0 240 240" className="w-full h-auto" role="group" aria-label="Piring dibagi empat: sayur sepertiga, buah seperenam, lauk pauk seperenam, makanan pokok sepertiga">
           <defs>
@@ -987,7 +1000,6 @@ const IngredientStrip: React.FC<{ ingredients: IngredientNutritionInfo[]; tiers:
   <section id="menu" aria-labelledby="bahan-title" className={cardCls}>
     <CardTitle
       id="bahan-title"
-      icon={<Leaf className="w-6 h-6" />}
       title="Rincian Menu dan Bahan Makanan"
       subtitle="Kategori dan takaran tiap bahan pada menu hari ini."
       action={
@@ -1047,8 +1059,9 @@ const NutritionDialog: React.FC<{
   tiers: PortionTier[];
   portion: PortionKey;
   onPortionChange: (p: PortionKey) => void;
-  calcium: string;
-  iron: string;
+  /** Tidak diisi untuk 3B: kalsium dan zat besi yang tercatat adalah rata-rata porsi reguler. */
+  calcium?: string;
+  iron?: string;
   bodyWeight?: string;
   onClose: () => void;
 }> = ({ tiers, portion, onPortionChange, calcium, iron, bodyWeight, onClose }) => {
@@ -1063,6 +1076,7 @@ const NutritionDialog: React.FC<{
   const kcal = parseNumber(tier.targetCalories);
   const kg = parseNumber(bodyWeight);
   const canEstimate = kcal > 0 && kg > 0;
+  const showMinerals = calcium !== undefined;
   const values: Record<string, string> = {
     energi: numberOnly(tier.targetCalories),
     protein: numberOnly(tier.proteinGrams),
@@ -1139,10 +1153,12 @@ const NutritionDialog: React.FC<{
               </ul>
             </div>
           )}
-          <dl className="grid grid-cols-2 gap-2 text-[13px]">
-            <div className="rounded-xl bg-[#f4faf7] px-3 py-2"><dt className="text-slate-600">Kalsium*</dt><dd className="font-bold tabular-nums">{calcium || '-'}</dd></div>
-            <div className="rounded-xl bg-[#f4faf7] px-3 py-2"><dt className="text-slate-600">Zat besi*</dt><dd className="font-bold tabular-nums">{iron || '-'}</dd></div>
-          </dl>
+          {showMinerals && (
+            <dl className="grid grid-cols-2 gap-2 text-[13px]">
+              <div className="rounded-xl bg-[#f4faf7] px-3 py-2"><dt className="text-slate-600">Kalsium*</dt><dd className="font-bold tabular-nums">{calcium || '-'}</dd></div>
+              <div className="rounded-xl bg-[#f4faf7] px-3 py-2"><dt className="text-slate-600">Zat besi*</dt><dd className="font-bold tabular-nums">{iron || '-'}</dd></div>
+            </dl>
+          )}
           {canEstimate && (
             <div>
               <p className="text-[13px] font-bold text-slate-700">Energi ini kira-kira cukup untuk</p>
@@ -1157,59 +1173,31 @@ const NutritionDialog: React.FC<{
               </ul>
             </div>
           )}
-          <p className="text-xs text-slate-600 leading-relaxed">
-            *Rata-rata semua porsi.
-            {canEstimate && ` Perkiraan aktivitas untuk anak ${String(kg).replace('.', ',')} kg (acuan AKG 2019), nilai MET dari Compendium of Physical Activities 2011.`}
-          </p>
+          {(showMinerals || canEstimate) && (
+            <p className="text-xs text-slate-600 leading-relaxed">
+              {showMinerals && '*Rata-rata semua porsi.'}
+              {canEstimate && ` Perkiraan aktivitas untuk anak ${String(kg).replace('.', ',')} kg (acuan AKG 2019), nilai MET dari Compendium of Physical Activities 2011.`}
+            </p>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-// Gizi 3B tampil di hero bila petugas mengisinya; kartu ini hanya daftar hidangan dan catatan takaran.
-const B3MenuCard: React.FC<{ dishes: string[]; hasNutrition: boolean; onExplain: () => void }> = ({ dishes, hasNutrition, onExplain }) => (
-  <section id="menu" aria-labelledby="menu-3b-title" className={cardCls}>
-    <CardTitle
-      id="menu-3b-title"
-      icon={<Baby className="w-6 h-6" />}
-      title="Rincian Menu 3B"
-      subtitle="Untuk ibu hamil, ibu menyusui, dan balita non-PAUD."
-      action={
-        <button type="button" onClick={onExplain} className={`${pillBtn} max-sm:hidden`}>
-          Apa bedanya?
-          <ChevronRight className="w-4 h-4" />
-        </button>
-      }
-    />
-    <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-      {dishes.map(d => (
-        <li key={d} className="flex items-center gap-3 rounded-2xl border border-[#cfe8df] bg-white p-3.5">
-          <UtensilsCrossed className="w-5 h-5 text-[#145a5c] shrink-0" aria-hidden="true" />
-          <span className="text-[15px] font-bold text-[#0d474c] leading-snug">{d}</span>
-        </li>
-      ))}
-    </ul>
-    <p className="mt-3 text-[13px] text-slate-600 leading-relaxed">
-      {hasNutrition
-        ? 'Takaran menu 3B disesuaikan untuk tiap sasaran. Tanyakan rinciannya kepada petugas SPPG.'
-        : 'Takaran dan nilai gizi menu 3B disesuaikan untuk tiap sasaran dan belum ditampilkan di halaman ini. Tanyakan rinciannya kepada petugas SPPG.'}
-    </p>
-  </section>
-);
-
 const CHILD_BENEFITS =['Memberi energi', 'Membantu pertumbuhan', 'Menjaga daya tahan tubuh', 'Mendukung konsentrasi belajar'];
 
 const BenefitsCard: React.FC = () => (
-  <aside aria-labelledby="manfaat-title" className="menu-card group relative overflow-hidden rounded-3xl bg-[#e9f7f1] border border-[#c3ebe0] p-4 sm:p-5">
+  <aside aria-labelledby="manfaat-title" className={`${cardCls} group relative overflow-hidden`}>
     <Sprig className="absolute -bottom-3 -right-3 w-12 text-[#1e7472]/50" />
-    <h2 id="manfaat-title" className="font-kids text-xl font-bold text-[#0d474c]">Manfaat untuk Anak</h2>
-    <div className="mt-3 flex items-center gap-3">
-      <Illustration src="/ilustrasi/manfaat-anak.webp" fallbackSrc={anakSehatImg} className="w-28 h-32 object-contain shrink-0" />
+    <CardTitle id="manfaat-title" title="Manfaat untuk Anak" />
+    {/* Kolom samping sempit: gambar di atas daftar, supaya tiap poin tidak terpecah jadi tiga baris */}
+    <div className="flex items-center gap-3 lg:flex-col lg:items-stretch">
+      <Illustration src="/ilustrasi/manfaat-anak.webp" fallbackSrc={anakSehatImg} className="w-28 h-32 object-contain shrink-0 lg:self-center" />
       <ul className="space-y-2">
         {CHILD_BENEFITS.map(b => (
-          <li key={b} className="flex items-start gap-2 text-[13px] font-semibold text-slate-800">
-            <CheckCircle2 className="w-4.5 h-4.5 text-[#1e7472] shrink-0 mt-px" />
+          <li key={b} className="flex items-start gap-2 text-[15px] leading-snug">
+            <Check className="w-5 h-5 text-[#18686a] shrink-0 mt-px" />
             {b}
           </li>
         ))}
@@ -1273,12 +1261,11 @@ const NutritionHeroPanel: React.FC<{ hero: NutritionHeroConfig; ingredients: Ing
 const NutritionHeroCarousel: React.FC<{ hero: NutritionHeroConfig; ingredients: IngredientNutritionInfo[] }> = ({ hero, ingredients }) => {
   const slides = useMemo(() => {
     const heroName = hero.name.trim().toLowerCase();
-    const fromIngredients: NutritionHeroConfig[] = ingredients
-      .filter(i => !heroName || !i.name.toLowerCase().includes(heroName))
+    const fromIngredients: NutritionHeroConfig[] = heroSlideIngredients(hero.name, ingredients)
       .map(i => ({
         name: i.name,
         category: i.category,
-        imageUrl: '',
+        imageUrl: i.slideImageUrl || '',
         points: cleanList(i.whyGood).length ? cleanList(i.whyGood) : splitSentences(i.healthBenefits),
         keyNutrients: splitHighlights(i.nutritionHighlight)
       }));
@@ -1294,7 +1281,7 @@ const NutritionHeroCarousel: React.FC<{ hero: NutritionHeroConfig; ingredients: 
 
   return (
     <section aria-labelledby="pahlawan-title" aria-roledescription="carousel" className={cardCls}>
-      <CardTitle id="pahlawan-title" icon={<Sprout className="w-6 h-6" />} title="Pahlawan Gizi Hari Ini" subtitle="Kenali lebih dekat makanan di menu hari ini." />
+      <CardTitle id="pahlawan-title" title="Pahlawan Gizi Hari Ini" subtitle="Kenali lebih dekat makanan di menu hari ini." />
       <div aria-live="polite">
         <NutritionHeroPanel key={current.name} hero={current} ingredients={ingredients} />
       </div>
@@ -1333,7 +1320,7 @@ const HabitSection: React.FC<{ habits: DailyHabitItem[] }> = ({ habits }) => {
 
   return (
     <section aria-labelledby="misi-title" className={cardCls}>
-      <CardTitle id="misi-title" icon={<BookOpen className="w-6 h-6" />} title="Misi Sehat Hari Ini" />
+      <CardTitle id="misi-title" title="Misi Sehat Hari Ini" />
       {filled.length > 1 && (
         <div role="group" aria-label="Pilih hari" className="mb-3 grid grid-cols-6 gap-1 p-1 rounded-xl bg-[#e9f7f1]">
           {filled.map(h => {
@@ -1742,6 +1729,10 @@ export const DailyMenuPublicPage: React.FC = () => {
   const b3Large = menuToday.portionLargeB3 ?? EMPTY_PORTION_TIER;
   const b3Small = menuToday.portionSmallB3 ?? EMPTY_PORTION_TIER;
   const hasB3Nutrition = hasPortionNutrition(b3Large) || hasPortionNutrition(b3Small);
+  // Poster tidak menyimpan nama kelompok, jadi porsi 3B dari poster memakai nama kelompok bawaan.
+  const named = (tier: PortionTierConfig, name: string) => (tier.tierName.trim() ? tier : { ...tier, tierName: name });
+  const shownLarge = activeType === 'b3' ? named(b3Large, 'Porsi Besar (Ibu hamil & menyusui)') : menuToday.portionLarge;
+  const shownSmall = activeType === 'b3' ? named(b3Small, 'Porsi Kecil (Balita)') : menuToday.portionSmall;
   const subtitle = menuToday.menuSubtitle?.trim() || 'Makanan bergizi untuk mendukung tumbuh kembang dan semangat belajar.';
   // Menu 3B hanya punya daftar hidangan; menu reguler juga punya daftar bahan
   const allergenNames = useMemo(
@@ -1820,12 +1811,15 @@ export const DailyMenuPublicPage: React.FC = () => {
           {/* Hero: nampan sebagai pusat, nama hidangan dengan panah seperti poster menu hijau, lalu tabel gizi.
               Latar foto diburamkan dan diberi warna gelap supaya teks putih tetap terbaca. */}
           <section aria-labelledby="hero-title" className="overflow-hidden rounded-3xl bg-[#e9f7f1]">
-            <div className="relative isolate overflow-hidden px-4 pt-6 pb-12 sm:px-8 sm:pt-8 sm:pb-16 text-white">
-              {/* Foto dokumentasi pertama dari CMS (Hero, foto slide), bukan ilustrasi. Ilustrasi hanya cadangan bila belum ada foto. */}
-              <SafeImg src={config.hero.photoSlides?.find(s => s.imageUrl)?.imageUrl || heroBgImg} fallbackSrc={heroBgImg} alt="" aria-hidden="true" className="absolute -z-20 inset-0 h-full w-full object-cover blur-[3px] scale-105" />
-              <div className="absolute -z-10 inset-0 bg-[linear-gradient(180deg,rgba(13,71,76,0.93)_0%,rgba(24,104,106,0.89)_55%,rgba(30,116,114,0.92)_100%)]" aria-hidden="true" />
+            <div className="relative isolate overflow-hidden bg-[#1e7472] px-4 pt-6 pb-12 sm:px-8 sm:pt-8 sm:pb-16 text-white">
+              {/* Foto dokumentasi pertama dari CMS (Hero, foto slide), bukan ilustrasi. Tingginya dibatasi supaya foto tidak terpotong
+                  terlalu besar dan anak-anaknya terlihat; lapisan 74% menjaga kontras teks putih di bagian foto yang paling terang. */}
+              <div className="absolute -z-10 inset-x-0 top-0 h-[300px] sm:h-[420px] lg:h-[560px] overflow-hidden" aria-hidden="true">
+                <SafeImg src={config.hero.photoSlides?.find(s => s.imageUrl)?.imageUrl || heroBgImg} fallbackSrc={heroBgImg} alt="" className="h-full w-full object-cover blur-[1px]" />
+                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(13,71,76,0.74)_0%,rgba(13,71,76,0.74)_70%,#1e7472_100%)]" />
+              </div>
               {/* Peralihan ke bagian tabel gizi; tingginya tetap, tidak ada teks di atasnya. */}
-              <div className="absolute -z-10 inset-x-0 bottom-0 h-10 sm:h-14 bg-gradient-to-b from-transparent to-[#e9f7f1]" aria-hidden="true" />
+              <div className="absolute -z-10 inset-x-0 -bottom-px h-10 sm:h-14 bg-gradient-to-b from-transparent to-[#e9f7f1]" aria-hidden="true" />
               <HeroLeaves className="hidden sm:block absolute -left-5 bottom-2 w-28 xl:w-36" />
               <HeroLeaves flip className="hidden sm:block absolute -right-5 bottom-6 w-24 xl:w-32" />
 
@@ -1852,49 +1846,40 @@ export const DailyMenuPublicPage: React.FC = () => {
             </div>
 
             <div className="px-3 pb-5 sm:px-8 sm:pb-8 text-[#0d474c]">
-              {activeType === 'reguler' ? (
-                <div className="max-w-4xl mx-auto">
-                  <h2 className="font-kids font-extrabold uppercase text-center text-2xl sm:text-3xl">Kandungan Gizi</h2>
-                  <div className="mt-3">
-                    <HeroNutritionTable large={menuToday.portionLarge} small={menuToday.portionSmall} />
+              <div className="max-w-4xl mx-auto">
+                <h2 className="font-kids font-extrabold uppercase text-center text-2xl sm:text-3xl">{activeType === 'b3' ? 'Kandungan Gizi 3B' : 'Kandungan Gizi'}</h2>
+                <div className="mt-3">
+                  <HeroNutritionTable large={shownLarge} small={shownSmall} />
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-1.5 text-[13px] text-[#21453a]">
+                  <div className="space-y-1 min-w-0">
+                    {activeType === 'b3' && !hasB3Nutrition && <p>{subtitle}</p>}
+                    {activeType === 'b3' && (
+                      <p>
+                        {hasB3Nutrition ? 'Takaran menu 3B disesuaikan untuk tiap sasaran.' : 'Nilai gizi menu 3B belum diisi petugas.'} Tanyakan rinciannya kepada petugas SPPG.
+                      </p>
+                    )}
+                    <AllergenNote names={allergenNames} />
+                    {updatedLabel && (
+                      <p className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+                        {updatedLabel}
+                      </p>
+                    )}
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-1.5 text-[13px] text-[#21453a]">
-                    <div className="space-y-1 min-w-0">
-                      <AllergenNote names={allergenNames} />
-                      {updatedLabel && (
-                        <p className="flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5" aria-hidden="true" />
-                          {updatedLabel}
-                        </p>
-                      )}
-                    </div>
+                  {(activeType === 'reguler' || hasB3Nutrition) && (
                     <button type="button" onClick={() => setIsNutritionOpen(true)} className={`inline-flex items-center justify-center min-h-[44px] px-4 rounded-xl bg-[#155e5f] hover:bg-[#0d474c] text-white text-sm font-bold cursor-pointer ${focusRing}`}>
                       Lihat detail gizi
                     </button>
-                  </div>
+                  )}
                 </div>
-              ) : hasB3Nutrition ? (
-                <div className="max-w-4xl mx-auto">
-                  <h2 className="font-kids font-extrabold uppercase text-center text-2xl sm:text-3xl">Kandungan Gizi 3B</h2>
-                  <div className="mt-3">
-                    <HeroNutritionTable large={b3Large} small={b3Small} />
-                  </div>
-                  <AllergenNote names={allergenNames} className="mt-3 px-1.5 text-[13px] text-[#21453a]" />
-                </div>
-              ) : (
-                <>
-                  <p className="max-w-2xl mx-auto text-center text-[15px]">{subtitle}</p>
-                  <AllergenNote names={allergenNames} className="max-w-2xl mx-auto mt-2 justify-center text-[13px] text-[#21453a]" />
-                </>
-              )}
+              </div>
             </div>
           </section>
 
           <MenuTypeCard menuType={activeType} hasB3={b3Dishes.length > 0} onChange={setMenuType} onExplain={() => setIsB3Open(true)} />
 
-          {activeType === 'b3' ? (
-            <B3MenuCard dishes={b3Dishes} hasNutrition={hasB3Nutrition} onExplain={() => setIsB3Open(true)} />
-          ) : (
+          {activeType === 'reguler' && (
             <div className="grid lg:grid-cols-[minmax(0,1fr)_280px] gap-3.5 lg:gap-5 items-start">
               <IngredientStrip ingredients={ingredients} tiers={tiers} portion={portion} onPortionChange={setPortion} onOpen={setDetailIndex} />
               <BenefitsCard />
@@ -1911,16 +1896,16 @@ export const DailyMenuPublicPage: React.FC = () => {
             <section aria-labelledby="kuis-title" className={`${cardCls} group relative overflow-hidden`}>
               <Sprig className="absolute top-2 right-3 w-12 sm:w-14 text-[#1e7472]/60" />
               <Bee className="absolute top-3 right-16 sm:right-20 w-8" />
-              <CardTitle id="kuis-title" icon={<Lightbulb className="w-6 h-6 text-[#d99a00]" />} title="Kuis Gizi Singkat" />
+              <CardTitle id="kuis-title" title="Kuis Gizi Singkat" />
               {/* Soal bahan disusun dari menu reguler; di mode 3B tinggal soal Isi Piringku agar tidak membingungkan. */}
               <QuizPanel ingredients={activeType === 'reguler' ? ingredients : NO_INGREDIENTS} />
             </section>
             {funFact && (
               <section aria-labelledby="fakta-title" className={`${cardCls} group relative overflow-hidden`}>
                 <Sprig className="absolute -bottom-2 -right-2 w-20 text-[#1e7472]/40" />
-                <CardTitle id="fakta-title" icon={<BookOpen className="w-6 h-6" />} title="Tahukah Kamu?" />
+                <CardTitle id="fakta-title" title="Tahukah Kamu?" />
                 <div className="flex items-center gap-3">
-                  <Illustration src="/ilustrasi/tahukah-kamu.webp" fallbackSrc={wortelMaskotImg} className="w-28 h-28 object-contain shrink-0" />
+                  <Illustration src={menuToday.funFactImageUrl || '/ilustrasi/tahukah-kamu.webp'} fallbackSrc={wortelMaskotImg} className="w-28 h-28 object-contain shrink-0" />
                   <p className="rounded-2xl bg-[#f4faf7] border border-[#dcefe8] p-4 text-[15px] text-slate-800 leading-relaxed">{funFact}</p>
                 </div>
               </section>
@@ -2011,12 +1996,12 @@ export const DailyMenuPublicPage: React.FC = () => {
       )}
       {isNutritionOpen && (
         <NutritionDialog
-          tiers={tiers}
+          tiers={activeType === 'b3' ? [{ key: 'small', config: shownSmall }, { key: 'large', config: shownLarge }] : tiers}
           portion={portion}
           onPortionChange={setPortion}
-          calcium={menuToday.energySummary.calciumAvg}
-          iron={menuToday.energySummary.ironAvg}
-          bodyWeight={bodyWeight}
+          calcium={activeType === 'reguler' ? menuToday.energySummary.calciumAvg : undefined}
+          iron={activeType === 'reguler' ? menuToday.energySummary.ironAvg : undefined}
+          bodyWeight={activeType === 'reguler' ? bodyWeight : undefined}
           onClose={closeNutrition}
         />
       )}

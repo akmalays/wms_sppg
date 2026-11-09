@@ -4,12 +4,18 @@ import {
   DailyHabitItem,
   NutritionHeroConfig,
   HABIT_WEEKDAY_LABELS,
+  INGREDIENT_CATEGORIES,
+  IngredientNutritionInfo,
+  heroSlideIngredients,
   uploadCmsMedia
 } from '../db/websiteConfigStorage';
-import { Upload, Trash2, PenLine, ImagePlus } from 'lucide-react';
+import { Upload, Trash2, PenLine, ImagePlus, Images, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
-import { requestKidsAiDraft, requestKidsAiImage, KidsAiDraft } from '../utils/menuAiDraft';
+import { requestKidsAiDraft, requestKidsAiImage, requestMenuAiDraft, KidsAiDraft } from '../utils/menuAiDraft';
+import { Select } from './common/Select';
+import { ImageBankDialog } from './common/ImageBankDialog';
+import { BTN_SECONDARY } from './common/FormDialog';
 
 interface MenuTodayKidsEditorProps {
   menuToday: WebsiteMenuTodayConfig;
@@ -38,6 +44,8 @@ const AiButton: React.FC<{ busy: string | null; disabled: boolean; label: string
   </button>
 );
 
+const PICKER_BTN = `${BTN_SECONDARY} w-full disabled:text-slate-400 disabled:cursor-not-allowed`;
+
 interface ImageAiAction {
   busy: boolean;
   disabled: boolean;
@@ -56,6 +64,7 @@ const ImagePicker: React.FC<{
 }> = ({ value, label, emptyHint, onChange, onNotify, ai }) => {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [isBankOpen, setIsBankOpen] = useState(false);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -75,52 +84,51 @@ const ImagePicker: React.FC<{
 
   return (
     <div>
-      <span className={labelCls}>{label}</span>
-      <div className="flex items-start gap-3">
-        <div className="w-24 h-24 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden shrink-0 flex items-center justify-center">
-          {ai?.busy ? (
-            <span className="text-[10px] text-slate-600 text-center px-1" role="status">Menggambar, bisa sampai 30 detik</span>
-          ) : value ? (
-            <img src={value} alt="" className="w-full h-full object-contain" />
-          ) : (
-            <span className="text-[10px] text-slate-500 text-center px-1">{emptyHint}</span>
-          )}
-        </div>
-        <div className="space-y-1.5">
-          <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+      {/* Hapus di baris judul, supaya kotak gambar dan tombol tidak bergeser saat gambar ada atau kosong */}
+      <div className="flex items-center justify-between gap-2 mb-1 min-h-[20px]">
+        <span className={`${labelCls} mb-0`}>{label}</span>
+        {value && !ai?.busy && (
           <button
             type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:opacity-70 text-white text-xs font-semibold cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+            onClick={() => onChange('')}
+            className="inline-flex items-center gap-1 -my-1 px-1.5 min-h-[44px] sm:min-h-[28px] rounded-md text-xs font-medium text-rose-700 hover:bg-rose-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
           >
-            <Upload className="w-3.5 h-3.5" />
+            <Trash2 className="w-3.5 h-3.5" />
+            Hapus gambar
+          </button>
+        )}
+      </div>
+      {/* Tiga tombol setinggi 32px dengan jarak 8px pas 112px, sama dengan kotak gambar; di HP kotaknya ikut memanjang */}
+      <div className="flex items-stretch gap-3">
+        <div className="relative w-28 min-h-28 shrink-0 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center">
+          {ai?.busy ? (
+            <span className="text-[11px] text-slate-600 text-center px-2" role="status">Menggambar, bisa sampai 30 detik</span>
+          ) : value ? (
+            <img src={value} alt="" className="absolute inset-0 w-full h-full object-contain" />
+          ) : (
+            <span className="text-[11px] text-slate-500 text-center px-2">{emptyHint}</span>
+          )}
+        </div>
+        <div className="grid content-start gap-2 flex-1 min-w-0 sm:flex-none sm:w-44">
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} className={PICKER_BTN}>
+            <Upload className="w-4 h-4" />
             {uploading ? 'Memproses...' : 'Unggah gambar'}
           </button>
+          <button type="button" onClick={() => setIsBankOpen(true)} className={PICKER_BTN}>
+            <Images className="w-4 h-4" />
+            Ambil dari bank
+          </button>
           {ai && (
-            <button
-              type="button"
-              onClick={ai.onGenerate}
-              disabled={ai.disabled || Boolean(ai.blockedHint)}
-              className="flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] sm:min-h-[36px] rounded-lg border border-emerald-700 bg-white hover:bg-emerald-50 disabled:border-slate-300 disabled:text-slate-500 disabled:hover:bg-white disabled:cursor-not-allowed text-emerald-800 text-xs font-semibold cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
-            >
-              <ImagePlus className="w-3.5 h-3.5" />
+            <button type="button" onClick={ai.onGenerate} disabled={ai.disabled || Boolean(ai.blockedHint)} className={PICKER_BTN}>
+              <ImagePlus className="w-4 h-4" />
               {ai.busy ? 'Menggambar...' : 'Gambar dengan AI'}
-            </button>
-          )}
-          {ai?.blockedHint && <p className="text-[10px] text-slate-500 max-w-[12rem]">{ai.blockedHint}</p>}
-          {value && !ai?.busy && (
-            <button
-              type="button"
-              onClick={() => onChange('')}
-              className="flex items-center gap-1 text-[11px] font-medium text-rose-700 hover:underline cursor-pointer"
-            >
-              <Trash2 className="w-3 h-3" />
-              Hapus gambar
             </button>
           )}
         </div>
       </div>
+      {ai?.blockedHint && <p className="mt-1 text-[11px] text-slate-600">{ai.blockedHint}</p>}
+      {isBankOpen && <ImageBankDialog onPick={onChange} onClose={() => setIsBankOpen(false)} />}
     </div>
   );
 };
@@ -131,6 +139,14 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
   const [activeDay, setActiveDay] = useState(1);
 
   const updateHero = (patch: Partial<NutritionHeroConfig>) => onChange({ nutritionHero: { ...hero, ...patch } });
+
+  // Slide pertama pahlawan pilihan petugas; slide berikutnya bahan di menu, sama seperti carousel halaman publik.
+  const slideIngredients = heroSlideIngredients(hero.name, menuToday.ingredients);
+  const slideCount = slideIngredients.length + 1;
+  const [slideIndex, setSlideIndex] = useState(0);
+  const slide = Math.min(slideIndex, slideCount - 1);
+  const slideItem: IngredientNutritionInfo | null = slide > 0 ? slideIngredients[slide - 1] : null;
+  const goSlide = (step: number) => setSlideIndex((slide + step + slideCount) % slideCount);
 
   const habit: DailyHabitItem =
     habits.find(h => h.weekday === activeDay) ?? { weekday: activeDay, title: '', description: '', steps: [], imageUrl: '' };
@@ -149,6 +165,8 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
   latest.current = menuToday;
   const patchHeroLatest = (patch: Partial<NutritionHeroConfig>) =>
     onChange({ nutritionHero: { ...latest.current.nutritionHero, ...patch } });
+  const patchIngredientLatest = (id: string, patch: Partial<IngredientNutritionInfo>) =>
+    onChange({ ingredients: latest.current.ingredients.map(i => (i.id === id ? { ...i, ...patch } : i)) });
   const patchHabitLatest = (weekday: number, patch: Partial<DailyHabitItem>) => {
     const list = latest.current.dailyHabits;
     const current = list.find(h => h.weekday === weekday) ?? { weekday, title: '', description: '', steps: [], imageUrl: '' };
@@ -229,6 +247,50 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
     }
   };
 
+  const generateSlideImage = (item: IngredientNutritionInfo) =>
+    generateImage('hero', item.name.trim(), (item.whyGood || []).join('. ') || item.healthBenefits, url => patchIngredientLatest(item.id, { slideImageUrl: url }));
+
+  const handleAiSlide = async () => {
+    const item = slideItem;
+    if (!item?.name.trim()) return;
+    const hasContent = Boolean(item.slideImageUrl || item.nutritionHighlight.trim() || item.whyGood?.some(w => w.trim()));
+    if (hasContent && !(await confirmReplace(`slide ${item.name}`, REPLACE_WITH_IMAGE))) return;
+    setAiBusy('hero');
+    let points: string[] = [];
+    try {
+      const draft = await requestMenuAiDraft({ menuTitle: menuToday.menuTitle, ingredients: [{ name: item.name.trim(), category: item.category }] });
+      const d = draft.ingredients[0];
+      if (!d) throw new Error('AI belum memberi hasil, coba lagi.');
+      points = (d.whyGood || []).map(w => w.trim()).filter(Boolean);
+      patchIngredientLatest(item.id, {
+        whyGood: points,
+        healthBenefits: d.healthBenefits.trim() || item.healthBenefits,
+        nutritionHighlight: d.nutritionHighlight?.trim() || item.nutritionHighlight,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Gagal membuat draf AI.');
+      return;
+    } finally {
+      setAiBusy(null);
+    }
+    try {
+      await generateSlideImage({ ...item, whyGood: points });
+      onNotify(`Teks dan gambar slide ${item.name} masuk. Periksa dulu sebelum Simpan.`);
+    } catch (err) {
+      toast.error(`Teks sudah masuk, tapi gambar gagal: ${errText(err)}. Gambar bisa diambil dari bank.`);
+    }
+  };
+
+  const handleSlideImageOnly = async (item: IngredientNutritionInfo) => {
+    if (item.slideImageUrl && !(await confirmReplace('gambar', 'Gambar yang sekarang akan diganti.'))) return;
+    try {
+      await generateSlideImage(item);
+      onNotify('Gambar AI masuk. Periksa dulu sebelum Simpan.');
+    } catch (err) {
+      toast.error(errText(err));
+    }
+  };
+
   const handleAiHabit = async () => {
     const weekday = activeDay;
     const draft = await runAi(
@@ -294,11 +356,82 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
         <div className="pb-2 border-b border-slate-100 flex items-start justify-between gap-2">
           <div>
             <h3 className="text-sm font-bold text-slate-900">Pahlawan Gizi Hari Ini</h3>
-            <p className="text-[11px] text-slate-500">Satu bahan yang disorot untuk anak. Kosongkan nama untuk menyembunyikan bagian ini.</p>
+            <p className="text-[11px] text-slate-500">
+              {slideItem ? 'Isi slide ini tersimpan di data bahan, sama dengan daftar Bahan pangan.' : 'Satu bahan yang disorot untuk anak. Kosongkan nama untuk memulai dari slide bahan.'}
+            </p>
           </div>
-          <AiButton busy={busyLabel('hero')} disabled={anyAiBusy} label="Isi teks & gambar dengan AI" onClick={handleAiHero} />
+          <AiButton busy={busyLabel('hero')} disabled={anyAiBusy || (slideItem !== null && !slideItem.name.trim())} label="Isi teks & gambar dengan AI" onClick={slideItem ? handleAiSlide : handleAiHero} />
         </div>
 
+        {slideCount > 1 && (
+          <div role="group" aria-label="Pilih slide" className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
+            <button type="button" onClick={() => goSlide(-1)} aria-label="Slide sebelumnya" className="flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] rounded-md text-slate-700 hover:bg-white cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-600">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <p aria-live="polite" className="min-w-0 truncate text-xs font-semibold text-slate-800">
+              Slide {slide + 1} dari {slideCount}: {slideItem ? slideItem.name : hero.name.trim() || 'Pahlawan utama'}
+            </p>
+            <button type="button" onClick={() => goSlide(1)} aria-label="Slide berikutnya" className="flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] rounded-md text-slate-700 hover:bg-white cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-600">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {slideItem ? (
+          <div key={slideItem.id} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls} htmlFor="slide-name">Nama bahan</label>
+                <input id="slide-name" className={inputCls} value={slideItem.name} onChange={e => patchIngredientLatest(slideItem.id, { name: e.target.value })} />
+              </div>
+              <div>
+                <label className={labelCls} htmlFor="slide-category">Kategori</label>
+                <Select id="slide-category" className="w-full" value={slideItem.category} onChange={e => patchIngredientLatest(slideItem.id, { category: e.target.value })}>
+                  {!INGREDIENT_CATEGORIES.some(c => c.value === slideItem.category) && (
+                    <option value={slideItem.category}>{slideItem.category || 'Pilih kategori'}</option>
+                  )}
+                  {INGREDIENT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </Select>
+              </div>
+            </div>
+            <ImagePicker
+              label="Gambar kartun"
+              emptyHint="Kosong: ilustrasi otomatis"
+              value={slideItem.slideImageUrl || ''}
+              onChange={url => patchIngredientLatest(slideItem.id, { slideImageUrl: url })}
+              onNotify={onNotify}
+              ai={{
+                busy: imageBusy === 'hero',
+                disabled: anyAiBusy,
+                blockedHint: slideItem.name.trim() ? undefined : 'Isi nama bahan dulu untuk membuat gambar.',
+                onGenerate: () => handleSlideImageOnly(slideItem),
+              }}
+            />
+            <div>
+              <label className={labelCls} htmlFor="slide-points">Poin yang tampil (satu per baris)</label>
+              <textarea
+                id="slide-points"
+                rows={4}
+                className={inputCls}
+                value={(slideItem.whyGood || []).join('\n')}
+                onChange={e => patchIngredientLatest(slideItem.id, { whyGood: e.target.value.split('\n') })}
+                onBlur={e => patchIngredientLatest(slideItem.id, { whyGood: linesToList(e.target.value) })}
+                placeholder="Kosong: memakai kalimat manfaat bahan"
+              />
+            </div>
+            <div>
+              <label className={labelCls} htmlFor="slide-nutrients">Kandungan utama</label>
+              <input
+                id="slide-nutrients"
+                className={inputCls}
+                value={slideItem.nutritionHighlight}
+                onChange={e => patchIngredientLatest(slideItem.id, { nutritionHighlight: e.target.value })}
+                placeholder="Pisahkan dengan koma. Contoh: Vitamin C, Serat"
+              />
+            </div>
+          </div>
+        ) : (
+          <>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className={labelCls} htmlFor="hero-name">Nama bahan</label>
@@ -332,7 +465,7 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
         />
 
         <div>
-          <label className={labelCls} htmlFor="hero-points">Fakta menarik (satu per baris)</label>
+          <label className={labelCls} htmlFor="hero-points">Poin yang tampil (satu per baris)</label>
           <textarea
             id="hero-points"
             rows={4}
@@ -340,17 +473,6 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
             value={hero.points.join('\n')}
             onChange={e => updateHero({ points: e.target.value.split('\n') })}
             onBlur={e => updateHero({ points: linesToList(e.target.value) })}
-          />
-        </div>
-        <div>
-          <label className={labelCls} htmlFor="hero-funfact">Fakta menarik (opsional)</label>
-          <textarea
-            id="hero-funfact"
-            rows={2}
-            className={inputCls}
-            value={hero.funFact || ''}
-            onChange={e => updateHero({ funFact: e.target.value })}
-            placeholder="Kosongkan untuk menyembunyikan kotak ini"
           />
         </div>
         <div>
@@ -365,6 +487,8 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
             placeholder="Kosong: memakai kandungan menonjol dari bahan yang namanya cocok"
           />
         </div>
+          </>
+        )}
       </div>
 
       {/* Kebiasaan baik per hari */}
@@ -443,6 +567,34 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
             onGenerate: () => handleImageOnly('habit'),
           }}
         />
+      </div>
+
+      {/* Tahukah Kamu? */}
+      <div className="lg:col-span-2 pt-4 border-t border-slate-200 space-y-3">
+        <div>
+          <h3 className="text-sm font-bold text-slate-900">Tahukah Kamu?</h3>
+          <p className="text-[11px] text-slate-500">Kotak di bawah Kuis Gizi. Bila kosong, kotak memakai Tips hari ini; bila keduanya kosong, kotak disembunyikan.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className={labelCls} htmlFor="hero-funfact">Isi fakta</label>
+            <textarea
+              id="hero-funfact"
+              rows={4}
+              className={inputCls}
+              value={hero.funFact || ''}
+              onChange={e => updateHero({ funFact: e.target.value })}
+              placeholder="Contoh: Ayam bisa dimasak jadi banyak makanan enak."
+            />
+          </div>
+          <ImagePicker
+            label="Gambar"
+            emptyHint="Kosong: gambar bawaan"
+            value={menuToday.funFactImageUrl || ''}
+            onChange={url => onChange({ funFactImageUrl: url })}
+            onNotify={onNotify}
+          />
+        </div>
       </div>
 
       {/* Isi Piringku & perkiraan energi */}

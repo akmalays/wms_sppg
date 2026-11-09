@@ -91,8 +91,6 @@ interface TrayStageProps {
   alt: string;
   texts: string[];
   placements: LabelPlacement[];
-  /** Ilustrasi berlatar putih: tidak diputar, tanpa bayangan potongan, tanpa panah karena tidak ada makanan yang ditunjuk. */
-  plain?: boolean;
   compact?: boolean;
 }
 
@@ -100,7 +98,7 @@ interface TrayStageProps {
  * Ompreng dan nama hidangan dengan letak yang sama seperti poster Hijau. Koordinatnya koordinat poster, jadi letak
  * yang digeser di modul poster langsung berlaku di sini.
  */
-export const TrayStage: React.FC<TrayStageProps> = ({ photo, fallbackPhoto, alt, texts, placements, plain, compact }) => {
+export const TrayStage: React.FC<TrayStageProps> = ({ photo, fallbackPhoto, alt, texts, placements, compact }) => {
   const [failed, setFailed] = useState(false);
   const [natural, setNatural] = useState({ w: 3, h: 4 });
   const [fontsReady, setFontsReady] = useState(false);
@@ -115,7 +113,7 @@ export const TrayStage: React.FC<TrayStageProps> = ({ photo, fallbackPhoto, alt,
 
   const src = failed && fallbackPhoto ? fallbackPhoto : photo;
   // Foto tegak diputar agar nampan mendatar seperti di poster; foto yang sudah mendatar dibiarkan.
-  const rotate = !plain && natural.w <= natural.h;
+  const rotate = natural.w <= natural.h;
   const boxW = rotate ? STAGE_BOX.w : STAGE_BOX.h;
   const boxH = rotate ? STAGE_BOX.h : STAGE_BOX.w;
   // Di layar sempit tampilan dipotong pas ke ompreng, supaya memenuhi lebar layar; nama hidangan pindah ke daftar di bawahnya.
@@ -145,7 +143,7 @@ export const TrayStage: React.FC<TrayStageProps> = ({ photo, fallbackPhoto, alt,
   return (
     <div className="relative w-full" style={{ aspectRatio: `${view.w} / ${view.h}` }}>
       {/* Bayangan di pembungkus yang tidak berputar, supaya jatuhnya tetap ke bawah. */}
-      <div className={`absolute inset-0 ${plain ? '' : '[filter:drop-shadow(0_18px_22px_rgba(6,40,44,0.45))]'}`}>
+      <div className="absolute inset-0 [filter:drop-shadow(0_18px_22px_rgba(6,40,44,0.45))]">
         <div
           className="absolute"
           style={{
@@ -161,7 +159,7 @@ export const TrayStage: React.FC<TrayStageProps> = ({ photo, fallbackPhoto, alt,
             alt={alt}
             onLoad={e => setNatural({ w: e.currentTarget.naturalWidth || 3, h: e.currentTarget.naturalHeight || 4 })}
             onError={() => setFailed(true)}
-            className={`block w-full h-full object-contain ${plain ? 'rounded-2xl bg-white' : ''}`}
+            className="block w-full h-full object-contain"
           />
         </div>
       </div>
@@ -184,7 +182,7 @@ export const TrayStage: React.FC<TrayStageProps> = ({ photo, fallbackPhoto, alt,
               const firstY = p.y - ((label.lines.length - 1) * lineH) / 2;
               return (
                 <g key={label.text} className="[filter:drop-shadow(0_1px_4px_rgba(8,50,54,0.7))]">
-                  {label.arrow && !plain && (
+                  {label.arrow && (
                     <g fill="none" stroke="#ffffff" strokeWidth={ARROW_WIDTH} strokeLinecap="round" strokeLinejoin="round">
                       <path d={label.arrow.line} />
                       <path d={label.arrow.head} />

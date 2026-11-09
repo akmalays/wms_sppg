@@ -62,11 +62,12 @@ const RESPONSE_SCHEMA = {
         type: 'OBJECT',
         properties: {
           name: { type: 'STRING' },
+          nutritionHighlight: { type: 'STRING' },
           healthBenefits: { type: 'STRING' },
           whyGood: { type: 'ARRAY', items: { type: 'STRING' } },
           funFact: { type: 'STRING' },
         },
-        required: ['name', 'healthBenefits', 'whyGood', 'funFact'],
+        required: ['name', 'nutritionHighlight', 'healthBenefits', 'whyGood', 'funFact'],
       },
     },
   },
@@ -389,6 +390,7 @@ ${ingredients.map(i => `- ${i.name}${i.category ? ` (${i.category})` : ''}`).joi
 Tulis dalam Bahasa Indonesia yang hangat, sederhana, dan mudah dipahami anak:
 1. "description": 2 sampai 3 kalimat tentang sajian hari ini.
 2. Untuk SETIAP bahan di daftar, dengan "name" persis sama seperti di daftar:
+   - "nutritionHighlight": 2 sampai 4 nama zat gizi yang umum diketahui ada pada bahan itu, dipisah koma, tanpa angka. Contoh: Vitamin C, Serat.
    - "healthBenefits": 1 kalimat manfaat bahan itu bagi tubuh anak.
    - "whyGood": 2 sampai 3 poin pendek (maksimal 8 kata per poin) kenapa bahan itu baik.
    - "funFact": 1 fakta menarik yang umum diketahui tentang bahan itu.

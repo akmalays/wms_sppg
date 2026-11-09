@@ -5,7 +5,8 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export interface MenuAiDraft {
   description: string;
-  ingredients: { name: string; healthBenefits: string; whyGood: string[]; funFact: string }[];
+  /** nutritionHighlight kosong bila Edge Function yang terpasang masih versi lama. */
+  ingredients: { name: string; nutritionHighlight?: string; healthBenefits: string; whyGood: string[]; funFact: string }[];
 }
 
 export interface MenuAiDraftInput {

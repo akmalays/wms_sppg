@@ -107,7 +107,24 @@ export interface IngredientNutritionInfo {
   whyGood?: string[];
   /** Kotak "Tahukah kamu?"; kosong = disembunyikan */
   funFact?: string;
+  /** Gambar kartun di slide Pahlawan Gizi; kosong = ilustrasi otomatis. Terpisah dari imageUrl (foto bahan di lembar detail). */
+  slideImageUrl?: string;
 }
+
+export const INGREDIENT_CATEGORIES: { value: string; label: string }[] = [
+  { value: 'karbohidrat', label: 'Karbohidrat' },
+  { value: 'protein_hewani', label: 'Protein hewani' },
+  { value: 'protein_nabati', label: 'Protein nabati' },
+  { value: 'sayuran', label: 'Sayuran' },
+  { value: 'buah', label: 'Buah' },
+  { value: 'pelengkap', label: 'Pelengkap' },
+];
+
+/** Bahan yang menjadi slide setelah pahlawan utama; bahan yang namanya memuat nama pahlawan dilewati agar tidak dobel. */
+export const heroSlideIngredients = (heroName: string, ingredients: IngredientNutritionInfo[]) => {
+  const name = heroName.trim().toLowerCase();
+  return ingredients.filter(i => !name || !i.name.toLowerCase().includes(name));
+};
 
 export interface PortionTierConfig {
   tierName: string;
@@ -216,6 +233,8 @@ export interface WebsiteMenuTodayConfig {
   dailyHabits: DailyHabitItem[];
   /** Kotak "Tips hari ini" di Isi Piringku; kosong = disembunyikan */
   plateTip?: string;
+  /** Gambar kotak "Tahukah Kamu?"; kosong = ilustrasi bawaan */
+  funFactImageUrl?: string;
   /**
    * Berat badan acuan (kg) untuk perkiraan "energi setara aktivitas".
    * Bawaan dari tabel AKG 2019 (Permenkes No. 28/2019): 7–9 tahun 27 kg, 10–12 tahun rata-rata 37 kg.
@@ -464,7 +483,7 @@ export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = {
       tierName: 'Porsi Kecil (PAUD & SD Kelas 1–3)',
       targetCalories: '465 kkal',
       totalGramature: '± 360 gram',
-      description: 'Disesuaikan dengan kapasitas lambung dan kebutuhan metabolisme anak usia 5–9 tahun.',
+      description: 'Anak PAUD sampai SD kelas 3 lambungnya masih kecil, jadi porsinya disesuaikan agar habis dimakan.',
       proteinGrams: '19 g',
       carbGrams: '68 g',
       fatGrams: '12 g',
@@ -474,7 +493,7 @@ export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = {
       tierName: 'Porsi Besar (SD Kelas 4–6 & SMP)',
       targetCalories: '685 kkal',
       totalGramature: '± 490 gram',
-      description: 'Diperkaya kalori dan protein ekstra guna menopang percepatan pertumbuhan pubertas dan aktivitas fisik aktif.',
+      description: 'Anak SD kelas 4 sampai SMP sedang tumbuh pesat dan lebih banyak bergerak, jadi porsinya lebih besar.',
       proteinGrams: '29 g',
       carbGrams: '96 g',
       fatGrams: '17 g',
@@ -1036,6 +1055,17 @@ export async function uploadCmsMedia(
       finalSizeKb
     };
   }
+}
+
+/** Gambar unggahan dan hasil AI (folder menu), terbaru lebih dulu, untuk bank gambar. */
+export async function listCmsImages(): Promise<{ name: string; url: string }[]> {
+  if (!isSupabaseConfigured()) return [];
+  const bucket = supabase.storage.from(SUPABASE_BUCKET_NAME);
+  const { data, error } = await bucket.list('menu', { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
+  if (error) throw error;
+  return (data || [])
+    .filter(f => String(f.metadata?.mimetype || '').startsWith('image/'))
+    .map(f => ({ name: f.name, url: bucket.getPublicUrl(`menu/${f.name}`).data.publicUrl }));
 }
 
 /**

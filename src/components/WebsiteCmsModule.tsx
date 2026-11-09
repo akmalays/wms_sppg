@@ -8,6 +8,7 @@ import {
   WebsiteMenuTodayConfig,
   PortionTierConfig,
   DEFAULT_WEBSITE_CONFIG,
+  INGREDIENT_CATEGORIES,
   getWebsiteConfig,
   saveWebsiteConfigToCloud,
   fetchWebsiteConfigFromCloud,
@@ -22,6 +23,9 @@ import { warehouseDb } from '../db/storage';
 import { localDateIso } from '../utils/localDate';
 import type { MenuOrder, MenuPosterMenu } from '../types/warehouse';
 import { portionFromPoster } from '../utils/menuTrayPublish';
+import { estimateIngredientPortions, withEstimatedPortions } from '../utils/portionEstimate';
+import { FormDialog } from './common/FormDialog';
+import { ImageBankDialog } from './common/ImageBankDialog';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
 import { MenuTodayKidsEditor } from './MenuTodayKidsEditor';
@@ -54,8 +58,8 @@ import {
   RotateCcw,
   Printer,
   Copy,
-  Apple,
-  PenLine
+  PenLine,
+  Images
 } from 'lucide-react';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
@@ -108,7 +112,7 @@ const PORTION_FIELDS: { key: keyof PortionTierConfig; label: string }[] = [
   { key: 'carbGrams', label: 'Karbohidrat' },
   { key: 'fatGrams', label: 'Lemak' },
   { key: 'fiberGrams', label: 'Serat' },
-  { key: 'description', label: 'Uraian' },
+  { key: 'description', label: 'Alasan porsi berbeda' },
 ];
 
 type ToastTone = 'success' | 'warning' | 'error';
@@ -660,16 +664,17 @@ export const WebsiteCmsModule: React.FC = () => {
 
     const missingNutrition: string[] = [];
     const ingredients: IngredientNutritionInfo[] = uniqueNames.map((name, idx) => {
+      const estimate = estimateIngredientPortions(name, order, current.portionSmall, current.portionLarge);
       const existing = existingByName.get(normalizeName(name));
-      if (existing) return existing;
+      if (existing) return withEstimatedPortions(existing, estimate);
       missingNutrition.push(name);
       const req = order.keyIngredients?.find(k => normalizeName(k.name || k.itemName || '') === normalizeName(name));
       return {
         id: `ing-${Date.now()}-${idx}`,
         name,
         category: req?.category || '',
-        portionSmall: '',
-        portionLarge: '',
+        portionSmall: estimate.small,
+        portionLarge: estimate.large,
         imageUrl: '',
         nutritionHighlight: '',
         healthBenefits: '',
@@ -913,24 +918,79 @@ export const WebsiteCmsModule: React.FC = () => {
     const newIng: IngredientNutritionInfo = {
       id: newId,
       name: '',
-      category: 'Sayuran & Sop',
-      portionSmall: '50 gram (1 porsi kecil)',
-      portionLarge: '75 gram (1 porsi besar)',
-      imageUrl: IMAGE_PRESETS[3]?.url || '',
-      nutritionHighlight: 'Vitamin & Mineral Alami',
-      healthBenefits: 'Mendukung daya tahan tubuh, konsentrasi belajar, dan pemenuhan gizi anak.',
-      supplier: 'Kelompok Tani Sayur Tumpang',
-      notes: 'Bahan pangan lokal segar tanpa pengawet'
+      category: 'sayuran',
+      portionSmall: '',
+      portionLarge: '',
+      imageUrl: '',
+      nutritionHighlight: '',
+      healthBenefits: '',
+      supplier: '',
+      notes: ''
     };
     setEditingIngredient(newIng);
     setIngredientImagePreview(newIng.imageUrl);
+    setIngredientAiError('');
     setIsIngredientModalOpen(true);
   };
 
+  // Order yang tanggalnya sama dengan menu di halaman publik, bukan selalu order hari ini.
+  const estimatePortionsFor = (ingredientName: string) => {
+    const mt = config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+    const order = warehouseDb.getMenuOrders().find(o => o.status !== 'CANCELLED' && formatMenuDate(o.date) === mt.dateText.trim());
+    return estimateIngredientPortions(ingredientName, order, mt.portionSmall, mt.portionLarge);
+  };
+
   const handleOpenEditIngredient = (item: IngredientNutritionInfo) => {
-    setEditingIngredient({ ...item });
+    setEditingIngredient(withEstimatedPortions({ ...item }, estimatePortionsFor(item.name)));
     setIngredientImagePreview(item.imageUrl);
+    setIngredientAiError('');
     setIsIngredientModalOpen(true);
+  };
+
+  // Hanya kolom teks. Takaran dan pemasok tetap diisi petugas, karena harus dari data dapur, bukan karangan model.
+  // Kolom yang sudah ditulis tidak ditimpa, kecuali keempatnya terisi dan petugas meminta tulis ulang.
+  const [isIngredientBankOpen, setIsIngredientBankOpen] = useState(false);
+  const [ingredientAiBusy, setIngredientAiBusy] = useState(false);
+  const [ingredientAiError, setIngredientAiError] = useState('');
+  const handleAiFillIngredient = async () => {
+    if (!editingIngredient?.name.trim() || ingredientAiBusy) return;
+    const { id, name, category, nutritionHighlight, healthBenefits, whyGood, funFact } = editingIngredient;
+    const replaceAll = Boolean(nutritionHighlight.trim() && healthBenefits.trim() && whyGood?.some(w => w.trim()) && funFact?.trim());
+    if (replaceAll) {
+      const ok = await askConfirm({
+        title: 'Tulis ulang teks bahan ini?',
+        message: 'Kandungan gizi, manfaat, alasan baik, dan "Tahukah kamu" yang sekarang akan diganti draf AI.',
+        confirmText: 'Tulis ulang',
+        variant: 'warning',
+      });
+      if (!ok) return;
+    }
+    setIngredientAiError('');
+    setIngredientAiBusy(true);
+    try {
+      const mt = config.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+      const draft = await requestMenuAiDraft({ menuTitle: mt.menuTitle, dateText: mt.dateText, ingredients: [{ name: name.trim(), category }] });
+      const d = draft.ingredients.find(i => normalizeName(i.name) === normalizeName(name)) ?? draft.ingredients[0];
+      if (!d) throw new Error('AI belum memberi hasil, coba lagi.');
+      // Lewat updater dan dicek id-nya: petugas bisa mengetik atau berganti bahan selama menunggu AI.
+      setEditingIngredient(prev => {
+        if (!prev || prev.id !== id) return prev;
+        const pick = (current: string | undefined, next: string | undefined) =>
+          replaceAll || !current?.trim() ? next?.trim() || current || '' : current;
+        const points = (d.whyGood || []).map(w => w.trim()).filter(Boolean);
+        return {
+          ...prev,
+          nutritionHighlight: pick(prev.nutritionHighlight, d.nutritionHighlight),
+          healthBenefits: pick(prev.healthBenefits, d.healthBenefits),
+          whyGood: (replaceAll || !prev.whyGood?.some(w => w.trim())) && points.length > 0 ? points : prev.whyGood,
+          funFact: pick(prev.funFact, d.funFact),
+        };
+      });
+    } catch (err) {
+      setIngredientAiError(err instanceof Error ? err.message : 'Gagal membuat draf AI.');
+    } finally {
+      setIngredientAiBusy(false);
+    }
   };
 
   const handleSaveIngredient = () => {
@@ -1868,7 +1928,7 @@ export const WebsiteCmsModule: React.FC = () => {
                       {menuToday.imageUrlB3 ? (
                         <img src={menuToday.imageUrlB3} alt="Foto ompreng menu 3B" className="w-full h-full object-contain" />
                       ) : (
-                        <span className="text-[11px] text-slate-500 text-center px-2">Kosong: ilustrasi 3B yang tampil</span>
+                        <span className="text-[11px] text-slate-500 text-center px-2">Kosong: ilustrasi ompreng yang tampil</span>
                       )}
                     </div>
                     <div className="min-w-0 flex-1 space-y-2">
@@ -2301,44 +2361,30 @@ export const WebsiteCmsModule: React.FC = () => {
       )}
 
       {isIngredientModalOpen && editingIngredient && (
-        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl border border-slate-200 max-w-xl w-full p-4 sm:p-5 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
-                  <Apple className="w-4 h-4" />
-                </div>
-                <h4 className="text-sm font-bold text-slate-900">
-                  {(config.menuToday?.ingredients || []).some(x => x.id === editingIngredient.id) ? 'Edit Bahan Pangan' : 'Tambah Bahan Pangan'}
-                </h4>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsIngredientModalOpen(false)}
-                className={`${ICON_BTN} text-slate-500 hover:text-slate-800 hover:bg-slate-100`}
-                aria-label="Tutup"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
+        <FormDialog
+          title={(config.menuToday?.ingredients || []).some(x => x.id === editingIngredient.id) ? 'Edit bahan pangan' : 'Tambah bahan pangan'}
+          onClose={() => setIsIngredientModalOpen(false)}
+          onSubmit={e => {
+            e.preventDefault();
+            handleSaveIngredient();
+          }}
+          submitLabel="Simpan bahan"
+        >
             <div className="space-y-4 text-xs">
               {/* Foto Bahan */}
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Foto Bahan Pangan
-                </label>
+                <span className={FIELD_LABEL}>Foto bahan (opsional)</span>
                 <div className="flex items-start gap-3">
                   <div className="w-24 h-20 rounded-lg bg-slate-100 overflow-hidden border border-slate-200 shrink-0">
                     {ingredientImagePreview ? (
-                      <img src={ingredientImagePreview} alt="Preview Bahan" className="w-full h-full object-cover" />
+                      <img src={ingredientImagePreview} alt="Foto bahan yang dipakai" className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-slate-400 text-[10px]">
+                      <div className="w-full h-full flex items-center justify-center text-slate-500 text-[11px] text-center px-1">
                         Belum ada foto
                       </div>
                     )}
                   </div>
-                  <div className="flex-1 space-y-2">
+                  <div className="flex-1 min-w-0 space-y-2">
                     <input
                       type="file"
                       ref={ingredientFileRef}
@@ -2346,37 +2392,35 @@ export const WebsiteCmsModule: React.FC = () => {
                       onChange={handleUploadIngredientPhoto}
                       className="hidden"
                     />
-                    <button
-                      type="button"
-                      onClick={() => ingredientFileRef.current?.click()}
-                      disabled={isUploadingIngredientImg}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 font-semibold cursor-pointer"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>{isUploadingIngredientImg ? 'Memproses...' : 'Unggah Foto Bahan'}</span>
-                    </button>
-                    <div className="text-[10px] text-slate-500">
-                      Pilihan foto preset:
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {IMAGE_PRESETS.map(p => (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => ingredientFileRef.current?.click()}
+                        disabled={isUploadingIngredientImg}
+                        className={BTN_SECONDARY}
+                      >
+                        <Upload className="w-4 h-4" />
+                        {isUploadingIngredientImg ? 'Memproses...' : ingredientImagePreview ? 'Ganti foto' : 'Unggah foto'}
+                      </button>
+                      <button type="button" onClick={() => setIsIngredientBankOpen(true)} className={BTN_SECONDARY}>
+                        <Images className="w-4 h-4" />
+                        Ambil dari bank
+                      </button>
+                      {ingredientImagePreview && (
                         <button
-                          key={p.id}
                           type="button"
                           onClick={() => {
-                            setIngredientImagePreview(p.url);
-                            setEditingIngredient(prev => prev ? { ...prev, imageUrl: p.url } : null);
+                            setIngredientImagePreview('');
+                            setEditingIngredient(prev => prev ? { ...prev, imageUrl: '' } : null);
                           }}
-                          className={`px-2 py-0.5 rounded text-[10px] border cursor-pointer ${
-                            ingredientImagePreview === p.url
-                              ? 'bg-emerald-700 text-white border-emerald-700'
-                              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                          }`}
+                          className={`${BTN_SECONDARY} text-rose-700`}
                         >
-                          {p.label.split('(')[0]}
+                          <Trash2 className="w-4 h-4" />
+                          Hapus foto
                         </button>
-                      ))}
+                      )}
                     </div>
+                    <p className="text-[11px] text-slate-500">Tampil kecil di detail bahan pada halaman menu. Tanpa foto, hanya ilustrasi yang tampil.</p>
                   </div>
                 </div>
               </div>
@@ -2384,152 +2428,151 @@ export const WebsiteCmsModule: React.FC = () => {
               {/* Nama & Kategori Bahan */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Nama Bahan Pangan</label>
+                  <label htmlFor="ingredient-name" className={FIELD_LABEL}>Nama bahan</label>
                   <input
+                    id="ingredient-name"
                     type="text"
                     value={editingIngredient.name}
                     onChange={e => setEditingIngredient(prev => prev ? { ...prev, name: e.target.value } : null)}
-                    placeholder="Contoh: Ayam Ungkep Bumbu Kuning"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                    onBlur={() => setEditingIngredient(prev => prev ? withEstimatedPortions(prev, estimatePortionsFor(prev.name)) : null)}
+                    placeholder="Contoh: Kubis"
+                    className={FIELD}
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Kategori Gizi Bahan</label>
-                  <Select className="w-full"
+                  <label htmlFor="ingredient-category" className={FIELD_LABEL}>Kategori</label>
+                  <Select id="ingredient-category" className="w-full"
                     value={editingIngredient.category}
-                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, category: e.target.value as any } : null)}>
-                    <option value="karbohidrat">Karbohidrat (Nasi, Ubi, Kentang)</option>
-                    <option value="protein_hewani">Protein Hewani (Ayam, Ikan, Telur, Daging)</option>
-                    <option value="protein_nabati">Protein Nabati (Tempe, Tahu, Kacang)</option>
-                    <option value="sayuran">Sayuran (Wortel, Buncis, Bayam, Sop)</option>
-                    <option value="buah">Buah-buahan (Pisang, Jeruk, Semangka)</option>
-                    <option value="pelengkap">Pelengkap (Susu, Biji-bijian)</option>
+                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, category: e.target.value } : null)}>
+                    {/* Bahan dari Rekap Order bisa membawa kategori di luar daftar; tetap ditampilkan apa adanya agar tidak terlihat seperti Karbohidrat. */}
+                    {!INGREDIENT_CATEGORIES.some(c => c.value === editingIngredient.category) && (
+                      <option value={editingIngredient.category}>{editingIngredient.category || 'Pilih kategori'}</option>
+                    )}
+                    {INGREDIENT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                   </Select>
                 </div>
               </div>
 
               {/* Takaran Porsi Kecil vs Porsi Besar */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-2.5 rounded-lg border border-emerald-200 bg-emerald-50/50">
-                  <label className="block font-semibold text-emerald-900 mb-1">Takaran Porsi Kecil (PAUD & SD 1-3)</label>
+                <div>
+                  <label htmlFor="ingredient-small" className={FIELD_LABEL}>Porsi kecil (PAUD, SD 1-3)</label>
                   <input
+                    id="ingredient-small"
                     type="text"
                     value={editingIngredient.portionSmall}
                     onChange={e => setEditingIngredient(prev => prev ? { ...prev, portionSmall: e.target.value } : null)}
-                    placeholder="Contoh: 50 gram (1 potong sedang)"
-                    className="w-full px-2.5 py-1.5 rounded border border-slate-300 text-slate-800 bg-white"
+                    placeholder="Contoh: 50 gram"
+                    className={FIELD}
                   />
                 </div>
-                <div className="p-2.5 rounded-lg border border-sky-200 bg-sky-50/50">
-                  <label className="block font-semibold text-sky-900 mb-1">Takaran Porsi Besar (SD 4-6 & SMP)</label>
+                <div>
+                  <label htmlFor="ingredient-large" className={FIELD_LABEL}>Porsi besar (SD 4-6, SMP)</label>
                   <input
+                    id="ingredient-large"
                     type="text"
                     value={editingIngredient.portionLarge}
                     onChange={e => setEditingIngredient(prev => prev ? { ...prev, portionLarge: e.target.value } : null)}
-                    placeholder="Contoh: 80 gram (1 potong dada/paha)"
-                    className="w-full px-2.5 py-1.5 rounded border border-slate-300 text-slate-800 bg-white"
+                    placeholder="Contoh: 75 gram"
+                    className={FIELD}
                   />
                 </div>
+                {estimatePortionsFor(editingIngredient.name).note && (
+                  <p className="sm:col-span-2 -mt-1 text-[11px] text-slate-600">{estimatePortionsFor(editingIngredient.name).note}</p>
+                )}
               </div>
 
-              {/* Nilai Gizi Utama & Highlight */}
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Kandungan Gizi Utama (Highlight)
-                </label>
-                <input
-                  type="text"
-                  value={editingIngredient.nutritionHighlight}
-                  onChange={e => setEditingIngredient(prev => prev ? { ...prev, nutritionHighlight: e.target.value } : null)}
-                  placeholder="Contoh: Protein hewani murni, Vitamin B12, Zink, Zat Besi"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
-                />
-              </div>
+              {/* Teks detail bahan di halaman publik; bagian ini yang bisa diisi AI */}
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <h5 className="text-xs font-bold text-slate-900">Teks di halaman menu</h5>
+                    <p className="text-[11px] text-slate-600">
+                      {editingIngredient.name.trim() ? 'AI mengisi kolom yang masih kosong. Baca dulu sebelum menyimpan.' : 'Isi nama bahan dulu supaya AI bisa menulis.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAiFillIngredient}
+                    disabled={ingredientAiBusy || !editingIngredient.name.trim()}
+                    className={`${BTN_SECONDARY} shrink-0 disabled:cursor-not-allowed disabled:text-slate-400`}
+                  >
+                    <PenLine className="w-4 h-4" />
+                    {ingredientAiBusy ? 'Menulis...' : 'Isi dengan AI'}
+                  </button>
+                </div>
+                {ingredientAiError && (
+                  <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{ingredientAiError}</p>
+                )}
 
-              {/* Manfaat Kesehatan */}
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Manfaat Kesehatan & Belajar Anak
-                </label>
-                <textarea
-                  rows={2}
-                  value={editingIngredient.healthBenefits}
-                  onChange={e => setEditingIngredient(prev => prev ? { ...prev, healthBenefits: e.target.value } : null)}
-                  placeholder="Contoh: Mendukung perkembangan massa otot anak, menjaga fokus belajar di kelas, dan mencegah anemia."
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
-                />
-              </div>
-
-              {/* Konten anak di halaman publik */}
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Mengapa baik untukmu? (satu poin per baris, opsional)
-                </label>
-                <textarea
-                  rows={3}
-                  value={(editingIngredient.whyGood || []).join('\n')}
-                  onChange={e => setEditingIngredient(prev => prev ? { ...prev, whyGood: e.target.value.split('\n') } : null)}
-                  placeholder="Kosongkan untuk memakai kalimat dari Manfaat Kesehatan"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
-                />
-              </div>
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Tahukah kamu? (opsional)
-                </label>
-                <input
-                  type="text"
-                  value={editingIngredient.funFact || ''}
-                  onChange={e => setEditingIngredient(prev => prev ? { ...prev, funFact: e.target.value } : null)}
-                  placeholder="Kosongkan untuk menyembunyikan kotak ini"
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
-                />
-              </div>
-
-              {/* Pemasok & Catatan */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Asal / Pemasok Bahan</label>
+                  <label htmlFor="ingredient-highlight" className={FIELD_LABEL}>Kandungan gizi utama</label>
                   <input
+                    id="ingredient-highlight"
                     type="text"
-                    value={editingIngredient.supplier}
-                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, supplier: e.target.value } : null)}
-                    placeholder="Contoh: Kemitraan Peternak Unggas Tumpang"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                    value={editingIngredient.nutritionHighlight}
+                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, nutritionHighlight: e.target.value } : null)}
+                    placeholder="Pisahkan dengan koma. Contoh: Vitamin C, Serat"
+                    className={FIELD}
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Catatan Tambahan (Opsional)</label>
+                  <label htmlFor="ingredient-benefits" className={FIELD_LABEL}>Manfaat untuk tubuh</label>
+                  <textarea
+                    id="ingredient-benefits"
+                    rows={2}
+                    value={editingIngredient.healthBenefits}
+                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, healthBenefits: e.target.value } : null)}
+                    placeholder="Satu kalimat yang mudah dipahami anak"
+                    className={`${FIELD} py-2`}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="ingredient-why" className={FIELD_LABEL}>Mengapa baik untukmu? (opsional, satu poin per baris)</label>
+                  <textarea
+                    id="ingredient-why"
+                    rows={3}
+                    value={(editingIngredient.whyGood || []).join('\n')}
+                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, whyGood: e.target.value.split('\n') } : null)}
+                    placeholder="Kosongkan untuk memakai kalimat Manfaat untuk tubuh"
+                    className={`${FIELD} py-2`}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="ingredient-fact" className={FIELD_LABEL}>Tahukah kamu? (opsional)</label>
                   <input
+                    id="ingredient-fact"
                     type="text"
-                    value={editingIngredient.notes || ''}
-                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, notes: e.target.value } : null)}
-                    placeholder="Contoh: Diungkep perlahan tanpa minyak berlebih"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-slate-800"
+                    value={editingIngredient.funFact || ''}
+                    onChange={e => setEditingIngredient(prev => prev ? { ...prev, funFact: e.target.value } : null)}
+                    placeholder="Kosongkan untuk menyembunyikan kotak ini"
+                    className={FIELD}
                   />
                 </div>
               </div>
 
-              {/* Tombol Aksi */}
-              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsIngredientModalOpen(false)}
-                  className={`${BTN_SECONDARY}`}
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveIngredient}
-                  className={`${BTN_PRIMARY}`}
-                >
-                  Simpan Bahan
-                </button>
+              <div>
+                <label htmlFor="ingredient-notes" className={FIELD_LABEL}>Catatan (opsional)</label>
+                <input
+                  id="ingredient-notes"
+                  type="text"
+                  value={editingIngredient.notes || ''}
+                  onChange={e => setEditingIngredient(prev => prev ? { ...prev, notes: e.target.value } : null)}
+                  placeholder="Contoh: Dicuci dan dipotong saat pagi"
+                  className={FIELD}
+                />
               </div>
             </div>
-          </div>
-        </div>
+            {isIngredientBankOpen && (
+              <ImageBankDialog
+                onClose={() => setIsIngredientBankOpen(false)}
+                onPick={url => {
+                  setIngredientImagePreview(url);
+                  setEditingIngredient(prev => prev ? { ...prev, imageUrl: url } : null);
+                }}
+              />
+            )}
+        </FormDialog>
       )}
 
       {/* 9. MODAL / PRINT VIEW: CETAK STIKER MEJA QR CODE */}

@@ -33,6 +33,18 @@
     font-family: 'Nunito', var(--font-sans);
   }
 
+  /* Sapuan stabilo di judul kartu Menu MBG. Inline dengan clone: judul yang turun baris mendapat sapuan di tiap baris. */
+  .title-marker {
+    padding: 0 0.2em;
+    margin-left: -0.2em;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 20' preserveAspectRatio='none'%3E%3Cpath fill='%23fde68a' d='M3 7C40 3 90 5 140 3s50 1 57 3c2 5 0 9-3 10-44 2-104-1-144 2S10 17 4 15C1 12 1 9 3 7Z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: 100% 46%;
+    background-position: 0 86%;
+  }
+
   .font-serif-display {
     font-family: var(--font-serif);
     font-optical-sizing: auto;
