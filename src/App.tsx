@@ -30,6 +30,7 @@ import { HedonicRecapModule } from './components/HedonicRecapModule';
 import { ScanResultModule } from './components/ScanResultModule';
 import { QrScannerDialog } from './components/common/QrScannerDialog';
 import { SCAN_PATH, ScanTarget, scanTargetFromLocation, isWasteEntryTarget, isNonFoodIssueTarget, poIdFromScanTarget } from './utils/scanCode';
+import { enablePwa } from './utils/pwa';
 
 export type AppRouteType = 'DASHBOARD' | 'MENU_TODAY' | 'LANDING';
 
@@ -107,6 +108,10 @@ const MainLayout: React.FC = () => {
       setNonMenuFormRequest(false);
     }
   }, [activeTab]);
+
+  React.useEffect(() => {
+    if (currentRoute === 'DASHBOARD') enablePwa();
+  }, [currentRoute]);
 
   // Sync state when browser URL changes (back/forward navigation or hash change)
   React.useEffect(() => {
