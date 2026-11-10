@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import {exportMultiSheetExcel, exportToExcel} from "../lib/excelExport";
 import {localDateIso} from "../utils/localDate";
+import {PO_CATEGORIES, inferPoCategory, isPoCategory} from "../utils/poCategory";
 import {isExtraCostPoItem} from "../utils/extraCosts";
 import {convertQty, normalizeQtyForUnit} from "../utils/unitConversion";
 import {KopText} from "./common/KopText";
@@ -1641,7 +1642,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     if (targetOrder.poArrivalItems && targetOrder.poArrivalItems.length > 0) {
       setPoFormRows(
         withSuggestedSuppliers(targetOrder.poArrivalItems.map((p) => ({
-          category: p.category || "Bahan Makanan",
+          category: savedRowCategory(p),
           itemName: p.itemName,
           qtyOrder: p.qtyOrder || "",
           qtyArrived: p.qtyArrived || "",
@@ -1701,16 +1702,16 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
   const findMasterItem = (name: string) => inventoryItems.find((it) => normName(it.name) === normName(name));
 
-  // Kategori Master Barang lebih rinci dari pilihan kategori PO; null berarti kategori PO dibiarkan.
-  const poCategoryFromMaster = (masterCategory: string): string | null => {
-    const c = masterCategory.toLowerCase();
-    if (["protein", "unggas", "telur", "ikan", "daging"].some((k) => c.includes(k))) return "Protein";
-    if (["bumbu", "rempah"].some((k) => c.includes(k))) return "Bumbu";
-    if (c.includes("sayur")) return "Sayur";
-    if (c.includes("buah")) return "Buah";
-    if (["sembako", "beras", "minyak", "tepung", "pemanis", "bahan kering", "karbohidrat"].some((k) => c.includes(k))) return "Sembako";
-    return null;
-  };
+  const inferRowCategory = (itemName: string, previous?: string, supplier?: string) =>
+    inferPoCategory({
+      itemName,
+      masterCategory: findMasterItem(itemName)?.category,
+      previous,
+      supplierCategory: masterSuppliers.find((s) => normName(s.name) === normName(supplier || ""))?.supplyCategory,
+    });
+  // Pilihan petugas yang tersimpan dipertahankan; hanya nilai yang tidak ada di dropdown yang ditentukan ulang.
+  const savedRowCategory = (p: MenuPoArrivalItem) =>
+    isPoCategory(p.category) ? p.category : inferRowCategory(p.itemName, p.category, p.supplier);
 
   type PoFormRow = (typeof poFormRows)[number];
   type IndexedPoRow = {row: PoFormRow; idx: number};
@@ -1766,7 +1767,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
       .map((e) => {
         const master = findMasterItem(e.row.itemName);
         return {
-          category: master?.category || e.row.category,
+          category: inferRowCategory(e.row.itemName, e.row.category, e.supplier),
           itemName: master?.name || e.row.itemName,
           qtyOrder: e.row.qtyOrder || "",
           // Jumlah datang dikosongkan: baru terisi setelah barang diterima dan ditimbang.
@@ -1778,7 +1779,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
         };
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [poHistory, inventoryItems, currentUser.name]);
+  }, [poHistory, inventoryItems, masterSuppliers, currentUser.name]);
 
   const withSuggestedSuppliers = (rows: PoFormRow[]): PoFormRow[] =>
     rows.map((r) => ({
@@ -1890,7 +1891,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
         if (match) return match.name;
       }
 
-      if (cat.includes("protein") || name.includes("ayam") || name.includes("daging") || name.includes("telur") || name.includes("unggas")) {
+      if (cat.includes("protein") || /\bayam\b/.test(name) || name.includes("daging") || name.includes("telur") || name.includes("unggas")) {
         if (name.includes("daging") || name.includes("sapi")) {
           const dagingMatch = suppliers.find((s) => `${s.name} ${s.supplyCategory || ""}`.toLowerCase().includes("daging"));
           if (dagingMatch) return dagingMatch.name;
@@ -4226,7 +4227,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                         if (found && found.poArrivalItems && found.poArrivalItems.length > 0) {
                           setPoFormRows(
                             withSuggestedSuppliers(found.poArrivalItems.map((p) => ({
-                              category: p.category || "Bahan Makanan",
+                              category: savedRowCategory(p),
                               itemName: p.itemName,
                               qtyOrder: p.qtyOrder || "",
                               qtyArrived: p.qtyArrived || "",
@@ -4423,10 +4424,11 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                                           onSelect={(opt, typed) => {
                                             const val = opt ? opt.value : typed;
                                             const m = findMasterItem(val);
-                                            const cat = m?.category ? poCategoryFromMaster(m.category) : null;
+                                            const inferred = inferRowCategory(val, r.category);
                                             handleUpdateNewPoRow(r.id, {
                                               itemName: val,
-                                              category: cat || r.category,
+                                              // Form ini hanya punya "Lainnya" untuk bahan di luar empat kelompok utama dan bumbu.
+                                              category: inferred === "Bahan Olahan" || inferred === "Lain-lain" ? "Bahan Makanan" : inferred,
                                               unit: m?.baseUnit || r.unit,
                                             });
                                           }}
@@ -4564,14 +4566,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                           data-grid-col={0}
                           value={row.category}
                           onChange={(e) => updatePoRow(idx, {category: e.target.value})}>
-                          <option value="Protein">Protein</option>
-                          <option value="Sembako">Sembako</option>
-                          <option value="Sayur dan Buah">Sayur dan Buah</option>
-                          <option value="Sayur">Sayur</option>
-                          <option value="Buah">Buah</option>
-                          <option value="Bumbu">Bumbu</option>
-                          <option value="Bahan Olahan">Bahan Olahan</option>
-                          <option value="Lain-lain">Lain-lain</option>
+                          {PO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                         </Select>
                         <div className="col-span-3 sm:col-span-1 order-first sm:order-none min-w-0">
                           <SearchPicker
@@ -4589,14 +4584,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                             onSelect={(opt, text) => {
                               if (idx === poFocusRow) setPoFocusRow(null);
                               const master = opt ? findMasterItem(opt.value) : undefined;
-                              const category = master ? poCategoryFromMaster(master.category) : null;
                               const nextItemName = opt ? opt.value : text;
+                              const category = inferRowCategory(nextItemName, row.category, row.supplier);
                               const nextQty = master?.baseUnit && row.qtyOrder.trim()
                                 ? formatStandardQty(row.qtyOrder, master.baseUnit)
                                 : row.qtyOrder;
                               updatePoRow(idx, {
                                 itemName: nextItemName,
-                                ...(category ? {category} : {}),
+                                category,
                                 ...(nextQty !== row.qtyOrder ? {qtyOrder: nextQty} : {}),
                               });
                             }}
