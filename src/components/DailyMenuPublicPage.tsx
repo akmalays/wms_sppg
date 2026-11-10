@@ -160,6 +160,16 @@ function formatUpdatedAt(iso: string): string | null {
 
 const cleanList = (items: string[] | undefined) => (items || []).map(s => s.trim()).filter(Boolean);
 const splitSentences = (text: string) => text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+// Kalimat pertama fakta jadi pembuka yang ditebalkan; emoji sesudah tanda bacanya ikut ke kalimat itu.
+// Tanpa batas kalimat yang wajar (atau kalimatnya sangat panjang), teks tampil biasa tanpa pembuka.
+const splitFunFact = (text: string): { lead: string; body: string } => {
+  const t = text.trim();
+  const m = t.match(/^(.+?[.!?](?:\s*[\p{Extended_Pictographic}️‍]+)?)\s+(\S[\s\S]*)$/u);
+  if (m && m[1].length <= 160) return { lead: m[1], body: m[2] };
+  return t.length <= 160 ? { lead: t, body: '' } : { lead: '', body: t };
+};
+// Kategori disimpan sebagai kode ("protein_hewani"); di layar dan di kuis dibaca sebagai kata biasa.
+const categoryLabel = (category: string) => category.trim().replace(/_/g, ' ');
 const splitHighlights = (text: string) => text.split(/[•,;]/).map(s => s.trim()).filter(Boolean);
 const shortName = (name: string) => name.trim().split(/\s+/)[0].toLowerCase();
 
@@ -200,15 +210,24 @@ const SafeImg: React.FC<React.ImgHTMLAttributes<HTMLImageElement> & { fallbackSr
   return <img src={finalSrc} alt={alt} className={className} onError={() => setFailed(true)} {...rest} />;
 };
 
-// Foto unggahan petugas di lembar detail; ilustrasi tetap jadi gambar utama. Disembunyikan bila kosong atau gagal dimuat.
-const PhotoInset: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
+// Banner lembar detail: gambar bahan di atas piring putih (motif Isi Piringku), daun kemangi hero halaman di kedua sisi,
+// latar warna kelompok makanannya. Foto unggahan petugas didahulukan; latar putih fotonya membaur ke piring
+// (mix-blend-multiply). Tanpa foto, atau foto gagal dimuat, piring berisi ilustrasi bawaan.
+const SheetBanner: React.FC<{ item: IngredientNutritionInfo }> = ({ item }) => {
   const [failed, setFailed] = useState(false);
-  if (!src || failed) return null;
+  const showPhoto = !!item.imageUrl && !failed;
   return (
-    <figure className="absolute left-3 bottom-3 w-24 sm:w-28">
-      <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} className="w-full aspect-square rounded-2xl object-cover border-4 border-white shadow-sm" />
-      <figcaption className="sr-only">{alt}</figcaption>
-    </figure>
+    <div className="relative w-full aspect-[16/9] rounded-t-3xl overflow-hidden flex items-center justify-center" style={{ backgroundColor: tintOf(item.category) }}>
+      <HeroLeaves className="absolute -left-6 -bottom-5 w-28 sm:w-32" />
+      <HeroLeaves flip className="absolute -right-6 -bottom-7 w-24 sm:w-28" />
+      <div className="relative h-[84%] aspect-square rounded-full bg-white ring-8 ring-white/50 flex items-center justify-center">
+        {showPhoto ? (
+          <img src={item.imageUrl} alt={`Foto ${item.name}`} onError={() => setFailed(true)} className="w-[72%] h-[72%] object-contain mix-blend-multiply" />
+        ) : (
+          <FoodIllustration name={item.name} category={item.category} role="img" aria-label={`Ilustrasi ${item.name}`} className="w-[62%] h-[62%]" />
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -217,7 +236,7 @@ const GroupChip: React.FC<{ category: string; className?: string }> = ({ categor
   const style = group ? { backgroundColor: FOOD_GROUPS[group].soft, color: FOOD_GROUPS[group].ink } : undefined;
   return (
     <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold bg-slate-100 text-slate-700 ${className}`} style={style}>
-      {category}
+      {categoryLabel(category)}
     </span>
   );
 };
@@ -578,18 +597,10 @@ const IngredientSheet: React.FC<{
         aria-modal="true"
         aria-labelledby="ingredient-title"
         onClick={e => e.stopPropagation()}
-        className="bg-white w-full sm:max-w-lg max-h-[90dvh] sm:max-h-[92vh] rounded-t-3xl sm:rounded-3xl overflow-y-auto flex flex-col"
+        className="bg-white w-full sm:max-w-lg max-h-[90dvh] sm:max-h-[92vh] rounded-t-3xl sm:rounded-3xl overflow-y-auto flex flex-col [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <div className="relative shrink-0">
-          <FoodImage
-            name={item.name}
-            category={item.category}
-            alt={item.name}
-            tint={tintOf(item.category)}
-            className="w-full aspect-[16/9] rounded-t-3xl"
-            illustrationClassName="h-[72%] w-auto"
-          />
-          <PhotoInset key={item.id} src={item.imageUrl} alt={`Foto ${item.name}`} />
+          <SheetBanner key={item.id} item={item} />
           <button
             ref={closeRef}
             type="button"
@@ -605,7 +616,9 @@ const IngredientSheet: React.FC<{
           <GroupChip category={item.category} />
           <h2 id="ingredient-title" className="font-kids text-[28px] font-bold leading-tight mt-1.5">{item.name}</h2>
           <p className="text-sm font-semibold text-slate-600 mt-0.5 tabular-nums">
-            {portion === 'large' ? item.portionLarge : item.portionSmall} · {portion === 'large' ? 'porsi besar' : 'porsi kecil'}
+            {(portion === 'large' ? item.portionLarge : item.portionSmall)?.trim()
+              ? `${portion === 'large' ? item.portionLarge.trim() : item.portionSmall.trim()} · ${portion === 'large' ? 'porsi besar' : 'porsi kecil'}`
+              : portion === 'large' ? 'Porsi besar' : 'Porsi kecil'}
           </p>
           {item.notes && <p className="text-[15px] text-slate-700 mt-2 leading-relaxed">{item.notes}</p>}
 
@@ -670,7 +683,16 @@ const IngredientSheet: React.FC<{
                 </div>
                 <p className="text-sm text-slate-800 mt-1 leading-snug">{item.funFact}</p>
               </div>
-              <img src={wortelMaskotImg} alt="" className="w-16 h-16 object-contain shrink-0 rounded-xl" />
+              <FoodImage
+                name={item.name}
+                category={item.category}
+                imageUrl={item.imageUrl}
+                alt=""
+                tint={tintOf(item.category)}
+                className="w-16 h-16 shrink-0 rounded-xl"
+                photoClassName="object-contain p-1"
+                illustrationClassName="w-[80%] h-[80%]"
+              />
             </div>
           )}
         </div>
@@ -1019,7 +1041,7 @@ const IngredientStrip: React.FC<{ ingredients: IngredientNutritionInfo[]; tiers:
               onClick={() => onOpen(i)}
               className={`group w-full h-full flex items-center gap-3 rounded-2xl border border-[#cfe8df] bg-white p-2.5 text-left hover:bg-[#f4faf7] hover:border-[#9fd3c4] cursor-pointer motion-safe:transition-[transform,background-color,border-color] motion-safe:duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[0.98] ${focusRing}`}
             >
-              <FoodImage name={item.name} category={item.category} alt="" tint={tintOf(item.category)} className="w-16 h-16 rounded-xl shrink-0 origin-bottom motion-safe:group-hover:animate-[sway_600ms_ease-in-out]" />
+              <FoodImage name={item.name} category={item.category} imageUrl={item.imageUrl} alt="" tint={tintOf(item.category)} photoClassName="object-contain p-1" className="w-16 h-16 rounded-xl shrink-0 origin-bottom motion-safe:group-hover:animate-[sway_600ms_ease-in-out]" />
               <span className="min-w-0">
                 <span className="block text-sm font-bold text-[#0d474c] leading-snug">{item.name}</span>
                 <GroupChip category={item.category} className="mt-1" />
@@ -1178,24 +1200,94 @@ const NutritionDialog: React.FC<{
 
 const CHILD_BENEFITS =['Memberi energi', 'Membantu pertumbuhan', 'Menjaga daya tahan tubuh', 'Mendukung konsentrasi belajar'];
 
-const BenefitsCard: React.FC = () => (
-  <aside aria-labelledby="manfaat-title" className={`${cardCls} group relative overflow-hidden`}>
-    <Sprig className="absolute -bottom-3 -right-3 w-12 text-[#1e7472]/50" />
-    <CardTitle id="manfaat-title" title="Manfaat untuk Anak" />
-    {/* Kolom samping sempit: gambar di atas daftar, supaya tiap poin tidak terpecah jadi tiga baris */}
-    <div className="flex items-center gap-3 lg:flex-col lg:items-stretch">
-      <Illustration src="/ilustrasi/manfaat-anak.webp" fallbackSrc={anakSehatImg} className="w-28 h-32 object-contain shrink-0 lg:self-center" />
-      <ul className="space-y-2">
-        {CHILD_BENEFITS.map(b => (
-          <li key={b} className="flex items-start gap-2 text-[15px] leading-snug">
-            <Check className="w-5 h-5 text-[#18686a] shrink-0 mt-px" />
-            {b}
-          </li>
-        ))}
-      </ul>
-    </div>
-  </aside>
-);
+// Manfaat per kelompok makanan, urut seperti Isi Piringku. Bahan yang mendukungnya diambil dari kategori menu hari ini.
+const GROUP_BENEFITS: { group: FoodGroup; label: string }[] = [
+  { group: 'pokok', label: 'Memberi energi untuk belajar dan bermain' },
+  { group: 'lauk', label: 'Membantu pertumbuhan dan memperbaiki tubuh' },
+  { group: 'sayur', label: 'Menjaga daya tahan tubuh' },
+  { group: 'buah', label: 'Melengkapi vitamin dan serat' }
+];
+const BENEFIT_THUMBS = 4;
+
+const BenefitsCard: React.FC<{ ingredients: IngredientNutritionInfo[]; onOpen: (index: number) => void }> = ({ ingredients, onOpen }) => {
+  const rows = GROUP_BENEFITS.map(b => ({
+    ...b,
+    items: ingredients.map((item, index) => ({ item, index })).filter(({ item }) => groupOfCategory(item.category) === b.group)
+  }));
+  const hasAny = rows.some(r => r.items.length > 0);
+
+  return (
+    <aside aria-labelledby="manfaat-title" className={`${cardCls} group relative overflow-hidden`}>
+      <Sprig className="absolute -bottom-3 -right-3 w-12 text-[#1e7472]/50" />
+      {/* Ilustrasi anak dikecilkan di samping judul: fokus kartu ada pada bahan hari ini. */}
+      <CardTitle
+        id="manfaat-title"
+        title="Manfaat untuk Anak"
+        subtitle={hasAny ? 'Dari bahan menu hari ini. Ketuk gambar untuk detailnya.' : undefined}
+        action={<Illustration src="/ilustrasi/manfaat-anak.webp" fallbackSrc={anakSehatImg} className="w-14 h-16 object-contain shrink-0 -mt-1" />}
+      />
+      {hasAny ? (
+        <ul className="space-y-3.5">
+          {rows.map(({ group, label, items }) => {
+            const meta = FOOD_GROUPS[group];
+            const Icon = meta.Icon;
+            const missing = items.length === 0;
+            const rest = items.length - BENEFIT_THUMBS;
+            return (
+              <li key={group}>
+                <p className={`flex items-start gap-2 text-[15px] font-semibold leading-snug ${missing ? 'text-slate-600' : 'text-[#1c3436]'}`}>
+                  {/* Ikon kelompok, bukan centang: baris tanpa bahan hari ini tidak boleh terlihat sudah terpenuhi. */}
+                  <span className="w-6 h-6 shrink-0 rounded-md flex items-center justify-center" style={missing ? { backgroundColor: '#f1f5f9', color: '#64748b' } : { backgroundColor: meta.soft, color: meta.ink }}>
+                    <Icon className="w-4 h-4" aria-hidden="true" />
+                  </span>
+                  <span className="pt-0.5">{label}</span>
+                </p>
+                {missing ? (
+                  <p className="pl-8 mt-0.5 text-[13px] text-slate-600">{meta.label} belum ada di menu hari ini.</p>
+                ) : (
+                  <div className="pl-8 mt-1.5 flex flex-wrap items-center gap-1.5">
+                    {items.slice(0, BENEFIT_THUMBS).map(({ item, index }) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => onOpen(index)}
+                        aria-label={`Lihat detail ${item.name}`}
+                        title={item.name}
+                        className={`rounded-xl cursor-pointer motion-safe:transition-transform motion-safe:duration-150 motion-safe:hover:-translate-y-0.5 ${focusRing}`}
+                      >
+                        <FoodImage
+                          name={item.name}
+                          category={item.category}
+                          imageUrl={item.imageUrl}
+                          alt=""
+                          tint={meta.soft}
+                          className="w-11 h-11 rounded-xl"
+                          photoClassName="object-contain p-0.5"
+                          illustrationClassName="w-[78%] h-[78%]"
+                        />
+                      </button>
+                    ))}
+                    {rest > 0 && <span className="text-[13px] font-semibold text-slate-600">+{rest} lainnya</span>}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        // Belum ada bahan berkategori (menu belum diisi): manfaat umum, tanpa mengaitkan ke bahan.
+        <ul className="space-y-2">
+          {CHILD_BENEFITS.map(b => (
+            <li key={b} className="flex items-start gap-2 text-[15px] leading-snug">
+              <Check className="w-5 h-5 text-[#18686a] shrink-0 mt-px" />
+              {b}
+            </li>
+          ))}
+        </ul>
+      )}
+    </aside>
+  );
+};
 
 /* ------------------------------------------------------------------ */
 /* Zona belajar: Pahlawan Gizi                                          */
@@ -1221,7 +1313,7 @@ const NutritionHeroPanel: React.FC<{ hero: NutritionHeroConfig; ingredients: Ing
         />
         <div className="min-w-0">
           <h3 className="font-kids text-3xl font-bold leading-tight text-[#0d474c]">{hero.name}</h3>
-          <span className="inline-flex rounded-md px-2 py-0.5 text-xs font-bold mt-1" style={{ backgroundColor: meta.soft, color: meta.ink }}>{hero.category}</span>
+          <span className="inline-flex rounded-md px-2 py-0.5 text-xs font-bold mt-1" style={{ backgroundColor: meta.soft, color: meta.ink }}>{categoryLabel(hero.category)}</span>
         </div>
       </div>
 
@@ -1440,7 +1532,7 @@ function buildQuiz(ingredients: IngredientNutritionInfo[]): QuizQuestion[] {
   if (ingredients.length >= 3) {
     const options = ingredients.slice(0, 6).map(i => ({ id: i.id, label: i.name, food: { name: i.name, category: i.category, imageUrl: i.imageUrl } }));
     for (const category of QUIZ_CATEGORIES) {
-      const matches = ingredients.filter(i => i.category.trim().toLowerCase() === category);
+      const matches = ingredients.filter(i => categoryLabel(i.category).toLowerCase() === category);
       if (matches.length !== 1 || !options.some(o => o.id === matches[0].id)) continue;
       questions.push({
         id: `cat-${category}`,
@@ -1551,6 +1643,8 @@ const QuizPanel: React.FC<{ ingredients: IngredientNutritionInfo[] }> = ({ ingre
                         <FoodImage
                           name={opt.food.name}
                           category={opt.food.category}
+                          imageUrl={opt.food.imageUrl}
+                          photoClassName="object-contain p-1.5"
                           alt=""
                           tint={tintOf(opt.food.category)}
                           className="w-full aspect-[4/3] rounded-xl mb-1.5 lg:hidden"
@@ -1643,6 +1737,7 @@ export const DailyMenuPublicPage: React.FC = () => {
   const canRateMenu = isSupabaseConfigured() && !(isSampleData && syncState !== 'loading');
   const hero = menuToday.nutritionHero;
   const funFact = hero.funFact?.trim() || menuToday.plateTip?.trim() || '';
+  const funFactParts = splitFunFact(funFact);
 
   // Halaman ini hanya diakses lewat QR: jangan muncul di mesin pencari.
   useEffect(() => {
@@ -1873,7 +1968,7 @@ export const DailyMenuPublicPage: React.FC = () => {
           {activeType === 'reguler' && (
             <div className="grid lg:grid-cols-[minmax(0,1fr)_280px] gap-3.5 lg:gap-5 items-start">
               <IngredientStrip ingredients={ingredients} tiers={tiers} portion={portion} onPortionChange={setPortion} onOpen={setDetailIndex} />
-              <BenefitsCard />
+              <BenefitsCard ingredients={ingredients} onOpen={setDetailIndex} />
             </div>
           )}
 
@@ -1893,11 +1988,14 @@ export const DailyMenuPublicPage: React.FC = () => {
             </section>
             {funFact && (
               <section aria-labelledby="fakta-title" className={`${cardCls} group relative overflow-hidden`}>
-                <Sprig className="absolute -bottom-2 -right-2 w-20 text-[#1e7472]/40" />
+                {/* Ranting di pojok atas seperti kartu Kuis di sebelahnya, supaya tidak menimpa akhir teks yang panjang. */}
+                <Sprig className="absolute top-2 right-3 w-12 sm:w-14 text-[#1e7472]/60" />
                 <CardTitle id="fakta-title" title="Tahukah Kamu?" />
-                <div className="flex items-center gap-3">
-                  <Illustration src={menuToday.funFactImageUrl || '/ilustrasi/tahukah-kamu.webp'} fallbackSrc={wortelMaskotImg} className="w-28 h-28 object-contain shrink-0" />
-                  <p className="rounded-2xl bg-[#f4faf7] border border-[#dcefe8] p-4 text-[15px] text-slate-800 leading-relaxed">{funFact}</p>
+                {/* Maskot mengapung di kiri: fakta pendek duduk di sampingnya, fakta panjang mengalir selebar kartu di bawahnya. */}
+                <div className="flow-root">
+                  <Illustration src={menuToday.funFactImageUrl || '/ilustrasi/tahukah-kamu.webp'} fallbackSrc={wortelMaskotImg} className="float-left w-20 h-20 sm:w-24 sm:h-24 object-contain mr-3 mb-1" />
+                  {funFactParts.lead && <p className="text-[17px] font-bold text-[#0d474c] leading-snug">{funFactParts.lead}</p>}
+                  {funFactParts.body && <p className={`text-[15px] text-slate-700 leading-relaxed ${funFactParts.lead ? 'mt-2' : ''}`}>{funFactParts.body}</p>}
                 </div>
               </section>
             )}

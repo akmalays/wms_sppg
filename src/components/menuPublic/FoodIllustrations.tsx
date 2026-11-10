@@ -175,13 +175,14 @@ const KEYWORDS: [FoodKind, RegExp][] = [
   ['apel', /apel|pir\b|salak|jambu/],
   ['telur', /telur|telor/],
   ['ikan', /ikan|lele|tongkol|bandeng|nila|tuna|patin|kembung|bawal/],
-  ['ayam', /ayam|bebek|unggas/],
+  // \b agar "bayam" tidak terbaca sebagai ayam.
+  ['ayam', /\bayam|bebek|unggas/],
   ['daging', /daging|sapi|rendang|empal|bakso|semur|kambing/],
   ['tempe', /tempe/],
   ['tahu', /tahu/],
-  ['sayur', /sop|sup|sayur|bayam|kangkung|sawi|buncis|kubis|kol\b|brokoli|capcay|lodeh|asem|labu|terong|kacang panjang|pecel|tumis/],
+  ['sayur', /sop|sup|sayur|bayam|kangkung|sawi|pakcoy|pak choy|caisim|selada|tauge|buncis|kubis|kol\b|brokoli|capcay|lodeh|asem|labu|terong|kacang panjang|pecel|tumis/],
   ['wortel', /wortel/],
-  ['jagung', /jagung/],
+  ['jagung', /jagung|baby ?corn/],
   ['mie', /mie|mi\b|bihun|soun|spageti|makaroni/],
   ['nasi', /nasi|beras|lontong|ketupat|kentang|ubi|singkong|roti/]
 ];
@@ -222,7 +223,12 @@ export const FoodImage: React.FC<{
   useEffect(() => setFailed(false), [imageUrl]);
 
   if (imageUrl && !failed) {
-    return <img src={imageUrl} alt={alt} loading="lazy" onError={() => setFailed(true)} className={`${className} ${photoClassName}`} style={{ backgroundColor: tint }} />;
+    // Latar putih gambar unggahan dibaurkan (multiply) ke warna kotak, supaya duduk di atas warna kelompoknya seperti ilustrasi bawaan.
+    return (
+      <div className={`${className} overflow-hidden`} style={{ backgroundColor: tint }}>
+        <img src={imageUrl} alt={alt} loading="lazy" onError={() => setFailed(true)} className={`w-full h-full ${photoClassName} mix-blend-multiply`} />
+      </div>
+    );
   }
   return (
     <div role={alt ? 'img' : undefined} aria-label={alt ? `Ilustrasi ${name}` : undefined} className={`${className} flex items-center justify-center`} style={{ backgroundColor: tint }}>
