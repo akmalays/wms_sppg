@@ -4945,7 +4945,44 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
       {/* MODAL 4: PRATINJAU CETAK REKAPITULASI HARIAN PENERIMA MANFAAT              */}
       {/* ========================================================================= */}
       {isBeneficiaryPrintModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-2 sm:p-4 overflow-y-auto no-print">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          {/* Yang bukan kertas rekap dibuang dari tata letak dan pembungkus modal dilepas: tanpa ini browser mencetak halaman di belakang modal, dan tabel terpotong area scroll. */}
+          <style>{`
+            @media print {
+              @page { size: A4 landscape; margin: 8mm; }
+              html, body { overflow: visible !important; height: auto !important; background: #ffffff !important; }
+              body *:not(:has(#print-beneficiary-paper)):not(#print-beneficiary-paper):not(#print-beneficiary-paper *) { display: none !important; }
+              body *:has(#print-beneficiary-paper) {
+                position: static !important;
+                display: block !important;
+                overflow: visible !important;
+                height: auto !important;
+                max-height: none !important;
+                min-height: 0 !important;
+                max-width: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                border: 0 !important;
+                background: #ffffff !important;
+                box-shadow: none !important;
+                animation: none !important;
+                transform: none !important;
+              }
+              #print-beneficiary-paper {
+                max-width: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                border: 0 !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+              }
+              #print-beneficiary-paper tr { break-inside: avoid; }
+              #print-beneficiary-paper thead { display: table-header-group; }
+              #print-beneficiary-paper tfoot { display: table-row-group; }
+            }
+          `}</style>
           <div className="bg-white rounded-xl border border-slate-200 max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="px-4 sm:px-5 py-3 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
@@ -5048,7 +5085,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
                 {/* Signature Block */}
                 <DocSignatureToggle doc="rekap-porsi" className="mt-6" />
-                <div className="mt-8 grid grid-cols-2 text-center text-xs pt-4 border-t border-slate-200">
+                <div className="mt-8 grid grid-cols-2 text-center text-xs pt-4 border-t border-slate-200 break-inside-avoid">
                   <div>
                     <div>
                       <div className="text-slate-500 text-[11px]">Mengetahui,</div>
