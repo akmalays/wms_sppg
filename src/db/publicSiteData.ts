@@ -19,16 +19,9 @@ export interface PublicSchool {
   category: string;
 }
 
-export interface PublicSupplier {
-  id: string;
-  name: string;
-  category: string;
-}
-
 export interface PublicSiteData {
   weekMenus: PublicMenuDay[];
   schools: PublicSchool[];
-  suppliers: PublicSupplier[];
   /** false bila Supabase belum terhubung atau view belum dibuat; halaman memakai isi bawaan. */
   available: boolean;
 }
@@ -48,20 +41,19 @@ export function currentWeekRange(today = new Date()): { start: string; end: stri
 }
 
 export async function fetchPublicSiteData(): Promise<PublicSiteData> {
-  const empty: PublicSiteData = { weekMenus: [], schools: [], suppliers: [], available: false };
+  const empty: PublicSiteData = { weekMenus: [], schools: [], available: false };
   if (!isSupabaseConfigured()) return empty;
 
   const { start, end } = currentWeekRange();
-  const [menuRes, schoolRes, supplierRes] = await Promise.all([
+  const [menuRes, schoolRes] = await Promise.all([
     supabase.from('public_menu_schedule').select('*').gte('date', start).lte('date', end).order('date'),
     supabase.from('public_schools').select('*').order('school_name'),
-    supabase.from('public_suppliers').select('*').order('name'),
   ]);
 
-  if (menuRes.error || schoolRes.error || supplierRes.error) {
+  if (menuRes.error || schoolRes.error) {
     console.warn(
       'Data website publik belum tersedia (sudah menjalankan migrasi 20261018000001?):',
-      menuRes.error?.message || schoolRes.error?.message || supplierRes.error?.message
+      menuRes.error?.message || schoolRes.error?.message
     );
     return empty;
   }
@@ -80,7 +72,6 @@ export async function fetchPublicSiteData(): Promise<PublicSiteData> {
   return {
     weekMenus,
     schools: (schoolRes.data || []).map((r: any) => ({ id: r.id, name: r.school_name, category: r.category || '' })),
-    suppliers: (supplierRes.data || []).map((r: any) => ({ id: r.id, name: r.name, category: r.supply_category || '' })),
     available: true,
   };
 }

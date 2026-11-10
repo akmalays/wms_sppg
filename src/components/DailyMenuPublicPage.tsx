@@ -31,6 +31,7 @@ import { HEDONIC_ENTRY_PATH } from '../utils/hedonic';
 import { Butterfly, Bee, FarmLandscape, HeaderSky, SunRays } from './menuPublic/NatureAccents';
 import { FoodIllustration, FoodImage } from './menuPublic/FoodIllustrations';
 import { detectAllergens } from '../utils/allergens';
+import { parseIndonesianDate } from '../utils/localDate';
 
 import {
   X,
@@ -139,16 +140,6 @@ function formatDuration(minutes: number): string {
 /* ------------------------------------------------------------------ */
 /* Utilitas teks & tanggal                                             */
 /* ------------------------------------------------------------------ */
-const MONTHS_ID = ['januari', 'februari', 'maret', 'april', 'mei', 'juni', 'juli', 'agustus', 'september', 'oktober', 'november', 'desember'];
-
-function parseIndonesianDate(text: string): Date | null {
-  const match = text.toLowerCase().match(/(\d{1,2})\s+([a-z]+)\s+(\d{4})/);
-  if (!match) return null;
-  const month = MONTHS_ID.indexOf(match[2]);
-  if (month < 0) return null;
-  return new Date(Number(match[3]), month, Number(match[1]));
-}
-
 function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }

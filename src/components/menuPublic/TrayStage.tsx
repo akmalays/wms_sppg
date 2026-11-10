@@ -92,13 +92,15 @@ interface TrayStageProps {
   texts: string[];
   placements: LabelPlacement[];
   compact?: boolean;
+  /** "dark" untuk latar terang; bawaannya tulisan putih di atas pita hijau. */
+  labelTone?: 'light' | 'dark';
 }
 
 /**
  * Ompreng dan nama hidangan dengan letak yang sama seperti poster Hijau. Koordinatnya koordinat poster, jadi letak
  * yang digeser di modul poster langsung berlaku di sini.
  */
-export const TrayStage: React.FC<TrayStageProps> = ({ photo, fallbackPhoto, alt, texts, placements, compact }) => {
+export const TrayStage: React.FC<TrayStageProps> = ({ photo, fallbackPhoto, alt, texts, placements, compact, labelTone = 'light' }) => {
   const [failed, setFailed] = useState(false);
   const [natural, setNatural] = useState({ w: 3, h: 4 });
   const [fontsReady, setFontsReady] = useState(false);
@@ -139,6 +141,11 @@ export const TrayStage: React.FC<TrayStageProps> = ({ photo, fallbackPhoto, alt,
   }, [compact, texts, placements, fontsReady]);
 
   const clamp = (v: number, from: number, size: number) => Math.min(from + size - 34, Math.max(from + 34, v));
+
+  // Tanpa foto cadangan, foto rusak dihilangkan daripada menampilkan ikon gambar pecah.
+  if (failed && !fallbackPhoto) return null;
+
+  const dark = labelTone === 'dark';
 
   return (
     <div className="relative w-full" style={{ aspectRatio: `${view.w} / ${view.h}` }}>
@@ -181,14 +188,14 @@ export const TrayStage: React.FC<TrayStageProps> = ({ photo, fallbackPhoto, alt,
               const lineH = label.px * 1.15;
               const firstY = p.y - ((label.lines.length - 1) * lineH) / 2;
               return (
-                <g key={label.text} className="[filter:drop-shadow(0_1px_4px_rgba(8,50,54,0.7))]">
+                <g key={label.text} className={dark ? undefined : '[filter:drop-shadow(0_1px_4px_rgba(8,50,54,0.7))]'}>
                   {label.arrow && (
-                    <g fill="none" stroke="#ffffff" strokeWidth={ARROW_WIDTH} strokeLinecap="round" strokeLinejoin="round">
+                    <g fill="none" stroke={dark ? '#133d2c' : '#ffffff'} strokeWidth={ARROW_WIDTH} strokeLinecap="round" strokeLinejoin="round">
                       <path d={label.arrow.line} />
                       <path d={label.arrow.head} />
                     </g>
                   )}
-                  <text textAnchor="middle" dominantBaseline="central" fontSize={label.px} fontWeight="700" fill="#ffffff" className="font-kids">
+                  <text textAnchor="middle" dominantBaseline="central" fontSize={label.px} fontWeight="700" fill={dark ? '#141d18' : '#ffffff'} className="font-kids">
                     {label.lines.map((line, n) => (
                       <tspan key={n} x={p.x} y={firstY + n * lineH}>{line}</tspan>
                     ))}

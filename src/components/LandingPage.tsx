@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import logoSppgImg from '../assets/logo sppg.png';
 import trayImg1 from '../assets/tray_sample_1.jpg';
 import trayImg2 from '../assets/tray_double_1.jpg';
@@ -11,10 +11,6 @@ import ayamBumbuKuningImg from '../assets/ayam_bumbu_kuning.jpg';
 import tempeBacemImg from '../assets/tempe_bacem.jpg';
 import sayurSopImg from '../assets/sayur_sop.jpg';
 import buahPisangImg from '../assets/buah_pisang.jpg';
-import sawahPadiImg from '../assets/sawah_padi.jpg';
-import peternakanAyamImg from '../assets/peternakan_ayam.jpg';
-import kebunSayurImg from '../assets/kebun_sayur.jpg';
-import tempeMentahImg from '../assets/tempe_mentah.jpg';
 import operasionalPenerimaanImg from '../assets/operasional_penerimaan.jpg';
 import operasionalPengolahanImg from '../assets/operasional_pengolahan.jpg';
 import operasionalPengemasanImg from '../assets/operasional_pengemasan.jpg';
@@ -25,10 +21,11 @@ import {
   fetchWebsiteConfigFromCloud,
   WEBSITE_CONFIG_UPDATED_EVENT,
   DEFAULT_WEBSITE_CONFIG,
+  INGREDIENT_CATEGORIES,
   WebsiteConfig
 } from '../db/websiteConfigStorage';
 import { fetchPublicSiteData, PublicSiteData, currentWeekRange } from '../db/publicSiteData';
-import { localDateIso } from '../utils/localDate';
+import { localDateIso, parseIndonesianDate } from '../utils/localDate';
 import {
   LayoutGrid,
   ArrowRight,
@@ -45,9 +42,15 @@ import {
   ChevronLeft,
   ChevronDown,
   Menu,
-  X
+  X,
+  Ban,
+  AlertTriangle,
+  MessageCircle
 } from 'lucide-react';
 import { SPPG_ADDRESS, SPPG_EMAIL, SPPG_PHONE } from './common/KopText';
+import { FoodDoodles } from './common/FoodDoodles';
+import { FoodImage } from './menuPublic/FoodIllustrations';
+import { TrayStage, menuDishes, resolveTrayLabels, shownTrayLabels, trayLabelTexts } from './menuPublic/TrayStage';
 
 export interface LandingPageProps {
   isStaffLoggedIn?: boolean;
@@ -70,8 +73,6 @@ export const FOOD_COMPONENTS = [
     id: 'karbohidrat',
     category: 'Karbohidrat',
     title: 'Nasi Putih',
-    portion: 'Sesuai hasil penimbangan',
-    origin: 'Beras lokal (sesuai ketersediaan)',
     description: 'Nasi dimasak dengan air bersih bersuhu terkontrol untuk menghasilkan tekstur pulen dan aman dikonsumsi.',
     image: nasiPutihBowlImg
   },
@@ -79,8 +80,6 @@ export const FOOD_COMPONENTS = [
     id: 'protein_hewani',
     category: 'Protein Hewani',
     title: 'Ayam Bumbu Kuning',
-    portion: 'Sesuai hasil penimbangan (± 70 gram)',
-    origin: 'Peternak lokal Pakis & Tumpang, Kab. Malang',
     description: 'Daging ayam segar pilihan diolah dengan bumbu rempah alami kunyit, jahe, dan serai tanpa pengawet atau penyedap berlebih.',
     image: ayamBumbuKuningImg
   },
@@ -88,8 +87,6 @@ export const FOOD_COMPONENTS = [
     id: 'protein_nabati',
     category: 'Protein Nabati',
     title: 'Tempe',
-    portion: 'Sesuai hasil penimbangan (± 45 gram)',
-    origin: 'Pengrajin tempe lokal Desa Jeru, Tumpang',
     description: 'Fermentasi kedelai higienis kaya protein nabati, zat besi, serat pangan, dan kalsium alami yang mudah dicerna.',
     image: tempeBacemImg
   },
@@ -97,8 +94,6 @@ export const FOOD_COMPONENTS = [
     id: 'sayuran',
     category: 'Sayuran',
     title: 'Sayur Sop',
-    portion: 'Sesuai hasil penimbangan (± 75 gram)',
-    origin: 'Kelompok tani sayur lereng Bromo & Poncokusumo',
     description: 'Wortel, kubis, dan buncis dipanen segar harian, dimasak dengan kaldu bening gurih bernutrisi tinggi serat dan mikronutrien.',
     image: sayurSopImg
   },
@@ -106,8 +101,6 @@ export const FOOD_COMPONENTS = [
     id: 'buah',
     category: 'Buah',
     title: 'Pisang',
-    portion: '1 buah utuh (± 80 gram)',
-    origin: 'Petani hortikultura Malang',
     description: 'Buah segar matang pohon sumber kalium alami dan vitamin C untuk melengkapi kebutuhan gizi harian siswa.',
     image: buahPisangImg
   }
@@ -167,33 +160,6 @@ export const ACTIVITY_DOCS = [
   }
 ];
 
-export const LOCAL_SUPPLIERS = [
-  {
-    name: 'Poktan Sri Rejeki',
-    location: 'Desa Malangsuko, Kec. Tumpang',
-    product: 'Beras',
-    image: sawahPadiImg
-  },
-  {
-    name: 'UD Sumber Tani',
-    location: 'Kec. Tumpang, Kab. Malang',
-    product: 'Daging ayam',
-    image: peternakanAyamImg
-  },
-  {
-    name: 'Kelompok Tani Jeru',
-    location: 'Desa Jeru, Kec. Tumpang',
-    product: 'Sayuran segar',
-    image: kebunSayurImg
-  },
-  {
-    name: 'Industri Rumahan',
-    location: 'Kec. Tumpang, Kab. Malang',
-    product: 'Tempe',
-    image: tempeMentahImg
-  }
-];
-
 export const BENEFICIARY_SCHOOLS = [
   { name: 'SDN 1 Jeru', location: 'Desa Jeru, Tumpang' },
   { name: 'SDN 2 Jeru', location: 'Desa Jeru, Tumpang' },
@@ -222,15 +188,6 @@ const shortDate = (iso: string) => parseIso(iso).toLocaleDateString('id-ID', { d
 const splitDishes = (title: string) =>
   title.split(/,|\s+dan\s+|\s*\+\s*/i).map(x => x.trim()).filter(Boolean);
 
-// Foto ilustrasi pemasok menurut jenis pasokan (data pemasok tidak menyimpan foto).
-const supplierImage = (category: string) => {
-  const c = category.toLowerCase();
-  if (/beras|padi|sembako|grosir/.test(c)) return sawahPadiImg;
-  if (/ayam|daging|telur|unggas|protein hewani/.test(c)) return peternakanAyamImg;
-  if (/tahu|tempe|kedelai/.test(c)) return tempeMentahImg;
-  return kebunSayurImg;
-};
-
 // Tautan bagian lama yang tersimpan di konfigurasi website diarahkan ke id yang benar.
 const LEGACY_ANCHORS: Record<string, string> = { '#alur-pagi': '#alur-operasional' };
 const fixAnchor = (href: string | undefined, fallback: string) => {
@@ -241,13 +198,73 @@ const fixAnchor = (href: string | undefined, fallback: string) => {
 const NAV_LINKS = [
   { href: '#siklus-menu', label: 'Menu MBG' },
   { href: '#alur-operasional', label: 'Alur Operasional' },
-  { href: '#pemasok-bahan', label: 'Pemasok' },
   { href: '#sekolah-penerima', label: 'Sekolah Penerima' },
   { href: '#dokumentasi-kegiatan', label: 'Dokumentasi' },
+  { href: '#panduan-penerima', label: 'Panduan' },
   { href: '#kontak-sppg', label: 'Kontak' },
 ];
 
+// Bunyi dua aturan ini mengikuti stiker segel ompreng (print/MealBoxLabelDoc), agar sama dengan yang dibaca di sekolah.
+const GUIDE_RULES = [
+  {
+    Icon: Clock,
+    title: 'Makan sebelum jam di stiker',
+    text: 'Stiker segel pada ompreng mencantumkan batas jam konsumsi. Segera makan sebelum jam tersebut.',
+  },
+  {
+    Icon: Ban,
+    title: 'Jangan dibawa pulang',
+    text: 'Makanan tidak boleh dibawa pulang atau dipindah ke kotak makan maupun foam.',
+  },
+];
+
+const GUIDE_HELP = [
+  {
+    Icon: AlertTriangle,
+    title: 'Punya alergi?',
+    text: 'Bahan dan peringatan alergen tertulis di halaman menu hari ini. Untuk alergi berat, tanyakan langsung ke dapur SPPG.',
+    links: [{ href: '/menu-mbg-hari-ini', label: 'Cek bahan menu hari ini' }],
+  },
+  {
+    Icon: MessageCircle,
+    title: 'Ada keluhan atau masukan?',
+    text: 'Nilai menu lewat QR di halaman menu hari ini. Untuk keluhan yang perlu segera ditangani, hubungi SPPG.',
+    links: [
+      { href: '/menu-mbg-hari-ini', label: 'Beri penilaian menu' },
+      { href: '#kontak-sppg', label: 'Hubungi SPPG' },
+    ],
+  },
+];
+
 const PUBLIC_FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#133d2c] focus-visible:ring-offset-2';
+
+// Model yang sama dengan halaman menu hari ini: nama dan panah di layar lebar, nomor pada makanan di layar sempit.
+// Batasnya xl karena di kolom ini tulisan panah terlalu kecil bila lebih sempit.
+const PostedTray: React.FC<{ menuToday: WebsiteConfig['menuToday']; photo: string; alt: string }> = ({ menuToday, photo, alt }) => {
+  const dishTexts = useMemo(() => trayLabelTexts(menuDishes(menuToday).regular), [menuToday]);
+  const placements = useMemo(() => resolveTrayLabels(dishTexts, menuToday.trayLabels), [dishTexts, menuToday.trayLabels]);
+  const texts = useMemo(() => shownTrayLabels(dishTexts, placements), [dishTexts, placements]);
+  return (
+    <>
+      <div className="hidden xl:block">
+        <TrayStage photo={photo} alt={alt} texts={texts} placements={placements} labelTone="dark" />
+      </div>
+      <div className="xl:hidden">
+        <div className="max-w-md mx-auto">
+          <TrayStage photo={photo} alt={alt} texts={texts} placements={placements} compact />
+        </div>
+        <ol aria-label="Isi menu" className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+          {texts.map((text, i) => (
+            <li key={text} className="flex items-start gap-2.5 text-sm font-semibold text-[#141d18] leading-snug">
+              <span className="w-6 h-6 rounded-full bg-[#133d2c] text-white text-xs font-bold flex items-center justify-center shrink-0" aria-hidden="true">{i + 1}</span>
+              {text}
+            </li>
+          ))}
+        </ol>
+      </div>
+    </>
+  );
+};
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   onReturnToDashboard,
@@ -267,9 +284,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   }, []);
   const [config, setConfig] = useState<WebsiteConfig>(getWebsiteConfig);
   const [selectedMenuDate, setSelectedMenuDate] = useState<string>('');
-  const [selectedComponentId, setSelectedComponentId] = useState('karbohidrat');
   const [showAllSchools, setShowAllSchools] = useState(false);
-  const [showSupplierModal, setShowSupplierModal] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // Hero Photo Slides Carousel (Dokumentasi Lapangan Kotak Kanan)
@@ -412,16 +427,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     return () => window.removeEventListener(WEBSITE_CONFIG_UPDATED_EVENT, handleConfigUpdate);
   }, []);
 
-  useEffect(() => {
-    if (!showSupplierModal) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowSupplierModal(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [showSupplierModal]);
-
-  // --- Data turunan untuk seksi menu, bahan, sekolah, pemasok ---
+  // --- Data turunan untuk seksi menu, bahan, sekolah ---
   const todayIso = localDateIso();
   const week = currentWeekRange();
   const weekMenus = publicData?.weekMenus || [];
@@ -430,31 +436,27 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     ? selectedMenuDate
     : menuDates.includes(todayIso) ? todayIso : menuDates[0] || '';
   const activeMenus = weekMenus.filter(m => m.date === activeMenuDate);
-  // Foto sajian hanya ada untuk menu hari ini (diunggah di Atur Website); hari lain memakai foto ilustrasi.
-  const menuTodayIsToday = (config.menuToday?.menuTitle || '').trim() !== '' && activeMenuDate === todayIso;
-  const activeMenuImage = menuTodayIsToday && config.menuToday?.imageUrl ? config.menuToday.imageUrl : trayImg1;
+  // Hanya hari yang tanggalnya sama dengan menu terbitan Atur Website yang ditampilkan; hari lain dibiarkan kosong.
+  const postedDate = parseIndonesianDate(config.menuToday?.dateText || '');
+  const isActiveDayPosted =
+    (config.menuToday?.menuTitle || '').trim() !== '' && postedDate !== null && localDateIso(postedDate) === activeMenuDate;
+  const postedPhoto = isActiveDayPosted ? config.menuToday.imageUrl || '' : '';
 
   const todayIngredients = config.menuToday?.ingredients || [];
   const componentCards = todayIngredients.length > 0
     ? todayIngredients.map(ing => ({
         id: ing.id,
-        category: ing.category || 'Bahan',
+        category: INGREDIENT_CATEGORIES.find(c => c.value === ing.category)?.label || ing.category || 'Bahan',
         title: ing.name,
-        portion: [ing.portionSmall, ing.portionLarge].filter(Boolean).join(' / ') || '-',
-        origin: ing.supplier || '-',
         description: ing.healthBenefits || ing.nutritionHighlight || '',
-        image: ing.imageUrl || nasiPutihBowlImg,
+        image: ing.imageUrl,
       }))
     : FOOD_COMPONENTS;
   const isSampleComponents = todayIngredients.length === 0;
-  const activeComponentId = componentCards.some(c => c.id === selectedComponentId) ? selectedComponentId : componentCards[0]?.id;
 
   const schools = publicData?.schools.length
     ? publicData.schools.map(sc => ({ name: sc.name, location: sc.category }))
     : BENEFICIARY_SCHOOLS;
-  const suppliers = publicData?.suppliers.length
-    ? publicData.suppliers.map(sp => ({ name: sp.name, location: '', product: sp.category, image: supplierImage(`${sp.category} ${sp.name}`) }))
-    : LOCAL_SUPPLIERS;
 
   return (
     <div className="min-h-screen bg-[#faf8f4] text-[#1c2420] font-sans selection:bg-[#d8eedf] selection:text-[#0c3123] antialiased">
@@ -790,8 +792,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* ========================================================
           SEKSI 2: MENU MBG MINGGU INI (#siklus-menu)
           ======================================================== */}
-      <section id="siklus-menu" className="py-14 sm:py-20 bg-[#faf8f4] border-b border-[#e5dfd3]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section id="siklus-menu" className="relative overflow-hidden py-14 sm:py-20 bg-[#faf8f4] border-b border-[#e5dfd3]">
+        {/* Mengisi ruang kosong di samping judul; memudar ke kiri agar tidak mengganggu teks. */}
+        <FoodDoodles width={760} height={320} seed={1} className="hidden md:block top-0 right-0 w-3/5 h-80 text-[#133d2c] opacity-[0.16] [mask-image:linear-gradient(to_left,black_45%,transparent)]" />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#133d2c] text-white text-xs font-semibold mb-3">
@@ -838,17 +842,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 })}
               </div>
 
+              {!isActiveDayPosted ? (
+                <div className="relative overflow-hidden bg-white rounded-2xl border border-[#ded7c8] p-8 sm:p-12 text-center">
+                  {/* Bagian tengah dikosongkan supaya kalimatnya tetap bersih. */}
+                  <FoodDoodles width={1200} height={150} seed={2} className="inset-0 w-full h-full text-[#133d2c] opacity-[0.18] [mask-image:radial-gradient(ellipse_at_center,transparent_30%,black_72%)]" />
+                  <p className="relative text-sm font-semibold text-[#141d18]">Menu dan foto ompreng belum tersedia.</p>
+                </div>
+              ) : (
               <div className="bg-white rounded-2xl border border-[#ded7c8] p-5 sm:p-7 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
-                <figure className="lg:col-span-7">
-                  <div className="aspect-4/3 sm:aspect-16/10 rounded-xl overflow-hidden bg-slate-900 border border-[#ded7c8]">
-                    <img src={activeMenuImage} alt={menuTodayIsToday ? `Foto sajian ${activeMenus[0]?.title}` : ''} className="w-full h-full object-cover" />
-                  </div>
-                  {!menuTodayIsToday && (
-                    <figcaption className="text-[11px] text-[#5f6e66] mt-2">Foto ilustrasi sajian MBG.</figcaption>
-                  )}
-                </figure>
+                {postedPhoto && (
+                  <figure className="lg:col-span-7">
+                    <PostedTray menuToday={config.menuToday} photo={postedPhoto} alt={`Foto sajian ${activeMenus[0]?.title}`} />
+                  </figure>
+                )}
 
-                <div className="lg:col-span-5 space-y-6">
+                <div className={`${postedPhoto ? 'lg:col-span-5' : 'lg:col-span-12'} space-y-6`}>
                   {activeMenus.map(menu => (
                     <div key={menu.id}>
                       <div className="text-xs font-semibold text-[#5f6e66]">
@@ -861,7 +869,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       {menu.description && (
                         <p className="text-xs sm:text-sm text-[#55645c] mt-2 leading-relaxed">{menu.description}</p>
                       )}
-                      <ul className="mt-4 flex flex-wrap gap-2" aria-label="Komponen menu">
+                      {/* Di layar sempit daftar bernomor di bawah ompreng sudah memuat isi yang sama. */}
+                      <ul className={`mt-4 flex-wrap gap-2 ${postedPhoto ? 'hidden xl:flex' : 'flex'}`} aria-label="Komponen menu">
                         {splitDishes(menu.title).map(dish => (
                           <li key={dish} className="px-3 py-1.5 rounded-full bg-[#faf8f4] border border-[#ede7db] text-xs font-semibold text-[#25322a]">
                             {dish}
@@ -877,13 +886,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   ))}
                 </div>
               </div>
+              )}
             </>
           )}
         </div>
       </section>
 
       {/* ========================================================
-          SEKSI 3: KOMPONEN MENU (BAHAN & PORSI) (#komponen-menu)
+          SEKSI 3: BAHAN MENU (#komponen-menu)
           ======================================================== */}
       <section id="komponen-menu" className="py-14 sm:py-20 bg-white border-b border-[#e5dfd3]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -892,92 +902,38 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <span>Komponen Menu</span>
             </div>
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-serif-display text-[#141d18] tracking-tight">
-              {isSampleComponents ? 'Bahan dan Porsi Makanan' : 'Bahan Menu Hari Ini'}
+              {isSampleComponents ? 'Bahan Makanan MBG' : 'Bahan Menu Hari Ini'}
             </h2>
             <p className="text-xs sm:text-sm text-[#55645c] mt-2 max-w-2xl leading-relaxed">
               {isSampleComponents
-                ? 'Contoh komponen menu MBG beserta perkiraan porsinya.'
-                : `Bahan menu ${config.menuToday.dateText || 'terbaru'}, porsi kecil / besar, dan asal bahannya.`}
+                ? 'Contoh bahan pada menu MBG dan manfaatnya.'
+                : `Bahan menu ${config.menuToday.dateText || 'terbaru'} dan manfaatnya.`}
             </p>
           </div>
 
-          {/* Kontainer Interaktif 3 Kolom */}
-          <div className="bg-[#faf8f4] rounded-3xl border border-[#ded7c8] p-5 sm:p-8 shadow-xs">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
-              {/* Kolom 1: Daftar Tab Komponen */}
-              <div className="lg:col-span-4 space-y-2.5">
-                {componentCards.map((item) => {
-                  const isSelected = activeComponentId === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setSelectedComponentId(item.id)}
-                      className={`w-full text-left p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-white border-l-4 border-l-[#133d2c] border-[#ded7c8] shadow-xs'
-                          : 'bg-white/60 border-[#e8e2d4] hover:bg-white text-[#4d5c53]'
-                      }`}
-                    >
-                      <div className={`text-[11px] font-semibold ${isSelected ? 'text-[#133d2c]' : 'text-[#707e76]'}`}>
-                        {item.category}
-                      </div>
-                      <div className="text-sm font-bold text-[#141d18] mt-0.5">
-                        {item.title}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Kolom 2 & 3: Tampilan Foto Resolusi Tinggi & Detail Spesifikasi */}
-              {(() => {
-                const currentComp = componentCards.find(c => c.id === activeComponentId) || componentCards[0];
-                return (
-                  <>
-                    {/* Kolom 2: Foto Sajian dalam Mangkuk / Piring */}
-                    <div className="lg:col-span-4 aspect-4/3 rounded-2xl overflow-hidden bg-stone-100 border border-[#ded7c8] shadow-xs">
-                      <img
-                        key={currentComp.id}
-                        src={currentComp.image}
-                        alt={currentComp.title}
-                        className="w-full h-full object-cover object-center"
-                      />
-                    </div>
-
-                    {/* Kolom 3: Rincian Spesifikasi Porsi, Asal Bahan, Keterangan */}
-                    <div className="lg:col-span-4 space-y-4">
-                      <div>
-                        <span className="inline-block text-[11px] font-semibold text-[#133d2c] bg-[#ecf7f0] border border-[#c4e5ce] px-2.5 py-0.5 rounded-full mb-1.5">
-                          {currentComp.category}
-                        </span>
-                        <h3 className="text-2xl font-bold font-serif-display text-[#141d18]">
-                          {currentComp.title}
-                        </h3>
-                      </div>
-
-                      <div className="space-y-3 pt-2 text-xs border-t border-[#e8e2d4]">
-                        <div className="grid grid-cols-3 gap-2 py-1">
-                          <span className="font-bold text-[#141d18]">Porsi</span>
-                          <span className="col-span-2 text-[#4d5c53]">{currentComp.portion}</span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2 py-1 border-t border-[#f0ece1]">
-                          <span className="font-bold text-[#141d18]">Asal Bahan</span>
-                          <span className="col-span-2 text-[#4d5c53]">{currentComp.origin}</span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2 py-1 border-t border-[#f0ece1]">
-                          <span className="font-bold text-[#141d18]">Keterangan</span>
-                          <span className="col-span-2 text-[#4d5c53] leading-relaxed">
-                            {currentComp.description}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-          </div>
+          {/* Disusun seperti daftar menu cetak: semua bahan terbaca tanpa perlu diklik, foto bulat meniru piring. */}
+          <ul className="grid grid-cols-1 lg:grid-cols-2 gap-x-14 border-t border-[#e5dfd3]">
+            {componentCards.map(item => (
+              <li key={item.id} className="flex items-center gap-4 sm:gap-5 py-5 border-b border-[#e5dfd3]">
+                <FoodImage
+                  name={item.title}
+                  category={item.category}
+                  imageUrl={item.image}
+                  alt=""
+                  tint="#f6f2e8"
+                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-full shrink-0 border border-[#ded7c8]"
+                  illustrationClassName="h-[68%] w-auto"
+                />
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold text-[#5f6e66]">{item.category}</div>
+                  <h3 className="text-lg font-bold font-serif-display text-[#141d18] leading-snug mt-0.5">{item.title}</h3>
+                  {item.description && (
+                    <p className="text-xs sm:text-sm text-[#55645c] mt-1 leading-relaxed">{item.description}</p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
@@ -1043,8 +999,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* ========================================================
           SEKSI 5: DOKUMENTASI KEGIATAN (#dokumentasi-kegiatan)
           ======================================================== */}
-      <section id="dokumentasi-kegiatan" className="py-14 sm:py-20 bg-white border-b border-[#e5dfd3]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section id="dokumentasi-kegiatan" className="relative overflow-hidden py-14 sm:py-20 bg-white border-b border-[#e5dfd3]">
+        <FoodDoodles width={760} height={280} seed={3} className="hidden md:block top-0 right-0 w-3/5 h-72 text-[#133d2c] opacity-[0.14] [mask-image:linear-gradient(to_left,black_45%,transparent)]" />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#133d2c] text-white text-xs font-semibold mb-3 shadow-2xs">
@@ -1088,74 +1045,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </section>
 
       {/* ========================================================
-          SEKSI 6: PEMASOK BAHAN PANGAN (#pemasok-bahan)
+          SEKSI 6: SEKOLAH PENERIMA (#sekolah-penerima)
           ======================================================== */}
-      <section id="pemasok-bahan" className="py-14 sm:py-20 bg-[#faf8f4] border-b border-[#e5dfd3]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
-            <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#133d2c] text-white text-xs font-semibold mb-3 shadow-2xs">
-                <span>Pemasok Bahan Pangan</span>
-              </div>
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-serif-display text-[#141d18] tracking-tight">
-                Pemasok Bahan Pangan
-              </h2>
-              <p className="text-xs sm:text-sm text-[#55645c] mt-2 max-w-2xl leading-relaxed">
-                Bahan makanan untuk menu MBG diperoleh dari pemasok lokal yang bekerja sama dengan SPPG Tumpang Jeru.
-              </p>
-            </div>
-
-            {/* Tombol Daftar Pemasok */}
-            <div className="shrink-0">
-              <button
-                type="button"
-                onClick={() => setShowSupplierModal(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-[#ded7c8] text-xs font-bold text-[#141d18] hover:bg-[#f6f2e8] transition-colors shadow-2xs cursor-pointer"
-              >
-                <span>Daftar Pemasok</span>
-                <ArrowRight className="w-3.5 h-3.5 text-[#133d2c]" />
-              </button>
-            </div>
-          </div>
-
-          {/* 4 Kartu Pemasok Lokal */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {suppliers.slice(0, 4).map((sup) => (
-              <div
-                key={sup.name}
-                className="bg-white rounded-3xl p-4 border border-[#ded7c8] shadow-xs flex flex-col justify-between hover:border-[#133d2c] transition-all group"
-              >
-                <div>
-                  <div className="aspect-16/10 rounded-2xl overflow-hidden bg-slate-900 border border-[#ded7c8] mb-3.5">
-                    <img
-                      src={sup.image}
-                      alt={sup.name}
-                      className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
-                    />
-                  </div>
-                  <h3 className="text-sm font-bold text-[#141d18]">
-                    {sup.name}
-                  </h3>
-                  {sup.location && (
-                    <div className="text-[11px] text-[#5f6e66] mt-0.5">
-                      {sup.location}
-                    </div>
-                  )}
-                  <div className="mt-3 pt-2.5 border-t border-[#f0ece1] text-xs">
-                    <span className="text-[#707e76]">Bahan yang dipasok: </span>
-                    <span className="font-bold text-[#133d2c]">{sup.product}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ========================================================
-          SEKSI 7: SEKOLAH PENERIMA (#sekolah-penerima)
-          ======================================================== */}
-      <section id="sekolah-penerima" className="py-14 sm:py-20 bg-white border-b border-[#e5dfd3]">
+      <section id="sekolah-penerima" className="py-14 sm:py-20 bg-[#faf8f4] border-b border-[#e5dfd3]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
             <div>
@@ -1183,9 +1075,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             {(showAllSchools ? schools : schools.slice(0, 8)).map((sch) => (
               <div
                 key={sch.name}
-                className="p-4 rounded-2xl bg-[#faf8f4] border border-[#ded7c8] flex items-center gap-3.5 hover:border-[#133d2c] transition-colors"
+                className="p-4 rounded-2xl bg-white border border-[#ded7c8] flex items-center gap-3.5 hover:border-[#133d2c] transition-colors"
               >
-                <div className="w-10 h-10 rounded-xl bg-white border border-[#ded7c8] flex items-center justify-center shrink-0 text-[#133d2c] shadow-2xs">
+                <div className="w-10 h-10 rounded-xl bg-[#faf8f4] border border-[#ded7c8] flex items-center justify-center shrink-0 text-[#133d2c] shadow-2xs">
                   <Building2 className="w-5 h-5" />
                 </div>
                 <div className="min-w-0">
@@ -1206,13 +1098,78 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <button
                 type="button"
                 onClick={() => setShowAllSchools(!showAllSchools)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#faf8f4] border border-[#ded7c8] text-xs font-bold text-[#133d2c] hover:bg-[#f0ece1] transition-colors cursor-pointer"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white border border-[#ded7c8] text-xs font-bold text-[#133d2c] hover:bg-[#f0ece1] transition-colors cursor-pointer"
               >
                 <span>{showAllSchools ? 'Tampilkan lebih sedikit' : `Lihat seluruh ${schools.length} sekolah penerima`}</span>
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAllSchools ? 'rotate-180' : ''}`} />
               </button>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* ========================================================
+          SEKSI 7: PANDUAN ORANG TUA DAN SEKOLAH (#panduan-penerima)
+          ======================================================== */}
+      <section id="panduan-penerima" className="py-14 sm:py-20 bg-white border-b border-[#e5dfd3]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
+          <div className="relative overflow-hidden lg:col-span-5">
+            {/* Hanya di layar lebar: di layar sempit kolom ini setinggi judulnya, tidak ada ruang kosong. */}
+            <FoodDoodles width={500} height={380} seed={4} className="hidden lg:block left-0 right-0 top-36 bottom-0 w-full h-[calc(100%-9rem)] text-[#133d2c] opacity-[0.16] [mask-image:linear-gradient(to_bottom,transparent,black_30%,black_70%,transparent)]" />
+            <div className="relative">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#133d2c] text-white text-xs font-semibold mb-3 shadow-2xs">
+                <span>Panduan Penerima</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-serif-display text-[#141d18] tracking-tight">
+                Saat Makanan MBG Tiba
+              </h2>
+              <p className="text-xs sm:text-sm text-[#55645c] mt-2 max-w-md leading-relaxed">
+                Yang perlu diperhatikan orang tua, guru, dan PIC sekolah.
+              </p>
+            </div>
+          </div>
+
+          <div className="lg:col-span-7 space-y-5">
+            {/* Dua aturan wajib dipisah dari bantuan di bawahnya, karena aturan ini berlaku untuk setiap ompreng. */}
+            <ul className="bg-[#faf8f4] rounded-3xl border border-[#ded7c8] px-5 sm:px-6 divide-y divide-[#e5dfd3]">
+              {GUIDE_RULES.map(({ Icon, title, text }) => (
+                <li key={title} className="flex items-start gap-3.5 py-5">
+                  <div className="w-10 h-10 rounded-xl bg-white border border-[#ded7c8] flex items-center justify-center shrink-0 text-[#133d2c]">
+                    <Icon className="w-5 h-5" aria-hidden="true" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-bold font-serif-display text-[#141d18] leading-snug">{title}</h3>
+                    <p className="text-xs sm:text-sm text-[#55645c] mt-1 leading-relaxed">{text}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <ul className="px-5 sm:px-6 divide-y divide-[#e5dfd3]">
+              {GUIDE_HELP.map(({ Icon, title, text, links }) => (
+                <li key={title} className="flex items-start gap-3.5 py-4">
+                  <div className="w-10 h-10 rounded-xl bg-[#faf8f4] border border-[#ded7c8] flex items-center justify-center shrink-0 text-[#133d2c]">
+                    <Icon className="w-5 h-5" aria-hidden="true" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-[#141d18]">{title}</h3>
+                    <p className="text-xs sm:text-sm text-[#55645c] mt-1 leading-relaxed">{text}</p>
+                    <div className="flex flex-wrap gap-x-5">
+                      {links.map(link => (
+                        <a
+                          key={link.label}
+                          href={link.href}
+                          className={`inline-flex items-center min-h-[44px] rounded-sm text-xs font-bold text-[#133d2c] underline underline-offset-2 hover:text-[#1c553d] ${PUBLIC_FOCUS}`}
+                        >
+                          {link.label}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 
@@ -1308,70 +1265,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
         </div>
       </section>
-
-      {/* Modal Daftar Pemasok Lengkap */}
-      {showSupplierModal && (
-        <div
-          className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center sm:p-4"
-          onClick={() => setShowSupplierModal(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="supplier-modal-title"
-            onClick={e => e.stopPropagation()}
-            className="bg-white rounded-t-2xl sm:rounded-2xl max-w-2xl w-full p-5 sm:p-8 border border-[#ded7c8] space-y-6 max-h-[92vh] overflow-y-auto"
-          >
-            <div className="flex items-center justify-between pb-4 border-b border-[#eee8dc]">
-              <div>
-                <h3 id="supplier-modal-title" className="text-xl font-bold font-serif-display text-[#141d18]">
-                  Daftar Pemasok Bahan Pangan Lokal
-                </h3>
-                <p className="text-xs text-[#55645c] mt-1">
-                  Kemitraan strategis SPPG Tumpang Jeru bersama petani dan pengrajin pangan Malang.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowSupplierModal(false)}
-                aria-label="Tutup"
-                className={`w-11 h-11 rounded-full bg-[#faf8f4] hover:bg-[#f0ece1] flex items-center justify-center text-slate-700 cursor-pointer shrink-0 ${PUBLIC_FOCUS}`}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-              {suppliers.map((sup) => (
-                <div key={sup.name} className="p-4 rounded-2xl bg-[#faf8f4] border border-[#ded7c8] flex items-center gap-4">
-                  <img
-                    src={sup.image}
-                    alt={sup.name}
-                    className="w-16 h-16 rounded-xl object-cover shrink-0 border border-[#ded7c8]"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold text-[#141d18]">{sup.name}</div>
-                    {sup.location && <div className="text-xs text-[#5f6e66]">{sup.location}</div>}
-                    <div className="text-xs font-semibold text-[#133d2c] mt-1">
-                      Komoditas Pasokan: {sup.product}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowSupplierModal(false)}
-                className="px-5 py-2.5 rounded-full bg-[#133d2c] text-white text-xs font-bold hover:bg-[#1c553d] transition-colors cursor-pointer"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Footer Minimalis */}
       <footer className="bg-[#081710] text-[#708076] text-xs py-8 border-t border-[#12281d]">

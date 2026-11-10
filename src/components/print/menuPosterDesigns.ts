@@ -194,7 +194,7 @@ function drawCenteredLines(ctx: CanvasRenderingContext2D, lines: string[], cx: n
 // susunan, putaran, dan ukurannya dibuat acak dengan rumus tetap supaya poster yang sama selalu tampak sama.
 // ---------------------------------------------------------------------------------------------
 
-const DOODLE_PATHS = [
+export const DOODLE_PATHS = [
   "M3 12h18a9 8 0 0 1-18 0zM8 9q1.5-2 0-4M12 9q1.5-2 0-4M16 9q1.5-2 0-4", // mangkuk berasap
   "M12 7c-4-3-9 1-8 6s5 9 8 7c3 2 7-2 8-7s-4-9-8-6zM12 7V3M12 5q3-3 6-1q-3 3-6 1z", // apel
   "M2 12q7-8 15 0q-8 8-15 0zM17 12l5-5v10zM6.5 10.5h.01", // ikan
@@ -210,7 +210,7 @@ const DOODLE_PATHS = [
 ];
 
 // Bilangan semu 0..1 yang tetap untuk tiap sel.
-const doodleRand = (col: number, row: number, salt: number) => {
+export const doodleRand = (col: number, row: number, salt: number) => {
   const v = Math.sin(col * 127.1 + row * 311.7 + salt * 74.7) * 43758.5453;
   return v - Math.floor(v);
 };
