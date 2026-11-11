@@ -180,6 +180,62 @@ export function peelLightRim(data: Uint8ClampedArray | Uint8Array, width: number
   return count;
 }
 
+/**
+ * Batas kiri dan kanan selubung cembung bagian nampan pada tiap baris. Baris di luar selubung: minX Infinity, maxX -Infinity.
+ * Cukup titik paling kiri dan paling kanan tiap baris, karena selubung himpunan itu sama dengan selubung seluruh bagian.
+ */
+export function convexRowSpans(component: Int32Array, id: number, width: number, height: number): {minX: Float64Array; maxX: Float64Array} {
+  const minX = new Float64Array(height).fill(Infinity);
+  const maxX = new Float64Array(height).fill(-Infinity);
+  const points: [number, number][] = [];
+  for (let y = 0; y < height; y++) {
+    let first = -1, last = -1;
+    for (let x = 0, row = y * width; x < width; x++) {
+      if (component[row + x] !== id) continue;
+      if (first < 0) first = x;
+      last = x;
+    }
+    if (first < 0) continue;
+    points.push([first, y]);
+    if (last !== first) points.push([last, y]);
+  }
+  if (points.length < 3) {
+    for (const [x, y] of points) {
+      minX[y] = Math.min(minX[y], x);
+      maxX[y] = Math.max(maxX[y], x);
+    }
+    return {minX, maxX};
+  }
+
+  // Monotone chain.
+  points.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o: number[], a: number[], b: number[]) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const half = (list: [number, number][]) => {
+    const chain: [number, number][] = [];
+    for (const p of list) {
+      while (chain.length >= 2 && cross(chain[chain.length - 2], chain[chain.length - 1], p) <= 0) chain.pop();
+      chain.push(p);
+    }
+    chain.pop();
+    return chain;
+  };
+  const hull = [...half(points), ...half([...points].reverse())];
+
+  // Potong tiap sisi selubung dengan setiap baris yang dilewatinya.
+  for (let k = 0; k < hull.length; k++) {
+    const [x1, y1] = hull[k];
+    const [x2, y2] = hull[(k + 1) % hull.length];
+    for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
+      const xs = y1 === y2 ? [x1, x2] : [x1 + ((x2 - x1) * (y - y1)) / (y2 - y1)];
+      for (const x of xs) {
+        if (x < minX[y]) minX[y] = x;
+        if (x > maxX[y]) maxX[y] = x;
+      }
+    }
+  }
+  return {minX, maxX};
+}
+
 const SOLID_ALPHA = 128;
 // Lebar tepi lembut yang dibiarkan apa adanya, supaya pinggir nampan tidak jadi bergerigi.
 const EDGE_PX = 3;
@@ -188,7 +244,7 @@ const EDGE_PX = 3;
  * Rapikan hasil model: serpihan di luar nampan (sobekan kertas, titik) dibuang, dan lubang di dalam nampan ditambal dari
  * foto asli. Pantulan logam yang putih sering dikira background, padahal nampan tidak punya lubang.
  */
-async function cleanCutout(blob: Blob, source: string): Promise<Blob> {
+export async function cleanCutout(blob: Blob, source: string): Promise<Blob> {
   const bitmap = await createImageBitmap(blob);
   const {width, height} = bitmap;
   const canvas = document.createElement("canvas");
@@ -255,6 +311,16 @@ async function cleanCutout(blob: Blob, source: string): Promise<Blob> {
   }
   while (stack.length) neighbours(stack.pop()!, edgeStart);
 
+  // Lubang di antara sekat bisa tersambung ke luar lewat celah di pinggir nampan, sehingga ikut terhitung "luar" dan
+  // terhapus. Nampan berbentuk cembung: semua yang ada di dalam selubung cembungnya adalah nampan, jadi ditambal.
+  const {minX, maxX} = convexRowSpans(component, bestId, width, height);
+  for (let i = 0; i < total; i++) {
+    if (!outside[i]) continue;
+    const x = i % width;
+    const y = (i - x) / width;
+    if (x >= minX[y] && x <= maxX[y]) outside[i] = 0;
+  }
+
   const nearOutside = outside.slice();
   let ring: number[] = [];
   for (let i = 0; i < total; i++) if (outside[i]) ring.push(i);
@@ -296,10 +362,11 @@ async function cleanCutout(blob: Blob, source: string): Promise<Blob> {
       // Tepi lembut nampan tetap, serpihan yang jauh dari nampan dihapus.
       if (!nearNampan(i)) data[p + 3] = 0;
     } else if (!nearOutside[i] && data[p + 3] < 255 && original) {
+      // Alfa ikut sumbernya: bila sumbernya sudah hasil potongan, bagian yang memang kosong tidak berubah jadi hitam.
       data[p] = original[p];
       data[p + 1] = original[p + 1];
       data[p + 2] = original[p + 2];
-      data[p + 3] = 255;
+      data[p + 3] = Math.max(data[p + 3], original[p + 3]);
     }
   }
   ctx.putImageData(image, 0, 0);
