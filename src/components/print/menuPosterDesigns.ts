@@ -251,7 +251,7 @@ function drawDoodles(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
 
 // ---------------------------------------------------------------------------------------------
 // Hijau: nama hidangan di sekeliling nampan dengan panah, nilai gizi dua kolom di bawah.
-// Urutan hidangan mengikuti urutan baris isian: kiri atas, kanan atas, kiri bawah, kanan bawah, bawah.
+// Urutan hidangan mengikuti urutan baris isian: kiri atas, kanan atas, kiri bawah, kanan bawah, bawah, kanan tengah.
 // ---------------------------------------------------------------------------------------------
 
 const GREEN_LABEL_SLOTS = [
@@ -260,13 +260,16 @@ const GREEN_LABEL_SLOTS = [
   {x: 200, y: 1345, from: [450, 1395], to: [318, 1385], bend: 36, wrapW: 300},
   {x: 1387, y: 1345, from: [1137, 1395], to: [1269, 1385], bend: -36, wrapW: 300},
   {x: 793, y: 1610, from: [793, 1420], to: [793, 1540], bend: 26, wrapW: 640},
+  // Ke-6 (mis. buah yang ditambahkan belakangan) di kanan tengah: atas tengah terlalu sempit di panggung halaman publik
+  // dan dipakai judul menu di poster 2 menu.
+  {x: 1387, y: 1167, from: [1137, 1190], to: [1269, 1167], bend: 30, wrapW: 300},
 ];
 
-/** Label desain Hijau: 4 hidangan pertama masing-masing satu label, sisanya digabung di label ke-5. */
+/** Label desain Hijau: 5 hidangan pertama masing-masing satu label, sisanya digabung di label ke-6. */
 export function greenLabelTexts(items: string[]): string[] {
   const clean = items.map((it) => it.trim()).filter(Boolean);
-  const labels = clean.slice(0, 4);
-  if (clean.length > 4) labels.push(clean.slice(4).join(", "));
+  const labels = clean.slice(0, 5);
+  if (clean.length > 5) labels.push(clean.slice(5).join(", "));
   return labels;
 }
 
@@ -608,6 +611,7 @@ const greenDoubleSlots = (menuIndex: number): GreenSlot[] => {
     slot(125, 840, [310, 875], [242, 862], 24, 220),
     slot(997, 840, [812, 875], [880, 862], -24, 220),
     slot(561, 1002, [561, 900], [561, 966], 16, 620),
+    slot(997, 732, [812, 750], [880, 732], 24, 220),
   ];
 };
 

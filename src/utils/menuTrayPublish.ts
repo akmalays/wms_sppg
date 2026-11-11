@@ -47,6 +47,11 @@ export interface TrayPublish {
   photo: string;
   /** undefined = letak yang tersimpan tidak disentuh, kecuali fotonya berganti. */
   labels?: TrayLabelPlacement[] | null;
+  /**
+   * Nama hidangan di poster. Ikut menggantikan daftar hidangan halaman publik, supaya hidangan yang ditambahkan
+   * belakangan (mis. buah) muncul di sana dan label dari poster cocok dengan namanya.
+   */
+  dishes?: string[];
 }
 
 // Letak nama bisa berubah berkali-kali untuk satu foto; fotonya cukup diunggah sekali. Dipakai bersama oleh
@@ -85,6 +90,8 @@ export async function publishTrays(items: TrayPublish[]): Promise<void> {
     menuToday[photoKey] = urls[i];
     if (item.labels !== undefined) menuToday[labelsKey] = item.labels;
     else if (photoChanged) menuToday[labelsKey] = null;
+    const dishes = item.dishes?.map((d) => d.trim()).filter(Boolean);
+    if (dishes?.length) menuToday[item.target === "b3" ? "menuB3" : "menuTitle"] = dishes.join(", ");
   });
   const saved = await saveWebsiteConfigToCloud({...config, menuToday});
   if (saved.cloudFailed) throw new Error(saved.message);

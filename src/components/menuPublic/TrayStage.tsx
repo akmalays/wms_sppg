@@ -34,7 +34,7 @@ const STAGE_BOX = { w: GREEN_TRAY_BOX.w * TRAY_SCALE, h: GREEN_TRAY_BOX.h * TRAY
 const [CX, CY] = GREEN_TRAY_CENTER;
 const STAGE_LABEL_X = [125, GREEN_TRAY_BAND.w - 125];
 const STAGE_LABEL_Y = [GREEN_TRAY_BAND.y + 40, GREEN_TRAY_BAND.y + GREEN_TRAY_BAND.h - 40];
-const STAGE_LABEL_WRAP = [220, 220, 220, 220, 640];
+const STAGE_LABEL_WRAP = [220, 220, 220, 220, 640, 220];
 
 const STAGE_DEFAULTS: LabelPlacement[] = [
   { x: STAGE_LABEL_X[0], y: 1010, tipX: CX - 300, tipY: CY - 210 },
@@ -42,6 +42,7 @@ const STAGE_DEFAULTS: LabelPlacement[] = [
   { x: STAGE_LABEL_X[0], y: 1400, tipX: CX - 300, tipY: CY + 210 },
   { x: STAGE_LABEL_X[1], y: 1400, tipX: CX + 300, tipY: CY + 210 },
   { x: CX, y: STAGE_LABEL_Y[1], tipX: CX, tipY: CY + 280 },
+  { x: STAGE_LABEL_X[1], y: CY, tipX: CX + 340, tipY: CY + 20 },
 ];
 
 const clampTo = (v: number, [from, to]: number[]) => Math.min(to, Math.max(from, v));

@@ -968,7 +968,7 @@ export const MenuPrintModule: React.FC<MenuPrintModuleProps> = ({onNavigate}) =>
         if (!menu.photo || !menu.photoOriginal) return [];
         const target = i === 0 ? "reguler" : "b3";
         const labels = stageLabelsOf(menu, i);
-        return [labels ? {target, photo: menu.photo, labels} : {target, photo: menu.photo}];
+        return [labels ? {target, photo: menu.photo, labels, dishes: menu.items} : {target, photo: menu.photo, dishes: menu.items}];
       }),
     [visibleMenus, stageLabelsOf]
   );
