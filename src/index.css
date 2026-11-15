@@ -27,6 +27,12 @@
     padding-right: env(safe-area-inset-right, 0px);
   }
 
+  /* Lapisan layar penuh (dialog, pratinjau) sering menjadi anak wadah space-y-*; margin dari sana membuat
+     lapisan tidak sampai ke dasar layar dan halaman di belakangnya terlihat. */
+  .fixed.inset-0 {
+    margin: 0 !important;
+  }
+
   .font-display {
     font-family: var(--font-display);
     letter-spacing: -0.02em;

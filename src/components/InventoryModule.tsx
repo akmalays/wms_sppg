@@ -47,7 +47,7 @@ import {
   Sliders
 } from 'lucide-react';
 import { exportToExcel } from '../lib/excelExport';
-import { BTN_PRIMARY, BTN_SECONDARY, TABLE_INPUT } from './common/FormDialog';
+import { BTN_PRIMARY, BTN_SECONDARY, TABLE_INPUT, FIELD_INPUT, FIELD_LABEL, FOCUS_RING, FormDialog } from './common/FormDialog';
 import { SppgLogo } from './SppgLogo';
 import { useToast } from '../context/ToastContext';
 import { localDateIso } from '../utils/localDate';
@@ -92,6 +92,8 @@ function getItemEstimatedUnitPrice(_name: string, _category: string, explicitPri
   return explicitPrice && explicitPrice > 0 ? explicitPrice : 0;
 }
 
+const LIST_PAGE = 40;
+
 export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = 'stock' }) => {
   const { currentUser, can } = useAuth();
   const toast = useToast();
@@ -121,6 +123,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
   // Kategori untuk tombol opname per kategori di tab Stock Opname
   const [opnameLaunchCategory, setOpnameLaunchCategory] = useState<SppgCategory>('Semua Kategori');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  // Di HP daftar ditampilkan bertahap: ratusan barang sekaligus membuat halaman puluhan layar panjangnya
+  const [stockListLimit, setStockListLimit] = useState(LIST_PAGE);
+  const [masterListLimit, setMasterListLimit] = useState(LIST_PAGE);
   const [successNotice, setSuccessNotice] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
@@ -1199,7 +1204,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
       `}</style>
 
       {/* Main Screen Content (hidden during print) */}
-      <div className="no-print space-y-5">
+      <div className="no-print space-y-3 sm:space-y-5">
         {/* Toast Alert Notice */}
         {successNotice && (
           <div className="flex items-center gap-2.5 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-medium animate-in fade-in duration-150">
@@ -1219,12 +1224,12 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-xl border border-slate-200">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Stok Barang</h1>
-          <p className="text-xs text-slate-600 mt-0.5">
+          <p className="hidden sm:block text-xs text-slate-600 mt-0.5">
             Saldo stok tiap barang, restock barang non-food, data master barang, dan stok opname.
           </p>
         </div>
 
-        <div role="tablist" aria-label="Bagian halaman stok" className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg text-xs self-start lg:self-auto">
+        <div role="tablist" aria-label="Bagian halaman stok" className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg text-xs sm:self-start lg:self-auto">
           {([
             { id: 'stock', label: 'Saldo Stok', badge: null },
             { id: 'restock', label: 'Perlu Restock', badge: restockCount > 0 ? restockCount : null },
@@ -1237,7 +1242,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
               role="tab"
               aria-selected={activeMainTab === tab.id}
               onClick={() => setActiveMainTab(tab.id)}
-              className={`inline-flex items-center gap-1.5 px-3 rounded-md whitespace-nowrap cursor-pointer min-h-[44px] sm:min-h-[32px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+              className={`inline-flex items-center justify-center gap-1.5 px-3 rounded-md whitespace-nowrap cursor-pointer min-h-[44px] sm:min-h-[32px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
                 activeMainTab === tab.id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'
               }`}
             >
@@ -1264,9 +1269,9 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
       {activeMainTab === 'stock' && (
         <div className="space-y-4">
           {/* Status tiles double as filters: the question each morning is what is low or empty */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-4 gap-1.5 sm:gap-2.5">
             {([
-              { id: 'ALL', label: 'Semua barang aktif', value: stockMetrics.totalItems, tone: 'text-slate-900', active: 'ring-slate-900' },
+              { id: 'ALL', label: 'Semua', value: stockMetrics.totalItems, tone: 'text-slate-900', active: 'ring-slate-900' },
               { id: 'OUT_OF_STOCK', label: 'Habis', value: stockMetrics.outCount, tone: 'text-rose-700', active: 'ring-rose-600' },
               { id: 'LOW', label: 'Menipis', value: stockMetrics.lowCount, tone: 'text-amber-800', active: 'ring-amber-600' },
               { id: 'NORMAL', label: 'Aman', value: stockMetrics.normalCount, tone: 'text-emerald-800', active: 'ring-emerald-600' },
@@ -1274,15 +1279,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
               <button
                 key={tile.id}
                 type="button"
-                onClick={() => setFilterStatus(tile.id)}
+                onClick={() => { setFilterStatus(tile.id); setStockListLimit(LIST_PAGE); }}
                 aria-pressed={filterStatus === tile.id}
-                className={`text-left bg-white p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+                className={`text-left bg-white p-2.5 sm:p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
                   filterStatus === tile.id ? `ring-2 ${tile.active}` : ''
                 }`}
               >
                 <span className="block text-[11px] font-medium text-slate-600">{tile.label}</span>
-                <span className={`block mt-1 text-2xl font-bold font-mono tabular-nums ${tile.tone}`}>{tile.value}</span>
-                <span className="block text-[11px] text-slate-600">jenis barang</span>
+                <span className={`block mt-0.5 sm:mt-1 text-lg sm:text-2xl font-bold font-mono tabular-nums ${tile.tone}`}>{tile.value}</span>
+                <span className="max-sm:hidden block text-[11px] text-slate-600">jenis barang</span>
               </button>
             ))}
           </div>
@@ -1302,7 +1307,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                 <button
                   type="button"
                   onClick={handleOpenNewSingleItem}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                  className="max-sm:w-full inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
                 >
                   <Plus className="w-4 h-4" />
                   Tambah Barang
@@ -1311,7 +1316,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
               <button
                 type="button"
                 onClick={handleExportStockExcel}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                className="max-sm:flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
               >
                 <FileSpreadsheet className="w-4 h-4 text-slate-500" />
                 Ekspor Excel
@@ -1319,7 +1324,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
               <button
                 type="button"
                 onClick={() => setIsPrintPreviewOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                className="max-sm:flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
               >
                 <Printer className="w-4 h-4 text-slate-500" />
                 Cetak Rekap
@@ -1327,14 +1332,15 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div className="p-3 border-b border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center gap-2">
+          {/* overflow-clip, bukan hidden: supaya baris filter bisa menempel di bawah header saat daftar digulir di HP */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-clip">
+            <div className="p-2.5 sm:p-3 border-b border-slate-200 bg-slate-50 flex items-center gap-2 max-md:sticky max-md:top-[calc(3.5rem_+_var(--safe-top))] z-20">
               <Select
                 size="sm"
-                className="w-full sm:w-56"
+                className="w-[42%] sm:w-56"
                 aria-label="Kategori"
                 value={selectedCategoryTab}
-                onChange={e => setSelectedCategoryTab(e.target.value as SppgCategory)}
+                onChange={e => { setSelectedCategoryTab(e.target.value as SppgCategory); setStockListLimit(LIST_PAGE); }}
               >
                 {SPPG_STOCK_CATEGORIES.filter(
                   cat => cat === 'Semua Kategori' || (stockMetrics.categoryItemCounts[cat] || 0) > 0 || cat === selectedCategoryTab
@@ -1344,14 +1350,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                   </option>
                 ))}
               </Select>
-              <div className="relative w-full sm:w-72">
+              <div className="relative flex-1 min-w-0 sm:flex-none sm:w-72">
                 <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
                 <input
                   type="search"
                   placeholder="Cari nama, SKU, lokasi"
                   aria-label="Cari barang"
                   value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
+                  onChange={e => { setSearchQuery(e.target.value); setStockListLimit(LIST_PAGE); }}
                   className={`${TABLE_INPUT} pl-8`}
                 />
               </div>
@@ -1375,7 +1381,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                       setSelectedCategoryTab('Semua Kategori');
                       setSearchQuery('');
                     }}
-                    className="mt-3 text-xs font-semibold text-emerald-700 hover:underline cursor-pointer"
+                    className={`mt-3 px-3 min-h-[44px] text-xs font-semibold text-emerald-800 hover:underline cursor-pointer rounded-lg ${FOCUS_RING}`}
                   >
                     Hapus semua filter
                   </button>
@@ -1467,52 +1473,54 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                   </table>
                 </div>
 
+                {/* HP: satu baris ringkas per barang; angka stok di kanan, warnanya menandai habis atau menipis */}
                 <ul className="md:hidden divide-y divide-slate-100">
-                  {filteredItems.map(item => {
+                  {filteredItems.slice(0, stockListLimit).map(item => {
                     const status = getItemStockStatus(item);
                     const rackSpec = getStorageLocationDetails(item.location);
                     return (
-                      <li key={item.id} className="p-4 flex items-start justify-between gap-3">
-                        <div className="min-w-0">
+                      <li key={item.id} className="pl-4 pr-2 py-2 flex items-center gap-2">
+                        <div className="min-w-0 flex-1">
                           <div className="text-sm font-semibold text-slate-900 leading-snug">{item.name}</div>
-                          <div className="text-[11px] text-slate-600 mt-0.5">
-                            {getDetailedItemCategory(item)} · {rackSpec.rackCode}
+                          <div className="text-xs text-slate-600 mt-0.5">
+                            {getDetailedItemCategory(item)} · {rackSpec.rackCode} · min {item.minimumStock.toLocaleString('id-ID')}
                           </div>
-                          <div className="text-[11px] text-slate-600">Minimum {item.minimumStock.toLocaleString('id-ID')} {item.baseUnit}</div>
                         </div>
                         <div className="text-right shrink-0">
                           <div
-                            className={`font-mono text-sm font-semibold ${
+                            className={`font-mono text-sm font-semibold tabular-nums ${
                               status === 'OUT_OF_STOCK' ? 'text-rose-700' : status === 'LOW' ? 'text-amber-800' : 'text-slate-900'
                             }`}
                           >
-                            {item.currentStock.toLocaleString('id-ID')} <span className="text-[11px] font-sans font-normal text-slate-600">{item.baseUnit}</span>
+                            {item.currentStock.toLocaleString('id-ID')} <span className="text-xs font-sans font-normal text-slate-600">{item.baseUnit}</span>
                           </div>
-                          <span
-                            className={`inline-block mt-1 px-1.5 py-0.5 rounded-md text-[11px] font-semibold ${
-                              status === 'OUT_OF_STOCK'
-                                ? 'bg-rose-50 text-rose-700'
-                                : status === 'LOW'
-                                ? 'bg-amber-50 text-amber-800'
-                                : 'bg-emerald-50 text-emerald-800'
-                            }`}
-                          >
-                            {status === 'OUT_OF_STOCK' ? 'Habis' : status === 'LOW' ? 'Menipis' : 'Aman'}
-                          </span>
-                          {can('MANAGE_ITEMS') && (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenAdjust(item)}
-                              className="block ml-auto mt-1 px-2 text-xs font-semibold text-emerald-700 cursor-pointer min-h-[44px]"
-                            >
-                              Koreksi
-                            </button>
+                          {status !== 'NORMAL' && (
+                            <div className={`text-xs font-semibold ${status === 'OUT_OF_STOCK' ? 'text-rose-700' : 'text-amber-800'}`}>
+                              {status === 'OUT_OF_STOCK' ? 'Habis' : 'Menipis'}
+                            </div>
                           )}
                         </div>
+                        {can('MANAGE_ITEMS') && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAdjust(item)}
+                            aria-label={`Koreksi stok ${item.name}`}
+                            className={`shrink-0 px-2.5 min-h-[44px] rounded-lg text-xs font-semibold text-emerald-800 hover:bg-emerald-50 cursor-pointer ${FOCUS_RING}`}
+                          >
+                            Koreksi
+                          </button>
+                        )}
                       </li>
                     );
                   })}
                 </ul>
+                {filteredItems.length > stockListLimit && (
+                  <div className="md:hidden p-3 border-t border-slate-100">
+                    <button type="button" onClick={() => setStockListLimit(n => n + LIST_PAGE)} className={`${BTN_SECONDARY} w-full`}>
+                      Tampilkan {Math.min(LIST_PAGE, filteredItems.length - stockListLimit)} barang lagi (sisa {filteredItems.length - stockListLimit})
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -1525,22 +1533,22 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
       {/* VIEW 2: MASTER BARANG (KATALOG & CUSTOM ITEM) */}
       {/* ========================================================================= */}
       {activeMainTab === 'master' && (
-        <div className="space-y-5">
+        <div className="space-y-3 sm:space-y-5">
           {/* Header Action Card for Master Barang */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-xs">
             <div>
               <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <Package className="w-5 h-5 text-emerald-600" />
                 Master Barang
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-600 mt-0.5">
                 Data tiap barang: SKU, satuan, batas minimum, lokasi simpan, dan harga satuan.
               </p>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap shrink-0">
               {can('MANAGE_ITEMS') && (
-                <button type="button" onClick={handleOpenNewSingleItem} className={BTN_PRIMARY}>
+                <button type="button" onClick={handleOpenNewSingleItem} className={`${BTN_PRIMARY} max-sm:flex-1`}>
                   <Plus className="w-4 h-4" />
                   Tambah barang
                 </button>
@@ -1548,7 +1556,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
               <button
                 type="button"
                 onClick={handleExportMasterExcel}
-                className={BTN_SECONDARY}
+                className={`${BTN_SECONDARY} max-sm:flex-1`}
                 title="Unduh barang yang tampil di tabel (sesuai filter) ke Excel">
                 <FileSpreadsheet className="w-4 h-4 text-slate-500" />
                 Ekspor Excel
@@ -1557,7 +1565,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
           </div>
 
           {/* Master Metrics Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
+          {/* Di HP jumlah per kategori sudah terbaca di pilihan kategori, jadi lima kartu ini tidak diulang */}
+          <div className="hidden sm:grid grid-cols-5 gap-3.5">
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
               <div className="flex items-center justify-between text-slate-500 mb-1">
                 <span className="text-xs font-semibold">Total Master Item</span>
@@ -1617,13 +1626,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
           {/* Master Barang Table Container */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
             {/* Filter Bar */}
-            <div className="p-3 border-b border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center gap-2">
+            <div className="p-2.5 sm:p-3 border-b border-slate-200 bg-slate-50 grid grid-cols-2 sm:flex sm:items-center gap-2">
               <Select
                 size="sm"
                 className="w-full sm:w-56"
                 aria-label="Kategori"
                 value={masterCategoryFilter}
-                onChange={e => setMasterCategoryFilter(e.target.value as SppgCategory)}
+                onChange={e => { setMasterCategoryFilter(e.target.value as SppgCategory); setMasterListLimit(LIST_PAGE); }}
               >
                 {SPPG_STOCK_CATEGORIES.map(cat => {
                   const count = cat === 'Semua Kategori' ? items.length : items.filter(i => getDetailedItemCategory(i) === cat).length;
@@ -1639,19 +1648,19 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                 className="w-full sm:w-36"
                 aria-label="Status barang"
                 value={masterStatusFilter}
-                onChange={e => setMasterStatusFilter(e.target.value as 'ALL' | 'ACTIVE' | 'INACTIVE')}>
+                onChange={e => { setMasterStatusFilter(e.target.value as 'ALL' | 'ACTIVE' | 'INACTIVE'); setMasterListLimit(LIST_PAGE); }}>
                 <option value="ALL">Semua status</option>
                 <option value="ACTIVE">Aktif</option>
                 <option value="INACTIVE">Nonaktif</option>
               </Select>
-              <div className="relative w-full sm:w-72">
+              <div className="relative col-span-2 w-full sm:w-72">
                 <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
                 <input
                   type="search"
                   aria-label="Cari barang"
                   placeholder="Cari SKU, nama, lokasi, catatan"
                   value={masterSearchQuery}
-                  onChange={e => setMasterSearchQuery(e.target.value)}
+                  onChange={e => { setMasterSearchQuery(e.target.value); setMasterListLimit(LIST_PAGE); }}
                   className={`${TABLE_INPUT} pl-8`}
                 />
               </div>
@@ -1674,7 +1683,74 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                 <p className="py-10 px-4 text-center text-xs text-slate-600">Tidak ada barang yang cocok dengan filter.</p>
               )
             ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* HP: data barang dua baris, aksi di baris sendiri supaya tiap tombol tetap 44px */}
+            <ul className="md:hidden divide-y divide-slate-100">
+              {filteredMasterItems.slice(0, masterListLimit).map(item => {
+                const cat = getDetailedItemCategory(item);
+                const unitPrice = getItemEstimatedUnitPrice(item.name, cat, item.estimatedPrice);
+                const isActive = item.isActive !== false;
+                const rackSpec = getStorageLocationDetails(item.location);
+                const lowStock = isActive && item.currentStock < item.minimumStock;
+                const iconBtn = `inline-flex items-center justify-center gap-1.5 px-2.5 min-h-[44px] rounded-lg text-xs font-medium cursor-pointer ${FOCUS_RING}`;
+                return (
+                  <li key={item.id} className={`px-4 pt-3 pb-1 ${isActive ? '' : 'bg-slate-50'}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className={`text-sm font-semibold leading-snug ${isActive ? 'text-slate-900' : 'text-slate-600'}`}>
+                          {item.name}
+                          {!isActive && <span className="ml-1.5 px-1.5 py-0.5 rounded-md text-[11px] font-medium bg-slate-200 text-slate-700">Nonaktif</span>}
+                        </div>
+                        <div className="text-xs text-slate-600 mt-0.5">
+                          <span className="font-mono">{item.id}</span> · {cat} · {rackSpec.rackCode}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0 text-xs">
+                        <div className={`font-mono text-sm font-semibold tabular-nums ${lowStock ? 'text-amber-800' : 'text-slate-900'}`}>
+                          {item.currentStock.toLocaleString('id-ID')} <span className="text-xs font-sans font-normal text-slate-600">{item.baseUnit}</span>
+                        </div>
+                        <div className="text-slate-600 tabular-nums">
+                          {unitPrice > 0 ? `Rp ${unitPrice.toLocaleString('id-ID')}` : 'Harga belum diisi'}
+                        </div>
+                      </div>
+                    </div>
+                    {can('MANAGE_ITEMS') && (
+                      <div className="flex items-center -mx-2.5 mt-0.5">
+                        {isActive && (
+                          <button type="button" onClick={() => handleOpenAdjust(item)} className={`${iconBtn} text-emerald-800 hover:bg-emerald-50`}>
+                            <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                            Koreksi
+                          </button>
+                        )}
+                        <button type="button" onClick={() => handleOpenEditItem(item)} className={`${iconBtn} text-slate-700 hover:bg-slate-100`}>
+                          <Edit2 className="w-3.5 h-3.5" aria-hidden="true" />
+                          Ubah
+                        </button>
+                        <button type="button" onClick={() => handleToggleActive(item)} className={`${iconBtn} text-slate-700 hover:bg-slate-100`}>
+                          {isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteItem(item)}
+                          aria-label={`Hapus ${item.name}`}
+                          className={`${iconBtn} ml-auto text-rose-700 hover:bg-rose-50`}>
+                          <Trash2 className="w-4 h-4" aria-hidden="true" />
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {filteredMasterItems.length > masterListLimit && (
+              <div className="md:hidden p-3 border-t border-slate-100">
+                <button type="button" onClick={() => setMasterListLimit(n => n + LIST_PAGE)} className={`${BTN_SECONDARY} w-full`}>
+                  Tampilkan {Math.min(LIST_PAGE, filteredMasterItems.length - masterListLimit)} barang lagi (sisa {filteredMasterItems.length - masterListLimit})
+                </button>
+              </div>
+            )}
+
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
                   <tr>
@@ -1780,6 +1856,7 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                 </tbody>
               </table>
             </div>
+            </>
             )}
           </div>
         </div>
@@ -1789,21 +1866,21 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
       {/* VIEW 2: STOK OPNAME FISIK (PER KATEGORI) */}
       {/* ========================================================================= */}
       {activeMainTab === 'opname' && (
-        <div className="space-y-5">
+        <div className="space-y-3 sm:space-y-5">
           {/* Header Action Card for Opname */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-xs">
             <div>
               <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <ClipboardCheck className="w-5 h-5 text-emerald-600" />
                 Stok Opname
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-600 mt-0.5">
                 Hitung ulang stok fisik di gudang dan cocokkan dengan sistem. Selisih baru mengubah stok setelah disetujui pejabat yang berwenang.
               </p>
             </div>
 
             <div className="flex items-center gap-2">
-              <button type="button" onClick={() => handleOpenCreateOpname()} className={BTN_PRIMARY}>
+              <button type="button" onClick={() => handleOpenCreateOpname()} className={`${BTN_PRIMARY} max-sm:w-full`}>
                 <Plus className="w-4 h-4" />
                 Mulai opname
               </button>
@@ -1835,8 +1912,8 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
 
           {/* Opname History Table */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
-              <div className="flex items-center gap-2">
+            <div className="p-3 sm:p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 bg-slate-50/50">
+              <div className="flex items-center justify-between sm:justify-start gap-2">
                 <span className="text-xs font-bold text-slate-800">Riwayat Opname</span>
                 <Select
                   value={opnameStatusFilter}
@@ -1847,10 +1924,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                 </Select>
               </div>
 
-              <div className="relative w-64">
+              <div className="relative w-full sm:w-64">
                 <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
                 <input
-                  type="text"
+                  type="search"
                   aria-label="Cari opname"
                   placeholder="Cari no sesi, area, atau pemeriksa"
                   value={opnameSearchQuery}
@@ -1860,7 +1937,51 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* HP: satu kartu per sesi opname */}
+            <ul className="md:hidden divide-y divide-slate-100">
+              {filteredOpnames.length === 0 && (
+                <li className="py-10 px-4 text-center text-xs text-slate-600">Belum ada opname yang cocok dengan filter.</li>
+              )}
+              {filteredOpnames.map(session => {
+                const varianceCount = session.items.filter(i => i.variance !== 0).length;
+                const catMatch = session.notes?.match(/\[Kategori:\s*([^\]]+)\]/);
+                const approved = session.status === 'APPROVED';
+                return (
+                  <li key={session.id} className="p-4 space-y-2 text-xs">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-mono text-sm font-semibold text-slate-900">{session.id}</div>
+                        <div className="text-slate-600 mt-0.5">
+                          {session.date} · {catMatch ? catMatch[1] : 'Semua kategori'} · {session.createdByName}
+                        </div>
+                      </div>
+                      <span
+                        className={`shrink-0 px-2 py-0.5 rounded-md font-semibold border ${
+                          approved ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'
+                        }`}>
+                        {approved ? 'Disetujui' : 'Menunggu'}
+                      </span>
+                    </div>
+                    <p className={varianceCount > 0 ? 'text-amber-800 font-semibold' : 'text-slate-700'}>
+                      {session.items.length} barang dihitung, {varianceCount > 0 ? `${varianceCount} ada selisih` : 'semua cocok'}
+                    </p>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setViewingOpname(session)} className={`${BTN_SECONDARY} flex-1`}>
+                        <Eye className="w-3.5 h-3.5" aria-hidden="true" />
+                        Berita acara
+                      </button>
+                      {session.status === 'PENDING_APPROVAL' && can('APPROVE_OPNAME') && (
+                        <button type="button" onClick={() => handleApproveOpname(session)} className={`${BTN_PRIMARY} flex-1`}>
+                          Setujui
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
                   <tr>
@@ -2505,134 +2626,106 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
       {/* MODAL: PENYESUAIAN STOK CEPAT (QUICK ADJUSTMENT) */}
       {/* ========================================================================= */}
       {adjustingItem && (
-        <div className="no-print fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Koreksi Stok</h3>
-                <p className="text-[11px] text-slate-600">{adjustingItem.name} ({adjustingItem.id})</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAdjustingItem(null)}
-                className="p-1 rounded-md text-slate-500 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                title="Tutup dialog"
-              >
-                <X className="w-5 h-5" />
-              </button>
+        <FormDialog
+          title="Koreksi stok"
+          description={
+            <>
+              {adjustingItem.name} <span className="font-mono">({adjustingItem.id})</span>
+            </>
+          }
+          onClose={() => setAdjustingItem(null)}
+          onSubmit={handleSaveAdjust}
+          submitLabel="Simpan koreksi"
+        >
+          {/* Sebelum dan sesudah berdampingan: petugas melihat akibat koreksi sambil mengetik */}
+          <dl className="grid grid-cols-2 gap-2 text-xs">
+            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+              <dt className="text-slate-600">Stok sekarang</dt>
+              <dd className="mt-0.5 font-mono font-semibold text-base text-slate-900 tabular-nums">
+                {adjustingItem.currentStock.toLocaleString('id-ID')} <span className="text-xs font-sans font-normal text-slate-600">{adjustingItem.baseUnit}</span>
+              </dd>
             </div>
+            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200" aria-live="polite">
+              <dt className="text-emerald-900">Setelah koreksi</dt>
+              <dd className="mt-0.5 font-mono font-semibold text-base text-emerald-900 tabular-nums">
+                {Number(adjustTargetStock.toFixed(3)).toLocaleString('id-ID')} <span className="text-xs font-sans font-normal">{adjustingItem.baseUnit}</span>
+              </dd>
+            </div>
+          </dl>
 
-            <form onSubmit={handleSaveAdjust} className="p-4 sm:p-6 space-y-4 text-xs">
-              <p className="p-2.5 rounded-lg bg-sky-50 border border-sky-200 text-[11px] text-sky-800">
-                Koreksi tercatat di Buku Mutasi dengan nama Anda. Untuk hitung ulang banyak barang, pakai Stok Opname.
-              </p>
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
-                <span className="text-slate-500">Stok Saat Ini:</span>
-                <span className="font-mono font-bold text-base text-slate-900">
-                  {adjustingItem.currentStock} {adjustingItem.baseUnit}
-                </span>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Jenis Penyesuaian</label>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAdjustType('ADD')}
-                    className={`py-1.5 px-2 rounded-lg font-semibold text-center border cursor-pointer ${
-                      adjustType === 'ADD' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    + Tambah
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAdjustType('SUBTRACT')}
-                    className={`py-1.5 px-2 rounded-lg font-semibold text-center border cursor-pointer ${
-                      adjustType === 'SUBTRACT' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    - Kurangi
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAdjustType('SET')}
-                    className={`py-1.5 px-2 rounded-lg font-semibold text-center border cursor-pointer ${
-                      adjustType === 'SET' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    Jadi Jumlah
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Jumlah ({adjustingItem.baseUnit}) <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  min="0.01"
-                  value={adjustQtyDelta || ''}
-                  placeholder="0"
-                  onChange={e => setAdjustQtyDelta(Math.max(0, parseFloat(e.target.value) || 0))}
-                  required
-                  className="w-full border border-slate-300 rounded-lg p-2.5 font-bold font-mono text-slate-900 text-right focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Alasan <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={adjustReason}
-                  onChange={e => setAdjustReason(e.target.value)}
-                  placeholder="Contoh: salah input saat penerimaan 15/10"
-                  required
-                  className="w-full border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <div className="flex flex-wrap gap-1 mt-1.5">
-                  {['Salah input', 'Rusak / busuk', 'Dipakai belum tercatat', 'Hasil hitung ulang'].map(preset => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setAdjustReason(preset)}
-                      className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-md cursor-pointer"
-                    >
-                      {preset}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between">
-                <span className="text-slate-600">Stok setelah koreksi</span>
-                <span className="font-mono font-bold text-base text-slate-900">
-                  {Number(adjustTargetStock.toFixed(3)).toLocaleString('id-ID')} {adjustingItem.baseUnit}
-                </span>
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+          <div>
+            <span id="adjust-type-label" className={FIELD_LABEL}>Jenis koreksi</span>
+            <div role="group" aria-labelledby="adjust-type-label" className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-lg text-xs">
+              {([
+                { id: 'ADD', label: 'Tambah' },
+                { id: 'SUBTRACT', label: 'Kurangi' },
+                { id: 'SET', label: 'Jadikan' },
+              ] as const).map(opt => (
                 <button
+                  key={opt.id}
                   type="button"
-                  onClick={() => setAdjustingItem(null)}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold cursor-pointer"
+                  onClick={() => setAdjustType(opt.id)}
+                  aria-pressed={adjustType === opt.id}
+                  className={`min-h-[44px] sm:min-h-[34px] rounded-md cursor-pointer ${FOCUS_RING} ${
+                    adjustType === opt.id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'
+                  }`}
                 >
-                  Batal
+                  {opt.label}
                 </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-2xs cursor-pointer"
-                >
-                  Simpan Koreksi
-                </button>
-              </div>
-            </form>
+              ))}
+            </div>
+            {adjustType === 'SET' && <p className="mt-1 text-[11px] text-slate-600">Stok diganti menjadi angka yang diisi di bawah.</p>}
           </div>
-        </div>
+
+          <div>
+            <label htmlFor="adjust-qty" className={FIELD_LABEL}>
+              Jumlah ({adjustingItem.baseUnit}) <span className="text-rose-600">*</span>
+            </label>
+            <input
+              id="adjust-qty"
+              type="number"
+              inputMode="decimal"
+              step="any"
+              min="0.01"
+              value={adjustQtyDelta || ''}
+              placeholder="0"
+              onChange={e => setAdjustQtyDelta(Math.max(0, parseFloat(e.target.value) || 0))}
+              required
+              className={`${FIELD_INPUT} font-mono font-semibold text-sm text-right`}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="adjust-reason" className={FIELD_LABEL}>
+              Alasan <span className="text-rose-600">*</span>
+            </label>
+            <input
+              id="adjust-reason"
+              type="text"
+              value={adjustReason}
+              onChange={e => setAdjustReason(e.target.value)}
+              placeholder="Contoh: salah input saat penerimaan 15/10"
+              required
+              className={FIELD_INPUT}
+            />
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 mt-1.5">
+              {['Salah input', 'Rusak / busuk', 'Dipakai belum tercatat', 'Hasil hitung ulang'].map(preset => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setAdjustReason(preset)}
+                  className={`px-2.5 min-h-[44px] sm:min-h-[30px] rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-xs text-slate-700 cursor-pointer ${FOCUS_RING}`}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-[11px] text-slate-600">
+            Koreksi tercatat di Buku Mutasi dengan nama Anda. Untuk hitung ulang banyak barang, pakai Stok Opname.
+          </p>
+        </FormDialog>
       )}
 
       {/* ========================================================================= */}

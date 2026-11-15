@@ -18,13 +18,9 @@ import {
   Calendar,
   Clock,
   CheckCircle2,
-  ChevronRight,
-  ChevronLeft,
-  CalendarRange,
   FileSpreadsheet,
   ChevronDown,
   ChevronUp,
-  Check,
   X,
   Edit2,
   Trash2,
@@ -481,27 +477,6 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  // Navigasi Tanggal (Kemarin, Hari Ini, Besok)
-  const handlePrevDay = () => {
-    const cur = parseMenuDate(selectedDailyDate) || new Date();
-    cur.setDate(cur.getDate() - 1);
-    const y = cur.getFullYear();
-    const m = String(cur.getMonth() + 1).padStart(2, "0");
-    const d = String(cur.getDate()).padStart(2, "0");
-    setSelectedDailyDate(`${y}-${m}-${d}`);
-    setPeriodType("DAILY");
-  };
-
-  const handleNextDay = () => {
-    const cur = parseMenuDate(selectedDailyDate) || new Date();
-    cur.setDate(cur.getDate() + 1);
-    const y = cur.getFullYear();
-    const m = String(cur.getMonth() + 1).padStart(2, "0");
-    const d = String(cur.getDate()).padStart(2, "0");
-    setSelectedDailyDate(`${y}-${m}-${d}`);
-    setPeriodType("DAILY");
-  };
 
   const handleJumpToToday = () => {
     setSelectedDailyDate(todayStr);
@@ -2584,14 +2559,14 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3 sm:space-y-5">
 
       {/* Header */}
       <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight">Menu & Sekolah</h1>
-            <p className="text-xs text-slate-600 mt-0.5 max-w-2xl">
+            <p className="hidden sm:block text-xs text-slate-600 mt-0.5 max-w-2xl">
               Menu harian, PO bahan H-1, porsi tiap sekolah penerima, dan surat jalan distribusi.
             </p>
           </div>
@@ -2649,7 +2624,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
           </div>
         </div>
 
-        <div role="tablist" aria-label="Bagian halaman menu" className="flex gap-1 p-1 bg-slate-100 rounded-lg text-xs overflow-x-auto max-w-full w-fit">
+        <div role="tablist" aria-label="Bagian halaman menu" className="grid grid-cols-2 sm:flex gap-1 p-1 bg-slate-100 rounded-lg text-xs sm:w-fit">
           {([
             {id: "MENU_ORDERS", label: "Menu & PO"},
             {id: "BENEFICIARIES", label: "Porsi per Sekolah"},
@@ -2688,7 +2663,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
               <section aria-label="Hari ini" className="bg-white border border-slate-200 rounded-xl overflow-hidden">
                 <div className="px-4 py-3 border-b border-slate-200">
                   <h2 className="text-sm font-semibold text-slate-900">Hari ini, {formatIndonesianDate(todayStr)}</h2>
-                  <p className="text-xs text-slate-600 mt-0.5">
+                  <p className="hidden sm:block text-xs text-slate-600 mt-0.5">
                     Bahan datang sehari sebelum dimasak. Jadi hari ini dapur memasak menu hari ini, sementara gudang menerima bahan untuk menu besok.
                   </p>
                 </div>
@@ -2808,183 +2783,108 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
             );
           })()}
 
-          {/* Filter Control Box: Standardized Period Filter */}
-          <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
-            {/* Row 1: Period Mode Selector & Date Controls */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <CalendarRange className="w-4 h-4 text-emerald-600" />
-                  Periode Filter:
-                </span>
-
-                {/* Period Pills */}
-                <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => setPeriodType("DAILY")}
-                    className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                      periodType === "DAILY" ? "bg-white text-slate-900 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
-                    }`}>
-                    Harian
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSetThisWeek}
-                    className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                      periodType === "WEEKLY" ? "bg-white text-slate-900 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
-                    }`}>
-                    Mingguan
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPeriodType("MONTHLY")}
-                    className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                      periodType === "MONTHLY" ? "bg-white text-slate-900 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
-                    }`}>
-                    Bulanan
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPeriodType("ALL")}
-                    className={`px-3 py-1 rounded-md transition-colors cursor-pointer ${
-                      periodType === "ALL" ? "bg-white text-slate-900 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
-                    }`}>
-                    Semua Tanggal
-                  </button>
-                </div>
-              </div>
-
-              {/* Date Range Inputs */}
-              <div className="flex flex-wrap items-center gap-2">
-                {periodType === "DAILY" && (
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={handlePrevDay}
-                      className="p-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer transition-colors"
-                      title="Hari Sebelumnya">
-                      <ChevronLeft className="w-3.5 h-3.5" />
-                    </button>
-
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
-                      <span className="text-slate-500 font-medium">Tanggal:</span>
-                      <input
-                        type="date"
-                        value={selectedDailyDate}
-                        onChange={(e) => {
-                          setSelectedDailyDate(e.target.value);
-                          setPeriodType("DAILY");
-                        }}
-                        className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
-                      />
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleNextDay}
-                      className="p-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer transition-colors"
-                      title="Hari Berikutnya">
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-
-                    {selectedDailyDate !== todayStr && (
-                      <button
-                        type="button"
-                        onClick={handleJumpToToday}
-                        className="px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 cursor-pointer transition-colors">
-                        Hari Ini
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {periodType === "WEEKLY" && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
-                      <span className="text-slate-500 font-medium">Dari:</span>
-                      <input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
-                      />
-                    </div>
-                    <span className="text-slate-500 font-medium">s/d</span>
-                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1">
-                      <span className="text-slate-500 font-medium">Sampai:</span>
-                      <input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
-                      />
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={handleSetThisWeek}
-                        className="px-2 py-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 cursor-pointer">
-                        Minggu Ini
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSetLastWeek}
-                        className="px-2 py-1 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200 cursor-pointer">
-                        Minggu Lalu
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {periodType === "MONTHLY" && (
-                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs">
-                    <span className="text-slate-500 font-medium">Pilih Bulan:</span>
-                    <input
-                      type="month"
-                      value={selectedMonth}
-                      onChange={(e) => setSelectedMonth(e.target.value)}
-                      className="font-semibold text-slate-800 bg-transparent focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-600 rounded px-1 cursor-pointer"
-                    />
-                  </div>
-                )}
-              </div>
+          {/* Periode: pilihan rentang di kiri, kontrol tanggalnya di kanan */}
+          <div className="bg-white border border-slate-200 rounded-xl p-3 sm:p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div role="group" aria-label="Periode yang ditampilkan" className="grid grid-cols-4 sm:flex gap-1 p-1 bg-slate-100 rounded-lg text-xs sm:w-fit">
+              {([
+                {id: "DAILY", label: "Harian", onClick: () => setPeriodType("DAILY")},
+                {id: "WEEKLY", label: "Mingguan", onClick: handleSetThisWeek},
+                {id: "MONTHLY", label: "Bulanan", onClick: () => setPeriodType("MONTHLY")},
+                {id: "ALL", label: "Semua", onClick: () => setPeriodType("ALL")},
+              ] as {id: PeriodType; label: string; onClick: () => void}[]).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={p.onClick}
+                  aria-pressed={periodType === p.id}
+                  className={`px-3 min-h-[44px] sm:min-h-[32px] rounded-md whitespace-nowrap cursor-pointer ${FOCUS_RING} ${
+                    periodType === p.id ? "bg-white text-slate-900 font-semibold shadow-xs" : "text-slate-600 hover:text-slate-900 font-medium"
+                  }`}>
+                  {p.label}
+                </button>
+              ))}
             </div>
+
+            {periodType === "DAILY" && (
+              <div className="flex flex-wrap items-center gap-2">
+                <DateStepper
+                  ariaLabel="Tanggal menu"
+                  value={selectedDailyDate}
+                  onChange={(iso) => {
+                    setSelectedDailyDate(iso);
+                    setPeriodType("DAILY");
+                  }}
+                />
+                {selectedDailyDate !== todayStr && (
+                  <button type="button" onClick={handleJumpToToday} className={BTN_SECONDARY}>
+                    Hari ini
+                  </button>
+                )}
+              </div>
+            )}
+
+            {periodType === "WEEKLY" && (
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="grid grid-cols-2 gap-2 max-sm:w-full">
+                  <div>
+                    <label htmlFor="menu-range-start" className={FIELD_LABEL}>Dari</label>
+                    <input id="menu-range-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={FIELD_INPUT} />
+                  </div>
+                  <div>
+                    <label htmlFor="menu-range-end" className={FIELD_LABEL}>Sampai</label>
+                    <input id="menu-range-end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={FIELD_INPUT} />
+                  </div>
+                </div>
+                <button type="button" onClick={handleSetThisWeek} className={BTN_SECONDARY}>
+                  Minggu ini
+                </button>
+                <button type="button" onClick={handleSetLastWeek} className={BTN_SECONDARY}>
+                  Minggu lalu
+                </button>
+              </div>
+            )}
+
+            {periodType === "MONTHLY" && (
+              <input
+                type="month"
+                aria-label="Pilih bulan"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className={`${FIELD_INPUT} sm:w-44`}
+              />
+            )}
           </div>
 
           {/* Summary KPI Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
+            <div className="p-3 sm:p-3.5 rounded-xl bg-white border border-slate-200">
               <div className="text-xs text-slate-600">Sesi menu</div>
-              <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">{stats.totalOrders}</div>
+              <div className="text-base sm:text-xl font-bold text-slate-900 mt-1 tabular-nums whitespace-nowrap">{stats.totalOrders}</div>
               <div className="text-[11px] text-slate-600 mt-0.5">
                 {stats.todayCount} hari ini · {stats.upcomingCount} akan datang
               </div>
             </div>
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+            <div className="p-3 sm:p-3.5 rounded-xl bg-white border border-slate-200">
               <div className="text-xs text-slate-600">Porsi direncanakan</div>
-              <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">{stats.totalPortionsPlanned.toLocaleString("id-ID")}</div>
+              <div className="text-base sm:text-xl font-bold text-slate-900 mt-1 tabular-nums whitespace-nowrap">{stats.totalPortionsPlanned.toLocaleString("id-ID")}</div>
               <div className="text-[11px] text-slate-600 mt-0.5">{stats.pastPortions.toLocaleString("id-ID")} dari menu yang sudah lewat</div>
             </div>
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+            <div className="p-3 sm:p-3.5 rounded-xl bg-white border border-slate-200">
               <div className="text-xs text-slate-600">Bahan sudah datang</div>
-              <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">
+              <div className="text-base sm:text-xl font-bold text-slate-900 mt-1 tabular-nums whitespace-nowrap">
                 {stats.arrivedItemsCount} <span className="text-xs font-normal text-slate-600">dari {stats.totalPOItemsCount}</span>
               </div>
-              <div className="text-[11px] text-slate-600 mt-0.5">Item PO yang jumlah datangnya sudah diisi</div>
+              <div className="max-sm:hidden text-[11px] text-slate-600 mt-0.5">Item PO yang jumlah datangnya sudah diisi</div>
             </div>
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
+            <div className="p-3 sm:p-3.5 rounded-xl bg-white border border-slate-200">
               <div className="text-xs text-slate-600">Perkiraan biaya PO</div>
-              <div className="text-xl font-bold text-slate-900 mt-1 tabular-nums">Rp {Math.round(stats.totalEstimatedCost).toLocaleString("id-ID")}</div>
-              <div className="text-[11px] text-slate-600 mt-0.5">Dari harga perkiraan per bahan</div>
+              <div className="text-base sm:text-xl font-bold text-slate-900 mt-1 tabular-nums whitespace-nowrap">Rp {Math.round(stats.totalEstimatedCost).toLocaleString("id-ID")}</div>
+              <div className="max-sm:hidden text-[11px] text-slate-600 mt-0.5">Dari harga perkiraan per bahan</div>
             </div>
           </div>
 
           {/* Search & Filter Controls */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl p-3">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-1 sm:gap-3 bg-white border border-slate-200 rounded-xl p-3">
             <div className="flex flex-wrap items-center gap-2">
               <label className="inline-flex items-center gap-2 text-xs text-slate-800 cursor-pointer min-h-[44px] sm:min-h-0">
                 <input
@@ -2997,14 +2897,15 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
               </label>
             </div>
 
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            <div className="relative w-full sm:w-auto">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" aria-hidden="true" />
               <input
-                type="text"
-                placeholder="Cari nama menu, bahan PO, pemasok, PIC..."
+                type="search"
+                aria-label="Cari menu"
+                placeholder="Cari menu, bahan PO, supplier, PIC"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-1.5 w-64 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className={`${FIELD_INPUT} pl-8 sm:w-64`}
               />
             </div>
           </div>
@@ -3077,7 +2978,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                           })()}
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 mt-1.5">
+                        {/* Kartu tertutup tetap menyebut menunya; saat dibuka, daftar olahan di bawah yang menggantikan */}
+                        {!isExpanded && (
+                          <p className="text-sm text-slate-800 mt-1.5 line-clamp-2 first-letter:uppercase">{order.menuTitle}</p>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-600 mt-1.5">
                           <span>
                             Target:{" "}
                             <strong className="font-bold text-slate-900">
@@ -3085,23 +2991,20 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                             </strong>
                           </span>
                           {order.chefInCharge && (
-                            <>
-                              <span className="text-slate-300" aria-hidden="true">•</span>
-                              <span>
-                                Penanggung jawab: <span className="font-medium text-slate-800">{order.chefInCharge}</span>
-                              </span>
-                            </>
+                            <span>
+                              Penanggung jawab: <span className="font-medium text-slate-800">{order.chefInCharge}</span>
+                            </span>
                           )}
                         </div>
                       </div>
 
                       {/* Tombol Aksi Langsung pada Kartu (Ringkas & Bersih) */}
-                      <div className="flex items-center gap-1.5 self-start lg:self-auto">
+                      <div className="flex items-center gap-1.5 self-start lg:self-auto max-sm:w-full">
                         {/* Edit Menu */}
                         <button
                           type="button"
                           onClick={() => handleOpenEditMenuModal(order)}
-                          className={BTN_SECONDARY}
+                          className={`${BTN_SECONDARY} max-sm:flex-1`}
                           title="Ubah susunan menu & target porsi">
                           <Edit2 className="w-3.5 h-3.5" />
                           Ubah menu
@@ -3114,7 +3017,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                             <button
                               type="button"
                               onClick={() => handleOpenPoModal(order.id)}
-                              className={issuedCount > 0 ? BTN_SECONDARY : BTN_PRIMARY}
+                              className={`${issuedCount > 0 ? BTN_SECONDARY : BTN_PRIMARY} max-sm:flex-1`}
                               title={issuedCount > 0 ? "Lihat PO yang sudah terbit" : "Susun bahan dan terbitkan PO ke supplier"}>
                               <PackagePlus className="w-3.5 h-3.5" />
                               {issuedCount > 0 ? `Lihat PO (${issuedCount})` : poItems.length > 0 ? "Lanjutkan PO" : "Buat PO"}
@@ -3139,7 +3042,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                           </button>
 
                           {openOrderMenuId === order.id && (
-                            <div className="absolute right-0 top-full mt-1.5 w-44 bg-white rounded-xl border border-slate-200 py-1 z-30 animate-in fade-in zoom-in-95 duration-100 text-xs">
+                            <div className="absolute right-0 top-full mt-1.5 w-48 bg-white rounded-xl border border-slate-200 shadow-lg py-1 z-30 text-xs">
                               {onPrintPoSheet && warehouseDb.getPurchaseOrdersByMenuOrderId(order.id).length > 0 && (
                                 <button
                                   type="button"
@@ -3148,7 +3051,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                                     const po = warehouseDb.getPurchaseOrdersByMenuOrderId(order.id)[0];
                                     onPrintPoSheet(po.deliveryDate || po.date);
                                   }}
-                                  className="w-full text-left px-3 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer">
+                                  className="w-full text-left px-3 py-2 min-h-[44px] sm:min-h-0 text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer">
                                   <Printer className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                                   <span>Cetak form PO</span>
                                 </button>
@@ -3160,7 +3063,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                                     setOpenOrderMenuId(null);
                                     handleDeletePoForOrder(order.id);
                                   }}
-                                  className="w-full text-left px-3 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer">
+                                  className="w-full text-left px-3 py-2 min-h-[44px] sm:min-h-0 text-rose-700 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer">
                                   <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                                   <span>Batalkan PO</span>
                                 </button>
@@ -3171,7 +3074,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                                   setOpenOrderMenuId(null);
                                   handleToggleCancelOrder(order);
                                 }}
-                                className="w-full text-left px-3 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer">
+                                className="w-full text-left px-3 py-2 min-h-[44px] sm:min-h-0 text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer">
                                 {isCancelled ? <RotateCcw className="w-3.5 h-3.5 text-slate-500 shrink-0" /> : <X className="w-3.5 h-3.5 text-slate-500 shrink-0" />}
                                 <span>{isCancelled ? "Aktifkan lagi" : "Batalkan menu"}</span>
                               </button>
@@ -3181,7 +3084,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                                   setOpenOrderMenuId(null);
                                   handleDeleteOrder(order.id, order.menuTitle);
                                 }}
-                                className="w-full text-left px-3 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer">
+                                className="w-full text-left px-3 py-2 min-h-[44px] sm:min-h-0 text-rose-700 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer">
                                 <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                                 <span>Hapus menu</span>
                               </button>
@@ -3889,11 +3792,11 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                 Daftar sekolah dan lembaga penerima, porsi standar per hari, jadwal kirim, dan kontak PIC. Porsi standar dipakai sebagai dasar alokasi harian.
               </p>
               <div className="flex flex-wrap items-center gap-2 shrink-0">
-                <button type="button" onClick={handleExportMasterBeneficiariesExcel} className={BTN_SECONDARY} title="Unduh data sekolah ke Excel">
+                <button type="button" onClick={handleExportMasterBeneficiariesExcel} className={`${BTN_SECONDARY} max-sm:flex-1`} title="Unduh data sekolah ke Excel">
                   <FileSpreadsheet className="w-4 h-4" />
                   Ekspor Excel
                 </button>
-                <button type="button" onClick={handleOpenAddBeneficiary} className={BTN_PRIMARY}>
+                <button type="button" onClick={handleOpenAddBeneficiary} className={`${BTN_PRIMARY} max-sm:flex-1`}>
                   <Plus className="w-4 h-4" />
                   Tambah sekolah
                 </button>
@@ -3952,8 +3855,54 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
             </div>
           </div>
 
+          {/* HP: daftar, karena tabel sembilan kolom harus digeser jauh ke samping */}
+          <ul className="sm:hidden bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-hidden">
+            {filteredMasterBeneficiaries.length === 0 && (
+              <li className="py-8 px-4 text-center text-xs text-slate-600">Tidak ada sekolah yang cocok dengan filter atau kata kunci.</li>
+            )}
+            {filteredMasterBeneficiaries.map((s, idx) => (
+              <li key={s.id || idx} className="pl-4 pr-2 py-3 flex items-start gap-2">
+                <div className="min-w-0 flex-1 text-xs">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-sm font-semibold text-slate-900">{s.schoolName}</span>
+                    <span className="shrink-0 font-mono font-bold text-slate-900 tabular-nums">
+                      {s.portionCount.toLocaleString("id-ID")} <span className="font-sans font-normal text-slate-600">porsi</span>
+                    </span>
+                  </div>
+                  <p className="text-slate-600 mt-0.5">
+                    {s.category}
+                    {s.deliveryTime ? ` · kirim ${s.deliveryTime}` : ""}
+                  </p>
+                  {(s.contactPerson || s.phone) && (
+                    <p className="text-slate-700 mt-0.5">
+                      {s.contactPerson || "PIC"}
+                      {s.phone && <span className="font-mono"> · {s.phone}</span>}
+                    </p>
+                  )}
+                  {s.notes && <p className="text-slate-600 mt-0.5 line-clamp-2">{s.notes}</p>}
+                </div>
+                <div className="flex flex-col shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditBeneficiary(s)}
+                    className={`inline-flex items-center justify-center w-11 h-11 text-emerald-800 hover:bg-emerald-50 rounded-lg cursor-pointer ${FOCUS_RING}`}
+                    aria-label={`Ubah ${s.schoolName}`}>
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBeneficiary(s)}
+                    className={`inline-flex items-center justify-center w-11 h-11 text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer ${FOCUS_RING}`}
+                    aria-label={`Hapus ${s.schoolName}`}>
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+
           {/* Master Table */}
-          <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+          <div className="hidden sm:block bg-white rounded-xl border border-slate-200 overflow-x-auto">
             <table className="w-full min-w-[900px] text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-semibold">
@@ -4166,7 +4115,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                     Batalkan semua PO
                   </button>
                 )}
-                <button type="button" onClick={() => setIsPoModalOpen(false)} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
+                {/* Di HP cukup tanda silang di kepala dialog, supaya footer muat satu baris */}
+                <button type="button" onClick={() => setIsPoModalOpen(false)} className={`${BTN_SECONDARY} ${BTN_GHOST} max-sm:hidden`}>
                   Tutup
                 </button>
                 {onNavigate && (
@@ -4194,7 +4144,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                   Batalkan semua PO
                 </button>
               )}
-              <button type="button" onClick={() => setIsPoModalOpen(false)} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
+              <button type="button" onClick={() => setIsPoModalOpen(false)} className={`${BTN_SECONDARY} ${BTN_GHOST} max-sm:hidden`}>
                 Batal
               </button>
               <button type="submit" className={BTN_SECONDARY} title="Simpan daftar bahan tanpa menerbitkan PO ke supplier">
@@ -4285,7 +4235,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteSinglePo(po)}
-                                    className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                                    className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[32px] sm:min-h-[32px] text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer ${FOCUS_RING}`}
                                     title={`Batalkan PO ${po.poNumber} (${po.supplierName})`}>
                                     <Trash2 className="w-3.5 h-3.5" />
                                     <span className="sr-only">Batalkan PO {po.poNumber}</span>
@@ -4298,7 +4248,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                                 <li key={it.id} className="px-3.5 py-2 flex justify-between items-center gap-3">
                                   <span className="text-slate-800">
                                     {it.name}
-                                    {it.category && <span className="text-slate-400 ml-1.5 text-[11px]">({it.category})</span>}
+                                    {it.category && <span className="text-slate-600 ml-1.5 text-[11px]">({it.category})</span>}
                                   </span>
                                   <span className="font-mono tabular-nums text-slate-900 font-medium">
                                     {Number(it.quantity).toLocaleString("id-ID")} {it.unit}
@@ -4354,7 +4304,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                             type="button"
                             onClick={() => setIsAddingNewPo(false)}
                             aria-label="Tutup form tambah PO"
-                            className="text-slate-500 hover:text-slate-700 p-1 cursor-pointer">
+                            className={`inline-flex items-center justify-center shrink-0 w-11 h-11 -m-2 sm:w-8 sm:h-8 sm:-m-1 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer ${FOCUS_RING}`}>
                             <X className="w-4 h-4" />
                           </button>
                         </div>
@@ -4772,29 +4722,18 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
       {/* MODAL 3: INPUT & EDIT DATA PENERIMA MANFAAT                                */}
       {/* ========================================================================= */}
       {isBeneficiaryModalOpen && (
-        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-end sm:items-center justify-center sm:p-4">
-          <div className="bg-white rounded-t-xl sm:rounded-xl border border-slate-200 sm:max-w-xl w-full max-h-[92vh] flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="px-4 sm:px-5 py-3 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900">{editingBeneficiary ? "Ubah data sekolah" : "Tambah sekolah"}</h2>
-                <p className="text-[11px] text-slate-600 mt-0.5">Atur nama sekolah/lembaga, kuota jumlah porsi, serta kontak penanggung jawab (PIC)</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsBeneficiaryModalOpen(false)}
-                aria-label="Tutup"
-                className={`p-2 -m-1 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer ${FOCUS_RING}`}>
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveBeneficiary} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+        <FormDialog
+          size="lg"
+          title={editingBeneficiary ? "Ubah data sekolah" : "Tambah sekolah"}
+          description="Nama sekolah atau lembaga, porsi standar per hari, dan kontak penanggung jawab (PIC)."
+          onClose={() => setIsBeneficiaryModalOpen(false)}
+          onSubmit={handleSaveBeneficiary}
+          submitLabel={editingBeneficiary ? "Simpan perubahan" : "Simpan sekolah"}
+        >
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Nama Sekolah / Lembaga <span className="text-rose-500">*</span>
+                    <label className={FIELD_LABEL}>
+                      Nama Sekolah / Lembaga <span className="text-rose-600">*</span>
                     </label>
                     <input
                       type="text"
@@ -4802,19 +4741,19 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                       value={beneficiaryFormName}
                       onChange={(e) => setBeneficiaryFormName(e.target.value)}
                       placeholder="Contoh: SDN 1 Jeru atau Posyandu Dahlia"
-                      className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className={FIELD_INPUT}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">ID Lembaga</label>
+                    <label className={FIELD_LABEL}>ID Lembaga</label>
                     <input
                       type="text"
                       value={beneficiaryFormId}
                       onChange={(e) => setBeneficiaryFormId(e.target.value)}
                       readOnly={Boolean(editingBeneficiary)}
                       placeholder="SCH-001"
-                      className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 bg-slate-50 font-mono read-only:text-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                      className={`${FIELD_INPUT} font-mono read-only:bg-slate-100 read-only:text-slate-600`}
                     />
                     {editingBeneficiary && <p className="text-[11px] text-slate-600 mt-1">ID tidak bisa diubah.</p>}
                   </div>
@@ -4822,8 +4761,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Kategori Sasaran <span className="text-rose-500">*</span>
+                    <label className={FIELD_LABEL}>
+                      Kategori Sasaran <span className="text-rose-600">*</span>
                     </label>
                     <Select className="w-full"
                       value={beneficiaryFormCategory}
@@ -4837,17 +4776,18 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Target Alokasi Porsi <span className="text-rose-500">*</span>
+                    <label className={FIELD_LABEL}>
+                      Target Alokasi Porsi <span className="text-rose-600">*</span>
                     </label>
                     <div className="relative">
                       <input
                         type="number"
+                        inputMode="numeric"
                         required
                         min={1}
                         value={beneficiaryFormPortions}
                         onChange={(e) => setBeneficiaryFormPortions(Number(e.target.value) || 0)}
-                        className="w-full text-xs border border-slate-300 rounded-lg pl-3 pr-14 py-2 font-mono font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        className={`${FIELD_INPUT} pr-14 font-mono font-semibold`}
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 font-medium">porsi</span>
                     </div>
@@ -4856,26 +4796,27 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Kontak PIC / Penanggung Jawab</label>
+                    <label className={FIELD_LABEL}>Nama Kontak PIC / Penanggung Jawab</label>
                     <input
                       type="text"
                       value={beneficiaryFormContactPerson}
                       onChange={(e) => setBeneficiaryFormContactPerson(e.target.value)}
                       placeholder="Contoh: Pak Hadi (Kepala Sekolah)"
-                      className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className={FIELD_INPUT}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Nomor Kontak / WhatsApp PIC</label>
+                    <label className={FIELD_LABEL}>Nomor Kontak / WhatsApp PIC</label>
                     <div className="relative">
                       <Phone className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                       <input
-                        type="text"
+                        type="tel"
+                        inputMode="tel"
                         value={beneficiaryFormPhone}
                         onChange={(e) => setBeneficiaryFormPhone(e.target.value)}
                         placeholder="Contoh: 0812-3344-5501"
-                        className="w-full text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-2 font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        className={`${FIELD_INPUT} pl-8 font-mono`}
                       />
                     </div>
                   </div>
@@ -4883,7 +4824,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Jadwal / Waktu Kirim</label>
+                    <label className={FIELD_LABEL}>Jadwal / Waktu Kirim</label>
                     <div className="relative">
                       <Clock className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                       <input
@@ -4891,13 +4832,13 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                         value={beneficiaryFormDeliveryTime}
                         onChange={(e) => setBeneficiaryFormDeliveryTime(e.target.value)}
                         placeholder="Contoh: 09.45 WIB atau 10:00 - 10:30"
-                        className="w-full text-xs border border-slate-300 rounded-lg pl-8 pr-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        className={`${FIELD_INPUT} pl-8`}
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Status Operasional Distribusi</label>
+                    <label className={FIELD_LABEL}>Status Operasional Distribusi</label>
                     <Select className="w-full"
                       value={beneficiaryFormStatus}
                       onChange={(e) => setBeneficiaryFormStatus(e.target.value as any)}>
@@ -4910,35 +4851,16 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Titik Serah & Catatan Jalur Distribusi</label>
+                  <label className={FIELD_LABEL}>Titik Serah & Catatan Jalur Distribusi</label>
                   <textarea
                     rows={2}
                     value={beneficiaryFormNotes}
                     onChange={(e) => setBeneficiaryFormNotes(e.target.value)}
                     placeholder="Contoh: Jalur Distribusi 1 - Area Jeru Timur, serah terima di ruang guru piket"
-                    className="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className={`${FIELD_INPUT} py-2 leading-relaxed`}
                   />
                 </div>
-              </div>
-
-              {/* Action Buttons Sticky Footer */}
-              <div className="px-4 sm:px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsBeneficiaryModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer">
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className={`${BTN_PRIMARY} flex-1 sm:flex-none`}>
-                  <Check className="w-4 h-4" />
-                  <span>{editingBeneficiary ? "Simpan Perubahan" : "Simpan Penerima Manfaat"}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        </FormDialog>
       )}
 
       {/* ========================================================================= */}
@@ -4983,7 +4905,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
               #print-beneficiary-paper tfoot { display: table-row-group; }
             }
           `}</style>
-          <div className="bg-white rounded-xl border border-slate-200 max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-xl border border-slate-200 max-w-5xl w-full max-h-[92dvh] flex flex-col overflow-hidden">
             {/* Header */}
             <div className="px-4 sm:px-5 py-3 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
               <div>
@@ -4994,15 +4916,15 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer">
-                  <Printer className="w-4 h-4 text-slate-200" />
-                  <span>Cetak / Print PDF</span>
+                  className={BTN_PRIMARY}>
+                  <Printer className="w-4 h-4" />
+                  <span>Cetak / simpan PDF</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsBeneficiaryPrintModalOpen(false)}
-                  className="p-1.5 text-slate-500 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
-                  title="Tutup dialog">
+                  aria-label="Tutup"
+                  className={`inline-flex items-center justify-center shrink-0 w-11 h-11 sm:w-9 sm:h-9 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer ${FOCUS_RING}`}>
                   <X className="w-5 h-5" />
                 </button>
               </div>

@@ -30,7 +30,7 @@ import { HedonicRecapModule } from './components/HedonicRecapModule';
 import { ScanResultModule } from './components/ScanResultModule';
 import { QrScannerDialog } from './components/common/QrScannerDialog';
 import { SCAN_PATH, ScanTarget, scanTargetFromLocation, isWasteEntryTarget, isNonFoodIssueTarget, poIdFromScanTarget } from './utils/scanCode';
-import { enablePwa } from './utils/pwa';
+import { enablePwa, PWA_UPDATED_EVENT } from './utils/pwa';
 
 export type AppRouteType = 'DASHBOARD' | 'MENU_TODAY' | 'LANDING';
 
@@ -112,6 +112,13 @@ const MainLayout: React.FC = () => {
   React.useEffect(() => {
     if (currentRoute === 'DASHBOARD') enablePwa();
   }, [currentRoute]);
+
+  const [isUpdateReady, setIsUpdateReady] = useState(false);
+  React.useEffect(() => {
+    const onUpdated = () => setIsUpdateReady(true);
+    window.addEventListener(PWA_UPDATED_EVENT, onUpdated);
+    return () => window.removeEventListener(PWA_UPDATED_EVENT, onUpdated);
+  }, []);
 
   // Sync state when browser URL changes (back/forward navigation or hash change)
   React.useEffect(() => {
@@ -239,6 +246,22 @@ const MainLayout: React.FC = () => {
       />
       {isScannerOpen && (
         <QrScannerDialog hint="Arahkan ke QR pada label barang, plakat rak, tag, atau aset." onResult={openScanResult} onClose={() => setIsScannerOpen(false)} />
+      )}
+
+      {isUpdateReady && (
+        <div
+          role="status"
+          className="print:hidden fixed inset-x-3 bottom-[calc(4.75rem_+_var(--safe-bottom))] lg:bottom-4 lg:left-auto lg:right-4 lg:w-96 z-40 flex items-center justify-between gap-3 pl-4 pr-2 py-2 rounded-xl bg-slate-900 text-white text-xs shadow-lg"
+        >
+          <span>Versi baru aplikasi sudah siap.</span>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="shrink-0 px-3 min-h-[44px] rounded-lg bg-white text-slate-900 font-semibold cursor-pointer hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+          >
+            Muat ulang
+          </button>
+        </div>
       )}
 
       {/* Main Content Area */}

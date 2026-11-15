@@ -15,6 +15,18 @@ export const BTN_PRIMARY = `${BTN_SOLID} bg-emerald-700 hover:bg-emerald-800`;
 const BTN_DANGER = `${BTN_SOLID} bg-rose-700 hover:bg-rose-800`;
 export const BTN_SECONDARY = `inline-flex whitespace-nowrap items-center justify-center gap-1.5 px-3 min-h-[44px] sm:min-h-[32px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-medium cursor-pointer ${FOCUS_RING}`;
 
+// Footer dialog menempel di dasar layar HP; jarak bawahnya ikut area aman bilah gestur
+const FOOTER_SAFE = 'pb-[calc(0.75rem_+_var(--safe-bottom))] sm:pb-3';
+
+const DIALOG_WIDTH = {
+  md: 'sm:max-w-md',
+  lg: 'sm:max-w-2xl',
+  xl: 'sm:max-w-4xl',
+  '2xl': 'sm:max-w-6xl',
+  /** Pratinjau cetak lebar (mis. rekap presensi A4 mendatar). */
+  full: 'sm:max-w-[96vw]',
+};
+
 interface FormDialogProps {
   title: string;
   description?: React.ReactNode;
@@ -24,6 +36,7 @@ interface FormDialogProps {
   submitDisabled?: boolean;
   danger?: boolean;
   error?: string;
+  size?: keyof typeof DIALOG_WIDTH;
   children: React.ReactNode;
 }
 
@@ -37,6 +50,7 @@ export const FormDialog: React.FC<FormDialogProps> = ({
   submitDisabled,
   danger,
   error,
+  size = 'md',
   children,
 }) => {
   const titleId = useId();
@@ -60,7 +74,7 @@ export const FormDialog: React.FC<FormDialogProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="bg-white w-full sm:max-w-md max-h-[92vh] flex flex-col rounded-t-xl sm:rounded-xl border border-slate-200 overflow-hidden"
+        className={`bg-white w-full ${DIALOG_WIDTH[size]} max-h-[92dvh] flex flex-col rounded-t-xl sm:rounded-xl border border-slate-200 overflow-hidden`}
       >
         <div className="px-4 sm:px-5 py-3 border-b border-slate-200 flex items-start justify-between gap-3">
           <div>
@@ -73,7 +87,7 @@ export const FormDialog: React.FC<FormDialogProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Tutup"
-            className={`p-2 -m-1 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer ${FOCUS_RING}`}
+            className={`inline-flex items-center justify-center shrink-0 w-11 h-11 -m-2 sm:w-9 sm:h-9 sm:-m-1 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer ${FOCUS_RING}`}
           >
             <X className="w-5 h-5" />
           </button>
@@ -88,7 +102,7 @@ export const FormDialog: React.FC<FormDialogProps> = ({
             )}
             {children}
           </div>
-          <div className="px-4 sm:px-5 py-3 border-t border-slate-200 bg-slate-50 flex justify-end gap-2">
+          <div className={`px-4 sm:px-5 pt-3 ${FOOTER_SAFE} border-t border-slate-200 bg-slate-50 flex justify-end gap-2`}>
             <button type="button" onClick={onClose} className={`${BTN_SECONDARY} flex-1 sm:flex-none border-transparent bg-transparent hover:bg-slate-200/70`}>
               Batal
             </button>
@@ -119,15 +133,6 @@ export const Feedback: React.FC<{ type: 'success' | 'error'; text: string; onClo
     </button>
   </div>
 );
-
-const DIALOG_WIDTH = {
-  md: 'sm:max-w-md',
-  lg: 'sm:max-w-2xl',
-  xl: 'sm:max-w-4xl',
-  '2xl': 'sm:max-w-6xl',
-  /** Pratinjau cetak lebar (mis. rekap presensi A4 mendatar). */
-  full: 'sm:max-w-[96vw]',
-};
 
 interface DialogShellProps {
   title: string;
@@ -165,7 +170,7 @@ export const DialogShell: React.FC<DialogShellProps> = ({ title, description, ba
   const body = (
     <>
       <div className="px-4 sm:px-5 py-4 overflow-y-auto flex-1 space-y-4 text-xs">{children}</div>
-      <div className="px-4 sm:px-5 py-3 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-end gap-2 shrink-0">{footer}</div>
+      <div className={`px-4 sm:px-5 pt-3 ${FOOTER_SAFE} border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-end gap-2 shrink-0`}>{footer}</div>
     </>
   );
 
@@ -176,7 +181,7 @@ export const DialogShell: React.FC<DialogShellProps> = ({ title, description, ba
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`bg-white w-full ${DIALOG_WIDTH[size]} max-h-[92vh] flex flex-col rounded-t-xl sm:rounded-xl border border-slate-200 overflow-hidden`}
+        className={`bg-white w-full ${DIALOG_WIDTH[size]} max-h-[92dvh] flex flex-col rounded-t-xl sm:rounded-xl border border-slate-200 overflow-hidden`}
       >
         <div className="px-4 sm:px-5 py-3 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
           <div className="min-w-0">
@@ -192,7 +197,7 @@ export const DialogShell: React.FC<DialogShellProps> = ({ title, description, ba
             type="button"
             onClick={onClose}
             aria-label="Tutup"
-            className={`p-2 -m-1 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer ${FOCUS_RING}`}
+            className={`inline-flex items-center justify-center shrink-0 w-11 h-11 -m-2 sm:w-9 sm:h-9 sm:-m-1 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer ${FOCUS_RING}`}
           >
             <X className="w-5 h-5" />
           </button>
