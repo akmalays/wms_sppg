@@ -26,6 +26,8 @@ import {
   Info,
   Globe,
   ChefHat,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { ReceivingDetailModal } from './ReceivingDetailModal';
 import { DailyChecklistWidget } from './DailyChecklistWidget';
@@ -48,6 +50,80 @@ const BTN_SECONDARY = `inline-flex items-center justify-center gap-1.5 px-3.5 py
 const BTN_LINK = `text-xs font-semibold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer rounded-md min-h-[44px] sm:min-h-0 inline-flex items-center ${FOCUS}`;
 const SECTION = 'bg-white rounded-xl border border-slate-200 overflow-hidden';
 const SECTION_HEAD = 'px-4 sm:px-5 py-3.5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2';
+
+const FOCUS_INSET = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600';
+
+// Di HP, bagian rujukan dilipat supaya layar pertama berisi hal yang perlu dikerjakan; judul lipatan tetap memuat angkanya.
+// Kedatangan bahan terbuka selama ada pesanan, karena itu yang dipantau sepanjang pagi.
+type FoldId = 'po' | 'menu' | 'gr' | 'neraca' | 'jobdesk' | 'stok';
+const FOLD_STORAGE_KEY = 'sppg_ringkasan_lipatan';
+// Halaman ini dipasang ulang setiap data tersinkron, jadi pilihan lipatan disimpan selama sesi
+const readFolds = (): Partial<Record<FoldId, boolean>> => {
+  try {
+    return JSON.parse(sessionStorage.getItem(FOLD_STORAGE_KEY) || '{}') || {};
+  } catch {
+    return {};
+  }
+};
+
+const WIDE_QUERY = '(min-width: 1024px)';
+const useIsWide = () => {
+  const [wide, setWide] = useState(() => window.matchMedia(WIDE_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(WIDE_QUERY);
+    const onChange = () => setWide(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return wide;
+};
+
+interface FoldHeadProps {
+  id: FoldId;
+  title: React.ReactNode;
+  /** Keterangan di bawah judul pada layar lebar. */
+  description?: React.ReactNode;
+  /** Satu baris angka kunci pada judul lipatan di HP. */
+  summary: React.ReactNode;
+  summaryTone?: string;
+  open: boolean;
+  isWide: boolean;
+  onToggle: (id: FoldId) => void;
+  actions?: React.ReactNode;
+}
+
+const FoldHead: React.FC<FoldHeadProps> = ({ id, title, description, summary, summaryTone, open, isWide, onToggle, actions }) =>
+  isWide ? (
+    <div className={SECTION_HEAD}>
+      <div>
+        <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
+        {description && <p className="text-[11px] text-slate-600 mt-0.5">{description}</p>}
+      </div>
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    </div>
+  ) : (
+    <div className={open ? 'border-b border-slate-200' : ''}>
+      <h2>
+        <button
+          type="button"
+          onClick={() => onToggle(id)}
+          aria-expanded={open}
+          aria-controls={`lipatan-${id}`}
+          className={`w-full flex items-center justify-between gap-3 px-4 py-3 min-h-[60px] text-left cursor-pointer ${FOCUS_INSET}`}
+        >
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-slate-800">{title}</span>
+            <span className={`block text-xs mt-0.5 truncate ${summaryTone || 'text-slate-600'}`}>{summary}</span>
+          </span>
+          <ChevronDown
+            aria-hidden="true"
+            className={`w-4 h-4 text-slate-500 shrink-0 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+          />
+        </button>
+      </h2>
+      {open && actions && <div className="px-4 pb-3 flex flex-wrap items-center gap-2">{actions}</div>}
+    </div>
+  );
 
 const formatDate = (iso: string, withWeekday = false) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString('id-ID', {
@@ -74,6 +150,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
   const [triageFilter, setTriageFilter] = useState<TriageFilter>('ALL');
 
   const today = localDateIso();
+
+  const isWide = useIsWide();
+  const [folds, setFolds] = useState(readFolds);
+  const isOpen = (id: FoldId) => isWide || (folds[id] ?? (id === 'po' && todayPoItems.length > 0));
+  const toggleFold = (id: FoldId) => {
+    const next = { ...folds, [id]: !isOpen(id) };
+    setFolds(next);
+    try {
+      sessionStorage.setItem(FOLD_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // Penyimpanan sesi diblokir: lipatan tetap berfungsi, hanya tidak diingat
+    }
+  };
+  const foldProps = (id: FoldId) => ({ id, open: isOpen(id), isWide, onToggle: toggleFold });
+  const [jobdeskStats, setJobdeskStats] = useState<{ total: number; done: number; overdue: number } | null>(null);
 
   // Rekap porsi hari ini; dibaca ulang saat data pengaturan tersinkron dari perangkat lain
   const [recapVersion, setRecapVersion] = useState(0);
@@ -336,6 +427,86 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
     { id: 'EQUIPMENT', label: 'Alat', count: damagedEquipment.length, active: 'bg-slate-800 text-white', idle: 'text-slate-700 hover:bg-white' },
   ];
 
+  // Satu sumber untuk dua tampilan: baris ringkas di HP, kartu di layar lebar
+  const alerts: {
+    id: Exclude<TriageFilter, 'ALL'>;
+    icon: React.ElementType;
+    label: string;
+    count: string;
+    title: string;
+    hint: string;
+    cta: string;
+    target: string;
+    border: string;
+    chip: string;
+    countTone: string;
+    button: string;
+  }[] = [];
+  if (outOfStockItems.length > 0) {
+    alerts.push({
+      id: 'OUT_OF_STOCK',
+      icon: XCircle,
+      label: 'Stok habis',
+      count: `${outOfStockItems.length} bahan`,
+      title: namesPreview(outOfStockItems.map(i => i.name), 3),
+      hint: 'Stok fisik 0. Segera buat nota pesanan (PO) ke supplier.',
+      cta: 'Buka Stok Barang',
+      target: 'inventory',
+      border: 'border-rose-200',
+      chip: 'bg-rose-50 text-rose-700',
+      countTone: 'text-rose-700',
+      button: 'bg-rose-700 hover:bg-rose-800',
+    });
+  }
+  if (lowStockItems.length > 0) {
+    alerts.push({
+      id: 'LOW_STOCK',
+      icon: AlertTriangle,
+      label: 'Stok menipis',
+      count: `${lowStockItems.length} bahan`,
+      title: namesPreview(lowStockItems.map(i => i.name), 3),
+      hint: 'Sudah mencapai batas minimum. Masukkan ke pesanan berikutnya.',
+      cta: 'Buka Stok Barang',
+      target: 'inventory',
+      border: 'border-amber-200',
+      chip: 'bg-amber-50 text-amber-800',
+      countTone: 'text-amber-800',
+      button: 'bg-amber-700 hover:bg-amber-800',
+    });
+  }
+  if (pendingOpnames.length > 0) {
+    alerts.push({
+      id: 'OPNAME',
+      icon: ClipboardCheck,
+      label: 'Opname belum disetujui',
+      count: `${pendingOpnames.length} sesi`,
+      title: `Opname #${pendingOpnames[0].id}${pendingOpnames.length > 1 ? `, +${pendingOpnames.length - 1} lainnya` : ''}`,
+      hint: `Diajukan oleh ${pendingOpnames[0].createdByName}. Menunggu persetujuan Kepala SPPG.`,
+      cta: 'Periksa Opname',
+      target: 'stock_opname',
+      border: 'border-indigo-200',
+      chip: 'bg-indigo-50 text-indigo-700',
+      countTone: 'text-indigo-700',
+      button: 'bg-indigo-700 hover:bg-indigo-800',
+    });
+  }
+  if (damagedEquipment.length > 0) {
+    alerts.push({
+      id: 'EQUIPMENT',
+      icon: Wrench,
+      label: 'Alat dapur bermasalah',
+      count: `${damagedEquipment.length} unit`,
+      title: namesPreview(damagedEquipment.map(e => e.name), 2),
+      hint: 'Tercatat rusak atau sedang diperbaiki.',
+      cta: 'Lihat Aset Dapur',
+      target: 'equipment',
+      border: 'border-slate-300',
+      chip: 'bg-slate-100 text-slate-800',
+      countTone: 'text-slate-800',
+      button: 'bg-slate-800 hover:bg-slate-900',
+    });
+  }
+
   const poTabs: { id: typeof poFilter; label: string; count: number }[] = [
     { id: 'ALL', label: 'Semua', count: poSupplierGroups.length },
     { id: 'PENDING', label: 'Belum tiba', count: pendingSupplierCount },
@@ -344,7 +515,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
   ];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3 lg:space-y-5">
       {/* Detail Physical Receiving Modal */}
       <ReceivingDetailModal
         document={selectedReceivingDoc}
@@ -354,7 +525,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
 
       {/* 1. HEADER & RINGKASAN HARI INI */}
       <section className={`${SECTION} p-4 sm:p-5`}>
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3 lg:gap-4">
           <div>
             <p className="text-[11px] text-slate-600 font-medium">
               {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
@@ -362,26 +533,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
             <h1 className="text-xl font-bold text-slate-900 tracking-tight mt-0.5">
               Ringkasan Gudang Hari Ini
             </h1>
-            <p className="text-xs text-slate-600 mt-1 leading-relaxed max-w-2xl">
+            <p className="hidden sm:block text-xs text-slate-600 mt-1 leading-relaxed max-w-2xl">
               Kedatangan bahan, stok yang perlu ditindaklanjuti, dan menu MBG
               {schools.length > 0 ? ` untuk ${schools.length} sekolah penerima.` : '.'}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button type="button" onClick={() => onNavigate('receiving')} className={BTN_PRIMARY}>
+            <button type="button" onClick={() => onNavigate('receiving')} className={`${BTN_PRIMARY} max-sm:w-full`}>
               <Plus className="w-4 h-4" />
               Catat Barang Masuk
             </button>
-            <button type="button" onClick={() => onNavigate('menu_orders')} className={BTN_SECONDARY}>
+            {/* Di HP ketiga tujuan ini sudah ada di bilah navigasi bawah, jadi tidak diulang di sini */}
+            <button type="button" onClick={() => onNavigate('menu_orders')} className={`${BTN_SECONDARY} max-sm:hidden`}>
               <ChefHat className="w-4 h-4 text-slate-500" />
               Menu & Sekolah
             </button>
-            <button type="button" onClick={() => onNavigate('tools_forms')} className={BTN_SECONDARY}>
+            <button type="button" onClick={() => onNavigate('tools_forms')} className={`${BTN_SECONDARY} max-sm:hidden`}>
               <Printer className="w-4 h-4 text-slate-500" />
               Cetak Form
             </button>
-            <button type="button" onClick={() => onNavigate('website_cms')} className={BTN_SECONDARY}>
+            <button type="button" onClick={() => onNavigate('website_cms')} className={`${BTN_SECONDARY} max-sm:hidden`}>
               <Globe className="w-4 h-4 text-slate-500" />
               Atur Website
             </button>
@@ -401,8 +573,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
         )}
 
         {/* Key numbers: each tile answers one morning question, colored only when it needs attention */}
-        <dl className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mt-5">
-          <div className="rounded-lg bg-slate-50 p-3.5">
+        <dl className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2.5 mt-4 sm:mt-5">
+          <div className="rounded-lg bg-slate-50 p-3 sm:p-3.5">
             <dt className="text-[11px] text-slate-600 font-medium">Bahan PO sudah tiba</dt>
             <dd className="mt-1.5">
               <span className="text-2xl font-bold text-slate-900 font-mono tabular-nums">
@@ -415,7 +587,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
             </dd>
           </div>
 
-          <div className="rounded-lg bg-slate-50 p-3.5">
+          <div className="rounded-lg bg-slate-50 p-3 sm:p-3.5">
             <dt className="text-[11px] text-slate-600 font-medium">Target porsi</dt>
             <dd className="mt-1.5">
               <span className="text-2xl font-bold text-slate-900 font-mono tabular-nums">
@@ -428,7 +600,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
             </dd>
           </div>
 
-          <div className={`rounded-lg p-3.5 ${totalAlertsCount > 0 ? 'bg-amber-50' : 'bg-slate-50'}`}>
+          <div className={`rounded-lg p-3 sm:p-3.5 ${totalAlertsCount > 0 ? 'bg-amber-50' : 'bg-slate-50'}`}>
             <dt className={`text-[11px] font-medium ${totalAlertsCount > 0 ? 'text-amber-800' : 'text-slate-600'}`}>
               Perlu ditindaklanjuti
             </dt>
@@ -443,7 +615,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
             </dd>
           </div>
 
-          <div className="rounded-lg bg-slate-50 p-3.5">
+          <div className="rounded-lg bg-slate-50 p-3 sm:p-3.5">
             <dt className="text-[11px] text-slate-600 font-medium">Alat dapur siap pakai</dt>
             <dd className="mt-1.5">
               <span className="text-2xl font-bold text-slate-900 font-mono tabular-nums">{goodEquipmentCount}</span>
@@ -472,7 +644,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
             <div
               role="tablist"
               aria-label="Filter perlu tindakan"
-              className="flex flex-wrap items-center gap-1 bg-slate-200/70 p-1 rounded-lg self-start sm:self-auto"
+              className="hidden md:flex flex-wrap items-center gap-1 bg-slate-200/70 p-1 rounded-lg self-start sm:self-auto"
             >
               {triageTabs
                 .filter(t => t.id === 'ALL' || t.count > 0)
@@ -507,146 +679,90 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-            {(triageFilter === 'ALL' || triageFilter === 'OUT_OF_STOCK') && outOfStockItems.length > 0 && (
-              <div className="p-4 rounded-xl bg-white border border-rose-200 flex flex-col justify-between gap-3">
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-rose-50 text-rose-700">
-                      <XCircle className="w-3.5 h-3.5" />
-                      Stok habis
+          <>
+            {/* HP: satu baris per hal, seluruh baris bisa ditekan */}
+            <ul className="md:hidden bg-white rounded-xl border border-slate-200 divide-y divide-slate-200 overflow-hidden">
+              {alerts.map(a => (
+                <li key={a.id}>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate(a.target)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 min-h-[60px] text-left cursor-pointer active:bg-slate-50 ${FOCUS_INSET}`}
+                  >
+                    <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${a.chip}`}>
+                      <a.icon className="w-4 h-4" aria-hidden="true" />
                     </span>
-                    <span className="font-mono text-xs font-bold text-rose-700 tabular-nums">
-                      {outOfStockItems.length} bahan
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className="text-xs font-semibold text-slate-900">{a.label}</span>
+                        <span className={`font-mono text-xs font-bold tabular-nums shrink-0 ${a.countTone}`}>{a.count}</span>
+                      </span>
+                      <span className="block text-xs text-slate-600 truncate mt-0.5">{a.title}</span>
                     </span>
-                  </div>
-                  <p className="text-xs font-semibold text-slate-900 leading-snug mt-2.5">
-                    {namesPreview(outOfStockItems.map(i => i.name), 3)}
-                  </p>
-                  <p className="text-[11px] text-slate-600 mt-1 leading-normal">
-                    Stok fisik 0. Segera buat nota pesanan (PO) ke supplier.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onNavigate('inventory')}
-                  className={`w-full px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-xs font-semibold transition-colors cursor-pointer min-h-[44px] ${FOCUS}`}
-                >
-                  Buka Stok Barang
-                </button>
-              </div>
-            )}
+                    <span className="sr-only">{a.cta}</span>
+                    <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
 
-            {(triageFilter === 'ALL' || triageFilter === 'LOW_STOCK') && lowStockItems.length > 0 && (
-              <div className="p-4 rounded-xl bg-white border border-amber-200 flex flex-col justify-between gap-3">
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      Stok menipis
-                    </span>
-                    <span className="font-mono text-xs font-bold text-amber-800 tabular-nums">
-                      {lowStockItems.length} bahan
-                    </span>
+            <div className="hidden md:grid grid-cols-2 xl:grid-cols-4 gap-3">
+              {alerts
+                .filter(a => triageFilter === 'ALL' || triageFilter === a.id)
+                .map(a => (
+                  <div key={a.id} className={`p-4 rounded-xl bg-white border ${a.border} flex flex-col justify-between gap-3`}>
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold ${a.chip}`}>
+                          <a.icon className="w-3.5 h-3.5" />
+                          {a.label}
+                        </span>
+                        <span className={`font-mono text-xs font-bold tabular-nums ${a.countTone}`}>{a.count}</span>
+                      </div>
+                      <p className="text-xs font-semibold text-slate-900 leading-snug mt-2.5">{a.title}</p>
+                      <p className="text-[11px] text-slate-600 mt-1 leading-normal">{a.hint}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onNavigate(a.target)}
+                      className={`w-full px-3 py-2 rounded-lg text-white text-xs font-semibold transition-colors cursor-pointer min-h-[44px] ${a.button} ${FOCUS}`}
+                    >
+                      {a.cta}
+                    </button>
                   </div>
-                  <p className="text-xs font-semibold text-slate-900 leading-snug mt-2.5">
-                    {namesPreview(lowStockItems.map(i => i.name), 3)}
-                  </p>
-                  <p className="text-[11px] text-slate-600 mt-1 leading-normal">
-                    Sudah mencapai batas minimum. Masukkan ke pesanan berikutnya.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onNavigate('inventory')}
-                  className={`w-full px-3 py-2 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-semibold transition-colors cursor-pointer min-h-[44px] ${FOCUS}`}
-                >
-                  Buka Stok Barang
-                </button>
-              </div>
-            )}
-
-            {(triageFilter === 'ALL' || triageFilter === 'OPNAME') && pendingOpnames.length > 0 && (
-              <div className="p-4 rounded-xl bg-white border border-indigo-200 flex flex-col justify-between gap-3">
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-indigo-50 text-indigo-700">
-                      <ClipboardCheck className="w-3.5 h-3.5" />
-                      Opname belum disetujui
-                    </span>
-                    <span className="font-mono text-xs font-bold text-indigo-700 tabular-nums">
-                      {pendingOpnames.length} sesi
-                    </span>
-                  </div>
-                  <p className="text-xs font-semibold text-slate-900 leading-snug mt-2.5">
-                    Opname #{pendingOpnames[0].id}
-                    {pendingOpnames.length > 1 && `, +${pendingOpnames.length - 1} lainnya`}
-                  </p>
-                  <p className="text-[11px] text-slate-600 mt-1 leading-normal">
-                    Diajukan oleh {pendingOpnames[0].createdByName}. Menunggu persetujuan Kepala SPPG.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onNavigate('stock_opname')}
-                  className={`w-full px-3 py-2 rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold transition-colors cursor-pointer min-h-[44px] ${FOCUS}`}
-                >
-                  Periksa Opname
-                </button>
-              </div>
-            )}
-
-            {(triageFilter === 'ALL' || triageFilter === 'EQUIPMENT') && damagedEquipment.length > 0 && (
-              <div className="p-4 rounded-xl bg-white border border-slate-300 flex flex-col justify-between gap-3">
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-800">
-                      <Wrench className="w-3.5 h-3.5" />
-                      Alat dapur bermasalah
-                    </span>
-                    <span className="font-mono text-xs font-bold text-slate-800 tabular-nums">
-                      {damagedEquipment.length} unit
-                    </span>
-                  </div>
-                  <p className="text-xs font-semibold text-slate-900 leading-snug mt-2.5">
-                    {namesPreview(damagedEquipment.map(e => e.name), 2)}
-                  </p>
-                  <p className="text-[11px] text-slate-600 mt-1 leading-normal">
-                    Tercatat rusak atau sedang diperbaiki.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onNavigate('equipment')}
-                  className={`w-full px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold transition-colors cursor-pointer min-h-[44px] ${FOCUS}`}
-                >
-                  Lihat Aset Dapur
-                </button>
-              </div>
-            )}
-          </div>
+                ))}
+            </div>
+          </>
         )}
       </section>
 
       {/* 3. KEDATANGAN BAHAN PO HARI INI */}
       <section className={SECTION}>
-        <div className={SECTION_HEAD}>
-          <div>
-            <h2 className="text-sm font-semibold text-slate-800">Kedatangan Bahan PO Hari Ini</h2>
-            <p className="text-[11px] text-slate-600 mt-0.5">
-              Pesanan ke supplier, jumlah yang sudah ditimbang, dan catatan penanganan.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => onNavigate('receiving')} className={BTN_SECONDARY}>
-              Catat Timbangan
-            </button>
-            <button type="button" onClick={() => onNavigate('menu_orders')} className={BTN_SECONDARY}>
-              Kelola PO
-            </button>
-          </div>
-        </div>
+        <FoldHead
+          {...foldProps('po')}
+          title="Kedatangan Bahan PO Hari Ini"
+          description="Pesanan ke supplier, jumlah yang sudah ditimbang, dan catatan penanganan."
+          summary={
+            todayPoItems.length === 0
+              ? 'Belum ada pesanan untuk hari ini'
+              : pendingSupplierCount > 0
+              ? `${arrivedPoItems.length}/${todayPoItems.length} bahan tiba, ${pendingSupplierCount} supplier belum lengkap`
+              : `Semua ${todayPoItems.length} bahan sudah tiba`
+          }
+          summaryTone={pendingSupplierCount > 0 ? 'text-amber-800' : undefined}
+          actions={
+            <>
+              <button type="button" onClick={() => onNavigate('receiving')} className={`${BTN_SECONDARY} max-sm:flex-1`}>
+                Catat Timbangan
+              </button>
+              <button type="button" onClick={() => onNavigate('menu_orders')} className={`${BTN_SECONDARY} max-sm:flex-1`}>
+                Kelola PO
+              </button>
+            </>
+          }
+        />
 
+        <div id="lipatan-po" hidden={!isOpen('po')}>
         {todayPoItems.length === 0 ? (
           <div className="py-10 px-4 text-center">
             <p className="text-xs font-semibold text-slate-800">Belum ada pesanan bahan untuk hari ini.</p>
@@ -660,7 +776,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
               <div
                 role="tablist"
                 aria-label="Filter kedatangan bahan"
-                className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-lg self-start"
+                className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-lg sm:self-start"
               >
                 {poTabs.map(t => (
                   <button
@@ -669,7 +785,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
                     role="tab"
                     aria-selected={poFilter === t.id}
                     onClick={() => setPoFilter(t.id)}
-                    className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${FOCUS} ${
+                    className={`px-2.5 py-1.5 min-h-[44px] sm:min-h-0 rounded-md text-xs font-medium transition-colors cursor-pointer ${FOCUS} ${
                       poFilter === t.id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -703,7 +819,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
                 <button
                   type="button"
                   onClick={() => setPoFilter('PENDING')}
-                  className={`text-amber-900 underline font-semibold text-[11px] self-start sm:self-auto hover:text-amber-950 cursor-pointer rounded-md ${FOCUS}`}
+                  className={`text-amber-900 underline font-semibold text-xs sm:text-[11px] min-h-[44px] sm:min-h-0 inline-flex items-center self-start sm:self-auto hover:text-amber-950 cursor-pointer rounded-md ${FOCUS}`}
                 >
                   Tampilkan yang belum tiba
                 </button>
@@ -800,21 +916,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
             )}
           </div>
         )}
+        </div>
       </section>
 
       {/* 4. MENU HARI INI & PENERIMAAN BARANG */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-5">
         <div className={`lg:col-span-7 ${SECTION} flex flex-col`}>
-          <div className={SECTION_HEAD}>
-            <h2 className="text-sm font-semibold text-slate-800">
-              {isMenuToday || !todaysMenu ? 'Menu MBG Hari Ini' : 'Menu MBG Terakhir'}
-            </h2>
-            <button type="button" onClick={() => onNavigate('menu_orders')} className={BTN_LINK}>
-              Buka Menu & Sekolah
-            </button>
-          </div>
+          <FoldHead
+            {...foldProps('menu')}
+            title={isMenuToday || !todaysMenu ? 'Menu MBG Hari Ini' : 'Menu MBG Terakhir'}
+            summary={
+              isMenuToday
+                ? `${todaysMenu.menuTitle} · ${todaysMenu.targetPortions.toLocaleString('id-ID')} porsi`
+                : todaysMenu
+                ? 'Menu hari ini belum dibuat'
+                : 'Belum ada menu yang dibuat'
+            }
+            summaryTone={isMenuToday ? undefined : 'text-amber-800'}
+            actions={
+              <button type="button" onClick={() => onNavigate('menu_orders')} className={BTN_LINK}>
+                Buka Menu & Sekolah
+              </button>
+            }
+          />
 
-          <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between gap-4">
+          <div id="lipatan-menu" hidden={!isOpen('menu')} className="p-4 sm:p-5 flex-1 flex flex-col justify-between gap-4">
             {todaysMenu ? (
               <>
                 <div className="space-y-3">
@@ -911,17 +1037,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
         </div>
 
         <div className={`lg:col-span-5 ${SECTION} flex flex-col`}>
-          <div className={SECTION_HEAD}>
-            <h2 className="text-sm font-semibold text-slate-800">
-              Barang Diterima Hari Ini{' '}
-              <span className="font-mono text-slate-500">({todaysReceivings.length})</span>
-            </h2>
-            <button type="button" onClick={() => onNavigate('receiving')} className={BTN_LINK}>
-              Lihat Semua GR
-            </button>
-          </div>
+          <FoldHead
+            {...foldProps('gr')}
+            title={
+              <>
+                Barang Diterima Hari Ini{' '}
+                <span className="font-mono text-slate-500 max-lg:hidden">({todaysReceivings.length})</span>
+              </>
+            }
+            summary={
+              todaysReceivings.length > 0
+                ? `${todaysReceivings.length} surat terima (GR) dicatat`
+                : 'Belum ada barang yang diterima'
+            }
+            actions={
+              <button type="button" onClick={() => onNavigate('receiving')} className={BTN_LINK}>
+                Lihat Semua GR
+              </button>
+            }
+          />
 
-          <div className="p-4 sm:p-5 flex-1">
+          <div id="lipatan-gr" hidden={!isOpen('gr')} className="p-4 sm:p-5 flex-1">
             {todaysReceivings.length === 0 ? (
               <div className="text-center py-10 px-4">
                 <p className="text-xs font-semibold text-slate-800">Belum ada barang yang diterima hari ini.</p>
@@ -934,7 +1070,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
                 </button>
               </div>
             ) : (
-              <ul className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+              <ul className="space-y-2 lg:max-h-[380px] lg:overflow-y-auto lg:pr-1">
                 {todaysReceivings.map(doc => (
                   <li
                     key={doc.id}
@@ -967,19 +1103,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
 
       {/* 5. NERACA BAHAN HARIAN (stok awal + masuk - terpakai = sisa) */}
       <section className={SECTION}>
-        <div className={SECTION_HEAD}>
-          <div>
-            <h2 className="text-sm font-semibold text-slate-800">Neraca Bahan Harian</h2>
-            <p className="text-[11px] text-slate-600 mt-0.5">
+        <FoldHead
+          {...foldProps('neraca')}
+          title="Neraca Bahan Harian"
+          description={
+            <>
               Bahan basah (protein, sayur, buah) dalam kg.
               {nonKgFlowCount > 0 && ` ${nonKgFlowCount} bahan bersatuan selain kg tidak ikut dijumlah.`}
-            </p>
-          </div>
-          <button type="button" onClick={() => onNavigate('daily_flow')} className={BTN_LINK}>
-            Buka Barang Keluar
-          </button>
-        </div>
+            </>
+          }
+          summary={
+            kgFlow.length === 0
+              ? 'Belum ada bahan basah yang dicatat'
+              : `Sisa ${formatKg(totalFlowRemaining)} kg, terpakai ${formatKg(totalFlowConsumed)} kg`
+          }
+          actions={
+            <button type="button" onClick={() => onNavigate('daily_flow')} className={BTN_LINK}>
+              Buka Barang Keluar
+            </button>
+          }
+        />
 
+        <div id="lipatan-neraca" hidden={!isOpen('neraca')}>
+        {!isWide && nonKgFlowCount > 0 && (
+          <p className="px-4 pt-3 text-xs text-slate-600">
+            Dalam kg. {nonKgFlowCount} bahan bersatuan selain kg tidak ikut dijumlah.
+          </p>
+        )}
         {kgFlow.length === 0 ? (
           <p className="py-8 px-4 text-center text-xs text-slate-600">Belum ada bahan basah yang dicatat di Barang Keluar.</p>
         ) : (
@@ -1004,49 +1154,106 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
             ))}
           </dl>
         )}
+        </div>
       </section>
 
       {/* 6. CHECKLIST TUGAS OPERASIONAL & SOP HARIAN SPPG */}
-      <section>
-        <DailyChecklistWidget
-          onNavigateToProfileTodos={() => onNavigate('profile')}
-        />
+      <section className="space-y-2">
+        {/* Widget punya judul sendiri di layar lebar. Di HP hanya disembunyikan, tidak dilepas, supaya pengingat jam tetap berbunyi. */}
+        {!isWide && (
+          <div className={SECTION}>
+            <FoldHead
+              {...foldProps('jobdesk')}
+              title="Jobdesk Hari Ini"
+              summary={
+                !jobdeskStats || jobdeskStats.total === 0
+                  ? 'Belum ada jobdesk untuk hari ini'
+                  : `${jobdeskStats.done} dari ${jobdeskStats.total} selesai${jobdeskStats.overdue > 0 ? `, ${jobdeskStats.overdue} lewat target jam` : ''}`
+              }
+              summaryTone={jobdeskStats && jobdeskStats.overdue > 0 ? 'text-rose-700' : undefined}
+            />
+          </div>
+        )}
+        <div id="lipatan-jobdesk" hidden={!isOpen('jobdesk')}>
+          <DailyChecklistWidget
+            onNavigateToProfileTodos={() => onNavigate('profile')}
+            onStats={setJobdeskStats}
+          />
+        </div>
       </section>
 
       {/* 7. TABEL STOK HABIS & MENIPIS */}
       <section className={SECTION}>
-        <div className={`${SECTION_HEAD} lg:flex-row`}>
-          <div>
-            <h2 className="text-sm font-semibold text-slate-800">Stok Habis & Menipis</h2>
-            <p className="text-[11px] text-slate-600 mt-0.5">
-              Bahan dengan stok 0 atau sudah mencapai batas minimum.
-            </p>
-          </div>
+        <FoldHead
+          {...foldProps('stok')}
+          title="Stok Habis & Menipis"
+          description="Bahan dengan stok 0 atau sudah mencapai batas minimum."
+          summary={
+            outOfStockItems.length + lowStockItems.length === 0
+              ? 'Tidak ada stok habis atau menipis'
+              : `${outOfStockItems.length} habis, ${lowStockItems.length} menipis`
+          }
+          summaryTone={outOfStockItems.length > 0 ? 'text-rose-700' : lowStockItems.length > 0 ? 'text-amber-800' : undefined}
+          actions={
+            <>
+              <div className="relative flex-1 min-w-[140px] sm:flex-none">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
+                <input
+                  type="search"
+                  value={stockSearchQuery}
+                  onChange={e => setStockSearchQuery(e.target.value)}
+                  placeholder="Cari nama, kode, lokasi"
+                  aria-label="Cari bahan"
+                  className={`w-full sm:w-52 pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 placeholder-slate-500 min-h-[44px] sm:min-h-[36px] ${FOCUS}`}
+                />
+              </div>
+              <Select
+                value={stockCategoryFilter}
+                onChange={e => setStockCategoryFilter(e.target.value as 'ALL' | 'Bahan Basah' | 'Bahan Kering')}
+                aria-label="Filter kategori">
+                <option value="ALL">Semua kategori</option>
+                <option value="Bahan Basah">Bahan Basah</option>
+                <option value="Bahan Kering">Bahan Kering</option>
+              </Select>
+            </>
+          }
+        />
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[140px] sm:flex-none">
-              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
-              <input
-                type="search"
-                value={stockSearchQuery}
-                onChange={e => setStockSearchQuery(e.target.value)}
-                placeholder="Cari nama, kode, lokasi"
-                aria-label="Cari bahan"
-                className={`w-full sm:w-52 pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-300 bg-white text-slate-900 placeholder-slate-500 min-h-[44px] sm:min-h-[36px] ${FOCUS}`}
-              />
-            </div>
-            <Select
-              value={stockCategoryFilter}
-              onChange={e => setStockCategoryFilter(e.target.value as 'ALL' | 'Bahan Basah' | 'Bahan Kering')}
-              aria-label="Filter kategori">
-              <option value="ALL">Semua kategori</option>
-              <option value="Bahan Basah">Bahan Basah</option>
-              <option value="Bahan Kering">Bahan Kering</option>
-            </Select>
-          </div>
-        </div>
+        <div id="lipatan-stok" hidden={!isOpen('stok')}>
+        {/* HP: daftar, karena tabel enam kolom harus digeser ke samping */}
+        <ul className="sm:hidden divide-y divide-slate-100">
+          {filteredCriticalStock.length === 0 ? (
+            <li className="py-8 px-4 text-center text-xs text-slate-900 font-semibold">
+              {stockSearchQuery || stockCategoryFilter !== 'ALL'
+                ? 'Tidak ada bahan yang cocok dengan pencarian.'
+                : 'Tidak ada stok habis atau menipis.'}
+            </li>
+          ) : (
+            filteredCriticalStock.slice(0, STOCK_TABLE_LIMIT).map(item => {
+              const isOut = item.currentStock <= 0;
+              return (
+                <li key={item.id} className="px-4 py-3 flex items-start justify-between gap-3 text-xs">
+                  <div className="min-w-0">
+                    <div className="font-medium text-slate-900">{item.name}</div>
+                    <div className="text-slate-600 mt-0.5">
+                      {item.category} · <span className="font-mono">{item.location}</span>
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className={`font-mono font-semibold tabular-nums ${isOut ? 'text-rose-700' : 'text-amber-800'}`}>
+                      {item.currentStock.toLocaleString('id-ID')} {item.baseUnit}
+                    </div>
+                    <div className="text-slate-600 mt-0.5">
+                      {isOut ? 'Habis' : 'Menipis'}, min. <span className="font-mono tabular-nums">{item.minimumStock.toLocaleString('id-ID')}</span>
+                    </div>
+                  </div>
+                </li>
+              );
+            })
+          )}
+        </ul>
 
-        <div className="overflow-x-auto">
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
               <tr>
@@ -1122,6 +1329,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
           <button type="button" onClick={() => onNavigate('inventory')} className={BTN_LINK}>
             Buka Stok Barang
           </button>
+        </div>
         </div>
       </section>
     </div>

@@ -16,6 +16,15 @@
     --font-display: 'Sora', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     --font-serif: 'Fraunces', Georgia, serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    /* Area aman layar (notch, bilah gestur) untuk aplikasi terpasang; 0 di browser biasa */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* viewport-fit=cover membuat halaman melebar ke bawah notch saat HP dimiringkan; sisi kiri-kanan dikembalikan ke area aman */
+  body {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
   }
 
   .font-display {

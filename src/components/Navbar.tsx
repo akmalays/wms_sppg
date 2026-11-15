@@ -11,6 +11,10 @@ import {
   UserCheck,
   X,
   ScanLine,
+  ClipboardList,
+  ChefHat,
+  PackagePlus,
+  Boxes,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -49,6 +53,15 @@ const DAILY_ITEMS: NavItem[] = [
   { id: 'inventory', label: 'Stok' },
   { id: 'daily_flow', label: 'Barang Keluar' },
   { id: 'tools_forms', label: 'Cetak Form' },
+];
+
+// Bilah bawah di HP dan tablet: empat halaman pertama alur harian dalam jangkauan jempol, sisanya di "Lainnya".
+// Ikon membantu mengenali tujuan tanpa membaca: papan ringkasan, dapur, dus masuk, tumpukan stok.
+const BOTTOM_ITEMS: { id: string; label: string; icon: React.ElementType }[] = [
+  { id: 'dashboard', label: 'Ringkasan', icon: ClipboardList },
+  { id: 'menu_orders', label: 'Menu', icon: ChefHat },
+  { id: 'receiving', label: 'Masuk', icon: PackagePlus },
+  { id: 'inventory', label: 'Stok', icon: Boxes },
 ];
 
 const NAV_GROUPS: { id: 'laporan' | 'lainnya'; label: string; items: NavItem[] }[] = [
@@ -130,14 +143,23 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onViewLa
       isActive ? 'bg-emerald-50 text-emerald-800 font-semibold' : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100 font-medium'
     }`;
 
+  // Halaman di luar empat tombol bilah bawah ditandai lewat tombol "Lainnya"
+  const isOtherPage = !BOTTOM_ITEMS.some(i => i.id === activeTab) && activeTab !== 'menu_portions';
+  const bottomItemClass = (isActive: boolean) =>
+    `flex flex-col items-center justify-center gap-0.5 min-h-[60px] rounded-lg text-[11px] cursor-pointer transition-colors ${FOCUS} ${
+      isActive ? 'text-emerald-800 font-semibold' : 'text-slate-600 font-medium hover:text-slate-900'
+    }`;
+  const bottomIconClass = (isActive: boolean) =>
+    `flex items-center justify-center w-12 h-7 rounded-md transition-colors ${isActive ? 'bg-emerald-100 text-emerald-800' : ''}`;
+
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 pt-[var(--safe-top)] print:hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-4">
         {/* Identity */}
         <button
           type="button"
           onClick={() => go('dashboard')}
-          className={`flex items-center gap-2.5 min-w-0 shrink-0 rounded-lg cursor-pointer ${FOCUS}`}
+          className={`flex items-center gap-2.5 min-w-0 shrink-0 min-h-[44px] rounded-lg cursor-pointer ${FOCUS}`}
           aria-label="SPPG Tumpang Jeru, ke Ringkasan"
         >
           <SppgLogo size="sm" showText={false} />
@@ -304,28 +326,16 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onViewLa
               </div>
             )}
           </div>
-
-          {/* Mobile & tablet navigation toggle */}
-          <button
-            type="button"
-            onClick={() => {
-              setOpenMenu(null);
-              setIsMobileMenuOpen(open => !open);
-            }}
-            className={`lg:hidden p-2 rounded-lg text-slate-800 hover:bg-slate-100 border border-slate-200 cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center ${FOCUS}`}
-            aria-expanded={isMobileMenuOpen}
-            aria-label={isMobileMenuOpen ? 'Tutup menu navigasi' : 'Buka menu navigasi'}
-          >
-            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
         </div>
       </div>
 
       {/* Mobile & tablet navigation drawer */}
       {isMobileMenuOpen && (
+        // Tinggi = layar dikurangi header (56px) dan bilah bawah (61px), supaya daftar menu menutup halaman tepat sampai bilah
         <nav
-          aria-label="Navigasi utama"
-          className="lg:hidden border-t border-slate-200 bg-white max-h-[calc(100vh-3.5rem)] overflow-y-auto"
+          id="semua-menu"
+          aria-label="Semua menu"
+          className="lg:hidden border-t border-slate-200 bg-white h-[calc(100dvh_-_117px_-_var(--safe-top)_-_var(--safe-bottom))] overflow-y-auto overscroll-contain"
         >
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 space-y-3">
             <p className="text-[11px] text-slate-600 sm:hidden">{dateLabel}</p>
@@ -355,6 +365,48 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onViewLa
           </div>
         </nav>
       )}
+
+      {/* Bilah navigasi bawah (HP & tablet) */}
+      <nav
+        aria-label="Navigasi utama"
+        className="lg:hidden print:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 pb-[var(--safe-bottom)]"
+      >
+        <div className="max-w-xl mx-auto grid grid-cols-5 px-1">
+          {BOTTOM_ITEMS.map(item => {
+            const isActive = !isMobileMenuOpen && (activeTab === item.id || (item.id === 'menu_orders' && activeTab === 'menu_portions'));
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => go(item.id)}
+                aria-current={isActive ? 'page' : undefined}
+                className={bottomItemClass(isActive)}
+              >
+                <span className={bottomIconClass(isActive)}>
+                  <item.icon className="w-5 h-5" aria-hidden="true" />
+                </span>
+                {item.label}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => {
+              setOpenMenu(null);
+              setIsMobileMenuOpen(open => !open);
+            }}
+            aria-expanded={isMobileMenuOpen}
+            aria-controls="semua-menu"
+            aria-label={isMobileMenuOpen ? 'Tutup daftar menu' : 'Buka semua menu'}
+            className={bottomItemClass(isMobileMenuOpen || isOtherPage)}
+          >
+            <span className={bottomIconClass(isMobileMenuOpen || isOtherPage)}>
+              {isMobileMenuOpen ? <X className="w-5 h-5" aria-hidden="true" /> : <Menu className="w-5 h-5" aria-hidden="true" />}
+            </span>
+            {isMobileMenuOpen ? 'Tutup' : 'Lainnya'}
+          </button>
+        </div>
+      </nav>
     </header>
   );
 };

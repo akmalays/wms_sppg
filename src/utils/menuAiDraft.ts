@@ -17,7 +17,8 @@ export interface MenuAiDraftInput {
 }
 
 export interface KidsAiDraft {
-  hero: { name: string; category: string; points: string[]; funFact: string };
+  /** keyNutrients kosong bila Edge Function yang terpasang masih versi lama. */
+  hero: { name: string; category: string; points: string[]; keyNutrients?: string[]; funFact: string };
   habit: { title: string; description: string; steps: string[]; cheer: string };
   plateTip: string;
 }
@@ -62,27 +63,4 @@ export async function requestKidsAiDraft(input: KidsAiDraftInput): Promise<KidsA
     throw new Error('Jawaban AI tidak lengkap, coba lagi.');
   }
   return data;
-}
-
-export interface KidsAiImageInput {
-  kind: 'hero' | 'habit';
-  /** Nama bahan atau judul kebiasaan */
-  subject: string;
-  /** Penjelasan singkat, supaya gambar sesuai isi kartu */
-  detail?: string;
-}
-
-/** Gambar kartun dari Gemini, dikembalikan sebagai File supaya bisa lewat uploadCmsMedia seperti unggahan biasa. */
-export async function requestKidsAiImage(input: KidsAiImageInput): Promise<File> {
-  const data = await invokeDraft<{ mimeType?: string; data?: string }>({
-    mode: 'kids_image',
-    imageKind: input.kind,
-    subject: input.subject,
-    detail: input.detail,
-  });
-  if (typeof data.data !== 'string' || !data.data) throw new Error('Gemini tidak mengirim gambar, coba lagi.');
-  const mimeType = data.mimeType || 'image/png';
-  const bytes = Uint8Array.from(atob(data.data), c => c.charCodeAt(0));
-  const ext = mimeType.split('/')[1] || 'png';
-  return new File([bytes], `ai-${input.kind}.${ext}`, { type: mimeType });
 }

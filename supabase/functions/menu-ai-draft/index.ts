@@ -6,7 +6,7 @@
 // Hanya menulis teks naratif (deskripsi, manfaat, fakta menarik). Angka gizi, gramatur, alergen,
 // dan status QC sengaja tidak diminta: data itu harus dari ahli gizi, bukan karangan model.
 //
-// Secret yang dibutuhkan: GEMINI_API_KEY. Opsional: GEMINI_MODEL (bawaan gemini-2.5-flash) dan
+// Secret yang dibutuhkan: GEMINI_API_KEY. Opsional: GEMINI_MODEL (bawaan gemini-3.5-flash) dan
 // GEMINI_IMAGE_MODEL (bawaan gemini-2.5-flash-image). Model gambar butuh proyek Gemini berbayar.
 // SUPABASE_URL dan SUPABASE_ANON_KEY sudah disediakan otomatis oleh Supabase.
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -83,9 +83,10 @@ const KIDS_SCHEMA = {
         name: { type: 'STRING' },
         category: { type: 'STRING', enum: ['karbohidrat', 'protein', 'sayur', 'buah'] },
         points: { type: 'ARRAY', items: { type: 'STRING' } },
+        keyNutrients: { type: 'ARRAY', items: { type: 'STRING' } },
         funFact: { type: 'STRING' },
       },
-      required: ['name', 'category', 'points', 'funFact'],
+      required: ['name', 'category', 'points', 'keyNutrients', 'funFact'],
     },
     habit: {
       type: 'OBJECT',
@@ -347,6 +348,7 @@ Tulis:
    - "name": nama bahan yang singkat dan akrab untuk anak (mis. "Tempe", bukan "Tempe Bacem Tradisional").
    - "category": salah satu dari karbohidrat, protein, sayur, buah.
    - "points": 3 fakta pendek (maksimal 10 kata) kenapa bahan itu hebat.
+   - "keyNutrients": 2 sampai 4 nama zat gizi yang umum diketahui ada pada bahan itu, tanpa angka. Contoh: Protein, Vitamin A.
    - "funFact": 1 fakta unik yang umum diketahui, 1 sampai 2 kalimat.
 2. "habit": satu kebiasaan baik untuk hari ${habitDay || 'ini'} yang berkaitan dengan makan, kebersihan, atau kesehatan sehari-hari.
    ${otherHabitTitles.length ? `Jangan sama dengan kebiasaan hari lain: ${otherHabitTitles.join('; ')}.` : ''}
@@ -412,7 +414,7 @@ Deno.serve(async req => {
 
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) return json({ error: 'GEMINI_API_KEY belum diatur di Supabase.' }, 500);
-  const model = Deno.env.get('GEMINI_MODEL') || 'gemini-2.5-flash';
+  const model = Deno.env.get('GEMINI_MODEL') || 'gemini-3.5-flash';
 
   let body: DraftRequest;
   try {

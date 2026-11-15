@@ -242,7 +242,8 @@ const MainLayout: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Di bawah lg, ruang bawah disisakan untuk bilah navigasi yang menempel di dasar layar */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-[calc(5.5rem_+_var(--safe-bottom))] lg:pb-6 print:pb-0">
         {/* Remounting on every data change resets open forms, tabs and post-save dialogs.
             These modules listen to the same sync events and reload their own data, so they are exempt. */}
         <div key={SELF_SYNCING_TABS.has(activeTab) ? activeTab : dataVersion}>
@@ -364,7 +365,7 @@ const MainLayout: React.FC = () => {
       </main>
 
       {/* Operational Footer - Technical Logistics Style */}
-      <footer className="border-t border-slate-200 bg-white py-3.5 mt-auto">
+      <footer className="hidden lg:block border-t border-slate-200 bg-white py-3.5 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-1 text-[11px] text-slate-600">
           <span className="font-semibold text-slate-800">SPPG Tumpang Jeru · Gudang & Logistik</span>
           <span>Program Makan Bergizi Gratis, Badan Gizi Nasional</span>

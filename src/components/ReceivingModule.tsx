@@ -2953,7 +2953,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
             <div
               role="region"
               aria-label="Barang dipilih"
-              className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] sm:w-auto bg-slate-900 text-white pl-4 pr-2 py-2 rounded-xl shadow-lg flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
+              className="fixed bottom-[calc(5rem_+_var(--safe-bottom))] lg:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] sm:w-auto bg-slate-900 text-white pl-4 pr-2 py-2 rounded-xl shadow-lg flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
             >
               <div className="flex items-center gap-2 text-xs">
                 <CheckSquare className="w-4 h-4 text-emerald-400" />

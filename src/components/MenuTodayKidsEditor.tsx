@@ -9,10 +9,10 @@ import {
   heroSlideIngredients,
   uploadCmsMedia
 } from '../db/websiteConfigStorage';
-import { Upload, Trash2, PenLine, ImagePlus, Images, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Upload, Trash2, PenLine, Images, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
-import { requestKidsAiDraft, requestKidsAiImage, requestMenuAiDraft, KidsAiDraft } from '../utils/menuAiDraft';
+import { requestKidsAiDraft, requestMenuAiDraft, KidsAiDraft } from '../utils/menuAiDraft';
 import { Select } from './common/Select';
 import { ImageBankDialog } from './common/ImageBankDialog';
 import { BTN_SECONDARY } from './common/FormDialog';
@@ -30,7 +30,6 @@ const labelCls = 'block text-xs font-semibold text-slate-700 mb-1';
 const linesToList = (text: string) => text.split('\n').map(l => l.trim()).filter(Boolean);
 
 type AiTarget = 'hero' | 'habit' | 'plateTip';
-type ImageTarget = 'hero' | 'habit';
 
 const AiButton: React.FC<{ busy: string | null; disabled: boolean; label: string; onClick: () => void }> = ({ busy, disabled, label, onClick }) => (
   <button
@@ -46,22 +45,13 @@ const AiButton: React.FC<{ busy: string | null; disabled: boolean; label: string
 
 const PICKER_BTN = `${BTN_SECONDARY} w-full disabled:text-slate-400 disabled:cursor-not-allowed`;
 
-interface ImageAiAction {
-  busy: boolean;
-  disabled: boolean;
-  /** Alasan tombol tidak bisa dipakai, mis. nama bahan masih kosong */
-  blockedHint?: string;
-  onGenerate: () => void;
-}
-
 const ImagePicker: React.FC<{
   value: string;
   label: string;
   emptyHint: string;
   onChange: (url: string) => void;
   onNotify: (message: string) => void;
-  ai?: ImageAiAction;
-}> = ({ value, label, emptyHint, onChange, onNotify, ai }) => {
+}> = ({ value, label, emptyHint, onChange, onNotify }) => {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [isBankOpen, setIsBankOpen] = useState(false);
@@ -87,7 +77,7 @@ const ImagePicker: React.FC<{
       {/* Hapus di baris judul, supaya kotak gambar dan tombol tidak bergeser saat gambar ada atau kosong */}
       <div className="flex items-center justify-between gap-2 mb-1 min-h-[20px]">
         <span className={`${labelCls} mb-0`}>{label}</span>
-        {value && !ai?.busy && (
+        {value && (
           <button
             type="button"
             onClick={() => onChange('')}
@@ -98,12 +88,10 @@ const ImagePicker: React.FC<{
           </button>
         )}
       </div>
-      {/* Tiga tombol setinggi 32px dengan jarak 8px pas 112px, sama dengan kotak gambar; di HP kotaknya ikut memanjang */}
+      {/* Tombol di samping kotak gambar; di HP kotaknya ikut memanjang */}
       <div className="flex items-stretch gap-3">
         <div className="relative w-28 min-h-28 shrink-0 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center">
-          {ai?.busy ? (
-            <span className="text-[11px] text-slate-600 text-center px-2" role="status">Menggambar, bisa sampai 30 detik</span>
-          ) : value ? (
+          {value ? (
             <img src={value} alt="" className="absolute inset-0 w-full h-full object-contain" />
           ) : (
             <span className="text-[11px] text-slate-500 text-center px-2">{emptyHint}</span>
@@ -119,15 +107,8 @@ const ImagePicker: React.FC<{
             <Images className="w-4 h-4" />
             Ambil dari bank
           </button>
-          {ai && (
-            <button type="button" onClick={ai.onGenerate} disabled={ai.disabled || Boolean(ai.blockedHint)} className={PICKER_BTN}>
-              <ImagePlus className="w-4 h-4" />
-              {ai.busy ? 'Menggambar...' : 'Gambar dengan AI'}
-            </button>
-          )}
         </div>
       </div>
-      {ai?.blockedHint && <p className="mt-1 text-[11px] text-slate-600">{ai.blockedHint}</p>}
       {isBankOpen && <ImageBankDialog onPick={onChange} onClose={() => setIsBankOpen(false)} />}
     </div>
   );
@@ -155,41 +136,16 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
   const toast = useToast();
   const askConfirm = useConfirm();
   const [aiBusy, setAiBusy] = useState<AiTarget | null>(null);
-  const [imageBusy, setImageBusy] = useState<ImageTarget | null>(null);
-  const anyAiBusy = aiBusy !== null || imageBusy !== null;
+  const anyAiBusy = aiBusy !== null;
   const dayLabel = HABIT_WEEKDAY_LABELS[activeDay];
 
-  // Gambar selesai beberapa detik setelah teks masuk. Patch gambar harus membaca isi terbaru,
-  // bukan isi saat tombol diklik, supaya teks hasil AI tidak tertimpa lagi oleh isi lama.
+  // Teks AI masuk setelah jeda. Patch harus membaca isi terbaru, bukan isi saat tombol diklik.
   const latest = useRef(menuToday);
   latest.current = menuToday;
-  const patchHeroLatest = (patch: Partial<NutritionHeroConfig>) =>
-    onChange({ nutritionHero: { ...latest.current.nutritionHero, ...patch } });
   const patchIngredientLatest = (id: string, patch: Partial<IngredientNutritionInfo>) =>
     onChange({ ingredients: latest.current.ingredients.map(i => (i.id === id ? { ...i, ...patch } : i)) });
-  const patchHabitLatest = (weekday: number, patch: Partial<DailyHabitItem>) => {
-    const list = latest.current.dailyHabits;
-    const current = list.find(h => h.weekday === weekday) ?? { weekday, title: '', description: '', steps: [], imageUrl: '' };
-    const next = { ...current, ...patch };
-    onChange({
-      dailyHabits: list.some(h => h.weekday === weekday) ? list.map(h => (h.weekday === weekday ? next : h)) : [...list, next],
-    });
-  };
-
   const confirmReplace = async (what: string, message = 'Isi yang sekarang akan ditimpa. Baca dulu hasilnya sebelum menyimpan.') =>
     askConfirm({ title: `Ganti ${what} dengan hasil AI?`, message, confirmText: 'Ganti', variant: 'warning' });
-
-  /** Melempar error bila gagal; pemanggil yang memilih pesan. */
-  const generateImage = async (target: ImageTarget, subject: string, detail: string, apply: (url: string) => void) => {
-    setImageBusy(target);
-    try {
-      const file = await requestKidsAiImage({ kind: target, subject, detail });
-      const result = await uploadCmsMedia(file, 'menu');
-      apply(result.url);
-    } finally {
-      setImageBusy(null);
-    }
-  };
 
   const runAi = async (
     target: AiTarget,
@@ -217,123 +173,59 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
     }
   };
 
-  const errText = (err: unknown) => (err instanceof Error ? err.message : 'Gagal membuat gambar.');
-  const REPLACE_WITH_IMAGE = 'Teks dan gambar yang sekarang akan ditimpa. Baca dulu hasilnya sebelum menyimpan.';
-
-  // Satu klik mengisi teks lalu gambarnya. Gambar dibuat dari teks yang baru ditulis AI,
-  // jadi keduanya selalu membahas bahan atau kebiasaan yang sama.
+  // Tombol AI hanya menulis teks. Gambar diunggah petugas atau diambil dari bank gambar.
   const handleAiHero = async () => {
-    const draft = await runAi(
-      'hero',
-      Boolean(hero.name.trim() || hero.imageUrl),
-      'Pahlawan Gizi',
-      d => {
-        const category = d.hero.category.trim();
-        updateHero({
-          name: d.hero.name.trim(),
-          category: category.charAt(0).toUpperCase() + category.slice(1),
-          points: d.hero.points.map(p => p.trim()).filter(Boolean),
-          funFact: d.hero.funFact.trim(),
-        });
-      },
-      REPLACE_WITH_IMAGE
-    );
-    if (!draft) return;
-    try {
-      await generateImage('hero', draft.hero.name.trim(), draft.hero.points.join('. '), url => patchHeroLatest({ imageUrl: url }));
-      onNotify('Teks dan gambar Pahlawan Gizi masuk. Periksa dulu sebelum Simpan.');
-    } catch (err) {
-      toast.error(`Teks sudah masuk, tapi gambar gagal: ${errText(err)}`);
-    }
+    const draft = await runAi('hero', Boolean(hero.name.trim()), 'teks Pahlawan Gizi', d => {
+      const category = d.hero.category.trim();
+      const keyNutrients = (d.hero.keyNutrients || []).map(n => n.trim()).filter(Boolean);
+      updateHero({
+        name: d.hero.name.trim(),
+        category: category.charAt(0).toUpperCase() + category.slice(1),
+        points: d.hero.points.map(p => p.trim()).filter(Boolean),
+        // Jawaban tanpa kandungan (fungsi versi lama): isi yang ada dibiarkan.
+        ...(keyNutrients.length ? { keyNutrients } : {}),
+        funFact: d.hero.funFact.trim(),
+      });
+    });
+    if (draft) onNotify('Teks Pahlawan Gizi masuk. Periksa dulu sebelum Simpan.');
   };
-
-  const generateSlideImage = (item: IngredientNutritionInfo) =>
-    generateImage('hero', item.name.trim(), (item.whyGood || []).join('. ') || item.healthBenefits, url => patchIngredientLatest(item.id, { slideImageUrl: url }));
 
   const handleAiSlide = async () => {
     const item = slideItem;
     if (!item?.name.trim()) return;
-    const hasContent = Boolean(item.slideImageUrl || item.nutritionHighlight.trim() || item.whyGood?.some(w => w.trim()));
-    if (hasContent && !(await confirmReplace(`slide ${item.name}`, REPLACE_WITH_IMAGE))) return;
+    const hasContent = Boolean(item.nutritionHighlight.trim() || item.whyGood?.some(w => w.trim()));
+    if (hasContent && !(await confirmReplace(`teks slide ${item.name}`))) return;
     setAiBusy('hero');
-    let points: string[] = [];
     try {
       const draft = await requestMenuAiDraft({ menuTitle: menuToday.menuTitle, ingredients: [{ name: item.name.trim(), category: item.category }] });
       const d = draft.ingredients[0];
       if (!d) throw new Error('AI belum memberi hasil, coba lagi.');
-      points = (d.whyGood || []).map(w => w.trim()).filter(Boolean);
       patchIngredientLatest(item.id, {
-        whyGood: points,
+        whyGood: (d.whyGood || []).map(w => w.trim()).filter(Boolean),
         healthBenefits: d.healthBenefits.trim() || item.healthBenefits,
         nutritionHighlight: d.nutritionHighlight?.trim() || item.nutritionHighlight,
       });
+      onNotify(`Teks slide ${item.name} masuk. Periksa dulu sebelum Simpan.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Gagal membuat draf AI.');
-      return;
     } finally {
       setAiBusy(null);
-    }
-    try {
-      await generateSlideImage({ ...item, whyGood: points });
-      onNotify(`Teks dan gambar slide ${item.name} masuk. Periksa dulu sebelum Simpan.`);
-    } catch (err) {
-      toast.error(`Teks sudah masuk, tapi gambar gagal: ${errText(err)}. Gambar bisa diambil dari bank.`);
-    }
-  };
-
-  const handleSlideImageOnly = async (item: IngredientNutritionInfo) => {
-    if (item.slideImageUrl && !(await confirmReplace('gambar', 'Gambar yang sekarang akan diganti.'))) return;
-    try {
-      await generateSlideImage(item);
-      onNotify('Gambar AI masuk. Periksa dulu sebelum Simpan.');
-    } catch (err) {
-      toast.error(errText(err));
     }
   };
 
   const handleAiHabit = async () => {
-    const weekday = activeDay;
-    const draft = await runAi(
-      'habit',
-      Boolean(habit.title.trim() || habit.imageUrl),
-      `kebiasaan ${dayLabel}`,
-      d =>
-        updateHabit({
-          title: d.habit.title.trim(),
-          description: d.habit.description.trim(),
-          steps: d.habit.steps.map(st => st.trim()).filter(Boolean),
-          cheer: d.habit.cheer.trim(),
-        }),
-      REPLACE_WITH_IMAGE
+    const draft = await runAi('habit', Boolean(habit.title.trim()), `teks kebiasaan ${dayLabel}`, d =>
+      updateHabit({
+        title: d.habit.title.trim(),
+        description: d.habit.description.trim(),
+        steps: d.habit.steps.map(st => st.trim()).filter(Boolean),
+        cheer: d.habit.cheer.trim(),
+      })
     );
-    if (!draft) return;
-    try {
-      await generateImage('habit', draft.habit.title.trim(), draft.habit.description.trim(), url => patchHabitLatest(weekday, { imageUrl: url }));
-      onNotify(`Teks dan gambar kebiasaan ${HABIT_WEEKDAY_LABELS[weekday]} masuk. Periksa dulu sebelum Simpan.`);
-    } catch (err) {
-      toast.error(`Teks sudah masuk, tapi gambar gagal: ${errText(err)}`);
-    }
+    if (draft) onNotify(`Teks kebiasaan ${dayLabel} masuk. Periksa dulu sebelum Simpan.`);
   };
 
-  // Hanya gambar, dari teks yang sudah ada di form (hasil AI atau ketikan petugas).
-  const handleImageOnly = async (target: ImageTarget) => {
-    const isHero = target === 'hero';
-    const weekday = activeDay;
-    if ((isHero ? hero.imageUrl : habit.imageUrl) && !(await confirmReplace('gambar', 'Gambar yang sekarang akan diganti.'))) return;
-    try {
-      if (isHero) {
-        await generateImage('hero', hero.name.trim(), hero.points.join('. '), url => patchHeroLatest({ imageUrl: url }));
-      } else {
-        await generateImage('habit', habit.title.trim(), habit.description.trim(), url => patchHabitLatest(weekday, { imageUrl: url }));
-      }
-      onNotify('Gambar AI masuk. Periksa dulu sebelum Simpan.');
-    } catch (err) {
-      toast.error(errText(err));
-    }
-  };
-
-  const busyLabel = (target: ImageTarget) =>
-    aiBusy === target ? 'Menulis...' : imageBusy === target && aiBusy === null ? 'Menggambar...' : null;
+  const busyLabel = (target: AiTarget) => (aiBusy === target ? 'Menulis...' : null);
 
   const handleAiPlateTip = () =>
     runAi('plateTip', Boolean(menuToday.plateTip?.trim()), 'tips Isi Piringku', d => {
@@ -360,7 +252,7 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
               {slideItem ? 'Isi slide ini tersimpan di data bahan, sama dengan daftar Bahan pangan.' : 'Satu bahan yang disorot untuk anak. Kosongkan nama untuk memulai dari slide bahan.'}
             </p>
           </div>
-          <AiButton busy={busyLabel('hero')} disabled={anyAiBusy || (slideItem !== null && !slideItem.name.trim())} label="Isi teks & gambar dengan AI" onClick={slideItem ? handleAiSlide : handleAiHero} />
+          <AiButton busy={busyLabel('hero')} disabled={anyAiBusy || (slideItem !== null && !slideItem.name.trim())} label="Isi teks dengan AI" onClick={slideItem ? handleAiSlide : handleAiHero} />
         </div>
 
         {slideCount > 1 && (
@@ -400,12 +292,6 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
               value={slideItem.slideImageUrl || ''}
               onChange={url => patchIngredientLatest(slideItem.id, { slideImageUrl: url })}
               onNotify={onNotify}
-              ai={{
-                busy: imageBusy === 'hero',
-                disabled: anyAiBusy,
-                blockedHint: slideItem.name.trim() ? undefined : 'Isi nama bahan dulu untuk membuat gambar.',
-                onGenerate: () => handleSlideImageOnly(slideItem),
-              }}
             />
             <div>
               <label className={labelCls} htmlFor="slide-points">Poin yang tampil (satu per baris)</label>
@@ -456,12 +342,6 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
           value={hero.imageUrl}
           onChange={url => updateHero({ imageUrl: url })}
           onNotify={onNotify}
-          ai={{
-            busy: imageBusy === 'hero',
-            disabled: anyAiBusy,
-            blockedHint: hero.name.trim() ? undefined : 'Isi nama bahan dulu untuk membuat gambar.',
-            onGenerate: () => handleImageOnly('hero'),
-          }}
         />
 
         <div>
@@ -498,7 +378,7 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
             <h3 className="text-sm font-bold text-slate-900">Kebiasaan Baik per Hari</h3>
             <p className="text-[11px] text-slate-500">Halaman publik otomatis menampilkan kebiasaan sesuai hari ini. Kosongkan judul untuk melewati hari tersebut.</p>
           </div>
-          <AiButton busy={busyLabel('habit')} disabled={anyAiBusy} label={`Isi teks & gambar ${dayLabel}`} onClick={handleAiHabit} />
+          <AiButton busy={busyLabel('habit')} disabled={anyAiBusy} label={`Isi teks ${dayLabel} dengan AI`} onClick={handleAiHabit} />
         </div>
 
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Pilih hari">
@@ -560,12 +440,6 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
           value={habit.imageUrl}
           onChange={url => updateHabit({ imageUrl: url })}
           onNotify={onNotify}
-          ai={{
-            busy: imageBusy === 'habit',
-            disabled: anyAiBusy,
-            blockedHint: habit.title.trim() ? undefined : 'Isi judul kebiasaan dulu untuk membuat gambar.',
-            onGenerate: () => handleImageOnly('habit'),
-          }}
         />
       </div>
 

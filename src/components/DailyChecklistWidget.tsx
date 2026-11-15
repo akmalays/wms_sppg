@@ -81,11 +81,13 @@ function isTaskOverdue(todo: DailyTodoItem, current: string): boolean {
 
 interface DailyChecklistWidgetProps {
   onNavigateToProfileTodos?: () => void;
+  /** Jumlah tugas untuk judul lipatan di Ringkasan (tampilan HP). */
+  onStats?: (stats: { total: number; done: number; overdue: number }) => void;
 }
 
 // Tidak memicu onRefreshData dashboard: itu me-mount ulang seluruh dashboard sehingga filter dan
 // pengingat di widget ini ter-reset setiap kali satu tugas dicentang. Bagian lain dashboard tidak memakai data jobdesk.
-export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({ onNavigateToProfileTodos }) => {
+export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({ onNavigateToProfileTodos, onStats }) => {
   const { currentUser, availableUsers } = useAuth();
 
   // Tanggal lokal (WIB). toISOString() memakai UTC sehingga sebelum 07.00 WIB tanggalnya mundur sehari.
@@ -187,6 +189,10 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({ onNa
   const currentHourNum = parseInt(currentTimeStr.split(':')[0], 10);
   const currentHourTasks = todos.filter(t => t.targetTime && parseInt(t.targetTime.split(':')[0], 10) === currentHourNum);
   const overdueCount = todos.filter(t => isTaskOverdue(t, currentTimeStr)).length;
+  useEffect(() => {
+    onStats?.({ total: totalCount, done: completedCount, overdue: overdueCount });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalCount, completedCount, overdueCount]);
 
   const closeAddModal = useCallback(() => {
     setIsAddModalOpen(false);
@@ -361,7 +367,7 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({ onNa
                 type="button"
                 aria-pressed={selectedStatusFilter === p.key}
                 onClick={() => setSelectedStatusFilter(p.key)}
-                className={`min-h-[36px] px-3 rounded-md font-medium transition-colors cursor-pointer ${FOCUS} ${
+                className={`min-h-[44px] sm:min-h-[36px] px-3 rounded-md font-medium transition-colors cursor-pointer ${FOCUS} ${
                   selectedStatusFilter === p.key ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-700 hover:text-slate-900'
                 }`}
               >
@@ -466,7 +472,7 @@ export const DailyChecklistWidget: React.FC<DailyChecklistWidgetProps> = ({ onNa
           <button
             type="button"
             onClick={onNavigateToProfileTodos}
-            className={`min-h-[40px] px-2 rounded-md font-semibold text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer ${FOCUS}`}>
+            className={`min-h-[44px] px-2 rounded-md font-semibold text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer ${FOCUS}`}>
             Buka Jobdesk & Laporan <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
