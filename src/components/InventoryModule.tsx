@@ -53,6 +53,7 @@ import { useToast } from '../context/ToastContext';
 import { localDateIso } from '../utils/localDate';
 import { suggestDryLocation } from '../utils/warehouseRacks';
 import { RestockPanel } from './RestockPanel';
+import { ItemStockDetailModal } from './ItemStockDetailModal';
 
 import {
   STANDARD_CATEGORIES,
@@ -144,6 +145,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
   // ----------------------------------------------------
   // Stock Tab Modals
   // ----------------------------------------------------
+  const [viewingItemId, setViewingItemId] = useState<string | null>(null);
+  const viewingItem = useMemo(
+    () => (viewingItemId ? items.find(i => i.id === viewingItemId) || null : null),
+    [items, viewingItemId]
+  );
   const [editingItem, setEditingItem] = useState<ItemMaster | null>(null);
   const [isSingleModalOpen, setIsSingleModalOpen] = useState(false);
   const [adjustingItem, setAdjustingItem] = useState<ItemMaster | null>(null);
@@ -1409,9 +1415,22 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                         const unitPrice = getItemEstimatedUnitPrice(item.name, cat, item.estimatedPrice);
                         const rackSpec = getStorageLocationDetails(item.location);
                         return (
-                          <tr key={item.id} className="hover:bg-slate-50">
+                          <tr
+                            key={item.id}
+                            onClick={() => setViewingItemId(item.id)}
+                            className="hover:bg-emerald-50/40 cursor-pointer transition-colors duration-150"
+                          >
                             <td className="py-2.5 px-3">
-                              <div className="font-semibold text-slate-900">{item.name}</div>
+                              <button
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  setViewingItemId(item.id);
+                                }}
+                                className="text-left font-semibold text-slate-900 hover:text-emerald-800 hover:underline cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                              >
+                                {item.name}
+                              </button>
                               <div className="text-[11px] text-slate-600 mt-0.5">
                                 <span className="font-mono">{item.id}</span> · {rackSpec.rackCode} {rackSpec.shortName}
                               </div>
@@ -1459,7 +1478,10 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                               <td className="py-2.5 px-3 text-right">
                                 <button
                                   type="button"
-                                  onClick={() => handleOpenAdjust(item)}
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    handleOpenAdjust(item);
+                                  }}
                                   className="text-xs font-semibold text-emerald-700 hover:underline cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                                 >
                                   Koreksi
@@ -1473,33 +1495,41 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                   </table>
                 </div>
 
-                {/* HP: satu baris ringkas per barang; angka stok di kanan, warnanya menandai habis atau menipis */}
+                {/* HP: satu baris ringkas per barang; ketuk barang untuk lihat kartu stok keluar masuk */}
                 <ul className="md:hidden divide-y divide-slate-100">
                   {filteredItems.slice(0, stockListLimit).map(item => {
                     const status = getItemStockStatus(item);
                     const rackSpec = getStorageLocationDetails(item.location);
                     return (
-                      <li key={item.id} className="pl-4 pr-2 py-2 flex items-center gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-semibold text-slate-900 leading-snug">{item.name}</div>
-                          <div className="text-xs text-slate-600 mt-0.5">
-                            {getDetailedItemCategory(item)} · {rackSpec.rackCode} · min {item.minimumStock.toLocaleString('id-ID')}
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div
-                            className={`font-mono text-sm font-semibold tabular-nums ${
-                              status === 'OUT_OF_STOCK' ? 'text-rose-700' : status === 'LOW' ? 'text-amber-800' : 'text-slate-900'
-                            }`}
-                          >
-                            {item.currentStock.toLocaleString('id-ID')} <span className="text-xs font-sans font-normal text-slate-600">{item.baseUnit}</span>
-                          </div>
-                          {status !== 'NORMAL' && (
-                            <div className={`text-xs font-semibold ${status === 'OUT_OF_STOCK' ? 'text-rose-700' : 'text-amber-800'}`}>
-                              {status === 'OUT_OF_STOCK' ? 'Habis' : 'Menipis'}
+                      <li key={item.id} className="pl-3 pr-2 py-1.5 flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setViewingItemId(item.id)}
+                          aria-label={`Lihat riwayat stok ${item.name}`}
+                          className={`flex-1 min-w-0 flex items-center justify-between gap-2 px-1 py-1.5 min-h-[44px] text-left rounded-lg hover:bg-slate-50 cursor-pointer ${FOCUS_RING}`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold text-slate-900 leading-snug">{item.name}</div>
+                            <div className="text-xs text-slate-600 mt-0.5">
+                              {getDetailedItemCategory(item)} · {rackSpec.rackCode} · min {item.minimumStock.toLocaleString('id-ID')}
                             </div>
-                          )}
-                        </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div
+                              className={`font-mono text-sm font-semibold tabular-nums ${
+                                status === 'OUT_OF_STOCK' ? 'text-rose-700' : status === 'LOW' ? 'text-amber-800' : 'text-slate-900'
+                              }`}
+                            >
+                              {item.currentStock.toLocaleString('id-ID')} <span className="text-xs font-sans font-normal text-slate-600">{item.baseUnit}</span>
+                            </div>
+                            {status !== 'NORMAL' && (
+                              <div className={`text-xs font-semibold ${status === 'OUT_OF_STOCK' ? 'text-rose-700' : 'text-amber-800'}`}>
+                                {status === 'OUT_OF_STOCK' ? 'Habis' : 'Menipis'}
+                              </div>
+                            )}
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" aria-hidden="true" />
+                        </button>
                         {can('MANAGE_ITEMS') && (
                           <button
                             type="button"
@@ -1697,10 +1727,14 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                   <li key={item.id} className={`px-4 pt-3 pb-1 ${isActive ? '' : 'bg-slate-50'}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className={`text-sm font-semibold leading-snug ${isActive ? 'text-slate-900' : 'text-slate-600'}`}>
+                        <button
+                          type="button"
+                          onClick={() => setViewingItemId(item.id)}
+                          className={`text-left text-sm font-semibold leading-snug hover:text-emerald-800 hover:underline cursor-pointer rounded ${FOCUS_RING} ${isActive ? 'text-slate-900' : 'text-slate-600'}`}
+                        >
                           {item.name}
                           {!isActive && <span className="ml-1.5 px-1.5 py-0.5 rounded-md text-[11px] font-medium bg-slate-200 text-slate-700">Nonaktif</span>}
-                        </div>
+                        </button>
                         <div className="text-xs text-slate-600 mt-0.5">
                           <span className="font-mono">{item.id}</span> · {cat} · {rackSpec.rackCode}
                         </div>
@@ -1778,7 +1812,13 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
                       <tr key={item.id} className={isActive ? 'hover:bg-slate-50/80' : 'bg-slate-50/60'}>
                         <td className="py-2.5 px-4">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className={`font-semibold ${isActive ? 'text-slate-900' : 'text-slate-500'}`}>{item.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => setViewingItemId(item.id)}
+                              className={`text-left font-semibold hover:text-emerald-800 hover:underline cursor-pointer rounded ${FOCUS_RING} ${isActive ? 'text-slate-900' : 'text-slate-500'}`}
+                            >
+                              {item.name}
+                            </button>
                             {!isActive && (
                               <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-slate-200 text-slate-700">Nonaktif</span>
                             )}
@@ -3225,6 +3265,18 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({ initialTab = '
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL DETAIL & RIWAYAT KELUAR MASUK BARANG */}
+      {viewingItem && (
+        <ItemStockDetailModal
+          key={viewingItem.id}
+          item={viewingItem}
+          onClose={() => setViewingItemId(null)}
+          canAdjust={can('MANAGE_ITEMS')}
+          onAdjust={handleOpenAdjust}
+          refreshKey={dataVersion}
+        />
       )}
 
       {/* Hidden printable area when modal is not open (for direct shortcut Cmd+P / window.print) */}

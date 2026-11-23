@@ -279,10 +279,13 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
               <button
                 type="button"
                 onClick={() => {
+                  if (staleHero) {
+                    updateHero({ name: '', category: '', imageUrl: '', points: [], keyNutrients: [] });
+                  }
                   setIsEditingCustomHero(true);
                   setSlideIndex(0);
                 }}
-                className="inline-flex items-center gap-1 px-2.5 min-h-[44px] sm:min-h-[28px] rounded-md border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                className="inline-flex items-center gap-1 px-2.5 min-h-[44px] sm:min-h-[28px] rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Sorotan utama
@@ -292,7 +295,7 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
               <button
                 type="button"
                 onClick={clearHeroSpotlight}
-                className="inline-flex items-center gap-1 px-2 min-h-[44px] sm:min-h-[28px] rounded-md text-xs font-semibold text-rose-700 hover:bg-rose-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                className="inline-flex items-center gap-1 px-2 min-h-[44px] sm:min-h-[28px] rounded-lg text-xs font-semibold text-rose-700 hover:bg-rose-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 Hapus sorotan
@@ -301,7 +304,7 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
             {slideCount > 0 && (
               <AiButton
                 busy={busyLabel('hero')}
-                disabled={anyAiBusy || (slideItem !== null && !slideItem.name.trim())}
+                disabled={anyAiBusy || (slideItem !== null && !slideItem.name?.trim())}
                 label="Isi teks dengan AI"
                 onClick={slideItem ? handleAiSlide : handleAiHero}
               />
@@ -317,7 +320,7 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
             <button
               type="button"
               onClick={clearHeroSpotlight}
-              className="inline-flex items-center gap-1 px-2.5 min-h-[44px] sm:min-h-[28px] rounded-md border border-amber-300 bg-white text-xs font-semibold text-amber-900 hover:bg-amber-100 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+              className="inline-flex items-center gap-1 px-2.5 min-h-[44px] sm:min-h-[28px] rounded-lg border border-amber-300 bg-white text-xs font-semibold text-amber-900 hover:bg-amber-100 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
             >
               <Trash2 className="w-3.5 h-3.5" />
               Hapus data lama
@@ -327,13 +330,13 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
 
         {slideCount > 1 && (
           <div role="group" aria-label="Pilih slide" className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
-            <button type="button" onClick={() => goSlide(-1)} aria-label="Slide sebelumnya" className="flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] rounded-md text-slate-700 hover:bg-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1">
+            <button type="button" onClick={() => goSlide(-1)} aria-label="Slide sebelumnya" className="flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] rounded-lg text-slate-700 hover:bg-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1">
               <ChevronLeft className="w-4 h-4" />
             </button>
             <p aria-live="polite" className="min-w-0 truncate text-xs font-semibold text-slate-800">
-              Slide {slide + 1} dari {slideCount}: {slideItem ? slideItem.name : hero.name.trim() || 'Pahlawan utama'}
+              Slide {slide + 1} dari {slideCount}: {slideItem ? slideItem.name : hero?.name?.trim() || 'Pahlawan utama'}
             </p>
-            <button type="button" onClick={() => goSlide(1)} aria-label="Slide berikutnya" className="flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] rounded-md text-slate-700 hover:bg-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1">
+            <button type="button" onClick={() => goSlide(1)} aria-label="Slide berikutnya" className="flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] rounded-lg text-slate-700 hover:bg-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1">
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>

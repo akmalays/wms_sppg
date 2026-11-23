@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Select } from './common/Select';
 import { useConfirm } from '../context/ConfirmContext';
 import { KopText } from './common/KopText';
 import { useAuth } from '../context/AuthContext';
-import { warehouseDb, signerName } from '../db/storage';
-import { WasteLog, DisposalMethod } from '../types/warehouse';
+import { warehouseDb, signerName, APP_SETTINGS_CHANGED_EVENT } from '../db/storage';
+import { WasteLog, WastePhotoRecord, DisposalMethod } from '../types/warehouse';
 import { exportMultiSheetExcel } from '../lib/excelExport';
 import {
   Trash2,
@@ -20,12 +20,17 @@ import {
   AlertTriangle,
   Copy,
   Check,
+  Camera,
+  ChevronDown,
+  Calendar,
 } from 'lucide-react';
 import { SppgLogo } from './SppgLogo';
 import { AiInsightPanel } from './ai/AiInsightPanel';
 import { buildWasteStats } from '../utils/aiStats';
 import { localDateIso } from '../utils/localDate';
+import { deleteDocumentationPhoto, formatPhotoTimestamp } from '../utils/imageCompressor';
 import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatureImg';
+import { WastePhotoSection } from './WastePhotoSection';
 
 export type NutritionKey = 'karbohidrat' | 'sayur' | 'protein hewani' | 'protein nabati' | 'buah';
 
@@ -83,6 +88,24 @@ const formatDate = (iso: string) => {
   if (!iso) return '-';
   const [y, m, d] = iso.split('-');
   return `${parseInt(d, 10)} ${MONTHS_SHORT[parseInt(m, 10) - 1] || m} ${y}`;
+};
+
+const formatCompactRange = (startIso: string, endIso: string) => {
+  if (!startIso || !endIso) return `${formatDate(startIso)} - ${formatDate(endIso)}`;
+  const [sy, sm, sd] = startIso.split('-');
+  const [ey, em, ed] = endIso.split('-');
+  const sMon = MONTHS_SHORT[parseInt(sm, 10) - 1] || sm;
+  const eMon = MONTHS_SHORT[parseInt(em, 10) - 1] || em;
+  if (sy === ey && sm === em) return `${parseInt(sd, 10)} - ${parseInt(ed, 10)} ${eMon} ${ey}`;
+  if (sy === ey) return `${parseInt(sd, 10)} ${sMon} - ${parseInt(ed, 10)} ${eMon} ${ey}`;
+  return `${parseInt(sd, 10)} ${sMon} ${sy} - ${parseInt(ed, 10)} ${eMon} ${ey}`;
+};
+
+const shiftYearMonth = (ym: string, delta: number) => {
+  const [y, m] = (ym || '').split('-').map(Number);
+  if (!y || !m) return ym;
+  const next = new Date(y, m - 1 + delta, 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
 };
 
 // "18 november 2026", format tanggal untuk laporan WA harian.
@@ -179,11 +202,17 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
   const today = localDateIso();
 
   const [wasteLogs, setWasteLogs] = useState<WasteLog[]>(() => warehouseDb.getWasteLogs());
+  const [wastePhotosByDate, setWastePhotosByDate] = useState<Record<string, WastePhotoRecord[]>>(() =>
+    warehouseDb.getWastePhotosByDate()
+  );
   const [successNotice, setSuccessNotice] = useState('');
   const [copiedDate, setCopiedDate] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeView, setActiveView] = useState<'DAILY' | 'MATRIX' | 'LOGS'>('DAILY');
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+  const [photoModalDate, setPhotoModalDate] = useState<string | null>(null);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
 
   const [filterMode, setFilterMode] = useState<'WEEK' | 'MONTH' | 'CUSTOM' | 'ALL'>('WEEK');
   const [selectedWeekDate, setSelectedWeekDate] = useState(today);
@@ -197,6 +226,8 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
   const [dailyValues, setDailyValues] = useState<Record<NutritionKey, string>>(emptyDailyValues);
   const [dailyDisposal, setDailyDisposal] = useState<DisposalMethod>('Pakan Ternak & Kompos Organik');
   const [dailyNotes, setDailyNotes] = useState('');
+  const [dailyPendingPhotos, setDailyPendingPhotos] = useState<WastePhotoRecord[]>([]);
+  const [dailyPhotoBusy, setDailyPhotoBusy] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
   // Hasil timbang satu per satu (sisa tidak dipilah ditimbang beberapa kali), dijumlah lalu dibagi per pola menu
   const [weighings, setWeighings] = useState<number[]>([]);
@@ -208,24 +239,75 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
   const [isOtherModalOpen, setIsOtherModalOpen] = useState(false);
   const [otherDate, setOtherDate] = useState(today);
   const [otherRows, setOtherRows] = useState<OtherRow[]>([emptyOtherRow()]);
+  const [otherPendingPhotos, setOtherPendingPhotos] = useState<WastePhotoRecord[]>([]);
+  const [otherPhotoBusy, setOtherPhotoBusy] = useState(false);
 
   const refreshLogs = () => setWasteLogs(warehouseDb.getWasteLogs());
+  const refreshPhotos = () => setWastePhotosByDate(warehouseDb.getWastePhotosByDate());
+
+  const cleanupPendingPhotos = (pending: WastePhotoRecord[]) => {
+    pending.forEach(p => void deleteDocumentationPhoto(p.url));
+  };
+
+  const closeDailyModal = () => {
+    cleanupPendingPhotos(dailyPendingPhotos);
+    setDailyPendingPhotos([]);
+    setDailyPhotoBusy(false);
+    setIsDailyModalOpen(false);
+  };
+
+  const closeOtherModal = () => {
+    cleanupPendingPhotos(otherPendingPhotos);
+    setOtherPendingPhotos([]);
+    setOtherPhotoBusy(false);
+    setIsOtherModalOpen(false);
+  };
 
   // Data dari Supabase bisa datang setelah halaman terbuka.
   useEffect(() => {
     const onChange = () => setWasteLogs(warehouseDb.getWasteLogs());
+    const onSettingsChange = () => setWastePhotosByDate(warehouseDb.getWastePhotosByDate());
     window.addEventListener('sppg_storage_items_changed', onChange);
-    return () => window.removeEventListener('sppg_storage_items_changed', onChange);
+    window.addEventListener(APP_SETTINGS_CHANGED_EVENT, onSettingsChange);
+    return () => {
+      window.removeEventListener('sppg_storage_items_changed', onChange);
+      window.removeEventListener(APP_SETTINGS_CHANGED_EVENT, onSettingsChange);
+    };
   }, []);
 
   useEffect(() => {
-    if (!isPrintPreviewOpen) return;
+    if (!moreMenuOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsPrintPreviewOpen(false);
+      if (e.key === 'Escape') setMoreMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [moreMenuOpen]);
+
+  useEffect(() => {
+    if (!isPrintPreviewOpen && !photoModalDate && !isDailyModalOpen && !isOtherModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Biarkan dialog kamera atau lightbox di atasnya menutup diri lebih dulu
+      if (document.querySelector('[aria-labelledby="sppg-camera-capture-title"], [aria-labelledby="waste-lightbox-title"]')) return;
+      if (photoModalDate) setPhotoModalDate(null);
+      else if (isPrintPreviewOpen) setIsPrintPreviewOpen(false);
+      else if (isDailyModalOpen && !dailyPhotoBusy) closeDailyModal();
+      else if (isOtherModalOpen && !otherPhotoBusy) closeOtherModal();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isPrintPreviewOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPrintPreviewOpen, photoModalDate, isDailyModalOpen, isOtherModalOpen, dailyPendingPhotos, otherPendingPhotos, dailyPhotoBusy, otherPhotoBusy]);
 
   const showNotice = (msg: string) => {
     setSuccessNotice(msg);
@@ -288,9 +370,9 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
       }
       setCopiedDate(date);
       setTimeout(() => setCopiedDate(prev => (prev === date ? null : prev)), 2500);
-      showNotice(`Template WA limbah ${formatWaDate(date)} disalin ke clipboard.`);
+      showNotice(`Laporan WA limbah ${formatWaDate(date)} disalin.`);
     } catch {
-      window.prompt('Salin template WA limbah ini:', text);
+      window.prompt('Salin laporan WA limbah ini:', text);
     }
   };
 
@@ -456,6 +538,8 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
     const target = date || today;
     setDailyDate(target);
     loadDailyForm(target);
+    setDailyPendingPhotos([]);
+    setDailyPhotoBusy(false);
     setSplitOpen(false);
     setWeighings([]);
     setWeighDraft('');
@@ -545,9 +629,24 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
       })),
       currentUser
     );
+    const newPhotoCount = dailyPendingPhotos.length;
+    if (newPhotoCount > 0) {
+      const existingPhotos = wastePhotosByDate[dailyDate] || [];
+      const merged = [
+        ...existingPhotos,
+        ...dailyPendingPhotos.map(p => ({ ...p, date: dailyDate })),
+      ];
+      warehouseDb.saveWastePhotos(dailyDate, merged, currentUser);
+      setDailyPendingPhotos([]);
+      refreshPhotos();
+    }
     refreshLogs();
     setIsDailyModalOpen(false);
-    showNotice(`Sisa makanan ${dayName(dailyDate)}, ${formatDate(dailyDate)} tersimpan: ${formatKg(dailySum)} kg.`);
+    showNotice(
+      `Sisa makanan ${dayName(dailyDate)}, ${formatDate(dailyDate)} tersimpan: ${formatKg(dailySum)} kg${
+        newPhotoCount > 0 ? ` (${newPhotoCount} foto)` : ''
+      }.`
+    );
   };
 
   const handleDeleteDay = async (date: string) => {
@@ -562,10 +661,54 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
     showNotice(`Rekap sisa makanan ${formatDate(date)} dihapus.`);
   };
 
+  // ---------- Foto dokumentasi limbah ----------
+  const handleRemoveSavedPhoto = async (date: string, photo: WastePhotoRecord) => {
+    const ok = await askConfirm({
+      title: 'Hapus foto limbah ini?',
+      message: `Foto diambil ${formatPhotoTimestamp(photo.capturedAt, true)}. Foto juga dihapus dari penyimpanan dan tidak bisa dikembalikan.`,
+      confirmText: 'Hapus foto',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    const next = (wastePhotosByDate[date] || []).filter(p => p.id !== photo.id);
+    warehouseDb.saveWastePhotos(date, next, currentUser);
+    refreshPhotos();
+    void deleteDocumentationPhoto(photo.url);
+    showNotice(`Foto limbah ${formatDate(date)} dihapus.`);
+  };
+
+  const handleDirectPhotosAdded = (date: string, added: WastePhotoRecord[]) => {
+    const existing = wastePhotosByDate[date] || [];
+    const next = [...existing, ...added.map(p => ({ ...p, date }))];
+    warehouseDb.saveWastePhotos(date, next, currentUser);
+    refreshPhotos();
+    showNotice(`${added.length} foto limbah ${formatDate(date)} tersimpan dengan timestamp.`);
+  };
+
+  const handleRemoveDailyModalPhoto = async (photo: WastePhotoRecord) => {
+    if (dailyPendingPhotos.some(p => p.id === photo.id)) {
+      setDailyPendingPhotos(prev => prev.filter(p => p.id !== photo.id));
+      void deleteDocumentationPhoto(photo.url);
+      return;
+    }
+    await handleRemoveSavedPhoto(dailyDate, photo);
+  };
+
+  const handleRemoveOtherModalPhoto = async (photo: WastePhotoRecord) => {
+    if (otherPendingPhotos.some(p => p.id === photo.id)) {
+      setOtherPendingPhotos(prev => prev.filter(p => p.id !== photo.id));
+      void deleteDocumentationPhoto(photo.url);
+      return;
+    }
+    await handleRemoveSavedPhoto(otherDate, photo);
+  };
+
   // ---------- Limbah dapur lain ----------
   const openOtherModal = () => {
     setOtherDate(today);
     setOtherRows([emptyOtherRow()]);
+    setOtherPendingPhotos([]);
+    setOtherPhotoBusy(false);
     setIsOtherModalOpen(true);
   };
 
@@ -598,10 +741,25 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
       })),
       currentUser
     );
+    const newPhotoCount = otherPendingPhotos.length;
+    if (newPhotoCount > 0) {
+      const existingPhotos = wastePhotosByDate[otherDate] || [];
+      const merged = [
+        ...existingPhotos,
+        ...otherPendingPhotos.map(p => ({ ...p, date: otherDate })),
+      ];
+      warehouseDb.saveWastePhotos(otherDate, merged, currentUser);
+      setOtherPendingPhotos([]);
+      refreshPhotos();
+    }
     refreshLogs();
     setIsOtherModalOpen(false);
     setOtherRows([emptyOtherRow()]);
-    showNotice(`${filled.length} catatan limbah dapur tanggal ${formatDate(otherDate)} tersimpan.`);
+    showNotice(
+      `${filled.length} catatan limbah dapur tanggal ${formatDate(otherDate)} tersimpan${
+        newPhotoCount > 0 ? ` (${newPhotoCount} foto)` : ''
+      }.`
+    );
   };
 
   const handleDeleteLog = async (log: WasteLog) => {
@@ -683,6 +841,16 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
     const chunks: string[][] = [];
     for (let i = 0; i < matrix.dates.length; i += chunkSize) chunks.push(matrix.dates.slice(i, i + chunkSize));
     const avgDaily = matrix.dates.length > 0 ? round2(stats.totalKg / matrix.dates.length) : 0;
+
+    const periodPhotos = Object.entries(wastePhotosByDate)
+      .filter(([date, list]) => {
+        if (!list || list.length === 0) return false;
+        if (filterMode === 'ALL') return true;
+        if (rangeInvalid) return false;
+        return date >= activeRange.start && date <= activeRange.end;
+      })
+      .sort(([a], [b]) => a.localeCompare(b))
+      .flatMap(([date, list]) => list.map(photo => ({ date, photo })));
 
     return (
       <div className="bg-white font-sans text-slate-900 w-full text-xs">
@@ -850,6 +1018,30 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
           )}
         </div>
 
+        {periodPhotos.length > 0 && (
+          <div className="mb-6">
+            <div className="font-bold text-xs text-slate-800 mb-2 border-b border-slate-300 pb-1">
+              D. Dokumentasi Foto Limbah ({periodPhotos.length} foto)
+            </div>
+            <div className="grid grid-cols-3 gap-2.5">
+              {periodPhotos.map(({ date, photo }) => (
+                <figure key={photo.id} className="border border-slate-300 rounded overflow-hidden break-inside-avoid">
+                  <img
+                    src={photo.url}
+                    alt={`Foto limbah ${formatDate(date)}`}
+                    className="w-full h-32 object-cover bg-slate-100"
+                  />
+                  <figcaption className="px-2 py-1 text-[9px] bg-slate-50 border-t border-slate-200">
+                    <div className="font-semibold text-slate-800">{dayName(date)}, {formatSheetDate(date)}</div>
+                    <div className="font-mono text-slate-600">{formatPhotoTimestamp(photo.capturedAt, true)}</div>
+                    {photo.takenBy && <div className="text-slate-600 truncate">{photo.takenBy}</div>}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="pt-6 border-t border-slate-300 text-xs">
           {/* Penanda tangan sama dengan Form Rekapitulasi Limbah di Cetak Form */}
           <DocSignatureToggle doc="log-limbah" className="mb-3" />
@@ -876,8 +1068,8 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
   const secondaryButtonClass =
     'inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600';
 
-  const navButtonClass =
-    'inline-flex items-center justify-center w-11 h-11 sm:w-9 sm:h-9 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600';
+  const stepperButtonClass =
+    'inline-flex items-center justify-center w-11 h-11 sm:w-9 sm:h-9 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 cursor-pointer transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600';
 
   return (
     <div className="space-y-5">
@@ -907,36 +1099,102 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {canRecord && (
+            {canRecord ? (
               <>
                 <button
                   type="button"
                   onClick={() => openDailyModal()}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                  title="Catat sisa makanan harian"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
                 >
                   <Plus className="w-4 h-4" />
-                  Catat Sisa Makanan
+                  Catat Sisa
                 </button>
-                <button type="button" onClick={openOtherModal} className={secondaryButtonClass}>
-                  <Plus className="w-4 h-4 text-slate-500" />
-                  Limbah Dapur Lain
+                <button
+                  type="button"
+                  onClick={() => setPhotoModalDate(today)}
+                  title="Ambil atau lihat foto dokumentasi limbah"
+                  className={secondaryButtonClass}
+                >
+                  <Camera className="w-4 h-4 text-slate-500" />
+                  Foto
+                </button>
+                <div className="relative" ref={moreMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setMoreMenuOpen(o => !o)}
+                    aria-haspopup="menu"
+                    aria-expanded={moreMenuOpen}
+                    className={secondaryButtonClass}
+                  >
+                    Lainnya
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-150 ${moreMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {moreMenuOpen && (
+                    <div
+                      role="menu"
+                      aria-label="Aksi lainnya"
+                      className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-48 rounded-xl border border-slate-200 bg-white shadow-lg py-1 z-30 text-xs"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          openOtherModal();
+                        }}
+                        className="w-full flex items-center gap-2 px-3 text-left font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 min-h-[44px] sm:min-h-[36px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600"
+                      >
+                        <Plus className="w-4 h-4 text-slate-500 shrink-0" />
+                        Limbah Dapur Lain
+                      </button>
+                      <div className="my-1 border-t border-slate-100" />
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          handleExportExcel();
+                        }}
+                        className="w-full flex items-center gap-2 px-3 text-left font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 min-h-[44px] sm:min-h-[36px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600"
+                      >
+                        <FileSpreadsheet className="w-4 h-4 text-slate-500 shrink-0" />
+                        Ekspor Excel
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          setIsPrintPreviewOpen(true);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 text-left font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 min-h-[44px] sm:min-h-[36px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600"
+                      >
+                        <Printer className="w-4 h-4 text-slate-500 shrink-0" />
+                        Cetak Laporan
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={handleExportExcel} className={secondaryButtonClass}>
+                  <FileSpreadsheet className="w-4 h-4 text-slate-500" />
+                  Excel
+                </button>
+                <button type="button" onClick={() => setIsPrintPreviewOpen(true)} className={secondaryButtonClass}>
+                  <Printer className="w-4 h-4 text-slate-500" />
+                  Cetak
                 </button>
               </>
             )}
-            <button type="button" onClick={handleExportExcel} className={secondaryButtonClass}>
-              <FileSpreadsheet className="w-4 h-4 text-slate-500" />
-              Ekspor Excel
-            </button>
-            <button type="button" onClick={() => setIsPrintPreviewOpen(true)} className={secondaryButtonClass}>
-              <Printer className="w-4 h-4 text-slate-500" />
-              Cetak
-            </button>
           </div>
         </div>
 
         {/* PERIODE */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="bg-white border border-slate-200 rounded-xl p-3 sm:px-4 sm:py-3 space-y-2.5">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
             <div role="tablist" aria-label="Jenis periode" className="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-lg text-xs self-start">
               {([
                 { id: 'WEEK', label: 'Mingguan' },
@@ -959,56 +1217,121 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
               ))}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              {filterMode === 'WEEK' && (
-                <>
-                  <button
-                    type="button"
-                    aria-label="Minggu sebelumnya"
-                    onClick={() => setSelectedWeekDate(localDateIso(new Date(parseIso(selectedWeekDate).getTime() - 7 * 86400000)))}
-                    className={navButtonClass}
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <span className="font-semibold text-slate-800 min-w-[11rem] text-center">{activeRange.label}</span>
-                  <button
-                    type="button"
-                    aria-label="Minggu berikutnya"
-                    onClick={() => setSelectedWeekDate(localDateIso(new Date(parseIso(selectedWeekDate).getTime() + 7 * 86400000)))}
-                    className={navButtonClass}
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                  {weekRange(selectedWeekDate).start !== weekRange(today).start && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedWeekDate(today)}
-                      className="px-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-medium text-slate-700 cursor-pointer min-h-[44px] sm:min-h-[34px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+            {filterMode !== 'ALL' && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                {filterMode === 'WEEK' && (
+                  <>
+                    <div
+                      role="group"
+                      aria-label="Navigasi minggu"
+                      className="inline-flex items-center rounded-lg border border-slate-200 bg-white overflow-hidden divide-x divide-slate-200"
                     >
-                      Minggu ini
-                    </button>
-                  )}
-                </>
-              )}
-              {filterMode === 'MONTH' && (
-                <label className="flex items-center gap-2">
-                  <span className="text-slate-600 font-medium">Bulan</span>
-                  <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className={`${inputClass} w-auto`} />
-                </label>
-              )}
-              {filterMode === 'CUSTOM' && (
-                <>
-                  <label className="flex items-center gap-2">
-                    <span className="text-slate-600 font-medium">Dari</span>
-                    <input type="date" value={customStartDate} onChange={e => setCustomStartDate(e.target.value)} className={`${inputClass} w-auto`} />
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <span className="text-slate-600 font-medium">Sampai</span>
-                    <input type="date" value={customEndDate} onChange={e => setCustomEndDate(e.target.value)} className={`${inputClass} w-auto`} />
-                  </label>
-                </>
-              )}
-            </div>
+                      <button
+                        type="button"
+                        aria-label="Minggu sebelumnya"
+                        onClick={() => setSelectedWeekDate(localDateIso(new Date(parseIso(selectedWeekDate).getTime() - 7 * 86400000)))}
+                        className={stepperButtonClass}
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <span
+                        title={activeRange.label}
+                        className="inline-flex items-center gap-1.5 px-3 h-11 sm:h-9 bg-slate-50/70 font-medium text-slate-800 tabular-nums whitespace-nowrap"
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
+                        {formatCompactRange(activeRange.start, activeRange.end)}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="Minggu berikutnya"
+                        onClick={() => setSelectedWeekDate(localDateIso(new Date(parseIso(selectedWeekDate).getTime() + 7 * 86400000)))}
+                        className={stepperButtonClass}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                    {weekRange(selectedWeekDate).start !== weekRange(today).start && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedWeekDate(today)}
+                        className="px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-medium text-emerald-800 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                      >
+                        Minggu ini
+                      </button>
+                    )}
+                  </>
+                )}
+                {filterMode === 'MONTH' && (
+                  <>
+                    <div
+                      role="group"
+                      aria-label="Navigasi bulan"
+                      className="inline-flex items-center rounded-lg border border-slate-200 bg-white overflow-hidden divide-x divide-slate-200"
+                    >
+                      <button
+                        type="button"
+                        aria-label="Bulan sebelumnya"
+                        onClick={() => setSelectedMonth(m => shiftYearMonth(m, -1))}
+                        className={stepperButtonClass}
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <label className="inline-flex items-center gap-1.5 px-2.5 h-11 sm:h-9 bg-slate-50/70">
+                        <span className="sr-only">Pilih bulan</span>
+                        <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
+                        <input
+                          type="month"
+                          value={selectedMonth}
+                          onChange={e => e.target.value && setSelectedMonth(e.target.value)}
+                          className="bg-transparent text-xs font-medium text-slate-800 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        aria-label="Bulan berikutnya"
+                        onClick={() => setSelectedMonth(m => shiftYearMonth(m, 1))}
+                        className={stepperButtonClass}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                    {selectedMonth !== today.slice(0, 7) && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMonth(today.slice(0, 7))}
+                        className="px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-medium text-emerald-800 cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                      >
+                        Bulan ini
+                      </button>
+                    )}
+                  </>
+                )}
+                {filterMode === 'CUSTOM' && (
+                  <div className="inline-flex flex-wrap sm:flex-nowrap items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1">
+                    <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0 hidden sm:block" aria-hidden="true" />
+                    <label className="inline-flex items-center gap-1.5">
+                      <span className="sr-only">Tanggal awal</span>
+                      <input
+                        type="date"
+                        value={customStartDate}
+                        onChange={e => setCustomStartDate(e.target.value)}
+                        className="px-2 py-1 rounded-md border border-slate-200 bg-white text-xs text-slate-800 min-h-[44px] sm:min-h-[28px] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                      />
+                    </label>
+                    <span className="text-slate-500 font-medium px-0.5">s/d</span>
+                    <label className="inline-flex items-center gap-1.5">
+                      <span className="sr-only">Tanggal akhir</span>
+                      <input
+                        type="date"
+                        value={customEndDate}
+                        onChange={e => setCustomEndDate(e.target.value)}
+                        className="px-2 py-1 rounded-md border border-slate-200 bg-white text-xs text-slate-800 min-h-[44px] sm:min-h-[28px] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           {rangeInvalid && (
             <p className="text-xs text-rose-700 font-medium">Tanggal awal harus sebelum atau sama dengan tanggal akhir.</p>
@@ -1171,11 +1494,13 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                         ))}
                         <th className="py-2.5 px-3 text-right">Total (kg)</th>
                         <th className="py-2.5 px-3">Penanganan</th>
-                        <th className="py-2.5 px-3 w-28"><span className="sr-only">Aksi</span></th>
+                        <th className="py-2.5 px-3 w-40"><span className="sr-only">Aksi</span></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {dailyRows.map(d => (
+                      {dailyRows.map(d => {
+                        const dayPhotos = wastePhotosByDate[d.date] || [];
+                        return (
                         <tr key={d.date} className="hover:bg-slate-50 align-top">
                           <td className="py-2.5 px-4">
                             <div className="font-semibold text-slate-900">{dayName(d.date)}</div>
@@ -1191,12 +1516,32 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                           <td className="py-2.5 px-3 text-slate-700">{d.disposal || '-'}</td>
                           <td className="py-2 px-3">
                             <div className="flex items-center justify-end gap-1">
+                              {(canRecord || dayPhotos.length > 0) && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPhotoModalDate(d.date)}
+                                  aria-label={
+                                    dayPhotos.length > 0
+                                      ? `Lihat ${dayPhotos.length} foto limbah ${formatDate(d.date)}`
+                                      : `Tambah foto limbah ${formatDate(d.date)}`
+                                  }
+                                  title={dayPhotos.length > 0 ? `${dayPhotos.length} foto tersimpan` : 'Ambil atau lihat foto'}
+                                  className={`inline-flex items-center justify-center gap-1 h-11 sm:h-8 px-2 rounded-lg text-[11px] font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
+                                    dayPhotos.length > 0
+                                      ? 'text-emerald-800 bg-emerald-50 hover:bg-emerald-100'
+                                      : 'text-slate-600 hover:text-emerald-800 hover:bg-emerald-50'
+                                  }`}
+                                >
+                                  <Camera className="w-4 h-4" />
+                                  {dayPhotos.length > 0 && <span className="font-mono tabular-nums">{dayPhotos.length}</span>}
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => handleCopyWaDate(d.date)}
-                                aria-label={`Salin template WA limbah ${formatDate(d.date)}`}
+                                aria-label={`Salin laporan WA limbah ${formatDate(d.date)}`}
                                 title="Salin format WA"
-                                className={`${iconButtonClass} ${
+                                className={`${iconButtonClass} focus-visible:ring-offset-1 ${
                                   copiedDate === d.date
                                     ? 'text-emerald-800 bg-emerald-50'
                                     : 'text-slate-600 hover:text-emerald-800 hover:bg-emerald-50'
@@ -1229,12 +1574,15 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
                 <ul className="md:hidden divide-y divide-slate-100">
-                  {dailyRows.map(d => (
+                  {dailyRows.map(d => {
+                    const dayPhotos = wastePhotosByDate[d.date] || [];
+                    return (
                     <li key={d.date} className="px-4 py-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -1258,10 +1606,24 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                       </dl>
                       {d.notes && <p className="text-xs text-slate-600 mt-2">{d.notes}</p>}
                       <div className="flex flex-wrap gap-2 mt-2.5">
+                        {(canRecord || dayPhotos.length > 0) && (
+                          <button
+                            type="button"
+                            onClick={() => setPhotoModalDate(d.date)}
+                            className={`inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg border min-h-[44px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
+                              dayPhotos.length > 0
+                                ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <Camera className="w-4 h-4" />
+                            {dayPhotos.length > 0 ? `Foto (${dayPhotos.length})` : 'Foto'}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleCopyWaDate(d.date)}
-                          className={`inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg border min-h-[44px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+                          className={`inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg border min-h-[44px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
                             copiedDate === d.date
                               ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
                               : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
@@ -1290,7 +1652,8 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                         )}
                       </div>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </>
             ))}
@@ -1307,25 +1670,8 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                       <th className="py-2.5 px-4 sticky left-0 bg-slate-50 z-10 min-w-[9rem]">Kategori</th>
                       {matrix.dates.map(d => (
                         <th key={d} className="py-2 px-3 text-right whitespace-nowrap">
-                          <div className="inline-flex items-center gap-1.5 justify-end">
-                            <div>
-                              <div className="text-[11px] font-normal text-slate-600">{dayName(d)}</div>
-                              <div className="text-slate-800">{formatSheetDate(d)}</div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleCopyWaDate(d)}
-                              aria-label={`Salin template WA limbah ${formatDate(d)}`}
-                              title="Salin format WA"
-                              className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[28px] sm:min-h-[28px] rounded-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
-                                copiedDate === d
-                                  ? 'text-emerald-800 bg-emerald-50'
-                                  : 'text-slate-500 hover:text-emerald-800 hover:bg-emerald-50'
-                              }`}
-                            >
-                              {copiedDate === d ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
+                          <div className="text-[11px] font-normal text-slate-600">{dayName(d)}</div>
+                          <div className="text-slate-800">{formatSheetDate(d)}</div>
                         </th>
                       ))}
                       <th className="py-2.5 px-4 text-right bg-slate-100">Total (kg)</th>
@@ -1360,6 +1706,27 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                       ))}
                       <td className="py-2.5 px-4 text-right font-mono tabular-nums bg-slate-100">{formatKg(matrix.grandTotal)}</td>
                     </tr>
+                    <tr className="border-t border-slate-200 bg-white">
+                      <td className="py-2 px-4 sticky left-0 bg-white z-10 font-medium text-slate-600">Salin WA</td>
+                      {matrix.dates.map(d => (
+                        <td key={d} className="py-1.5 px-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleCopyWaDate(d)}
+                            aria-label={`Salin laporan WA limbah ${formatDate(d)}`}
+                            title="Salin format WA"
+                            className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[30px] sm:min-h-[30px] rounded-lg cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
+                              copiedDate === d
+                                ? 'text-emerald-800 bg-emerald-50'
+                                : 'text-slate-600 hover:text-emerald-800 hover:bg-emerald-50'
+                            }`}
+                          >
+                            {copiedDate === d ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </td>
+                      ))}
+                      <td className="py-1.5 px-4 bg-slate-50" />
+                    </tr>
                   </tfoot>
                 </table>
               </div>
@@ -1383,11 +1750,14 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                         <th className="py-2.5 px-3 text-right">Jumlah</th>
                         <th className="py-2.5 px-3">Penanganan</th>
                         <th className="py-2.5 px-3">Dicatat oleh</th>
+                        <th className="py-2.5 px-3">Foto</th>
                         {canRecord && <th className="py-2.5 px-3 w-12"><span className="sr-only">Aksi</span></th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {visibleLogs.map(log => (
+                      {visibleLogs.map(log => {
+                        const datePhotos = wastePhotosByDate[log.date] || [];
+                        return (
                         <tr key={log.id} className="hover:bg-slate-50 align-top">
                           <td className="py-2.5 px-4 whitespace-nowrap">
                             <div className="text-slate-900">{formatDate(log.date)}</div>
@@ -1403,6 +1773,29 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                           </td>
                           <td className="py-2.5 px-3 text-slate-700">{log.disposalMethod}</td>
                           <td className="py-2.5 px-3 text-slate-700">{log.recordedBy || '-'}</td>
+                          <td className="py-2 px-3">
+                            {(canRecord || datePhotos.length > 0) ? (
+                              <button
+                                type="button"
+                                onClick={() => setPhotoModalDate(log.date)}
+                                aria-label={
+                                  datePhotos.length > 0
+                                    ? `Lihat ${datePhotos.length} foto limbah ${formatDate(log.date)}`
+                                    : `Tambah foto limbah ${formatDate(log.date)}`
+                                }
+                                className={`inline-flex items-center gap-1 px-2 h-8 rounded-lg text-[11px] font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
+                                  datePhotos.length > 0
+                                    ? 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                                    : 'text-slate-600 hover:text-emerald-800 hover:bg-emerald-50'
+                                }`}
+                              >
+                                <Camera className="w-3.5 h-3.5" />
+                                {datePhotos.length > 0 ? <span className="font-mono tabular-nums">{datePhotos.length}</span> : 'Foto'}
+                              </button>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </td>
                           {canRecord && (
                             <td className="py-2 px-3 text-center">
                               <button
@@ -1417,18 +1810,35 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                             </td>
                           )}
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
                 <ul className="md:hidden divide-y divide-slate-100">
-                  {visibleLogs.map(log => (
+                  {visibleLogs.map(log => {
+                    const datePhotos = wastePhotosByDate[log.date] || [];
+                    return (
                     <li key={log.id} className="px-4 py-3 flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-xs text-slate-600">{dayName(log.date)}, {formatDate(log.date)} · {categoryLabel(log.wasteCategory)}</div>
                         <div className="text-sm font-semibold text-slate-900 mt-0.5">{log.itemName || '-'}</div>
                         <div className="text-xs text-slate-600 mt-0.5">{log.disposalMethod}</div>
                         {log.notes && <div className="text-xs text-slate-600 mt-0.5">{log.notes}</div>}
+                        {(canRecord || datePhotos.length > 0) && (
+                          <button
+                            type="button"
+                            onClick={() => setPhotoModalDate(log.date)}
+                            className={`mt-2 inline-flex items-center gap-1.5 px-2.5 text-xs font-semibold rounded-lg border min-h-[44px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
+                              datePhotos.length > 0
+                                ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <Camera className="w-3.5 h-3.5" />
+                            {datePhotos.length > 0 ? `Foto (${datePhotos.length})` : 'Foto'}
+                          </button>
+                        )}
                       </div>
                       <div className="text-right shrink-0">
                         <div className="text-sm font-mono font-semibold text-slate-900">{formatKg(log.quantity)} {log.unit}</div>
@@ -1444,7 +1854,8 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                         )}
                       </div>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </>
             ))}
@@ -1453,14 +1864,22 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
 
       {/* MODAL: SISA MAKANAN HARIAN */}
       {isDailyModalOpen && (
-        <div className="no-print fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-3 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="daily-waste-title">
+        <div
+          className="no-print fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-3 sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="daily-waste-title"
+          onClick={e => {
+            if (e.target === e.currentTarget && !dailyPhotoBusy) closeDailyModal();
+          }}
+        >
           <div className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
               <div>
                 <h3 id="daily-waste-title" className="text-base font-bold text-slate-900">Catat Sisa Makanan</h3>
                 <p className="text-xs text-slate-600 mt-0.5">Hasil timbang sisa makanan per kategori, dalam kg.</p>
               </div>
-              <button type="button" onClick={() => setIsDailyModalOpen(false)} aria-label="Tutup" className={`${iconButtonClass} text-slate-500 hover:text-slate-800 hover:bg-slate-100`}>
+              <button type="button" onClick={closeDailyModal} disabled={dailyPhotoBusy} aria-label="Tutup" className={`${iconButtonClass} text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-50`}>
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1637,22 +2056,39 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                     className={inputClass}
                   />
                 </label>
+
+                <div className="pt-2 border-t border-slate-200">
+                  <WastePhotoSection
+                    date={dailyDate}
+                    dateLabel={`${dayName(dailyDate)}, ${formatDate(dailyDate)}`}
+                    photos={[...(wastePhotosByDate[dailyDate] || []), ...dailyPendingPhotos]}
+                    pendingIds={new Set(dailyPendingPhotos.map(p => p.id))}
+                    canEdit={canRecord}
+                    context="daily"
+                    takenBy={currentUser.name}
+                    onAdded={added => setDailyPendingPhotos(prev => [...prev, ...added])}
+                    onRemove={handleRemoveDailyModalPhoto}
+                    onBusyChange={setDailyPhotoBusy}
+                  />
+                </div>
               </div>
 
               <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setIsDailyModalOpen(false)}
-                  className="px-4 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg min-h-[44px] sm:min-h-[36px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  onClick={closeDailyModal}
+                  disabled={dailyPhotoBusy}
+                  className="px-4 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 rounded-lg min-h-[44px] sm:min-h-[36px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-4 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white min-h-[44px] sm:min-h-[36px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                  disabled={dailyPhotoBusy}
+                  className="inline-flex items-center gap-1.5 px-4 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white min-h-[44px] sm:min-h-[36px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  {dailyHasExisting ? 'Simpan Perubahan' : 'Simpan'}
+                  {dailyPhotoBusy ? 'Mengunggah foto...' : dailyHasExisting ? 'Simpan Perubahan' : 'Simpan'}
                 </button>
               </div>
             </form>
@@ -1662,14 +2098,22 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
 
       {/* MODAL: LIMBAH DAPUR LAIN */}
       {isOtherModalOpen && (
-        <div className="no-print fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-3 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="other-waste-title">
+        <div
+          className="no-print fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-3 sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="other-waste-title"
+          onClick={e => {
+            if (e.target === e.currentTarget && !otherPhotoBusy) closeOtherModal();
+          }}
+        >
           <div className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
               <div>
                 <h3 id="other-waste-title" className="text-base font-bold text-slate-900">Catat Limbah Dapur Lain</h3>
                 <p className="text-xs text-slate-600 mt-0.5">Kupasan, bahan rusak, kemasan, dan limbah selain sisa makanan siswa.</p>
               </div>
-              <button type="button" onClick={() => setIsOtherModalOpen(false)} aria-label="Tutup" className={`${iconButtonClass} text-slate-500 hover:text-slate-800 hover:bg-slate-100`}>
+              <button type="button" onClick={closeOtherModal} disabled={otherPhotoBusy} aria-label="Tutup" className={`${iconButtonClass} text-slate-500 hover:text-slate-800 hover:bg-slate-100 disabled:opacity-50`}>
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1765,25 +2209,110 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                   <Plus className="w-4 h-4" />
                   Tambah baris
                 </button>
+
+                <div className="pt-3 border-t border-slate-200">
+                  <WastePhotoSection
+                    date={otherDate}
+                    dateLabel={`${dayName(otherDate)}, ${formatDate(otherDate)}`}
+                    photos={[...(wastePhotosByDate[otherDate] || []), ...otherPendingPhotos]}
+                    pendingIds={new Set(otherPendingPhotos.map(p => p.id))}
+                    canEdit={canRecord}
+                    context="other"
+                    takenBy={currentUser.name}
+                    onAdded={added => setOtherPendingPhotos(prev => [...prev, ...added])}
+                    onRemove={handleRemoveOtherModalPhoto}
+                    onBusyChange={setOtherPhotoBusy}
+                  />
+                </div>
               </div>
 
               <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setIsOtherModalOpen(false)}
-                  className="px-4 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg min-h-[44px] sm:min-h-[36px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  onClick={closeOtherModal}
+                  disabled={otherPhotoBusy}
+                  className="px-4 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 rounded-lg min-h-[44px] sm:min-h-[36px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-1.5 px-4 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white min-h-[44px] sm:min-h-[36px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                  disabled={otherPhotoBusy}
+                  className="inline-flex items-center gap-1.5 px-4 text-xs font-semibold rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white min-h-[44px] sm:min-h-[36px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  Simpan {otherRows.length > 1 ? `${otherRows.length} Baris` : ''}
+                  {otherPhotoBusy ? 'Mengunggah foto...' : `Simpan ${otherRows.length > 1 ? `${otherRows.length} Baris` : ''}`}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: FOTO DOKUMENTASI LIMBAH PER TANGGAL */}
+      {photoModalDate && (
+        <div
+          className="no-print fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-3 sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="waste-photo-modal-title"
+          onClick={e => {
+            if (e.target === e.currentTarget) setPhotoModalDate(null);
+          }}
+        >
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
+              <div>
+                <h3 id="waste-photo-modal-title" className="text-base font-bold text-slate-900">
+                  Foto Dokumentasi Limbah
+                </h3>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Ambil atau lihat foto kondisi limbah dan hasil timbangan lengkap dengan stempel waktu.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPhotoModalDate(null)}
+                aria-label="Tutup foto dokumentasi"
+                className={`${iconButtonClass} text-slate-500 hover:text-slate-800 hover:bg-slate-100`}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto flex-1 space-y-4 text-xs">
+              <label className="flex flex-wrap items-center gap-3">
+                <span className="font-semibold text-slate-700">Tanggal limbah</span>
+                <input
+                  type="date"
+                  value={photoModalDate}
+                  onChange={e => e.target.value && setPhotoModalDate(e.target.value)}
+                  className={`${inputClass} w-auto`}
+                />
+                <span className="text-sm font-semibold text-slate-800">{dayName(photoModalDate)}</span>
+              </label>
+
+              <WastePhotoSection
+                date={photoModalDate}
+                dateLabel={`${dayName(photoModalDate)}, ${formatDate(photoModalDate)}`}
+                photos={wastePhotosByDate[photoModalDate] || []}
+                canEdit={canRecord}
+                context="daily"
+                takenBy={currentUser.name}
+                onAdded={added => handleDirectPhotosAdded(photoModalDate, added)}
+                onRemove={photo => handleRemoveSavedPhoto(photoModalDate, photo)}
+              />
+            </div>
+
+            <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setPhotoModalDate(null)}
+                className="px-4 text-xs font-semibold text-slate-700 hover:bg-slate-200/70 rounded-lg min-h-[44px] sm:min-h-[36px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}

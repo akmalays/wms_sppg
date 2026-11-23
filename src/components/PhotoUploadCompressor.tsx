@@ -1,6 +1,16 @@
 import React, { useState, useRef } from 'react';
-import { Camera, UploadCloud, Trash2, CheckCircle2, AlertCircle, ZoomIn, X, Loader2 } from 'lucide-react';
-import { compressImageToWebP, uploadDocumentationPhoto, CompressedImageResult } from '../utils/imageCompressor';
+import { Camera, UploadCloud, Trash2, CheckCircle2, ZoomIn, X, Loader2 } from 'lucide-react';
+import {
+  compressImageToWebP,
+  formatPhotoTimestamp,
+  uploadDocumentationPhoto,
+  CompressedImageResult,
+} from '../utils/imageCompressor';
+import {
+  CameraCaptureModal,
+  hasLiveCameraSupport,
+  isTouchPrimaryDevice,
+} from './common/CameraCaptureModal';
 
 export interface UploadedPhotoItem {
   id: string;
@@ -22,6 +32,10 @@ interface PhotoUploadCompressorProps {
   description?: string;
   /** Teks saat belum ada foto. */
   emptyText?: string;
+  /** Stempel waktu otomatis di foto (aktif secara default untuk folder receiving & waste). */
+  enableTimestamp?: boolean;
+  /** Keterangan tambahan pada baris kedua stempel waktu (mis. nama supplier). */
+  timestampLabel?: string;
 }
 
 export const PhotoUploadCompressor: React.FC<PhotoUploadCompressorProps> = ({
@@ -32,17 +46,23 @@ export const PhotoUploadCompressor: React.FC<PhotoUploadCompressorProps> = ({
   label = 'Dokumentasi Foto Kedatangan (Auto-Kompres WebP)',
   description = 'Foto dari kamera HP otomatis dikonversi ke WebP & dikompres hingga ~95% sebelum di-upload.',
   emptyText = 'Belum ada foto dokumentasi yang dilampirkan. Lampirkan foto surat jalan atau fisik timbangan barang.',
+  enableTimestamp,
+  timestampLabel,
 }) => {
+  const shouldStamp = enableTimestamp ?? (folder === 'receiving' || folder === 'waste');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processStatus, setProcessStatus] = useState<string>('');
   const [recentStats, setRecentStats] = useState<Array<{ name: string; orig: number; comp: number; ratio: number }>>([]);
   const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFilesSelected = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+  const secondaryStamp = `SPPG MLG Tumpang Jeru · ${timestampLabel || (folder === 'receiving' ? 'Penerimaan Barang' : 'Dokumentasi')}`;
+
+  const processBlobs = async (items: Array<{ blob: File | Blob; name: string; capturedAt: Date }>) => {
+    if (items.length === 0) return;
 
     const availableSlots = maxPhotos - photos.length;
     if (availableSlots <= 0) {
@@ -50,20 +70,26 @@ export const PhotoUploadCompressor: React.FC<PhotoUploadCompressorProps> = ({
       return;
     }
 
-    const filesToProcess = Array.from(files).slice(0, availableSlots);
+    const filesToProcess = items.slice(0, availableSlots);
     setIsProcessing(true);
     const newPhotos = [...photos];
     const newStats: typeof recentStats = [];
 
     for (let i = 0; i < filesToProcess.length; i++) {
-      const file = filesToProcess[i];
-      setProcessStatus(`Mengompres foto ${i + 1}/${filesToProcess.length}: ${file.name}...`);
+      const item = filesToProcess[i];
+      setProcessStatus(`Mengompres foto ${i + 1}/${filesToProcess.length}: ${item.name}...`);
 
       try {
-        // 1. Auto-kompres dan konversi ke WebP di sisi browser
-        const compressed: CompressedImageResult = await compressImageToWebP(file, {
+        // 1. Auto-kompres, tempel stempel waktu bila aktif, dan konversi ke WebP di sisi browser
+        const compressed: CompressedImageResult = await compressImageToWebP(item.blob, {
           maxDimension: 1600, // Sangat tajam untuk teks surat jalan & timbangan digital
           quality: 0.8, // Rasio kompresi optimal
+          timestampWatermark: shouldStamp
+            ? {
+                primary: formatPhotoTimestamp(item.capturedAt, true),
+                secondary: secondaryStamp,
+              }
+            : undefined,
         });
 
         // 2. Upload file WebP ke Supabase Storage (atau fallback lokal)
@@ -72,7 +98,7 @@ export const PhotoUploadCompressor: React.FC<PhotoUploadCompressorProps> = ({
 
         newPhotos.push(uploadResult.url);
         newStats.push({
-          name: file.name,
+          name: item.name,
           orig: compressed.originalSizeKb,
           comp: compressed.compressedSizeKb,
           ratio: compressed.compressionRatioPercent,
@@ -90,6 +116,26 @@ export const PhotoUploadCompressor: React.FC<PhotoUploadCompressorProps> = ({
     // Reset inputs
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (cameraInputRef.current) cameraInputRef.current.value = '';
+  };
+
+  const handleFilesSelected = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const now = new Date();
+    await processBlobs(
+      Array.from(files).map(file => ({
+        blob: file,
+        name: file.name || 'Foto',
+        capturedAt: now,
+      }))
+    );
+  };
+
+  const handleOpenCamera = () => {
+    if (!isTouchPrimaryDevice() && hasLiveCameraSupport()) {
+      setIsCameraOpen(true);
+    } else {
+      cameraInputRef.current?.click();
+    }
   };
 
   const handleRemovePhoto = (indexToRemove: number) => {
@@ -117,15 +163,15 @@ export const PhotoUploadCompressor: React.FC<PhotoUploadCompressorProps> = ({
       {/* Upload Action Area */}
       {photos.length < maxPhotos && (
         <div className="flex flex-wrap items-center gap-2">
-          {/* Tombol Kamera Langsung (Mobile Camera) */}
+          {/* Tombol Kamera Langsung */}
           <button
             type="button"
             disabled={isProcessing}
-            onClick={() => cameraInputRef.current?.click()}
+            onClick={handleOpenCamera}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
           >
             <Camera className="w-4 h-4 text-emerald-700" />
-            Ambil Kamera HP
+            Ambil Foto
           </button>
           <input
             ref={cameraInputRef}
@@ -261,6 +307,18 @@ export const PhotoUploadCompressor: React.FC<PhotoUploadCompressorProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {isCameraOpen && (
+        <CameraCaptureModal
+          title={label}
+          secondaryPreview={secondaryStamp}
+          onCapture={(blob, capturedAt) => {
+            setIsCameraOpen(false);
+            void processBlobs([{ blob, name: 'Foto kamera', capturedAt }]);
+          }}
+          onFallbackFile={() => fileInputRef.current?.click()}
+          onClose={() => setIsCameraOpen(false)}
+        />
       )}
     </div>
   );

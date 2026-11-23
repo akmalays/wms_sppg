@@ -2245,7 +2245,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                 maxPhotos={6}
                 folder="receiving"
                 label="Foto Kedatangan"
-                description="Foto nota atau struk, kemasan, dan tanggal kedaluwarsa obat. Ukuran foto otomatis dikecilkan sebelum diunggah."
+                description="Foto nota atau struk, kemasan, dan tanggal kedaluwarsa. Otomatis diberi timestamp & dikompres sebelum diunggah."
+                timestampLabel={selectedSupplierObj?.name || 'Penerimaan Barang'}
               />
             </div>
 

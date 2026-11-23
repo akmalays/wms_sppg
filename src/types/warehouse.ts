@@ -440,6 +440,21 @@ export interface WasteLog {
   createdAt?: string;
 }
 
+export interface WastePhotoRecord {
+  id: string;
+  url: string;
+  /** Tanggal catatan limbah yang didokumentasikan (YYYY-MM-DD). */
+  date: string;
+  /** Waktu pengambilan atau unggah foto (ISO 8601). */
+  capturedAt: string;
+  /** Petugas yang mengambil atau mengunggah foto. */
+  takenBy: string;
+  /** Konteks dokumentasi: sisa makanan harian atau limbah dapur lain. */
+  context?: 'daily' | 'other';
+  /** Keterangan singkat opsional. */
+  caption?: string;
+}
+
 export type TodoCategory =
   | 'Penerimaan & QC'
   | 'Persiapan Dapur'

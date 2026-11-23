@@ -6,8 +6,19 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { compressImageToWebP, deleteDocumentationPhoto, uploadDocumentationPhoto } from '../utils/imageCompressor';
+import {
+  compressImageToWebP,
+  deleteDocumentationPhoto,
+  formatPhotoTimestamp,
+  uploadDocumentationPhoto,
+} from '../utils/imageCompressor';
 import { DialogShell, BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './common/FormDialog';
+import {
+  CameraCaptureModal,
+  extractTimestampFromPhotoUrl,
+  hasLiveCameraSupport,
+  isTouchPrimaryDevice,
+} from './common/CameraCaptureModal';
 import { isExtraCostExpense } from '../utils/extraCosts';
 
 interface ReceivingDetailModalProps {
@@ -47,6 +58,7 @@ const ReceivingPhotos: React.FC<{ document: ReceivingDocument }> = ({ document }
   const [photos, setPhotos] = useState<string[]>(document.documentationPhotos || []);
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
@@ -60,25 +72,34 @@ const ReceivingPhotos: React.FC<{ document: ReceivingDocument }> = ({ document }
     setPhotos(next);
   };
 
-  const handleFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+  const secondaryStamp = `SPPG MLG Tumpang Jeru · ${document.id}${document.supplierName ? ` · ${document.supplierName}` : ''}`;
+
+  const processBlobs = async (items: Array<{ blob: File | Blob; label: string; capturedAt: Date }>) => {
+    if (items.length === 0) return;
     setError('');
-    const picked = Array.from(files).slice(0, MAX_PHOTOS - photos.length);
+    const picked = items.slice(0, MAX_PHOTOS - photos.length);
     const uploaded: string[] = [];
     let totalKb = 0;
     const failed: string[] = [];
-    for (const [i, file] of picked.entries()) {
+    for (const [i, item] of picked.entries()) {
       setProgress(`Mengunggah foto ${i + 1} dari ${picked.length}...`);
       try {
         // 1600 px di sisi terpanjang masih cukup untuk membaca angka kecil di nota
-        const compressed = await compressImageToWebP(file, { maxDimension: 1600, quality: 0.7 });
+        const compressed = await compressImageToWebP(item.blob, {
+          maxDimension: 1600,
+          quality: 0.72,
+          timestampWatermark: {
+            primary: formatPhotoTimestamp(item.capturedAt, true),
+            secondary: secondaryStamp,
+          },
+        });
         const res = await uploadDocumentationPhoto(compressed.blob, 'receiving');
         // Fallback base64 akan masuk ke baris database dan memakan kuota, jadi ditolak bila Supabase aktif
         if (res.isLocalFallback && isSupabaseConfigured()) throw new Error(res.error || 'penyimpanan foto belum siap');
         uploaded.push(res.url);
         totalKb += compressed.compressedSizeKb;
       } catch (err: any) {
-        failed.push(`${file.name}: ${err?.message || 'gagal diproses'}`);
+        failed.push(`${item.label}: ${err?.message || 'gagal diproses'}`);
       }
     }
     setProgress('');
@@ -88,12 +109,33 @@ const ReceivingPhotos: React.FC<{ document: ReceivingDocument }> = ({ document }
     if (uploaded.length > 0) {
       try {
         save([...photos, ...uploaded]);
-        toast.success(`${uploaded.length} foto tersimpan, total ${totalKb.toLocaleString('id-ID')} KB.`, 'Foto nota');
+        toast.success(`${uploaded.length} foto tersimpan dengan timestamp, total ${totalKb.toLocaleString('id-ID')} KB.`, 'Foto nota');
       } catch (err: any) {
         failed.push(err?.message || 'Gagal menyimpan foto ke dokumen.');
       }
     }
     if (failed.length > 0) setError(`Foto tidak tersimpan. ${failed.join('. ')}`);
+  };
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const now = new Date();
+    await processBlobs(
+      Array.from(files).map(file => ({
+        blob: file,
+        label: file.name || 'Foto',
+        capturedAt: now,
+      }))
+    );
+  };
+
+  const handleOpenCamera = () => {
+    setError('');
+    if (!isTouchPrimaryDevice() && hasLiveCameraSupport()) {
+      setIsCameraOpen(true);
+    } else {
+      cameraRef.current?.click();
+    }
   };
 
   const handleRemove = async (index: number) => {
@@ -119,12 +161,15 @@ const ReceivingPhotos: React.FC<{ document: ReceivingDocument }> = ({ document }
   return (
     <section>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-        <h3 className="text-sm font-semibold text-slate-800">
-          Foto nota dan penerimaan <span className="font-normal text-slate-600">({photos.length}/{MAX_PHOTOS})</span>
-        </h3>
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">
+            Foto nota dan penerimaan <span className="font-normal text-slate-600">({photos.length}/{MAX_PHOTOS})</span>
+          </h3>
+          <p className="text-[11px] text-slate-600">Otomatis diberi timestamp saat diambil atau diunggah.</p>
+        </div>
         {canEdit && photos.length < MAX_PHOTOS && (
           <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={busy} onClick={() => cameraRef.current?.click()} className={BTN_SECONDARY}>
+            <button type="button" disabled={busy} onClick={handleOpenCamera} className={BTN_SECONDARY}>
               <Camera className="w-3.5 h-3.5" />
               Ambil foto
             </button>
@@ -149,32 +194,56 @@ const ReceivingPhotos: React.FC<{ document: ReceivingDocument }> = ({ document }
 
       {photos.length > 0 ? (
         <ul className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {photos.map((url, i) => (
-            <li key={url} className="rounded-lg border border-slate-200 overflow-hidden bg-white">
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`Buka foto ${i + 1} ukuran penuh`}
-                className="block bg-slate-100 aspect-4/3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600"
-              >
-                <img src={url} alt={`Foto penerimaan ${i + 1}`} loading="lazy" className="w-full h-full object-cover" />
-              </a>
-              {canEdit && (
-                <button
-                  type="button"
-                  onClick={() => handleRemove(i)}
-                  disabled={busy}
-                  className="w-full min-h-[44px] sm:min-h-[30px] border-t border-slate-200 text-[11px] font-medium text-slate-700 hover:text-rose-700 hover:bg-rose-50 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600"
+          {photos.map((url, i) => {
+            const uploadedAt = extractTimestampFromPhotoUrl(url);
+            return (
+              <li key={url} className="rounded-lg border border-slate-200 overflow-hidden bg-white flex flex-col">
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Buka foto ${i + 1} ukuran penuh`}
+                  className="block bg-slate-100 aspect-4/3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600"
                 >
-                  Hapus foto {i + 1}
-                </button>
-              )}
-            </li>
-          ))}
+                  <img src={url} alt={`Foto penerimaan ${i + 1}`} loading="lazy" className="w-full h-full object-cover" />
+                </a>
+                {uploadedAt && (
+                  <div
+                    className="px-2 py-1 border-t border-slate-100 bg-slate-50/70 font-mono text-[10px] text-slate-600 tabular-nums truncate"
+                    title={formatPhotoTimestamp(uploadedAt, true)}
+                  >
+                    {formatPhotoTimestamp(uploadedAt, false)}
+                  </div>
+                )}
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(i)}
+                    disabled={busy}
+                    className="w-full min-h-[44px] sm:min-h-[30px] border-t border-slate-200 text-[11px] font-medium text-slate-700 hover:text-rose-700 hover:bg-rose-50 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600"
+                  >
+                    Hapus foto {i + 1}
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <p className="text-[11px] text-slate-600">Belum ada foto. Simpan foto nota supplier di sini untuk jaga-jaga bila kertasnya hilang.</p>
+      )}
+
+      {isCameraOpen && (
+        <CameraCaptureModal
+          title={`Ambil foto · ${document.id}`}
+          secondaryPreview={secondaryStamp}
+          onCapture={(blob, capturedAt) => {
+            setIsCameraOpen(false);
+            void processBlobs([{ blob, label: 'Foto kamera', capturedAt }]);
+          }}
+          onFallbackFile={() => galleryRef.current?.click()}
+          onClose={() => setIsCameraOpen(false)}
+        />
       )}
     </section>
   );

@@ -20,6 +20,7 @@ import {
   MenuOrderPoster,
   MenuPoArrivalItem,
   WasteLog,
+  WastePhotoRecord,
   DisposalMethod,
   DailyTodoItem,
   SchoolBeneficiaryAllocation,
@@ -5530,6 +5531,44 @@ class WarehouseDatabase {
       `Menghapus rekap sisa makanan tanggal ${date}`
     );
     return true;
+  }
+
+  // Foto dokumentasi limbah disimpan di app_settings agar tersinkron lintas perangkat tanpa menunggu migrasi kolom baru di waste_logs.
+  public getWastePhotosByDate(): Record<string, WastePhotoRecord[]> {
+    const raw = this.getAppSetting<Record<string, WastePhotoRecord[]>>('waste_documentation_photos', {});
+    if (!raw || typeof raw !== 'object') return {};
+    const out: Record<string, WastePhotoRecord[]> = {};
+    for (const [date, list] of Object.entries(raw)) {
+      if (Array.isArray(list) && list.length > 0) {
+        out[date] = list.filter((item): item is WastePhotoRecord => Boolean(item && typeof item.url === 'string' && item.url));
+      }
+    }
+    return out;
+  }
+
+  public getWastePhotos(date: string): WastePhotoRecord[] {
+    return this.getWastePhotosByDate()[date] || [];
+  }
+
+  public saveWastePhotos(date: string, photos: WastePhotoRecord[], user: User): WastePhotoRecord[] {
+    const current = this.getWastePhotosByDate();
+    const before = current[date]?.length || 0;
+    const nextMap: Record<string, WastePhotoRecord[]> = { ...current };
+    const cleaned = photos.filter(p => Boolean(p.url));
+    if (cleaned.length > 0) {
+      nextMap[date] = cleaned;
+    } else {
+      delete nextMap[date];
+    }
+    this.saveAppSetting('waste_documentation_photos', nextMap, user);
+    this.logAudit(
+      user,
+      'WASTE_PHOTOS_UPDATED',
+      'OPERATIONAL',
+      `WST-PHOTO-${date}`,
+      `Foto dokumentasi limbah ${date}: ${before} jadi ${cleaned.length} foto.`
+    );
+    return cleaned;
   }
 
   // --- DAILY TODOS ---
