@@ -30,6 +30,7 @@ import { ImageBankDialog } from './common/ImageBankDialog';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
 import { MenuTodayKidsEditor } from './MenuTodayKidsEditor';
+import { WebsiteDocumentationCms } from './WebsiteDocumentationCms';
 import { compressImageToWebP } from '../utils/imageCompressor';
 import { requestMenuAiDraft, MenuAiDraft } from '../utils/menuAiDraft';
 import { cutoutTrayPhoto } from '../utils/trayCutout';
@@ -158,7 +159,7 @@ const CollapsibleCard: React.FC<{
 
 export const WebsiteCmsModule: React.FC = () => {
   const [config, setConfig] = useState<WebsiteConfig>(() => readDraft() ?? getWebsiteConfig());
-  const [activeTab, setActiveTab] = useState<'hero' | 'menu_today'>('menu_today');
+  const [activeTab, setActiveTab] = useState<'hero' | 'menu_today' | 'documentation'>('menu_today');
   const toast = useToast();
   const askConfirm = useConfirm();
 
@@ -1119,12 +1120,13 @@ export const WebsiteCmsModule: React.FC = () => {
 
       <div className="space-y-3 px-0.5 sm:px-1">
         <p className="text-xs text-slate-600 max-w-2xl">
-          Isi halaman menu hari ini (yang dibuka dari QR) dan bagian atas halaman depan website.
+          Atur menu hari ini (yang dibuka dari QR), bagian atas halaman depan, dan rekap dokumentasi per tanggal.
         </p>
         <div role="tablist" aria-label="Bagian website" className="grid grid-cols-2 sm:inline-flex gap-1 p-1 bg-slate-200/70 rounded-lg text-xs w-full sm:w-fit">
           {([
             { id: 'menu_today', label: 'Menu Hari Ini & QR' },
             { id: 'hero', label: 'Bagian Atas (Hero)' },
+            { id: 'documentation', label: 'Rekap Dokumentasi' },
           ] as const).map(tab => (
             <button
               key={tab.id}
@@ -1133,6 +1135,8 @@ export const WebsiteCmsModule: React.FC = () => {
               aria-selected={activeTab === tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`px-3 rounded-md whitespace-nowrap text-center cursor-pointer min-h-[44px] sm:min-h-[32px] ${FOCUS} ${
+                tab.id === 'documentation' ? 'col-span-2 sm:col-span-1' : ''
+              } ${
                 activeTab === tab.id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'
               }`}
             >
@@ -1141,6 +1145,14 @@ export const WebsiteCmsModule: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* KONTEN TAB: REKAP DOKUMENTASI PER TANGGAL */}
+      {activeTab === 'documentation' && (
+        <WebsiteDocumentationCms
+          value={config.documentationRecap || DEFAULT_WEBSITE_CONFIG.documentationRecap}
+          onChange={next => setConfig(prev => ({ ...prev, documentationRecap: next }))}
+        />
+      )}
 
       {/* 2. KONTEN TAB 1: HERO & VIDEO BACKGROUND */}
       {activeTab === 'hero' && (

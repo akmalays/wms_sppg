@@ -11,6 +11,11 @@ import sayurSopImg from '../assets/sayur_sop.jpg';
 import buahPisangImg from '../assets/buah_pisang.jpg';
 import tempeMaskotImg from '../assets/tempe_maskot_mbg.jpg';
 import cuciTanganImg from '../assets/cuci_tangan_mbg.jpg';
+import operasionalPenerimaanImg from '../assets/operasional_penerimaan.jpg';
+import operasionalPengolahanImg from '../assets/operasional_pengolahan.jpg';
+import operasionalPengemasanImg from '../assets/operasional_pengemasan.jpg';
+import operasionalDistribusiImg from '../assets/operasional_distribusi.jpg';
+import penyaluranSiswaImg from '../assets/penyaluran_siswa.jpg';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { compressImageToWebP } from '../utils/imageCompressor';
 
@@ -270,11 +275,44 @@ export interface WebsiteMenuTodayConfig {
   bodyWeightLargeKg?: string;
 }
 
+export interface DocumentationRecapPhoto {
+  id: string;
+  imageUrl: string;
+  stage?: string;
+  caption: string;
+}
+
+export interface DocumentationRecapEntry {
+  id: string;
+  /** Tanggal kegiatan dalam format ISO YYYY-MM-DD */
+  date: string;
+  title: string;
+  /** Keterangan atau catatan ringkas kegiatan pada tanggal tersebut */
+  summary: string;
+  photos: DocumentationRecapPhoto[];
+}
+
+export interface WebsiteDocumentationRecapConfig {
+  sectionTitle: string;
+  sectionSubtitle: string;
+  entries: DocumentationRecapEntry[];
+}
+
+export const DOCUMENTATION_STAGE_PRESETS = [
+  'Penerimaan Bahan',
+  'Persiapan Bahan',
+  'Pengolahan Dapur',
+  'Pengemasan',
+  'Distribusi',
+  'Penyaluran Sekolah',
+] as const;
+
 export interface WebsiteConfig {
   hero: WebsiteHeroConfig;
   menuSlider: WebsiteMenuSliderConfig;
   visualStudy: WebsiteVisualStudyConfig;
   menuToday: WebsiteMenuTodayConfig;
+  documentationRecap: WebsiteDocumentationRecapConfig;
   lastUpdated: string;
 }
 
@@ -650,6 +688,96 @@ export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = {
       }
     ]
   },
+  documentationRecap: {
+    sectionTitle: 'Rekap Dokumentasi Kegiatan',
+    sectionSubtitle: 'Foto kegiatan harian dari dapur hingga penyaluran makanan ke sekolah penerima, dicatat per tanggal.',
+    entries: [
+      {
+        id: 'doc-recap-2026-11-23',
+        date: '2026-11-23',
+        title: 'Persiapan Pagi hingga Penyaluran Sekolah',
+        summary: 'Penerimaan sayur segar dimulai pukul 04.00 WIB, dilanjutkan pengolahan lauk dan sayur, penataan ke ompreng SUS 304, serta pengiriman tepat waktu ke sekolah penerima.',
+        photos: [
+          {
+            id: 'doc-photo-1',
+            imageUrl: operasionalPengolahanImg,
+            stage: 'Persiapan Bahan',
+            caption: 'Pencucian dan pemotongan bahan pangan segar di area persiapan dapur.'
+          },
+          {
+            id: 'doc-photo-2',
+            imageUrl: operasionalPengemasanImg,
+            stage: 'Pengemasan',
+            caption: 'Penataan porsi nasi, lauk, dan sayur ke dalam ompreng bersekat.'
+          },
+          {
+            id: 'doc-photo-3',
+            imageUrl: operasionalDistribusiImg,
+            stage: 'Distribusi',
+            caption: 'Pengecekan boks termal sebelum armada berangkat ke rute sekolah.'
+          },
+          {
+            id: 'doc-photo-4',
+            imageUrl: penyaluranSiswaImg,
+            stage: 'Penyaluran Sekolah',
+            caption: 'Siswa menerima dan menikmati paket makan bergizi di sekolah.'
+          }
+        ]
+      },
+      {
+        id: 'doc-recap-2026-11-20',
+        date: '2026-11-20',
+        title: 'Pemeriksaan Bahan Masuk & Pengemasan Porsi',
+        summary: 'Seluruh bahan basah dan kering ditimbang ulang saat tiba di gudang, lalu diolah sesuai menu harian dan dikemas dalam boks tertutup.',
+        photos: [
+          {
+            id: 'doc-photo-5',
+            imageUrl: operasionalPenerimaanImg,
+            stage: 'Penerimaan Bahan',
+            caption: 'Pemeriksaan kesegaran dan penimbangan bahan pangan di area penerimaan.'
+          },
+          {
+            id: 'doc-photo-6',
+            imageUrl: trayImg1,
+            stage: 'Pengemasan',
+            caption: 'Tampilan ompreng lengkap setelah porsi ditata dan diperiksa petugas.'
+          },
+          {
+            id: 'doc-photo-7',
+            imageUrl: trayImg2,
+            stage: 'Distribusi',
+            caption: 'Susunan ompreng siap kirim di meja pengemasan sebelum masuk boks.'
+          }
+        ]
+      },
+      {
+        id: 'doc-recap-2026-11-19',
+        date: '2026-11-19',
+        title: 'Pengolahan Dapur & Uji Tampilan Sajian',
+        summary: 'Proses memasak dilakukan secara bertahap agar suhu makanan tetap hangat saat pengemasan hingga tiba di sekolah tujuan.',
+        photos: [
+          {
+            id: 'doc-photo-8',
+            imageUrl: operasionalPengolahanImg,
+            stage: 'Pengolahan Dapur',
+            caption: 'Proses pengolahan masakan utama oleh tim dapur SPPG Tumpang Jeru.'
+          },
+          {
+            id: 'doc-photo-9',
+            imageUrl: trayImg3,
+            stage: 'Pengemasan',
+            caption: 'Pengecekan kelengkapan isi ompreng sebelum segel ditempel.'
+          },
+          {
+            id: 'doc-photo-10',
+            imageUrl: penyaluranSiswaImg,
+            stage: 'Penyaluran Sekolah',
+            caption: 'Pembagian makanan berlangsung tertib di ruang kelas sekolah penerima.'
+          }
+        ]
+      }
+    ]
+  },
   lastUpdated: new Date().toISOString()
 };
 
@@ -807,6 +935,30 @@ function normalizeConfig(parsed: Partial<WebsiteConfig> | null | undefined): Web
         : DEFAULT_WEBSITE_CONFIG.visualStudy.items
     },
     menuToday: normalizedMenuToday,
+    documentationRecap: {
+      ...DEFAULT_WEBSITE_CONFIG.documentationRecap,
+      ...(parsed.documentationRecap || {}),
+      entries: Array.isArray(parsed.documentationRecap?.entries)
+        ? parsed.documentationRecap.entries
+            .filter(entry => entry && typeof entry === 'object')
+            .map((entry, idx) => ({
+              id: entry.id || `doc-recap-${idx + 1}`,
+              date: (entry.date || '').trim() || new Date().toISOString().slice(0, 10),
+              title: entry.title || '',
+              summary: entry.summary || '',
+              photos: Array.isArray(entry.photos)
+                ? entry.photos
+                    .filter(p => p && typeof p === 'object' && p.imageUrl)
+                    .map((p, pIdx) => ({
+                      id: p.id || `doc-photo-${idx + 1}-${pIdx + 1}`,
+                      imageUrl: p.imageUrl,
+                      stage: p.stage || '',
+                      caption: p.caption || ''
+                    }))
+                : []
+            }))
+        : DEFAULT_WEBSITE_CONFIG.documentationRecap.entries
+    },
     lastUpdated: parsed.lastUpdated || new Date().toISOString()
   };
 }

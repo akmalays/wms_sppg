@@ -51,6 +51,7 @@ import { SPPG_ADDRESS, SPPG_EMAIL, SPPG_PHONE } from './common/KopText';
 import { FoodDoodles } from './common/FoodDoodles';
 import { FoodImage } from './menuPublic/FoodIllustrations';
 import { TrayStage, menuDishes, resolveTrayLabels, shownTrayLabels, trayLabelTexts } from './menuPublic/TrayStage';
+import { DocumentationRecapSection } from './landing/DocumentationRecapSection';
 
 export interface LandingPageProps {
   isStaffLoggedIn?: boolean;
@@ -1417,52 +1418,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </section>
 
       {/* ========================================================
-          SEKSI 5: DOKUMENTASI KEGIATAN (#dokumentasi-kegiatan)
+          SEKSI 5: REKAP DOKUMENTASI KEGIATAN (#dokumentasi-kegiatan)
           ======================================================== */}
-      <section id="dokumentasi-kegiatan" className="relative overflow-hidden py-14 sm:py-20 bg-white border-b border-[#e5dfd3]">
-        <FoodDoodles width={760} height={280} seed={3} className="hidden md:block top-0 right-0 w-3/5 h-72 text-[#133d2c] opacity-[0.14] [mask-image:linear-gradient(to_left,black_45%,transparent)]" />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
-            <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#133d2c] text-white text-xs font-semibold mb-3 shadow-2xs">
-                <span>Dokumentasi Kegiatan</span>
-              </div>
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-serif-display text-[#141d18] tracking-tight">
-                Dokumentasi Persiapan Menu MBG
-              </h2>
-              <p className="text-xs sm:text-sm text-[#55645c] mt-2 max-w-2xl leading-relaxed">
-                Foto kegiatan dari dapur hingga penyaluran makanan ke sekolah.
-              </p>
-            </div>
-          </div>
-
-          {/* 4 Kartu Foto Dokumentasi Kegiatan */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {ACTIVITY_DOCS.map((doc) => (
-              <div
-                key={doc.id}
-                className="bg-[#faf8f4] rounded-3xl p-4 border border-[#ded7c8] shadow-xs flex flex-col justify-between hover:border-[#133d2c] transition-all group"
-              >
-                <div>
-                  <div className="aspect-4/3 rounded-2xl overflow-hidden bg-slate-900 border border-[#ded7c8] mb-3.5">
-                    <img
-                      src={doc.image}
-                      alt={doc.title}
-                      className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
-                    />
-                  </div>
-                  <h3 className="text-sm font-bold text-[#141d18]">
-                    {doc.title}
-                  </h3>
-                  <p className="text-xs text-[#55645c] mt-1 leading-relaxed">
-                    {doc.description}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <DocumentationRecapSection recap={config.documentationRecap} />
 
       {/* ========================================================
           SEKSI 6: SEKOLAH PENERIMA (#sekolah-penerima)
