@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import trayImg1 from '../assets/tray_sample_1.jpg';
 import trayImg2 from '../assets/tray_double_1.jpg';
 import trayImg3 from '../assets/tray_double_2.jpg';
@@ -120,10 +121,36 @@ export const INGREDIENT_CATEGORIES: { value: string; label: string }[] = [
   { value: 'pelengkap', label: 'Pelengkap' },
 ];
 
+const normalizeFoodToken = (s?: string | null): string =>
+  String(s || '').toLowerCase().replace(/\btelor\b/g, 'telur').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+
+/**
+ * Cek apakah pahlawan gizi utama memang bagian dari menu atau daftar bahan hari ini,
+ * agar sorotan dari hari sebelumnya (mis. Telur) tidak ikut tampil ketika menunya sudah berganti.
+ */
+export const isNutritionHeroInMenu = (
+  heroName?: string | null,
+  menuTitle?: string | null,
+  ingredients?: IngredientNutritionInfo[] | null
+): boolean => {
+  const hero = normalizeFoodToken(heroName);
+  if (!hero) return false;
+  const list = Array.isArray(ingredients) ? ingredients : [];
+  const haystacks = [
+    normalizeFoodToken(menuTitle),
+    ...list.map(i => normalizeFoodToken(i?.name)),
+  ].filter(Boolean);
+  if (haystacks.length === 0) return true;
+  if (haystacks.some(h => h.includes(hero) || hero.includes(h))) return true;
+  const tokens = hero.split(' ').filter(t => t.length >= 3);
+  return tokens.length > 0 && tokens.every(t => haystacks.some(h => h.includes(t)));
+};
+
 /** Bahan yang menjadi slide setelah pahlawan utama; bahan yang namanya memuat nama pahlawan dilewati agar tidak dobel. */
-export const heroSlideIngredients = (heroName: string, ingredients: IngredientNutritionInfo[]) => {
-  const name = heroName.trim().toLowerCase();
-  return ingredients.filter(i => !name || !i.name.toLowerCase().includes(name));
+export const heroSlideIngredients = (heroName?: string | null, ingredients?: IngredientNutritionInfo[] | null) => {
+  const name = normalizeFoodToken(heroName);
+  const list = Array.isArray(ingredients) ? ingredients : [];
+  return list.filter(i => !name || !normalizeFoodToken(i?.name).includes(name));
 };
 
 export interface PortionTierConfig {

@@ -16,7 +16,8 @@ import {
   VIDEO_PRESETS,
   IMAGE_PRESETS,
   EMPTY_PORTION_TIER,
-  hasPortionNutrition
+  hasPortionNutrition,
+  isNutritionHeroInMenu
 } from '../db/websiteConfigStorage';
 import QRCode from 'qrcode';
 import { warehouseDb } from '../db/storage';
@@ -701,6 +702,8 @@ export const WebsiteCmsModule: React.FC = () => {
 
     setConfig(prev => {
       const c = prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+      const nextIngredients = ingredients.length > 0 ? ingredients : c.ingredients;
+      const keepHero = isNutritionHeroInMenu(c.nutritionHero?.name || '', order.menuTitle, nextIngredients);
       return {
         ...prev,
         menuToday: {
@@ -716,7 +719,10 @@ export const WebsiteCmsModule: React.FC = () => {
           menuB3: order.specialDietB3?.trim() || '',
           description: order.menuDescription?.trim() || c.description,
           // Order tanpa daftar bahan: pertahankan daftar lama daripada mengosongkan halaman publik.
-          ingredients: ingredients.length > 0 ? ingredients : c.ingredients,
+          ingredients: nextIngredients,
+          nutritionHero: keepHero
+            ? c.nutritionHero
+            : { ...c.nutritionHero, name: '', category: '', imageUrl: '', points: [], keyNutrients: [] },
         },
       };
     });
@@ -1029,11 +1035,16 @@ export const WebsiteCmsModule: React.FC = () => {
     if (await askConfirm({ title: 'Hapus bahan ini dari menu hari ini?', message: 'Website publik berubah setelah kamu klik Simpan.', confirmText: 'Hapus bahan', variant: 'danger' })) {
       setConfig(prev => {
         const c = prev.menuToday || DEFAULT_WEBSITE_CONFIG.menuToday;
+        const remaining = c.ingredients.filter(i => i.id !== id);
+        const keepHero = isNutritionHeroInMenu(c.nutritionHero?.name || '', c.menuTitle, remaining);
         return {
           ...prev,
           menuToday: {
             ...c,
-            ingredients: c.ingredients.filter(i => i.id !== id)
+            ingredients: remaining,
+            nutritionHero: keepHero
+              ? c.nutritionHero
+              : { ...c.nutritionHero, name: '', category: '', imageUrl: '', points: [], keyNutrients: [] },
           }
         };
       });
@@ -2065,7 +2076,13 @@ export const WebsiteCmsModule: React.FC = () => {
 
             <CollapsibleCard
               title="Konten anak"
-              summary={`${hero?.name?.trim() ? `Pahlawan gizi: ${hero.name}` : 'Pahlawan gizi disembunyikan'} · ${habitCount} kebiasaan baik`}
+              summary={`${
+                isNutritionHeroInMenu(hero?.name || '', menuToday.menuTitle, menuToday.ingredients)
+                  ? `Pahlawan gizi: ${hero.name}`
+                  : menuToday.ingredients.length > 0
+                  ? `Pahlawan gizi: ${menuToday.ingredients.length} bahan menu`
+                  : 'Pahlawan gizi belum diisi'
+              } · ${habitCount} kebiasaan baik`}
             >
               <MenuTodayKidsEditor menuToday={menuToday} onNotify={showNotification} onChange={patchMenuToday} />
             </CollapsibleCard>

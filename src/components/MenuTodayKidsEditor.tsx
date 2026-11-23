@@ -7,9 +7,10 @@ import {
   INGREDIENT_CATEGORIES,
   IngredientNutritionInfo,
   heroSlideIngredients,
+  isNutritionHeroInMenu,
   uploadCmsMedia
 } from '../db/websiteConfigStorage';
-import { Upload, Trash2, PenLine, Images, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Upload, Trash2, PenLine, Images, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
 import { requestKidsAiDraft, requestMenuAiDraft, KidsAiDraft } from '../utils/menuAiDraft';
@@ -121,13 +122,30 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
 
   const updateHero = (patch: Partial<NutritionHeroConfig>) => onChange({ nutritionHero: { ...hero, ...patch } });
 
-  // Slide pertama pahlawan pilihan petugas; slide berikutnya bahan di menu, sama seperti carousel halaman publik.
-  const slideIngredients = heroSlideIngredients(hero.name, menuToday.ingredients);
-  const slideCount = slideIngredients.length + 1;
+  // Sorotan utama hanya tampil bila namanya kosong/sedang ditambah atau memang ada di menu/bahan hari ini.
+  // Bila sorotan dari hari sebelumnya (mis. Telur) tidak ada di menu sekarang, slide disembunyikan agar tidak tertinggal.
+  const [isEditingCustomHero, setIsEditingCustomHero] = useState(false);
+  const hasHeroName = Boolean(hero?.name?.trim());
+  const heroInMenu = isNutritionHeroInMenu(hero?.name, menuToday.menuTitle, menuToday.ingredients);
+  const staleHero = hasHeroName && !heroInMenu;
+  const showCustomHeroSlide = isEditingCustomHero || heroInMenu;
+
+  const slideIngredients = heroSlideIngredients(showCustomHeroSlide ? hero?.name : '', menuToday.ingredients);
+  const slideCount = slideIngredients.length + (showCustomHeroSlide ? 1 : 0);
   const [slideIndex, setSlideIndex] = useState(0);
-  const slide = Math.min(slideIndex, slideCount - 1);
-  const slideItem: IngredientNutritionInfo | null = slide > 0 ? slideIngredients[slide - 1] : null;
-  const goSlide = (step: number) => setSlideIndex((slide + step + slideCount) % slideCount);
+  const slide = slideCount > 0 ? Math.min(slideIndex, slideCount - 1) : 0;
+  const isHeroSlide = showCustomHeroSlide && slide === 0;
+  const slideItem: IngredientNutritionInfo | null = showCustomHeroSlide
+    ? (slide > 0 ? slideIngredients[slide - 1] : null)
+    : (slideIngredients[slide] ?? null);
+  const goSlide = (step: number) => {
+    if (slideCount > 0) setSlideIndex((slide + step + slideCount) % slideCount);
+  };
+  const clearHeroSpotlight = () => {
+    setIsEditingCustomHero(false);
+    setSlideIndex(0);
+    updateHero({ name: '', category: '', imageUrl: '', points: [], keyNutrients: [] });
+  };
 
   const habit: DailyHabitItem =
     habits.find(h => h.weekday === activeDay) ?? { weekday: activeDay, title: '', description: '', steps: [], imageUrl: '' };
@@ -192,8 +210,8 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
 
   const handleAiSlide = async () => {
     const item = slideItem;
-    if (!item?.name.trim()) return;
-    const hasContent = Boolean(item.nutritionHighlight.trim() || item.whyGood?.some(w => w.trim()));
+    if (!item?.name?.trim()) return;
+    const hasContent = Boolean(item.nutritionHighlight?.trim() || item.whyGood?.some(w => w.trim()));
     if (hasContent && !(await confirmReplace(`teks slide ${item.name}`))) return;
     setAiBusy('hero');
     try {
@@ -245,31 +263,87 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Pahlawan Gizi */}
       <div className="space-y-4">
-        <div className="pb-2 border-b border-slate-100 flex items-start justify-between gap-2">
+        <div className="pb-2 border-b border-slate-100 flex flex-wrap items-start justify-between gap-2">
           <div>
             <h3 className="text-sm font-bold text-slate-900">Pahlawan Gizi Hari Ini</h3>
             <p className="text-[11px] text-slate-500">
-              {slideItem ? 'Isi slide ini tersimpan di data bahan, sama dengan daftar Bahan pangan.' : 'Satu bahan yang disorot untuk anak. Kosongkan nama untuk memulai dari slide bahan.'}
+              {isHeroSlide
+                ? 'Sorotan tambahan di slide pertama. Kosongkan atau hapus bila cukup memakai slide bahan menu.'
+                : slideItem
+                ? 'Isi slide ini tersimpan di data bahan, sama dengan daftar Bahan pangan.'
+                : 'Belum ada bahan menu atau sorotan utama untuk ditampilkan.'}
             </p>
           </div>
-          <AiButton busy={busyLabel('hero')} disabled={anyAiBusy || (slideItem !== null && !slideItem.name.trim())} label="Isi teks dengan AI" onClick={slideItem ? handleAiSlide : handleAiHero} />
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+            {!showCustomHeroSlide && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditingCustomHero(true);
+                  setSlideIndex(0);
+                }}
+                className="inline-flex items-center gap-1 px-2.5 min-h-[44px] sm:min-h-[28px] rounded-md border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Sorotan utama
+              </button>
+            )}
+            {isHeroSlide && (
+              <button
+                type="button"
+                onClick={clearHeroSpotlight}
+                className="inline-flex items-center gap-1 px-2 min-h-[44px] sm:min-h-[28px] rounded-md text-xs font-semibold text-rose-700 hover:bg-rose-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Hapus sorotan
+              </button>
+            )}
+            {slideCount > 0 && (
+              <AiButton
+                busy={busyLabel('hero')}
+                disabled={anyAiBusy || (slideItem !== null && !slideItem.name.trim())}
+                label="Isi teks dengan AI"
+                onClick={slideItem ? handleAiSlide : handleAiHero}
+              />
+            )}
+          </div>
         </div>
+
+        {staleHero && !isEditingCustomHero && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <span>
+              Sorotan lama <strong>{hero.name}</strong> tidak ada di menu hari ini sehingga disembunyikan.
+            </span>
+            <button
+              type="button"
+              onClick={clearHeroSpotlight}
+              className="inline-flex items-center gap-1 px-2.5 min-h-[44px] sm:min-h-[28px] rounded-md border border-amber-300 bg-white text-xs font-semibold text-amber-900 hover:bg-amber-100 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Hapus data lama
+            </button>
+          </div>
+        )}
 
         {slideCount > 1 && (
           <div role="group" aria-label="Pilih slide" className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
-            <button type="button" onClick={() => goSlide(-1)} aria-label="Slide sebelumnya" className="flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] rounded-md text-slate-700 hover:bg-white cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-600">
+            <button type="button" onClick={() => goSlide(-1)} aria-label="Slide sebelumnya" className="flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] rounded-md text-slate-700 hover:bg-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1">
               <ChevronLeft className="w-4 h-4" />
             </button>
             <p aria-live="polite" className="min-w-0 truncate text-xs font-semibold text-slate-800">
               Slide {slide + 1} dari {slideCount}: {slideItem ? slideItem.name : hero.name.trim() || 'Pahlawan utama'}
             </p>
-            <button type="button" onClick={() => goSlide(1)} aria-label="Slide berikutnya" className="flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] rounded-md text-slate-700 hover:bg-white cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-600">
+            <button type="button" onClick={() => goSlide(1)} aria-label="Slide berikutnya" className="flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[36px] sm:min-h-[36px] rounded-md text-slate-700 hover:bg-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1">
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         )}
 
-        {slideItem ? (
+        {slideCount === 0 ? (
+          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-xs text-slate-600">
+            Tambahkan bahan menu di bagian <strong>Bahan pangan</strong> di atas agar tampil di slide Pahlawan Gizi, atau klik <strong>Sorotan utama</strong> untuk menulis satu bahan secara manual.
+          </div>
+        ) : slideItem ? (
           <div key={slideItem.id} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -310,7 +384,7 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
               <input
                 id="slide-nutrients"
                 className={inputCls}
-                value={slideItem.nutritionHighlight}
+                value={slideItem.nutritionHighlight || ''}
                 onChange={e => patchIngredientLatest(slideItem.id, { nutritionHighlight: e.target.value })}
                 placeholder="Pisahkan dengan koma. Contoh: Vitamin C, Serat"
               />
@@ -321,14 +395,14 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className={labelCls} htmlFor="hero-name">Nama bahan</label>
-            <input id="hero-name" className={inputCls} value={hero.name} onChange={e => updateHero({ name: e.target.value })} placeholder="Tempe" />
+            <input id="hero-name" className={inputCls} value={hero.name || ''} onChange={e => updateHero({ name: e.target.value })} placeholder="Tempe" />
           </div>
           <div>
             <label className={labelCls} htmlFor="hero-category">Kategori</label>
             <input
               id="hero-category"
               className={inputCls}
-              value={hero.category}
+              value={hero.category || ''}
               onChange={e => updateHero({ category: e.target.value })}
               placeholder="Protein Nabati"
             />
@@ -339,7 +413,7 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
         <ImagePicker
           label="Gambar kartun"
           emptyHint="Kosong: memakai foto bahan"
-          value={hero.imageUrl}
+          value={hero.imageUrl || ''}
           onChange={url => updateHero({ imageUrl: url })}
           onNotify={onNotify}
         />
@@ -350,7 +424,7 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
             id="hero-points"
             rows={4}
             className={inputCls}
-            value={hero.points.join('\n')}
+            value={(hero.points || []).join('\n')}
             onChange={e => updateHero({ points: e.target.value.split('\n') })}
             onBlur={e => updateHero({ points: linesToList(e.target.value) })}
           />

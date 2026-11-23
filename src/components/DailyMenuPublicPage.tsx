@@ -21,7 +21,8 @@ import {
   TrayLabelPlacement,
   EMPTY_PORTION_TIER,
   hasPortionNutrition,
-  heroSlideIngredients
+  heroSlideIngredients,
+  isNutritionHeroInMenu
 } from '../db/websiteConfigStorage';
 import { TrayStage, menuDishes, resolveTrayLabels, shownTrayLabels, trayLabelTexts } from './menuPublic/TrayStage';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -95,8 +96,8 @@ const PLATE_SECTORS: { group: FoodGroup; from: number; to: number }[] = [
   { group: 'pokok', from: 240, to: 360 }
 ];
 
-function groupOfCategory(category: string): FoodGroup | null {
-  const c = category.toLowerCase();
+function groupOfCategory(category: string | undefined): FoodGroup | null {
+  const c = (category || '').toLowerCase();
   if (c.includes('karbo') || c.includes('pokok')) return 'pokok';
   if (c.includes('protein') || c.includes('lauk')) return 'lauk';
   if (c.includes('sayur')) return 'sayur';
@@ -158,19 +159,19 @@ function formatUpdatedAt(iso: string): string | null {
   return `Diperbarui ${d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}, ${time}`;
 }
 
-const cleanList = (items: string[] | undefined) => (items || []).map(s => s.trim()).filter(Boolean);
-const splitSentences = (text: string) => text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+const cleanList = (items: string[] | undefined) => (items || []).map(s => (s || '').trim()).filter(Boolean);
+const splitSentences = (text: string | undefined) => (text || '').split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
 // Kalimat pertama fakta jadi pembuka yang ditebalkan; emoji sesudah tanda bacanya ikut ke kalimat itu.
 // Tanpa batas kalimat yang wajar (atau kalimatnya sangat panjang), teks tampil biasa tanpa pembuka.
-const splitFunFact = (text: string): { lead: string; body: string } => {
-  const t = text.trim();
+const splitFunFact = (text: string | undefined): { lead: string; body: string } => {
+  const t = (text || '').trim();
   const m = t.match(/^(.+?[.!?](?:\s*[\p{Extended_Pictographic}️‍]+)?)\s+(\S[\s\S]*)$/u);
   if (m && m[1].length <= 160) return { lead: m[1], body: m[2] };
   return t.length <= 160 ? { lead: t, body: '' } : { lead: '', body: t };
 };
 // Kategori disimpan sebagai kode ("protein_hewani"); di layar dan di kuis dibaca sebagai kata biasa.
-const categoryLabel = (category: string) => category.trim().replace(/_/g, ' ');
-const splitHighlights = (text: string) => text.split(/[•,;]/).map(s => s.trim()).filter(Boolean);
+const categoryLabel = (category: string | undefined) => (category || '').trim().replace(/_/g, ' ');
+const splitHighlights = (text: string | undefined) => (text || '').split(/[•,;]/).map(s => s.trim()).filter(Boolean);
 const shortName = (name: string) => name.trim().split(/\s+/)[0].toLowerCase();
 
 function readLocal(key: string): string | null {
@@ -1296,7 +1297,7 @@ const NutritionHeroPanel: React.FC<{ hero: NutritionHeroConfig; ingredients: Ing
   const points = cleanList(hero.points);
   const group = groupOfCategory(hero.category);
   const meta = group ? FOOD_GROUPS[group] : FOOD_GROUPS.lauk;
-  const inTray = ingredients.find(i => i.name.toLowerCase().includes(hero.name.trim().toLowerCase()));
+  const inTray = ingredients.find(i => (i.name || '').toLowerCase().includes((hero.name || '').trim().toLowerCase()));
   const nutrients = cleanList(hero.keyNutrients).length ? cleanList(hero.keyNutrients) : inTray ? splitHighlights(inTray.nutritionHighlight) : [];
 
   return (
@@ -1340,11 +1341,11 @@ const NutritionHeroPanel: React.FC<{ hero: NutritionHeroConfig; ingredients: Ing
   );
 };
 
-// Slide pertama pahlawan pilihan petugas, lalu bahan lain di menu hari ini memakai data gizinya sendiri.
-const NutritionHeroCarousel: React.FC<{ hero: NutritionHeroConfig; ingredients: IngredientNutritionInfo[] }> = ({ hero, ingredients }) => {
+// Slide pertama pahlawan pilihan petugas (hanya bila masih sesuai menu hari ini), lalu bahan lain di menu.
+const NutritionHeroCarousel: React.FC<{ hero: NutritionHeroConfig; menuTitle: string; ingredients: IngredientNutritionInfo[] }> = ({ hero, menuTitle, ingredients }) => {
   const slides = useMemo(() => {
-    const heroName = hero.name.trim().toLowerCase();
-    const fromIngredients: NutritionHeroConfig[] = heroSlideIngredients(hero.name, ingredients)
+    const showHero = isNutritionHeroInMenu(hero.name, menuTitle, ingredients);
+    const fromIngredients: NutritionHeroConfig[] = heroSlideIngredients(showHero ? hero.name : '', ingredients)
       .map(i => ({
         name: i.name,
         category: i.category,
@@ -1352,8 +1353,8 @@ const NutritionHeroCarousel: React.FC<{ hero: NutritionHeroConfig; ingredients: 
         points: cleanList(i.whyGood).length ? cleanList(i.whyGood) : splitSentences(i.healthBenefits),
         keyNutrients: splitHighlights(i.nutritionHighlight)
       }));
-    return heroName ? [hero, ...fromIngredients] : fromIngredients;
-  }, [hero, ingredients]);
+    return showHero ? [hero, ...fromIngredients] : fromIngredients;
+  }, [hero, menuTitle, ingredients]);
   const [index, setIndex] = useState(0);
   useEffect(() => setIndex(0), [slides]);
 
@@ -1974,7 +1975,11 @@ export const DailyMenuPublicPage: React.FC = () => {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3.5 lg:gap-5 items-start">
             <PlateCard ingredients={ingredients} />
-            <NutritionHeroCarousel hero={hero} ingredients={activeType === 'reguler' ? ingredients : NO_INGREDIENTS} />
+            <NutritionHeroCarousel
+              hero={hero}
+              menuTitle={activeType === 'reguler' ? menuToday.menuTitle : (menuToday.menuB3 || menuToday.menuTitle)}
+              ingredients={activeType === 'reguler' ? ingredients : NO_INGREDIENTS}
+            />
             <HabitSection habits={menuToday.dailyHabits} />
           </div>
 

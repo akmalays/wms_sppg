@@ -18,6 +18,8 @@ import {
   Pencil,
   X,
   AlertTriangle,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { SppgLogo } from './SppgLogo';
 import { AiInsightPanel } from './ai/AiInsightPanel';
@@ -81,6 +83,14 @@ const formatDate = (iso: string) => {
   if (!iso) return '-';
   const [y, m, d] = iso.split('-');
   return `${parseInt(d, 10)} ${MONTHS_SHORT[parseInt(m, 10) - 1] || m} ${y}`;
+};
+
+// "18 november 2026", format tanggal untuk laporan WA harian.
+const formatWaDate = (iso: string) => {
+  if (!iso) return '-';
+  const [y, m, d] = iso.split('-');
+  const month = (MONTHS_LONG[parseInt(m, 10) - 1] || m).toLowerCase();
+  return `${parseInt(d, 10)} ${month} ${y}`;
 };
 
 const formatKg = (val: number) =>
@@ -170,6 +180,7 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
 
   const [wasteLogs, setWasteLogs] = useState<WasteLog[]>(() => warehouseDb.getWasteLogs());
   const [successNotice, setSuccessNotice] = useState('');
+  const [copiedDate, setCopiedDate] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeView, setActiveView] = useState<'DAILY' | 'MATRIX' | 'LOGS'>('DAILY');
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
@@ -219,6 +230,68 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
   const showNotice = (msg: string) => {
     setSuccessNotice(msg);
     setTimeout(() => setSuccessNotice(''), 5000);
+  };
+
+  const buildWaWasteText = (date: string): string => {
+    const dayLogs = wasteLogs.filter(l => l.date === date);
+    const nutritionTotals: Record<NutritionKey, number> = {
+      karbohidrat: 0,
+      sayur: 0,
+      'protein hewani': 0,
+      'protein nabati': 0,
+      buah: 0,
+    };
+    const otherTotals = new Map<string, number>();
+
+    dayLogs.forEach(l => {
+      const kg = toKg(l);
+      if (kg === null) return;
+      const nk = nutritionKeyOf(l.wasteCategory);
+      if (nk) {
+        nutritionTotals[nk] += kg;
+      } else {
+        otherTotals.set(l.wasteCategory, (otherTotals.get(l.wasteCategory) || 0) + kg);
+      }
+    });
+
+    const lines = NUTRITION.map(n => `${n.key} : ${formatKg(round2(nutritionTotals[n.key]))} kg`);
+    let grandTotal = NUTRITION.reduce((sum, n) => sum + nutritionTotals[n.key], 0);
+
+    otherTotals.forEach((kg, cat) => {
+      if (kg <= 0) return;
+      grandTotal += kg;
+      lines.push(`${categoryLabel(cat).toLowerCase()} : ${formatKg(round2(kg))} kg`);
+    });
+
+    return [
+      `limbah tanggal ${formatWaDate(date)} :`,
+      `total : ${formatKg(round2(grandTotal))} kg`,
+      ...lines,
+    ].join('\n');
+  };
+
+  const handleCopyWaDate = async (date: string) => {
+    const text = buildWaWasteText(date);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+      }
+      setCopiedDate(date);
+      setTimeout(() => setCopiedDate(prev => (prev === date ? null : prev)), 2500);
+      showNotice(`Template WA limbah ${formatWaDate(date)} disalin ke clipboard.`);
+    } catch {
+      window.prompt('Salin template WA limbah ini:', text);
+    }
   };
 
   const activeRange = useMemo(() => {
@@ -1098,7 +1171,7 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                         ))}
                         <th className="py-2.5 px-3 text-right">Total (kg)</th>
                         <th className="py-2.5 px-3">Penanganan</th>
-                        {canRecord && <th className="py-2.5 px-3 w-24"><span className="sr-only">Aksi</span></th>}
+                        <th className="py-2.5 px-3 w-28"><span className="sr-only">Aksi</span></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1116,30 +1189,45 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                           ))}
                           <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 tabular-nums">{formatKg(d.total)}</td>
                           <td className="py-2.5 px-3 text-slate-700">{d.disposal || '-'}</td>
-                          {canRecord && (
-                            <td className="py-2 px-3">
-                              <div className="flex items-center justify-end gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => openDailyModal(d.date)}
-                                  aria-label={`Ubah sisa makanan ${formatDate(d.date)}`}
-                                  title="Ubah"
-                                  className={`${iconButtonClass} text-slate-600 hover:text-emerald-800 hover:bg-emerald-50`}
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteDay(d.date)}
-                                  aria-label={`Hapus sisa makanan ${formatDate(d.date)}`}
-                                  title="Hapus"
-                                  className={`${iconButtonClass} text-slate-600 hover:text-rose-700 hover:bg-rose-50`}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </td>
-                          )}
+                          <td className="py-2 px-3">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleCopyWaDate(d.date)}
+                                aria-label={`Salin template WA limbah ${formatDate(d.date)}`}
+                                title="Salin format WA"
+                                className={`${iconButtonClass} ${
+                                  copiedDate === d.date
+                                    ? 'text-emerald-800 bg-emerald-50'
+                                    : 'text-slate-600 hover:text-emerald-800 hover:bg-emerald-50'
+                                }`}
+                              >
+                                {copiedDate === d.date ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                              </button>
+                              {canRecord && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => openDailyModal(d.date)}
+                                    aria-label={`Ubah sisa makanan ${formatDate(d.date)}`}
+                                    title="Ubah"
+                                    className={`${iconButtonClass} text-slate-600 hover:text-emerald-800 hover:bg-emerald-50`}
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteDay(d.date)}
+                                    aria-label={`Hapus sisa makanan ${formatDate(d.date)}`}
+                                    title="Hapus"
+                                    className={`${iconButtonClass} text-slate-600 hover:text-rose-700 hover:bg-rose-50`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1169,24 +1257,38 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                         ))}
                       </dl>
                       {d.notes && <p className="text-xs text-slate-600 mt-2">{d.notes}</p>}
-                      {canRecord && (
-                        <div className="flex gap-2 mt-2.5">
-                          <button
-                            type="button"
-                            onClick={() => openDailyModal(d.date)}
-                            className="inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 bg-white min-h-[44px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                          >
-                            <Pencil className="w-4 h-4" /> Ubah
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteDay(d.date)}
-                            className="inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg border border-rose-200 text-rose-700 bg-white min-h-[44px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
-                          >
-                            <Trash2 className="w-4 h-4" /> Hapus
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex flex-wrap gap-2 mt-2.5">
+                        <button
+                          type="button"
+                          onClick={() => handleCopyWaDate(d.date)}
+                          className={`inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg border min-h-[44px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+                            copiedDate === d.date
+                              ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                              : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          {copiedDate === d.date ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                          {copiedDate === d.date ? 'Tersalin' : 'Salin WA'}
+                        </button>
+                        {canRecord && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openDailyModal(d.date)}
+                              className="inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 bg-white min-h-[44px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                            >
+                              <Pencil className="w-4 h-4" /> Ubah
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDay(d.date)}
+                              className="inline-flex items-center gap-1.5 px-3 text-xs font-semibold rounded-lg border border-rose-200 text-rose-700 bg-white min-h-[44px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                            >
+                              <Trash2 className="w-4 h-4" /> Hapus
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -1205,8 +1307,25 @@ export const WasteLogModule: React.FC<WasteLogModuleProps> = ({ entryRequest = 0
                       <th className="py-2.5 px-4 sticky left-0 bg-slate-50 z-10 min-w-[9rem]">Kategori</th>
                       {matrix.dates.map(d => (
                         <th key={d} className="py-2 px-3 text-right whitespace-nowrap">
-                          <div className="text-[11px] font-normal text-slate-600">{dayName(d)}</div>
-                          <div className="text-slate-800">{formatSheetDate(d)}</div>
+                          <div className="inline-flex items-center gap-1.5 justify-end">
+                            <div>
+                              <div className="text-[11px] font-normal text-slate-600">{dayName(d)}</div>
+                              <div className="text-slate-800">{formatSheetDate(d)}</div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyWaDate(d)}
+                              aria-label={`Salin template WA limbah ${formatDate(d)}`}
+                              title="Salin format WA"
+                              className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[28px] sm:min-h-[28px] rounded-md cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+                                copiedDate === d
+                                  ? 'text-emerald-800 bg-emerald-50'
+                                  : 'text-slate-500 hover:text-emerald-800 hover:bg-emerald-50'
+                              }`}
+                            >
+                              {copiedDate === d ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
                         </th>
                       ))}
                       <th className="py-2.5 px-4 text-right bg-slate-100">Total (kg)</th>
