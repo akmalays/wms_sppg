@@ -1091,18 +1091,18 @@ export const WebsiteCmsModule: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* Header menempel di bawah navbar, supaya status dan tombol Simpan selalu terlihat tanpa bar mengambang */}
-      <div className="sticky top-14 z-30 bg-white px-4 py-3 sm:px-5 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
+      {/* Header menempel di bawah navbar, termasuk area aman PWA (--safe-top) */}
+      <div className="sticky top-[calc(3.5rem_+_var(--safe-top))] z-30 bg-white px-3.5 py-3 sm:px-5 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 shadow-xs sm:shadow-none">
         <div className="min-w-0">
           <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Atur Website</h1>
           <p className={`inline-flex items-center gap-1.5 text-xs ${isDirty ? 'text-amber-800 font-semibold' : 'text-slate-600'}`} aria-live="polite">
-            <span className={`w-2 h-2 rounded-full ${isDirty ? 'bg-amber-500' : 'bg-emerald-600'}`} aria-hidden="true" />
-            {isDirty ? 'Belum disimpan, website publik belum berubah' : 'Semua tersimpan'}
+            <span className={`w-2 h-2 rounded-full shrink-0 ${isDirty ? 'bg-amber-500' : 'bg-emerald-600'}`} aria-hidden="true" />
+            <span className="leading-snug">{isDirty ? 'Belum disimpan, website publik belum berubah' : 'Semua tersimpan'}</span>
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
           {isDirty && (
-            <button type="button" onClick={handleDiscardChanges} disabled={isCloudSaving} className={BTN_SECONDARY}>
+            <button type="button" onClick={handleDiscardChanges} disabled={isCloudSaving} className={`${BTN_SECONDARY} flex-1 sm:flex-none`}>
               Batalkan
             </button>
           )}
@@ -1110,18 +1110,18 @@ export const WebsiteCmsModule: React.FC = () => {
             <ExternalLink className="w-4 h-4" />
             Lihat Website
           </a>
-          <button type="button" onClick={handleSaveAll} disabled={isCloudSaving || !isDirty} className={BTN_PRIMARY}>
+          <button type="button" onClick={handleSaveAll} disabled={isCloudSaving || !isDirty} className={`${BTN_PRIMARY} flex-1 sm:flex-none`}>
             <Save className="w-4 h-4" />
             {isCloudSaving ? 'Menyimpan...' : 'Simpan'}
           </button>
         </div>
       </div>
 
-      <div className="space-y-3 px-1">
+      <div className="space-y-3 px-0.5 sm:px-1">
         <p className="text-xs text-slate-600 max-w-2xl">
           Isi halaman menu hari ini (yang dibuka dari QR) dan bagian atas halaman depan website.
         </p>
-        <div role="tablist" aria-label="Bagian website" className="flex gap-1 p-1 bg-slate-200/70 rounded-lg text-xs overflow-x-auto max-w-full w-fit">
+        <div role="tablist" aria-label="Bagian website" className="grid grid-cols-2 sm:inline-flex gap-1 p-1 bg-slate-200/70 rounded-lg text-xs w-full sm:w-fit">
           {([
             { id: 'menu_today', label: 'Menu Hari Ini & QR' },
             { id: 'hero', label: 'Bagian Atas (Hero)' },
@@ -1132,7 +1132,7 @@ export const WebsiteCmsModule: React.FC = () => {
               role="tab"
               aria-selected={activeTab === tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-3 rounded-md whitespace-nowrap cursor-pointer min-h-[44px] sm:min-h-[32px] ${FOCUS} ${
+              className={`px-3 rounded-md whitespace-nowrap text-center cursor-pointer min-h-[44px] sm:min-h-[32px] ${FOCUS} ${
                 activeTab === tab.id ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900 font-medium'
               }`}
             >
@@ -1153,32 +1153,32 @@ export const WebsiteCmsModule: React.FC = () => {
               <div className="space-y-3">
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Badge Teks</label>
+                  <label className={FIELD_LABEL}>Badge Teks</label>
                   <input
                     type="text"
                     value={config.hero.heroBadge}
                     onChange={e => setConfig(prev => ({ ...prev, hero: { ...prev.hero, heroBadge: e.target.value } }))}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                    className={FIELD}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Judul Utama</label>
+                  <label className={FIELD_LABEL}>Judul Utama</label>
                   <input
                     type="text"
                     value={config.hero.heroTitle}
                     onChange={e => setConfig(prev => ({ ...prev, hero: { ...prev.hero, heroTitle: e.target.value } }))}
-                    className="w-full px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                    className={`${FIELD} font-medium`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Deskripsi Narasi</label>
+                  <label className={FIELD_LABEL}>Deskripsi Narasi</label>
                   <textarea
                     rows={3}
                     value={config.hero.heroSubtitle}
                     onChange={e => setConfig(prev => ({ ...prev, hero: { ...prev.hero, heroSubtitle: e.target.value } }))}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                    className={`${FIELD} py-2`}
                   />
                 </div>
               </div>
@@ -1192,11 +1192,11 @@ export const WebsiteCmsModule: React.FC = () => {
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <span className="text-xs font-semibold text-slate-700">Jenis latar</span>
-                <div className="flex items-center p-1 bg-slate-100 rounded-lg">
+                <div className="grid grid-cols-2 sm:inline-flex items-center p-1 bg-slate-100 rounded-lg">
                   <button
                     type="button"
                     onClick={() => setConfig(prev => ({ ...prev, hero: { ...prev.hero, backgroundType: 'video' } }))}
-                    className={`px-3 py-1 min-h-[44px] sm:min-h-[30px] text-xs font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${FOCUS} ${
+                    className={`justify-center px-3 py-1 min-h-[44px] sm:min-h-[30px] text-xs font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${FOCUS} ${
                       config.hero.backgroundType === 'video'
                         ? 'bg-white text-slate-900 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
@@ -1208,7 +1208,7 @@ export const WebsiteCmsModule: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setConfig(prev => ({ ...prev, hero: { ...prev.hero, backgroundType: 'image' } }))}
-                    className={`px-3 py-1 min-h-[44px] sm:min-h-[30px] text-xs font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${FOCUS} ${
+                    className={`justify-center px-3 py-1 min-h-[44px] sm:min-h-[30px] text-xs font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${FOCUS} ${
                       config.hero.backgroundType === 'image'
                         ? 'bg-white text-slate-900 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
@@ -1224,7 +1224,7 @@ export const WebsiteCmsModule: React.FC = () => {
               <div className="space-y-4 pt-1">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-100">
                   <div>
-                    <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <h4 className="text-xs font-bold text-slate-800 flex flex-wrap items-center gap-1.5">
                       <span>Playlist Video Hero (Looping Otomatis)</span>
                       <span className="px-2 py-0.5 rounded-md text-[10px] bg-emerald-100 text-emerald-900 font-semibold">
                         {(config.hero.videos || []).length} Video
@@ -1235,7 +1235,7 @@ export const WebsiteCmsModule: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="grid grid-cols-2 sm:flex items-center gap-2">
                     <input
                       type="file"
                       ref={newHeroVideoFileRef}
@@ -1248,7 +1248,7 @@ export const WebsiteCmsModule: React.FC = () => {
                       type="button"
                       onClick={() => newHeroVideoFileRef.current?.click()}
                       disabled={isUploadingHeroVideo}
-                      className={`${BTN_PRIMARY}`}
+                      className={BTN_PRIMARY}
                       title="Unggah file MP4 langsung ke penyimpanan cloud"
                     >
                       <Upload className="w-3.5 h-3.5" />
@@ -1258,7 +1258,7 @@ export const WebsiteCmsModule: React.FC = () => {
                     <button
                       type="button"
                       onClick={handleOpenAddHeroVideo}
-                      className={`${BTN_SECONDARY}`}
+                      className={BTN_SECONDARY}
                       title="Tambah tautan video manual"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -1272,9 +1272,9 @@ export const WebsiteCmsModule: React.FC = () => {
                   {(config.hero.videos || []).map((vid, idx) => (
                     <div
                       key={vid.id}
-                      className="p-3 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-slate-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
+                      className="p-3 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-slate-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 transition-colors"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                         <span className="w-6 h-6 rounded-lg bg-[#0c3123] text-emerald-300 font-mono text-xs font-bold flex items-center justify-center shrink-0">
                           #{idx + 1}
                         </span>
@@ -1284,17 +1284,17 @@ export const WebsiteCmsModule: React.FC = () => {
                             <Play className="w-3.5 h-3.5 text-white/80" />
                           </div>
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <h5 className="font-bold text-xs text-slate-900 truncate">
                             {vid.title}
                           </h5>
-                          <p className="text-[10px] text-slate-500 font-mono truncate max-w-[280px]">
+                          <p className="text-[10px] text-slate-500 font-mono truncate">
                             {vid.url}
                           </p>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1 shrink-0 self-end sm:self-center">
+                      <div className="flex items-center justify-end gap-1 shrink-0 border-t border-slate-200/70 pt-2 sm:border-t-0 sm:pt-0">
                         <button
                           type="button"
                           onClick={() => handleMoveHeroVideo(idx, 'up')}
@@ -1442,7 +1442,7 @@ export const WebsiteCmsModule: React.FC = () => {
               summary={`${(config.hero.photoSlides?.length ? config.hero.photoSlides : DEFAULT_WEBSITE_CONFIG.hero.photoSlides || []).length} foto bergantian di sisi kanan judul`}
             >
               <div className="flex justify-end">
-                <button type="button" onClick={handleOpenAddHeroSlide} className={BTN_PRIMARY}>
+                <button type="button" onClick={handleOpenAddHeroSlide} className={`${BTN_PRIMARY} w-full sm:w-auto`}>
                   <Plus className="w-4 h-4" />
                   Tambah foto
                 </button>
@@ -1579,7 +1579,7 @@ export const WebsiteCmsModule: React.FC = () => {
 
           {/* Kolom Kanan: Pratinjau Tampilan Hero */}
           <div className="lg:col-span-5 space-y-4">
-            <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden sticky top-40 space-y-4 p-4">
+            <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden lg:sticky lg:top-[calc(8.5rem_+_var(--safe-top))] space-y-4 p-4">
               <div className="flex items-center justify-between text-xs text-slate-200 pb-2 border-b border-slate-800">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-400" />
@@ -1723,10 +1723,11 @@ export const WebsiteCmsModule: React.FC = () => {
                 )}
               </div>
               {selectedOrder && (
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full md:w-auto shrink-0">
                   {todayOrders.length > 1 && (
                     <Select
                       aria-label="Pilih sesi menu"
+                      className="w-full sm:w-auto"
                       value={selectedOrder.id}
                       onChange={e => setSelectedOrderId(e.target.value)}>
                       {todayOrders.map(o => (
@@ -1734,7 +1735,7 @@ export const WebsiteCmsModule: React.FC = () => {
                       ))}
                     </Select>
                   )}
-                  <button type="button" onClick={() => handleFillFromOrder(selectedOrder)} className={BTN_PRIMARY}>
+                  <button type="button" onClick={() => handleFillFromOrder(selectedOrder)} className={`${BTN_PRIMARY} w-full sm:w-auto`}>
                     <RotateCcw className="w-4 h-4" />
                     Isi otomatis
                   </button>
@@ -1743,37 +1744,39 @@ export const WebsiteCmsModule: React.FC = () => {
             </div>
 
             {/* QR halaman publik */}
-            <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center gap-4">
-              <div className="w-20 h-20 shrink-0 rounded-lg border border-slate-200 bg-white p-1 flex items-center justify-center">
-                {qrCodeDataUrl ? (
-                  <img src={qrCodeDataUrl} alt="QR halaman menu hari ini" className="w-full h-full object-contain" />
-                ) : (
-                  <span className="text-[11px] text-slate-500">Membuat QR...</span>
-                )}
+            <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col lg:flex-row lg:items-center gap-3.5 sm:gap-4">
+              <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                <div className="w-20 h-20 shrink-0 rounded-lg border border-slate-200 bg-white p-1 flex items-center justify-center">
+                  {qrCodeDataUrl ? (
+                    <img src={qrCodeDataUrl} alt="QR halaman menu hari ini" className="w-full h-full object-contain" />
+                  ) : (
+                    <span className="text-[11px] text-slate-500">Membuat QR...</span>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-sm font-bold text-slate-900">QR halaman menu hari ini</h2>
+                  <p className="text-xs text-slate-600 mt-0.5">Ditempel di meja makan atau nampan. Isinya mengikuti pengaturan di bawah.</p>
+                  <code className="inline-block mt-1.5 max-w-full truncate px-2 py-0.5 rounded bg-slate-100 font-mono text-[11px] text-slate-700 select-all">
+                    {targetPublicUrl}
+                  </code>
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-sm font-bold text-slate-900">QR halaman menu hari ini</h2>
-                <p className="text-xs text-slate-600 mt-0.5">Ditempel di meja makan atau nampan. Isinya mengikuti pengaturan di bawah.</p>
-                <code className="inline-block mt-1.5 max-w-full truncate px-2 py-0.5 rounded bg-slate-100 font-mono text-[11px] text-slate-700 select-all">
-                  {targetPublicUrl}
-                </code>
-              </div>
-              <div className="flex flex-wrap gap-2 shrink-0">
+              <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 shrink-0">
                 <a href="/menu-mbg-hari-ini" target="_blank" rel="noopener noreferrer" className={BTN_SECONDARY}>
-                  <ExternalLink className="w-4 h-4" />
+                  <ExternalLink className="w-4 h-4 shrink-0" />
                   Buka
                 </a>
                 <button type="button" onClick={handleCopyQrLink} className={BTN_SECONDARY}>
-                  {copiedQrLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {copiedQrLink ? <Check className="w-4 h-4 shrink-0" /> : <Copy className="w-4 h-4 shrink-0" />}
                   {copiedQrLink ? 'Disalin' : 'Salin tautan'}
                 </button>
                 <button type="button" onClick={handleDownloadQrPng} disabled={!qrCodeDataUrl} className={BTN_SECONDARY}>
-                  <Download className="w-4 h-4" />
+                  <Download className="w-4 h-4 shrink-0" />
                   Unduh PNG
                 </button>
                 <button type="button" onClick={() => setIsPrintStickerModalOpen(true)} className={BTN_SECONDARY}>
-                  <Printer className="w-4 h-4" />
-                  Cetak stiker meja
+                  <Printer className="w-4 h-4 shrink-0" />
+                  Cetak stiker
                 </button>
               </div>
             </div>
@@ -1801,12 +1804,12 @@ export const WebsiteCmsModule: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div>
                   <span className={FIELD_LABEL}>Foto sajian</span>
-                  <div className="flex items-start gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3">
                     {/* contain: ompreng tanpa latar tampil utuh seperti di halaman publik, tidak terpotong */}
-                    <div className="w-32 h-24 rounded-lg overflow-hidden border border-slate-300 bg-slate-100 shrink-0">
+                    <div className="w-full h-36 sm:w-32 sm:h-24 rounded-lg overflow-hidden border border-slate-300 bg-slate-100 shrink-0">
                       <img
                         src={menuToday.imageUrl}
                         alt="Foto menu hari ini"
@@ -1818,18 +1821,18 @@ export const WebsiteCmsModule: React.FC = () => {
                     </div>
                     <div className="min-w-0 flex-1 space-y-2">
                       <input type="file" ref={todayMenuPhotoFileRef} accept="image/*" onChange={handleUploadTodayMenuPhoto} className="hidden" />
-                      <div className="flex flex-wrap gap-2">
+                      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
                         <button type="button" onClick={() => todayMenuPhotoFileRef.current?.click()} disabled={isUploadingTodayMenuPhoto} className={BTN_SECONDARY}>
-                          <Upload className="w-4 h-4" />
-                          {isUploadingTodayMenuPhoto ? (trayCutoutStatus || 'Memproses...') : 'Unggah foto'}
+                          <Upload className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{isUploadingTodayMenuPhoto ? (trayCutoutStatus || 'Memproses...') : 'Unggah foto'}</span>
                         </button>
                         <button type="button" onClick={handleCutoutTodayMenuPhoto} disabled={Boolean(trayCutoutStatus) || !menuToday.imageUrl} className={`${BTN_SECONDARY} disabled:opacity-60 disabled:cursor-wait`}>
-                          {!isUploadingTodayMenuPhoto && trayCutoutStatus ? trayCutoutStatus : 'Hapus background'}
+                          <span className="truncate">{!isUploadingTodayMenuPhoto && trayCutoutStatus ? trayCutoutStatus : 'Hapus bg'}</span>
                         </button>
                       </div>
                       <Select
                         aria-label="Pakai foto contoh"
-                        className="w-full max-w-xs"
+                        className="w-full sm:max-w-xs"
                         value={IMAGE_PRESETS.some(p => p.url === menuToday.imageUrl) ? menuToday.imageUrl : ''}
                         onChange={e => e.target.value && patchMenuToday({ imageUrl: e.target.value })}
                       >
@@ -1842,7 +1845,7 @@ export const WebsiteCmsModule: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  <div className="flex items-end justify-between gap-2 mb-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                     <label htmlFor="mt-desc" className={`${FIELD_LABEL} mb-0`}>Deskripsi sajian</label>
                     <button type="button" onClick={handleAiDescription} disabled={aiBusy !== null}
                       className={`inline-flex items-center gap-1 px-2 min-h-[44px] sm:min-h-[28px] rounded-md text-xs font-semibold text-emerald-800 hover:bg-emerald-50 disabled:text-slate-400 cursor-pointer disabled:cursor-wait ${FOCUS}`}>
@@ -1880,7 +1883,41 @@ export const WebsiteCmsModule: React.FC = () => {
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
+              {/* Mobile: kartu tumpuk tanpa scroll horizontal */}
+              <div className="sm:hidden space-y-3">
+                {PORTION_FIELDS.map(f => (
+                  <div key={f.key} className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+                    <div className="text-xs font-semibold text-slate-800">{f.label}</div>
+                    <div className={f.key === 'description' ? 'space-y-2' : 'grid grid-cols-2 gap-2'}>
+                      {(['portionSmall', 'portionLarge'] as const).map(tier => (
+                        <label key={tier} className="block">
+                          <span className="block text-[11px] text-slate-600 mb-1">
+                            {tier === 'portionSmall' ? 'Porsi kecil' : 'Porsi besar'}
+                          </span>
+                          {f.key === 'description' ? (
+                            <textarea
+                              rows={2}
+                              value={menuToday[tier][f.key]}
+                              onChange={e => patchPortion(tier, f.key, e.target.value)}
+                              className={`${FIELD} py-2`}
+                            />
+                          ) : (
+                            <input
+                              type="text"
+                              value={menuToday[tier][f.key]}
+                              onChange={e => patchPortion(tier, f.key, e.target.value)}
+                              className={FIELD}
+                            />
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop: tabel 3 kolom */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-xs border-separate border-spacing-y-1.5 min-w-[420px]">
                   <thead>
                     <tr className="text-left text-slate-600">
@@ -1934,8 +1971,8 @@ export const WebsiteCmsModule: React.FC = () => {
               <fieldset disabled={b3Dishes.length === 0} className="space-y-4 disabled:opacity-60">
                 <div>
                   <span className={FIELD_LABEL}>Foto ompreng 3B</span>
-                  <div className="flex items-start gap-3">
-                    <div className="w-32 h-24 rounded-lg overflow-hidden border border-slate-300 bg-slate-100 shrink-0 flex items-center justify-center">
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+                    <div className="w-full h-36 sm:w-32 sm:h-24 rounded-lg overflow-hidden border border-slate-300 bg-slate-100 shrink-0 flex items-center justify-center">
                       {menuToday.imageUrlB3 ? (
                         <img src={menuToday.imageUrlB3} alt="Foto ompreng menu 3B" className="w-full h-full object-contain" />
                       ) : (
@@ -1944,17 +1981,17 @@ export const WebsiteCmsModule: React.FC = () => {
                     </div>
                     <div className="min-w-0 flex-1 space-y-2">
                       <input type="file" ref={b3PhotoFileRef} accept="image/*" onChange={e => uploadTrayPhotoFor('imageUrlB3', e)} className="hidden" />
-                      <div className="flex flex-wrap gap-2">
+                      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
                         <button type="button" onClick={() => b3PhotoFileRef.current?.click()} disabled={isUploadingB3Photo} className={BTN_SECONDARY}>
-                          <Upload className="w-4 h-4" />
-                          {isUploadingB3Photo ? (trayCutoutStatusB3 || 'Memproses...') : 'Unggah foto'}
+                          <Upload className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{isUploadingB3Photo ? (trayCutoutStatusB3 || 'Memproses...') : 'Unggah foto'}</span>
                         </button>
                         <button type="button" onClick={() => cutoutTrayPhotoFor('imageUrlB3')} disabled={Boolean(trayCutoutStatusB3) || !menuToday.imageUrlB3} className={`${BTN_SECONDARY} disabled:opacity-60 disabled:cursor-wait`}>
-                          {!isUploadingB3Photo && trayCutoutStatusB3 ? trayCutoutStatusB3 : 'Hapus background'}
+                          <span className="truncate">{!isUploadingB3Photo && trayCutoutStatusB3 ? trayCutoutStatusB3 : 'Hapus bg'}</span>
                         </button>
                         {menuToday.imageUrlB3 && (
-                          <button type="button" onClick={() => patchMenuToday({ imageUrlB3: '', trayLabelsB3: null })} className={`${BTN_SECONDARY} text-rose-700`}>
-                            <Trash2 className="w-4 h-4" />
+                          <button type="button" onClick={() => patchMenuToday({ imageUrlB3: '', trayLabelsB3: null })} className={`${BTN_SECONDARY} col-span-2 sm:col-span-1 text-rose-700`}>
+                            <Trash2 className="w-4 h-4 shrink-0" />
                             Hapus foto
                           </button>
                         )}
@@ -1966,7 +2003,30 @@ export const WebsiteCmsModule: React.FC = () => {
 
                 <div>
                   <span className={FIELD_LABEL}>Gizi per porsi menu 3B</span>
-                  <div className="overflow-x-auto">
+                  <div className="sm:hidden space-y-3">
+                    {PORTION_FIELDS.filter(f => f.key !== 'description').map(f => (
+                      <div key={f.key} className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+                        <div className="text-xs font-semibold text-slate-800">{f.label}</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          {(['portionSmallB3', 'portionLargeB3'] as const).map(tier => (
+                            <label key={tier} className="block">
+                              <span className="block text-[11px] text-slate-600 mb-1">
+                                {tier === 'portionSmallB3' ? 'Porsi kecil' : 'Porsi besar'}
+                              </span>
+                              <input
+                                type="text"
+                                value={(menuToday[tier] ?? EMPTY_PORTION_TIER)[f.key]}
+                                onChange={e => patchPortion(tier, f.key, e.target.value)}
+                                placeholder={f.key === 'tierName' ? (tier === 'portionSmallB3' ? 'Balita' : 'Bumil & Busui') : undefined}
+                                className={FIELD}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="hidden sm:block overflow-x-auto">
                     <table className="w-full text-xs border-separate border-spacing-y-1.5 min-w-[420px]">
                       <thead>
                         <tr className="text-left text-slate-600">
@@ -2003,23 +2063,23 @@ export const WebsiteCmsModule: React.FC = () => {
                 ? `${menuToday.ingredients.length} bahan: ${menuToday.ingredients.slice(0, 4).map(i => i.name).join(', ')}${menuToday.ingredients.length > 4 ? ', ...' : ''}`
                 : 'Belum ada bahan'}
             >
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <p className="text-xs text-slate-600">Foto, takaran, dan manfaat tiap bahan. Urutan di sini sama dengan di halaman publik.</p>
-                <div className="flex flex-wrap justify-end gap-2 shrink-0">
+                <div className="grid grid-cols-1 sm:flex sm:flex-wrap sm:justify-end gap-2 shrink-0">
                   {menuToday.ingredients.length > 0 && (
                     <button type="button" onClick={handleAiTidyIngredients} disabled={isTidying} className={`${BTN_SECONDARY} disabled:cursor-wait disabled:text-slate-400`}>
-                      <ListChecks className="w-4 h-4" />
-                      {isTidying ? 'Merapikan...' : 'Rapikan bahan dengan AI'}
+                      <ListChecks className="w-4 h-4 shrink-0" />
+                      {isTidying ? 'Merapikan...' : 'Rapikan bahan (AI)'}
                     </button>
                   )}
                   {menuToday.ingredients.length > 0 && (
                     <button type="button" onClick={handleAiIngredients} disabled={aiBusy !== null} className={`${BTN_SECONDARY} disabled:cursor-wait disabled:text-slate-400`}>
-                      <PenLine className="w-4 h-4" />
-                      {aiBusy === 'ingredients' ? 'Menulis...' : 'Isi teks kosong dengan AI'}
+                      <PenLine className="w-4 h-4 shrink-0" />
+                      {aiBusy === 'ingredients' ? 'Menulis...' : 'Isi teks kosong (AI)'}
                     </button>
                   )}
                   <button type="button" onClick={handleOpenAddIngredient} className={BTN_PRIMARY}>
-                    <Plus className="w-4 h-4" />
+                    <Plus className="w-4 h-4 shrink-0" />
                     Tambah bahan
                   </button>
                 </div>
@@ -2034,22 +2094,24 @@ export const WebsiteCmsModule: React.FC = () => {
                   {menuToday.ingredients.map((item, idx) => {
                     const incomplete = !item.nutritionHighlight.trim() || !item.healthBenefits.trim();
                     return (
-                      <li key={item.id} className="flex items-center gap-3 px-3 py-2">
-                        <div className="w-10 h-10 rounded-md overflow-hidden border border-slate-200 bg-slate-100 shrink-0">
-                          {item.imageUrl && (
-                            <img src={item.imageUrl} alt="" className="w-full h-full object-cover"
-                              onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} />
-                          )}
+                      <li key={item.id} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-3 py-2.5">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="w-10 h-10 rounded-md overflow-hidden border border-slate-200 bg-slate-100 shrink-0">
+                            {item.imageUrl && (
+                              <img src={item.imageUrl} alt="" className="w-full h-full object-cover"
+                                onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-slate-900 truncate">{item.name}</p>
+                            <p className="text-[11px] text-slate-600 leading-snug sm:truncate">
+                              {[item.category.replace('_', ' '), item.portionSmall && item.portionLarge ? `${item.portionSmall} / ${item.portionLarge}` : '']
+                                .filter(Boolean).join(' · ') || 'Takaran belum diisi'}
+                              {incomplete && <span className="text-amber-800"> · data gizi belum lengkap</span>}
+                            </p>
+                          </div>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-slate-900 truncate">{item.name}</p>
-                          <p className="text-[11px] text-slate-600 truncate">
-                            {[item.category.replace('_', ' '), item.portionSmall && item.portionLarge ? `${item.portionSmall} / ${item.portionLarge}` : '']
-                              .filter(Boolean).join(' · ') || 'Takaran belum diisi'}
-                            {incomplete && <span className="text-amber-800"> · data gizi belum lengkap</span>}
-                          </p>
-                        </div>
-                        <div className="flex items-center shrink-0">
+                        <div className="flex items-center justify-end gap-1 shrink-0 border-t border-slate-100 pt-1.5 sm:border-t-0 sm:pt-0">
                           <button type="button" onClick={() => handleMoveIngredient(idx, 'up')} disabled={idx === 0}
                             className={`${ICON_BTN} text-slate-600 hover:bg-slate-100`} aria-label={`Naikkan ${item.name}`}>
                             <ChevronLeft className="w-4 h-4 rotate-90" />
@@ -2223,8 +2285,8 @@ export const WebsiteCmsModule: React.FC = () => {
                 <label className="block font-semibold text-slate-700 mb-1">
                   Foto Dokumentasi Nampan / Operasional
                 </label>
-                <div className="flex items-start gap-3">
-                  <div className="w-28 h-24 rounded-lg bg-slate-900 overflow-hidden border border-slate-200 shrink-0">
+                <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+                  <div className="w-full h-36 sm:w-28 sm:h-24 rounded-lg bg-slate-900 overflow-hidden border border-slate-200 shrink-0">
                     {heroSlideImagePreview ? (
                       <img src={heroSlideImagePreview} alt="Preview Foto Hero" className="w-full h-full object-cover" />
                     ) : (
@@ -2391,8 +2453,8 @@ export const WebsiteCmsModule: React.FC = () => {
               {/* Foto Bahan */}
               <div>
                 <span className={FIELD_LABEL}>Foto bahan (opsional)</span>
-                <div className="flex items-start gap-3">
-                  <div className="w-24 h-20 rounded-lg bg-slate-100 overflow-hidden border border-slate-200 shrink-0">
+                <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+                  <div className="w-full h-32 sm:w-24 sm:h-20 rounded-lg bg-slate-100 overflow-hidden border border-slate-200 shrink-0">
                     {ingredientImagePreview ? (
                       <img src={ingredientImagePreview} alt="Foto bahan yang dipakai" className="w-full h-full object-cover" />
                     ) : (
@@ -2594,8 +2656,8 @@ export const WebsiteCmsModule: React.FC = () => {
 
       {/* 9. MODAL / PRINT VIEW: CETAK STIKER MEJA QR CODE */}
       {isPrintStickerModalOpen && (
-        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl border border-slate-200 max-w-md w-full p-4 sm:p-5 animate-in fade-in zoom-in-95 duration-150">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-xl border border-slate-200 max-w-md w-full p-4 sm:p-5 max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
@@ -2651,19 +2713,19 @@ export const WebsiteCmsModule: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-4 mt-4 border-t border-slate-200 flex items-center justify-between gap-2">
+            <div className="pt-4 mt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
               <button
                 type="button"
                 onClick={() => setIsPrintStickerModalOpen(false)}
-                className={`${BTN_SECONDARY}`}
+                className={BTN_SECONDARY}
               >
                 Tutup
               </button>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={handleDownloadQrPng}
-                  className="px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 font-semibold text-xs cursor-pointer inline-flex items-center gap-1.5"
+                  className={BTN_SECONDARY}
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Unduh PNG</span>
@@ -2673,7 +2735,7 @@ export const WebsiteCmsModule: React.FC = () => {
                   onClick={() => {
                     window.print();
                   }}
-                  className={`${BTN_PRIMARY}`}
+                  className={BTN_PRIMARY}
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>Cetak Stiker</span>

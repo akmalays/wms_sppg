@@ -911,10 +911,11 @@ const PLATE_LEGEND: { group: FoodGroup; label: string; role: string }[] = [
   { group: 'buah', label: 'Buah', role: 'menjaga daya tahan tubuh' }
 ];
 
-const PlateCard: React.FC<{ ingredients: IngredientNutritionInfo[] }> = ({ ingredients }) => {
+const PlateCard: React.FC<{ ingredients: IngredientNutritionInfo[]; plateTip?: string }> = ({ ingredients, plateTip }) => {
   const [selected, setSelected] = useState<FoodGroup | null>(null);
   const itemOf = (g: FoodGroup) => ingredients.find(i => groupOfCategory(i.category) === g);
   const toggle = (g: FoodGroup) => setSelected(s => (s === g ? null : g));
+  const cleanTip = plateTip?.trim() || '';
 
   return (
     <section aria-labelledby="piring-title" className={cardCls}>
@@ -980,6 +981,11 @@ const PlateCard: React.FC<{ ingredients: IngredientNutritionInfo[] }> = ({ ingre
         )}
       </div>
       <p className="text-xs text-slate-600 leading-snug mt-3">Setengah piring sayur dan buah, setengahnya lagi makanan pokok dan lauk pauk.</p>
+      {cleanTip && (
+        <div className="mt-3 rounded-xl bg-[#e9f7f1] border border-[#c9e3da] px-3.5 py-2.5 text-[13px] text-[#0d474c] leading-relaxed">
+          <span className="font-bold">Tips hari ini:</span> {cleanTip}
+        </div>
+      )}
     </section>
   );
 };
@@ -1010,7 +1016,16 @@ const PortionSwitch: React.FC<{ tiers: PortionTier[]; portion: PortionKey; onCha
   </div>
 );
 
-const IngredientStrip: React.FC<{ ingredients: IngredientNutritionInfo[]; tiers: PortionTier[]; portion: PortionKey; onPortionChange: (p: PortionKey) => void; onOpen: (index: number) => void }> = ({ ingredients, tiers, portion, onPortionChange, onOpen }) => (
+const IngredientStrip: React.FC<{
+  ingredients: IngredientNutritionInfo[];
+  description?: string;
+  tiers: PortionTier[];
+  portion: PortionKey;
+  onPortionChange: (p: PortionKey) => void;
+  onOpen: (index: number) => void;
+}> = ({ ingredients, description, tiers, portion, onPortionChange, onOpen }) => {
+  const cleanDescription = description?.trim() || '';
+  return (
   <section id="menu" aria-labelledby="bahan-title" className={cardCls}>
     <CardTitle
       id="bahan-title"
@@ -1025,6 +1040,11 @@ const IngredientStrip: React.FC<{ ingredients: IngredientNutritionInfo[]; tiers:
         ) : undefined
       }
     />
+    {cleanDescription && (
+      <p className="mb-3.5 rounded-2xl bg-[#f4faf7] border border-[#d7ede5] px-4 py-3 text-sm text-slate-700 leading-relaxed">
+        {cleanDescription}
+      </p>
+    )}
     {/* Tanpa takaran, pilihan porsi tidak mengubah apa pun di kartu ini. */}
     {ingredients.some(i => i.portionLarge?.trim() || i.portionSmall?.trim()) && (
       <div className="mb-3 flex">
@@ -1054,7 +1074,8 @@ const IngredientStrip: React.FC<{ ingredients: IngredientNutritionInfo[]; tiers:
       </ul>
     )}
   </section>
-);
+  );
+};
 
 /* ------------------------------------------------------------------ */
 /* Informasi gizi per porsi                                            */
@@ -1737,7 +1758,7 @@ export const DailyMenuPublicPage: React.FC = () => {
   // Menu contoh bawaan tidak untuk dinilai
   const canRateMenu = isSupabaseConfigured() && !(isSampleData && syncState !== 'loading');
   const hero = menuToday.nutritionHero;
-  const funFact = hero.funFact?.trim() || menuToday.plateTip?.trim() || '';
+  const funFact = hero?.funFact?.trim() || '';
   const funFactParts = splitFunFact(funFact);
 
   // Halaman ini hanya diakses lewat QR: jangan muncul di mesin pencari.
@@ -1968,13 +1989,20 @@ export const DailyMenuPublicPage: React.FC = () => {
 
           {activeType === 'reguler' && (
             <div className="grid lg:grid-cols-[minmax(0,1fr)_280px] gap-3.5 lg:gap-5 items-start">
-              <IngredientStrip ingredients={ingredients} tiers={tiers} portion={portion} onPortionChange={setPortion} onOpen={setDetailIndex} />
+              <IngredientStrip
+                ingredients={ingredients}
+                description={menuToday.description}
+                tiers={tiers}
+                portion={portion}
+                onPortionChange={setPortion}
+                onOpen={setDetailIndex}
+              />
               <BenefitsCard ingredients={ingredients} onOpen={setDetailIndex} />
             </div>
           )}
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3.5 lg:gap-5 items-start">
-            <PlateCard ingredients={ingredients} />
+            <PlateCard ingredients={ingredients} plateTip={menuToday.plateTip} />
             <NutritionHeroCarousel
               hero={hero}
               menuTitle={activeType === 'reguler' ? menuToday.menuTitle : (menuToday.menuB3 || menuToday.menuTitle)}

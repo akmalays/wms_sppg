@@ -35,7 +35,7 @@ export const TrayLabelEditor: React.FC<{
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         <div className="min-w-0">
           <h4 className="text-xs font-semibold text-slate-800">Nama dan panah di halaman publik</h4>
           <p className="text-[11px] text-slate-600">
@@ -46,7 +46,7 @@ export const TrayLabelEditor: React.FC<{
                 : 'Letak nama mengikuti poster menu.'}
           </p>
         </div>
-        <div className="flex flex-wrap items-start gap-2 min-w-0">
+        <div className="flex flex-wrap items-center gap-2 min-w-0 w-full sm:w-auto">
           <AiTrayPointsButton
             photo={photo}
             texts={shown}

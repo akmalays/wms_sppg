@@ -25,7 +25,7 @@ interface MenuTodayKidsEditorProps {
 }
 
 const inputCls =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 min-h-[44px] sm:min-h-[36px] text-xs text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1';
 const labelCls = 'block text-xs font-semibold text-slate-700 mb-1';
 
 const linesToList = (text: string) => text.split('\n').map(l => l.trim()).filter(Boolean);
@@ -89,24 +89,24 @@ const ImagePicker: React.FC<{
           </button>
         )}
       </div>
-      {/* Tombol di samping kotak gambar; di HP kotaknya ikut memanjang */}
-      <div className="flex items-stretch gap-3">
-        <div className="relative w-28 min-h-28 shrink-0 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center">
+      {/* Di HP gambar di atas tombol agar tombol tidak terpotong di layar sempit */}
+      <div className="flex flex-col sm:flex-row sm:items-stretch gap-2.5 sm:gap-3">
+        <div className="relative w-full h-32 sm:w-28 sm:h-auto sm:min-h-28 shrink-0 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center">
           {value ? (
             <img src={value} alt="" className="absolute inset-0 w-full h-full object-contain" />
           ) : (
             <span className="text-[11px] text-slate-500 text-center px-2">{emptyHint}</span>
           )}
         </div>
-        <div className="grid content-start gap-2 flex-1 min-w-0 sm:flex-none sm:w-44">
+        <div className="grid grid-cols-2 sm:grid-cols-1 content-start gap-2 flex-1 min-w-0 sm:flex-none sm:w-44">
           <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
           <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} className={PICKER_BTN}>
-            <Upload className="w-4 h-4" />
-            {uploading ? 'Memproses...' : 'Unggah gambar'}
+            <Upload className="w-4 h-4 shrink-0" />
+            <span className="truncate">{uploading ? 'Memproses...' : 'Unggah'}</span>
           </button>
           <button type="button" onClick={() => setIsBankOpen(true)} className={PICKER_BTN}>
-            <Images className="w-4 h-4" />
-            Ambil dari bank
+            <Images className="w-4 h-4 shrink-0" />
+            <span className="truncate">Bank gambar</span>
           </button>
         </div>
       </div>
@@ -450,15 +450,15 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
 
       {/* Kebiasaan baik per hari */}
       <div className="space-y-4">
-        <div className="pb-2 border-b border-slate-100 flex items-start justify-between gap-2">
+        <div className="pb-2 border-b border-slate-100 flex flex-col sm:flex-row sm:items-start justify-between gap-2">
           <div>
             <h3 className="text-sm font-bold text-slate-900">Kebiasaan Baik per Hari</h3>
-            <p className="text-[11px] text-slate-500">Halaman publik otomatis menampilkan kebiasaan sesuai hari ini. Kosongkan judul untuk melewati hari tersebut.</p>
+            <p className="text-[11px] text-slate-600">Halaman publik otomatis menampilkan kebiasaan sesuai hari ini. Kosongkan judul untuk melewati hari tersebut.</p>
           </div>
           <AiButton busy={busyLabel('habit')} disabled={anyAiBusy} label={`Isi teks ${dayLabel} dengan AI`} onClick={handleAiHabit} />
         </div>
 
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Pilih hari">
+        <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-1.5" role="group" aria-label="Pilih hari">
           {Object.entries(HABIT_WEEKDAY_LABELS).map(([day, label]) => {
             const d = Number(day);
             const filled = habits.some(h => h.weekday === d && h.title.trim());
@@ -468,12 +468,12 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
                 type="button"
                 aria-pressed={activeDay === d}
                 onClick={() => setActiveDay(d)}
-                className={`px-3 py-1.5 min-h-[36px] rounded-lg text-xs font-semibold border cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-600 ${
+                className={`px-3 py-1.5 min-h-[44px] sm:min-h-[36px] rounded-lg text-xs font-semibold border cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
                   activeDay === d
                     ? 'bg-emerald-700 text-white border-emerald-700'
                     : filled
                     ? 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
-                    : 'bg-slate-50 text-slate-500 border-dashed border-slate-300 hover:bg-slate-100'
+                    : 'bg-slate-50 text-slate-600 border-dashed border-slate-300 hover:bg-slate-100'
                 }`}
               >
                 {label}
@@ -524,7 +524,7 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
       <div className="lg:col-span-2 pt-4 border-t border-slate-200 space-y-3">
         <div>
           <h3 className="text-sm font-bold text-slate-900">Tahukah Kamu?</h3>
-          <p className="text-[11px] text-slate-500">Kotak di bawah Kuis Gizi. Bila kosong, kotak memakai Tips hari ini; bila keduanya kosong, kotak disembunyikan.</p>
+          <p className="text-[11px] text-slate-600">Tampil di kotak Tahukah Kamu? di samping Kuis Gizi. Bila kosong, kotak disembunyikan.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -551,7 +551,7 @@ export const MenuTodayKidsEditor: React.FC<MenuTodayKidsEditorProps> = ({ menuTo
       {/* Isi Piringku & perkiraan energi */}
       <div className="lg:col-span-2 pt-4 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <div className="flex items-end justify-between gap-2 mb-1">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
             <label className={`${labelCls} mb-0`} htmlFor="plate-tip">Tips hari ini di bagian Isi Piringku (opsional)</label>
             <AiButton busy={aiBusy === 'plateTip' ? 'Menulis...' : null} disabled={anyAiBusy} label="Tulis dengan AI" onClick={handleAiPlateTip} />
           </div>
