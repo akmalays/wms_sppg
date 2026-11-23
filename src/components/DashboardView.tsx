@@ -549,7 +549,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onRefr
               <ChefHat className="w-4 h-4 text-slate-500" />
               Menu & Sekolah
             </button>
-            <button type="button" onClick={() => onNavigate('tools_forms')} className={`${BTN_SECONDARY} max-sm:hidden`}>
+            <button type="button" onClick={() => onNavigate('tools_forms')} className={`${BTN_SECONDARY} hidden lg:inline-flex`}>
               <Printer className="w-4 h-4 text-slate-500" />
               Cetak Form
             </button>

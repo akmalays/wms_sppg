@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { Monitor } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { ToastProvider } from './context/ToastContext';
+import { ToastProvider, useToast } from './context/ToastContext';
 import { ConfirmProvider } from './context/ConfirmContext';
 import { Navbar } from './components/Navbar';
 import { DashboardView } from './components/DashboardView';
@@ -71,6 +72,19 @@ export const getAppRoute = (): AppRouteType => {
 
 const MainLayout: React.FC = () => {
   const { currentUser, isAuthenticated } = useAuth();
+  const toast = useToast();
+  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : true
+  );
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    setIsDesktop(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
   // Dibaca sekali saat aplikasi dibuka dari tautan QR, dan tetap tersimpan selama proses login.
   const [scanTarget, setScanTarget] = useState<ScanTarget | null>(() => {
     const t = scanTargetFromLocation();
@@ -204,6 +218,10 @@ const MainLayout: React.FC = () => {
   }, []);
 
   const openPrintForm = (target: PrintTarget) => {
+    if (!isDesktop) {
+      toast.warning('Halaman Cetak Form hanya bisa diakses di tampilan desktop atau laptop.', 'Cetak Form');
+      return;
+    }
     setPrintTarget(target);
     setActiveTab('tools_forms');
   };
@@ -275,7 +293,7 @@ const MainLayout: React.FC = () => {
             <DashboardView
               onNavigate={setActiveTab}
               onRefreshData={handleRefresh}
-              onPrintReceiving={receivingId => openPrintForm({ form: 'RECEIVING_FORM', receivingId })}
+              onPrintReceiving={isDesktop ? (receivingId => openPrintForm({ form: 'RECEIVING_FORM', receivingId })) : undefined}
             />
           )}
 
@@ -304,7 +322,7 @@ const MainLayout: React.FC = () => {
           {(activeTab === 'menu_orders' || activeTab === 'menu_portions') && (
             <MenuOrdersModule
               onNavigate={setActiveTab}
-              onPrintPoSheet={date => openPrintForm({ form: 'DAILY_PO_SHEET', date })}
+              onPrintPoSheet={isDesktop ? (date => openPrintForm({ form: 'DAILY_PO_SHEET', date })) : undefined}
               initialView={activeTab === 'menu_portions' ? 'PORSI_HARI_INI' : undefined}
             />
           )}
@@ -331,13 +349,34 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'tools_forms' && (
-            <ToolsPrintModule
-              initialForm={printTarget?.form}
-              initialSupplierId={printTarget?.supplierId}
-              initialLabelSearch={printTarget?.labelSearch}
-              initialReceivingId={printTarget?.receivingId}
-              initialDate={printTarget?.date}
-            />
+            isDesktop ? (
+              <ToolsPrintModule
+                initialForm={printTarget?.form}
+                initialSupplierId={printTarget?.supplierId}
+                initialLabelSearch={printTarget?.labelSearch}
+                initialReceivingId={printTarget?.receivingId}
+                initialDate={printTarget?.date}
+              />
+            ) : (
+              <div className="max-w-md mx-auto my-6 bg-white rounded-xl border border-slate-200 p-6 text-center space-y-3">
+                <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-700 mx-auto flex items-center justify-center">
+                  <Monitor className="w-5 h-5" aria-hidden="true" />
+                </div>
+                <div>
+                  <h1 className="text-base font-bold text-slate-900">Cetak Form hanya untuk desktop</h1>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    Halaman Cetak Form disiapkan untuk pratinjau dan cetak dokumen A4/F4. Buka aplikasi di komputer atau laptop untuk mengaksesnya.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('dashboard')}
+                  className="inline-flex items-center justify-center px-4 min-h-[44px] rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
+                >
+                  Kembali ke Ringkasan
+                </button>
+              </div>
+            )
           )}
 
           {/* Secondary / Deep Logistics Modules */}
@@ -345,7 +384,7 @@ const MainLayout: React.FC = () => {
             <ReceivingModule
               onRefreshData={handleRefresh}
               onNavigate={setActiveTab}
-              onPrintReceiving={receivingId => openPrintForm({ form: 'RECEIVING_FORM', receivingId })}
+              onPrintReceiving={isDesktop ? (receivingId => openPrintForm({ form: 'RECEIVING_FORM', receivingId })) : undefined}
               openPoWeighingId={poReceiveRequest}
               onPoWeighingOpened={() => setPoReceiveRequest(null)}
               openNonMenuForm={nonMenuFormRequest}
@@ -364,12 +403,12 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'equipment' && (
-            <EquipmentModule onPrintLabel={assetId => openPrintForm({ form: 'EQUIPMENT_LABEL', labelSearch: assetId })} />
+            <EquipmentModule onPrintLabel={isDesktop ? (assetId => openPrintForm({ form: 'EQUIPMENT_LABEL', labelSearch: assetId })) : undefined} />
           )}
 
           {activeTab === 'suppliers' && (
             <SuppliersModule
-              onNavigateToExpense={supplierId => openPrintForm({ form: 'SUPPLIER_EXPENSE_NOTE', supplierId })}
+              onNavigateToExpense={isDesktop ? (supplierId => openPrintForm({ form: 'SUPPLIER_EXPENSE_NOTE', supplierId })) : undefined}
             />
           )}
 

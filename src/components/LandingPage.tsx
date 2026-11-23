@@ -238,31 +238,190 @@ const GUIDE_HELP = [
 
 const PUBLIC_FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#133d2c] focus-visible:ring-offset-2';
 
-// Model yang sama dengan halaman menu hari ini: nama dan panah di layar lebar, nomor pada makanan di layar sempit.
-// Batasnya xl karena di kolom ini tulisan panah terlalu kecil bila lebih sempit.
+const formatMenuHeadline = (raw: string): string => {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return '';
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+};
+
+interface IngredientCardTone {
+  bandBg: string;
+  plateTint: string;
+  ringColor: string;
+  badgeBg: string;
+  badgeText: string;
+  dot: string;
+}
+
+const getIngredientTone = (category: string): IngredientCardTone => {
+  const c = (category || '').toLowerCase();
+  if (c.includes('karbo') || c.includes('pokok')) {
+    return {
+      bandBg: 'bg-[#fdf6e7]',
+      plateTint: '#fbf0d4',
+      ringColor: 'border-[#e9d39c]',
+      badgeBg: 'bg-[#f8e7be]',
+      badgeText: 'text-[#783f04]',
+      dot: 'bg-[#d97706]',
+    };
+  }
+  if (c.includes('hewani')) {
+    return {
+      bandBg: 'bg-[#fef2ea]',
+      plateTint: '#fde4d3',
+      ringColor: 'border-[#efc4a8]',
+      badgeBg: 'bg-[#fbd9c4]',
+      badgeText: 'text-[#8c2d0c]',
+      dot: 'bg-[#ea580c]',
+    };
+  }
+  if (c.includes('nabati') || c.includes('protein')) {
+    return {
+      bandBg: 'bg-[#f3f6e7]',
+      plateTint: '#e6edd0',
+      ringColor: 'border-[#cedaa8]',
+      badgeBg: 'bg-[#dfe9bd]',
+      badgeText: 'text-[#365314]',
+      dot: 'bg-[#65a30d]',
+    };
+  }
+  if (c.includes('sayur')) {
+    return {
+      bandBg: 'bg-[#ebf7f0]',
+      plateTint: '#d8efe2',
+      ringColor: 'border-[#b3dec5]',
+      badgeBg: 'bg-[#cbead7]',
+      badgeText: 'text-[#14532d]',
+      dot: 'bg-[#15803d]',
+    };
+  }
+  if (c.includes('buah')) {
+    return {
+      bandBg: 'bg-[#fdf1f5]',
+      plateTint: '#fae0e9',
+      ringColor: 'border-[#efbfd0]',
+      badgeBg: 'bg-[#f7d3e0]',
+      badgeText: 'text-[#881337]',
+      dot: 'bg-[#e11d48]',
+    };
+  }
+  return {
+    bandBg: 'bg-[#f6f3ec]',
+    plateTint: '#ede7db',
+    ringColor: 'border-[#dad1c0]',
+    badgeBg: 'bg-[#e8e1d3]',
+    badgeText: 'text-[#334155]',
+    dot: 'bg-[#64748b]',
+  };
+};
+
+// Ornamen ranting daun botani khusus sudut panggung hijau agar latar tidak polos tanpa mengganggu keterbacaan label nampan.
+const TrayCornerSprig: React.FC<{ className?: string; flip?: boolean }> = ({ className = '', flip }) => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 180 180"
+    fill="none"
+    className={`pointer-events-none absolute ${flip ? '-scale-x-100 -scale-y-100' : ''} ${className}`}
+  >
+    <path
+      d="M-8 168C28 124 68 82 146 28"
+      stroke="#7dd3a8"
+      strokeOpacity="0.28"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+    <path
+      d="M30 124C14 96 20 66 46 54C56 80 50 106 30 124Z"
+      fill="#236449"
+      fillOpacity="0.58"
+    />
+    <path
+      d="M66 90C54 62 66 34 94 26C98 54 88 78 66 90Z"
+      fill="#2b7556"
+      fillOpacity="0.48"
+    />
+    <path
+      d="M44 114C72 114 98 102 112 78C86 78 60 90 44 114Z"
+      fill="#1d543d"
+      fillOpacity="0.65"
+    />
+    <path
+      d="M98 62C118 64 138 56 150 40C130 38 110 46 98 62Z"
+      fill="#2b7556"
+      fillOpacity="0.45"
+    />
+    <circle cx="132" cy="22" r="3" fill="#d9c382" fillOpacity="0.45" />
+    <circle cx="152" cy="54" r="2.2" fill="#a7f3d0" fillOpacity="0.35" />
+    <circle cx="84" cy="126" r="2.5" fill="#d9c382" fillOpacity="0.35" />
+  </svg>
+);
+
+// Model yang sama dengan halaman menu hari ini: nama dan panah putih di atas panggung hijau SPPG,
+// nomor pada makanan di layar sempit agar mudah dibaca.
 const PostedTray: React.FC<{ menuToday: WebsiteConfig['menuToday']; photo: string; alt: string }> = ({ menuToday, photo, alt }) => {
   const dishTexts = useMemo(() => trayLabelTexts(menuDishes(menuToday).regular), [menuToday]);
   const placements = useMemo(() => resolveTrayLabels(dishTexts, menuToday.trayLabels), [dishTexts, menuToday.trayLabels]);
   const texts = useMemo(() => shownTrayLabels(dishTexts, placements), [dishTexts, placements]);
   return (
-    <>
-      <div className="hidden xl:block">
-        <TrayStage photo={photo} alt={alt} texts={texts} placements={placements} labelTone="dark" />
+    <div className="relative overflow-hidden h-full bg-[linear-gradient(155deg,#174c36_0%,#103828_54%,#0a261b_100%)] px-4 py-7 sm:px-6 sm:py-9 lg:px-7 lg:py-10 flex flex-col justify-center">
+      {/* Pola doodle bahan pangan & alat makan di tepian panggung; memudar di tengah agar label panah tetap kontras */}
+      <FoodDoodles
+        width={760}
+        height={520}
+        seed={7}
+        className="inset-0 w-full h-full text-emerald-100 opacity-[0.14] [mask-image:radial-gradient(ellipse_at_center,transparent_22%,black_82%)]"
+      />
+
+      {/* Ornamen ranting daun botani di dua sudut diagonal */}
+      <TrayCornerSprig className="-top-6 -left-6 w-36 h-36 sm:w-44 sm:h-44" />
+      <TrayCornerSprig flip className="-bottom-6 -right-6 w-36 h-36 sm:w-44 sm:h-44" />
+
+      {/* Bingkai garis tipis ala kartu menu cetak */}
+      <div
+        className="pointer-events-none absolute inset-3 rounded-xl border border-white/12"
+        aria-hidden="true"
+      />
+      <span className="pointer-events-none absolute top-3 left-3 w-3 h-3 border-t-2 border-l-2 border-[#d9c382]/55 rounded-tl-md" aria-hidden="true" />
+      <span className="pointer-events-none absolute top-3 right-3 w-3 h-3 border-t-2 border-r-2 border-[#d9c382]/55 rounded-tr-md" aria-hidden="true" />
+      <span className="pointer-events-none absolute bottom-3 left-3 w-3 h-3 border-b-2 border-l-2 border-[#d9c382]/55 rounded-bl-md" aria-hidden="true" />
+      <span className="pointer-events-none absolute bottom-3 right-3 w-3 h-3 border-b-2 border-r-2 border-[#d9c382]/55 rounded-br-md" aria-hidden="true" />
+
+      {/* Sorotan lembut tepat di belakang nampan stainless agar tepinya terangkat dari latar hijau gelap */}
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.16)_0%,rgba(16,56,40,0)_64%)]"
+        aria-hidden="true"
+      />
+
+      {/* Label ringkas di bagian atas panggung */}
+      <div className="relative z-10 flex items-center justify-between gap-2 px-1 pb-3 text-[11px] font-medium text-emerald-100/80">
+        <span className="inline-flex items-center gap-1.5">
+          <Leaf className="w-3.5 h-3.5 text-[#d9c382]" aria-hidden="true" />
+          <span>Ompreng hari ini</span>
+        </span>
+        <span className="hidden sm:inline text-emerald-100/65">SPPG Tumpang Jeru</span>
       </div>
-      <div className="xl:hidden">
-        <div className="max-w-md mx-auto">
-          <TrayStage photo={photo} alt={alt} texts={texts} placements={placements} compact />
+
+      <div className="relative z-10 w-full my-auto">
+        <div className="hidden xl:block">
+          <TrayStage photo={photo} alt={alt} texts={texts} placements={placements} labelTone="light" />
         </div>
-        <ol aria-label="Isi menu" className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-          {texts.map((text, i) => (
-            <li key={text} className="flex items-start gap-2.5 text-sm font-semibold text-[#141d18] leading-snug">
-              <span className="w-6 h-6 rounded-full bg-[#133d2c] text-white text-xs font-bold flex items-center justify-center shrink-0" aria-hidden="true">{i + 1}</span>
-              {text}
-            </li>
-          ))}
-        </ol>
+        <div className="xl:hidden">
+          <div className="max-w-md mx-auto">
+            <TrayStage photo={photo} alt={alt} texts={texts} placements={placements} compact labelTone="light" />
+          </div>
+          <ol aria-label="Isi menu" className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-2">
+            {texts.map((text, i) => (
+              <li key={text} className="flex items-start gap-2.5 text-xs sm:text-sm font-medium text-emerald-50 leading-snug">
+                <span className="w-5 h-5 rounded-full bg-white/15 border border-white/25 text-white text-[11px] font-mono font-bold flex items-center justify-center shrink-0 mt-0.5" aria-hidden="true">
+                  {i + 1}
+                </span>
+                <span>{formatMenuHeadline(text)}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
       </div>
-    </>
+    </div>
   );
 };
 
@@ -284,6 +443,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   }, []);
   const [config, setConfig] = useState<WebsiteConfig>(getWebsiteConfig);
   const [selectedMenuDate, setSelectedMenuDate] = useState<string>('');
+  const [activeIngredientCategory, setActiveIngredientCategory] = useState<string>('Semua');
   const [showAllSchools, setShowAllSchools] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -448,11 +608,32 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         id: ing.id,
         category: INGREDIENT_CATEGORIES.find(c => c.value === ing.category)?.label || ing.category || 'Bahan',
         title: ing.name,
-        description: ing.healthBenefits || ing.nutritionHighlight || '',
+        description: ing.healthBenefits?.trim() || ing.nutritionHighlight?.trim() || '',
+        nutritionTags: (ing.nutritionHighlight || '')
+          .split(/[•,;]/)
+          .map(t => t.trim())
+          .filter(Boolean)
+          .slice(0, 3),
+        portionSmall: ing.portionSmall?.trim() || '',
+        portionLarge: ing.portionLarge?.trim() || '',
         image: ing.imageUrl,
       }))
-    : FOOD_COMPONENTS;
+    : FOOD_COMPONENTS.map(item => ({
+        ...item,
+        nutritionTags: [] as string[],
+        portionSmall: '',
+        portionLarge: '',
+      }));
   const isSampleComponents = todayIngredients.length === 0;
+  const ingredientCategories = Array.from(new Set(componentCards.map(c => c.category)));
+  const selectedIngredientCat =
+    activeIngredientCategory === 'Semua' || ingredientCategories.includes(activeIngredientCategory)
+      ? activeIngredientCategory
+      : 'Semua';
+  const visibleComponentCards =
+    selectedIngredientCat === 'Semua'
+      ? componentCards
+      : componentCards.filter(c => c.category === selectedIngredientCat);
 
   const schools = publicData?.schools.length
     ? publicData.schools.map(sc => ({ name: sc.name, location: sc.category }))
@@ -794,32 +975,24 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           ======================================================== */}
       <section id="siklus-menu" className="relative overflow-hidden py-14 sm:py-20 bg-[#faf8f4] border-b border-[#e5dfd3]">
         {/* Mengisi ruang kosong di samping judul; memudar ke kiri agar tidak mengganggu teks. */}
-        <FoodDoodles width={760} height={320} seed={1} className="hidden md:block top-0 right-0 w-3/5 h-80 text-[#133d2c] opacity-[0.16] [mask-image:linear-gradient(to_left,black_45%,transparent)]" />
+        <FoodDoodles width={760} height={320} seed={1} className="hidden md:block top-0 right-0 w-3/5 h-80 text-[#133d2c] opacity-[0.14] [mask-image:linear-gradient(to_left,black_45%,transparent)]" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-7">
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#133d2c] text-white text-xs font-semibold mb-3">
-                Menu MBG
-              </div>
               <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-serif-display text-[#141d18] tracking-tight">
                 Menu MBG Minggu Ini
               </h2>
-              <p className="text-xs sm:text-sm text-[#55645c] mt-2 max-w-2xl leading-relaxed">
-                {shortDate(week.start)} – {shortDate(week.end)} {parseIso(week.end).getFullYear()}. Menu yang disiapkan untuk sekolah penerima manfaat.
+              <p className="text-xs sm:text-sm text-[#55645c] mt-2 max-w-xl leading-relaxed">
+                {shortDate(week.start)} - {shortDate(week.end)} {parseIso(week.end).getFullYear()}. Menu harian untuk sekolah penerima di Tumpang Jeru.
               </p>
             </div>
-          </div>
 
-          {publicData === null ? (
-            <div className="bg-white rounded-2xl border border-[#ded7c8] p-8 text-center text-sm text-[#55645c]">Memuat menu…</div>
-          ) : menuDates.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-[#ded7c8] p-8 text-center">
-              <UtensilsCrossed className="w-8 h-8 text-[#9aa79f] mx-auto mb-3" aria-hidden="true" />
-              <p className="text-sm font-semibold text-[#141d18]">Menu pekan ini belum diumumkan.</p>
-            </div>
-          ) : (
-            <>
-              <div role="tablist" aria-label="Hari" className="flex gap-2 overflow-x-auto pb-1 mb-6">
+            {publicData !== null && menuDates.length > 0 && (
+              <div
+                role="tablist"
+                aria-label="Pilih hari menu"
+                className="inline-flex gap-1.5 overflow-x-auto max-w-full p-1.5 rounded-2xl bg-white border border-[#ded7c8] self-start lg:self-auto"
+              >
                 {menuDates.map(date => {
                   const isActive = date === activeMenuDate;
                   return (
@@ -829,119 +1002,366 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       role="tab"
                       aria-selected={isActive}
                       onClick={() => setSelectedMenuDate(date)}
-                      className={`shrink-0 min-w-[96px] px-4 py-2.5 rounded-xl text-left border cursor-pointer ${PUBLIC_FOCUS} ${
-                        isActive ? 'bg-[#133d2c] text-white border-[#133d2c]' : 'bg-white text-[#2a3830] border-[#ded7c8] hover:bg-[#f7f4ec]'
+                      className={`shrink-0 min-w-[96px] min-h-[44px] px-3.5 py-2 rounded-xl text-left transition-colors duration-150 cursor-pointer ${PUBLIC_FOCUS} ${
+                        isActive
+                          ? 'bg-[#133d2c] text-white'
+                          : 'bg-transparent text-[#2a3830] hover:bg-[#f5f1e8]'
                       }`}
                     >
-                      <div className="text-sm font-bold">{DAY_NAMES[parseIso(date).getDay()]}</div>
-                      <div className={`text-[11px] mt-0.5 ${isActive ? 'text-emerald-100' : 'text-[#5f6e66]'}`}>
+                      <div className="text-xs font-bold leading-tight">{DAY_NAMES[parseIso(date).getDay()]}</div>
+                      <div className={`text-[11px] mt-0.5 leading-tight ${isActive ? 'text-emerald-100' : 'text-[#5f6e66]'}`}>
                         {shortDate(date)}{date === todayIso ? ' · hari ini' : ''}
                       </div>
                     </button>
                   );
                 })}
               </div>
+            )}
+          </div>
 
-              {!isActiveDayPosted ? (
-                <div className="relative overflow-hidden bg-white rounded-2xl border border-[#ded7c8] p-8 sm:p-12 text-center">
-                  {/* Bagian tengah dikosongkan supaya kalimatnya tetap bersih. */}
-                  <FoodDoodles width={1200} height={150} seed={2} className="inset-0 w-full h-full text-[#133d2c] opacity-[0.18] [mask-image:radial-gradient(ellipse_at_center,transparent_30%,black_72%)]" />
-                  <p className="relative text-sm font-semibold text-[#141d18]">Menu dan foto ompreng belum tersedia.</p>
-                </div>
-              ) : (
-              <div className="bg-white rounded-2xl border border-[#ded7c8] p-5 sm:p-7 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
+          {publicData === null ? (
+            <div className="bg-white rounded-2xl border border-[#ded7c8] p-8 text-center text-sm text-[#55645c]">Memuat menu...</div>
+          ) : menuDates.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-[#ded7c8] p-8 text-center">
+              <UtensilsCrossed className="w-8 h-8 text-[#9aa79f] mx-auto mb-3" aria-hidden="true" />
+              <p className="text-sm font-semibold text-[#141d18]">Menu pekan ini belum diumumkan.</p>
+            </div>
+          ) : !isActiveDayPosted ? (
+            <div className="relative overflow-hidden bg-white rounded-2xl border border-[#ded7c8] p-8 sm:p-12 text-center">
+              {/* Bagian tengah dikosongkan supaya kalimatnya tetap bersih. */}
+              <FoodDoodles width={1200} height={150} seed={2} className="inset-0 w-full h-full text-[#133d2c] opacity-[0.16] [mask-image:radial-gradient(ellipse_at_center,transparent_30%,black_72%)]" />
+              <div className="relative space-y-1.5">
+                <p className="text-sm font-semibold text-[#141d18]">
+                  Menu {DAY_NAMES[parseIso(activeMenuDate).getDay()]}, {shortDate(activeMenuDate)} belum diunggah.
+                </p>
+                <p className="text-xs text-[#55645c]">
+                  Pilih hari lain di atas untuk melihat menu yang sudah tayang.
+                </p>
+              </div>
+            </div>
+          ) : (() => {
+            const mt = config.menuToday;
+            const nutritionHighlights = [
+              { label: 'Energi', value: mt.energySummary?.caloriesAvg?.trim() || mt.portionLarge?.targetCalories?.trim() || '' },
+              { label: 'Protein', value: mt.energySummary?.proteinAvg?.trim() || mt.portionLarge?.proteinGrams?.trim() || '' },
+              { label: 'Karbohidrat', value: mt.energySummary?.carbsAvg?.trim() || mt.portionLarge?.carbGrams?.trim() || '' },
+              { label: 'Lemak', value: mt.energySummary?.fatAvg?.trim() || mt.portionLarge?.fatGrams?.trim() || '' },
+            ].filter(item => item.value !== '');
+            const smallGram = mt.portionSmall?.totalGramature?.trim() || '';
+            const largeGram = mt.portionLarge?.totalGramature?.trim() || '';
+            const hasGramature = Boolean(smallGram || largeGram);
+
+            return (
+              <div className="bg-white rounded-2xl border border-[#ded7c8] overflow-hidden grid grid-cols-1 lg:grid-cols-12 shadow-xs">
                 {postedPhoto && (
-                  <figure className="lg:col-span-7">
-                    <PostedTray menuToday={config.menuToday} photo={postedPhoto} alt={`Foto sajian ${activeMenus[0]?.title}`} />
+                  <figure className="lg:col-span-7 bg-[#103828]">
+                    <PostedTray menuToday={mt} photo={postedPhoto} alt={`Foto sajian ${activeMenus[0]?.title}`} />
                   </figure>
                 )}
 
-                <div className={`${postedPhoto ? 'lg:col-span-5' : 'lg:col-span-12'} space-y-6`}>
-                  {activeMenus.map(menu => (
-                    <div key={menu.id}>
-                      <div className="text-xs font-semibold text-[#5f6e66]">
-                        {DAY_NAMES[parseIso(menu.date).getDay()]}, {shortDate(menu.date)}
-                        {activeMenus.length > 1 && ` · ${menu.mealSession}`}
+                <div className={`${postedPhoto ? 'lg:col-span-5' : 'lg:col-span-12'} p-5 sm:p-7 lg:p-8 flex flex-col justify-between gap-6`}>
+                  <div className="space-y-5">
+                    {activeMenus.map((menu, menuIdx) => {
+                      const dishes = splitDishes(menu.title);
+                      const menuDesc = menu.description?.trim() || (menuIdx === 0 ? mt.description?.trim() : '');
+                      const b3Text = menu.specialDietB3?.trim() || (menuIdx === 0 ? mt.menuB3?.trim() : '');
+
+                      return (
+                        <div key={menu.id} className={menuIdx > 0 ? 'pt-5 border-t border-[#ece6d9] space-y-4' : 'space-y-4'}>
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <span className="font-semibold text-[#55645c]">
+                                {DAY_NAMES[parseIso(menu.date).getDay()]}, {shortDate(menu.date)}
+                                {activeMenus.length > 1 && ` · ${menu.mealSession}`}
+                              </span>
+                              {menu.date === todayIso && (
+                                <span className="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px] font-semibold">
+                                  Hari ini
+                                </span>
+                              )}
+                            </div>
+
+                            <h3 className="text-xl sm:text-2xl font-bold font-serif-display text-[#141d18] mt-2 leading-snug">
+                              {formatMenuHeadline(menu.title)}
+                            </h3>
+
+                            {menuDesc && (
+                              <p className="text-xs sm:text-sm text-[#4c5b53] mt-2 leading-relaxed">
+                                {menuDesc}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Daftar isi ompreng */}
+                          {dishes.length > 0 && (
+                            <div className={postedPhoto ? 'hidden xl:block' : 'block'}>
+                              <div className="text-[11px] font-semibold text-[#5f6e66] mb-2">
+                                Isi ompreng
+                              </div>
+                              <ol className="grid grid-cols-1 sm:grid-cols-2 gap-2" aria-label="Komponen menu">
+                                {dishes.map((dish, idx) => (
+                                  <li
+                                    key={dish}
+                                    className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#faf8f4] border border-[#ebe4d6] text-xs font-semibold text-[#1c2821]"
+                                  >
+                                    <span className="w-5 h-5 rounded-md bg-[#e8f2ec] text-[#133d2c] font-mono text-[11px] font-bold flex items-center justify-center shrink-0">
+                                      {idx + 1}
+                                    </span>
+                                    <span className="leading-snug">{formatMenuHeadline(dish)}</span>
+                                  </li>
+                                ))}
+                              </ol>
+                            </div>
+                          )}
+
+                          {b3Text && (
+                            <div className="rounded-xl bg-[#f4f7f2] border border-[#d6e4d9] px-3.5 py-2.5 text-xs text-[#25382e] leading-relaxed">
+                              <span className="font-semibold text-[#133d2c]">Menu 3B (Balita &amp; Ibu Hamil/Menyusui): </span>
+                              {formatMenuHeadline(b3Text)}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* Ringkasan gizi nyata dari konfigurasi menu hari ini */}
+                    {nutritionHighlights.length > 0 && (
+                      <div className="pt-4 border-t border-[#ece6d9] space-y-2.5">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <span className="text-[11px] font-semibold text-[#5f6e66]">Rata-rata gizi per porsi</span>
+                          {hasGramature && (
+                            <span className="text-[11px] text-[#55645c] font-mono tabular-nums">
+                              {[smallGram && `Kecil ${smallGram}`, largeGram && `Besar ${largeGram}`].filter(Boolean).join(' · ')}
+                            </span>
+                          )}
+                        </div>
+                        <dl className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-2">
+                          {nutritionHighlights.map(stat => (
+                            <div key={stat.label} className="rounded-xl bg-[#faf8f4] border border-[#ebe4d6] px-3 py-2">
+                              <dt className="text-[11px] text-[#5f6e66]">{stat.label}</dt>
+                              <dd className="text-xs sm:text-sm font-bold font-mono text-[#133d2c] tabular-nums mt-0.5">
+                                {stat.value}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
                       </div>
-                      <h3 className="text-xl sm:text-2xl font-bold font-serif-display text-[#141d18] mt-1.5 leading-snug">
-                        {menu.title}
-                      </h3>
-                      {menu.description && (
-                        <p className="text-xs sm:text-sm text-[#55645c] mt-2 leading-relaxed">{menu.description}</p>
-                      )}
-                      {/* Di layar sempit daftar bernomor di bawah ompreng sudah memuat isi yang sama. */}
-                      <ul className={`mt-4 flex-wrap gap-2 ${postedPhoto ? 'hidden xl:flex' : 'flex'}`} aria-label="Komponen menu">
-                        {splitDishes(menu.title).map(dish => (
-                          <li key={dish} className="px-3 py-1.5 rounded-full bg-[#faf8f4] border border-[#ede7db] text-xs font-semibold text-[#25322a]">
-                            {dish}
-                          </li>
-                        ))}
-                      </ul>
-                      {menu.specialDietB3 && (
-                        <p className="text-xs text-[#55645c] mt-3">
-                          <span className="font-semibold text-[#141d18]">Balita & ibu hamil:</span> {menu.specialDietB3}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                    )}
+                  </div>
+
+                  {/* Tautan ke halaman detail menu & gizi */}
+                  <div className="pt-4 border-t border-[#ece6d9] flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-[11px] text-[#5f6e66]">
+                      Takaran porsi kecil, besar, dan info alergen
+                    </span>
+                    <a
+                      href="/menu-mbg-hari-ini"
+                      className={`inline-flex items-center justify-center px-4 min-h-[44px] rounded-xl bg-[#133d2c] hover:bg-[#0c2b1e] text-white text-xs font-semibold transition-colors duration-150 ${PUBLIC_FOCUS}`}
+                    >
+                      Buka rincian gizi
+                    </a>
+                  </div>
                 </div>
               </div>
-              )}
-            </>
-          )}
+            );
+          })()}
         </div>
       </section>
 
       {/* ========================================================
           SEKSI 3: BAHAN MENU (#komponen-menu)
           ======================================================== */}
-      <section id="komponen-menu" className="py-14 sm:py-20 bg-white border-b border-[#e5dfd3]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="mb-8">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#133d2c] text-white text-xs font-semibold mb-3 shadow-2xs">
-              <span>Komponen Menu</span>
+      <section id="komponen-menu" className="relative overflow-hidden py-14 sm:py-20 bg-white border-b border-[#e5dfd3]">
+        <FoodDoodles
+          width={680}
+          height={280}
+          seed={4}
+          className="top-0 right-0 w-3/4 sm:w-1/2 h-64 sm:h-72 text-[#133d2c] opacity-[0.11] [mask-image:linear-gradient(to_left,black_38%,transparent)]"
+        />
+        <FoodDoodles
+          width={560}
+          height={240}
+          seed={9}
+          className="hidden md:block bottom-0 left-0 w-2/5 h-60 text-[#133d2c] opacity-[0.08] [mask-image:linear-gradient(to_right,black_30%,transparent)]"
+        />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-8">
+            <div>
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-serif-display text-[#141d18] tracking-tight">
+                {isSampleComponents ? 'Bahan Makanan MBG' : 'Bahan Menu Hari Ini'}
+              </h2>
+              <p className="text-xs sm:text-sm text-[#55645c] mt-2 max-w-xl leading-relaxed">
+                {isSampleComponents
+                  ? 'Contoh bahan yang dipakai di menu MBG dan manfaatnya.'
+                  : `${componentCards.length} bahan pada menu ${config.menuToday.dateText || 'hari ini'} beserta takaran porsinya.`}
+              </p>
             </div>
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-serif-display text-[#141d18] tracking-tight">
-              {isSampleComponents ? 'Bahan Makanan MBG' : 'Bahan Menu Hari Ini'}
-            </h2>
-            <p className="text-xs sm:text-sm text-[#55645c] mt-2 max-w-2xl leading-relaxed">
-              {isSampleComponents
-                ? 'Contoh bahan pada menu MBG dan manfaatnya.'
-                : `Bahan menu ${config.menuToday.dateText || 'terbaru'} dan manfaatnya.`}
-            </p>
+
+            {ingredientCategories.length > 1 && (
+              <div
+                role="tablist"
+                aria-label="Filter kategori bahan"
+                className="flex flex-wrap gap-1.5 self-start lg:self-auto"
+              >
+                {(['Semua', ...ingredientCategories] as const).map(cat => {
+                  const isActive = selectedIngredientCat === cat;
+                  const tone = cat === 'Semua' ? null : getIngredientTone(cat);
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => setActiveIngredientCategory(cat)}
+                      className={`inline-flex items-center gap-1.5 px-3 min-h-[44px] sm:min-h-[36px] rounded-xl text-xs font-semibold border transition-colors duration-150 cursor-pointer ${PUBLIC_FOCUS} ${
+                        isActive
+                          ? 'bg-[#133d2c] text-white border-[#133d2c]'
+                          : 'bg-[#faf8f4] text-[#2c3a32] border-[#e3dccf] hover:bg-[#f2ede2]'
+                      }`}
+                    >
+                      {tone && (
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${isActive ? 'bg-emerald-300' : tone.dot}`}
+                          aria-hidden="true"
+                        />
+                      )}
+                      <span>{cat}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* Disusun seperti daftar menu cetak: semua bahan terbaca tanpa perlu diklik, foto bulat meniru piring. */}
-          <ul className="grid grid-cols-1 lg:grid-cols-2 gap-x-14 border-t border-[#e5dfd3]">
-            {componentCards.map(item => (
-              <li key={item.id} className="flex items-center gap-4 sm:gap-5 py-5 border-b border-[#e5dfd3]">
-                <FoodImage
-                  name={item.title}
-                  category={item.category}
-                  imageUrl={item.image}
-                  alt=""
-                  tint="#f6f2e8"
-                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-full shrink-0 border border-[#ded7c8]"
-                  illustrationClassName="h-[68%] w-auto"
-                />
-                <div className="min-w-0">
-                  <div className="text-[11px] font-semibold text-[#5f6e66]">{item.category}</div>
-                  <h3 className="text-lg font-bold font-serif-display text-[#141d18] leading-snug mt-0.5">{item.title}</h3>
-                  {item.description && (
-                    <p className="text-xs sm:text-sm text-[#55645c] mt-1 leading-relaxed">{item.description}</p>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
+          {(() => {
+            const count = visibleComponentCards.length;
+            const remLg = count % 3;
+            const ctaLgSpan = remLg === 2 ? 'lg:col-span-1' : remLg === 1 ? 'lg:col-span-2' : 'lg:col-span-3';
+            const ctaSmSpan = count % 2 === 1 ? 'sm:col-span-1' : 'sm:col-span-2';
+            const isFullWidthCta = remLg === 0;
+
+            return (
+              <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {visibleComponentCards.map((item, idx) => {
+                  const tone = getIngredientTone(item.category);
+                  const hasPortions = Boolean(item.portionSmall || item.portionLarge);
+
+                  return (
+                    <li
+                      key={item.id}
+                      className="group rounded-2xl border border-[#e5dfd3] bg-white overflow-hidden flex flex-col transition-colors duration-150 hover:border-[#c9bfa9]"
+                    >
+                      {/* Panggung piring atas dengan warna kelompok pangan Isi Piringku */}
+                      <div className={`relative px-5 pt-4 pb-5 ${tone.bandBg} border-b border-[#ece6d9]`}>
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold ${tone.badgeBg} ${tone.badgeText}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${tone.dot}`} aria-hidden="true" />
+                            {item.category}
+                          </span>
+                          <span className="font-mono text-[11px] font-semibold text-[#5f6e66] tabular-nums">
+                            {String(idx + 1).padStart(2, '0')}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-center">
+                          <div className={`relative p-2 rounded-full border border-dashed ${tone.ringColor} bg-white/70`}>
+                            <FoodImage
+                              name={item.title}
+                              category={item.category}
+                              imageUrl={item.image}
+                              alt=""
+                              tint={tone.plateTint}
+                              className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border border-white shadow-xs"
+                              illustrationClassName="h-[68%] w-auto"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Rincian nama, manfaat, sorotan gizi & takaran porsi */}
+                      <div className="p-5 flex-1 flex flex-col justify-between gap-4">
+                        <div>
+                          <h3 className="text-lg font-bold font-serif-display text-[#141d18] leading-snug">
+                            {formatMenuHeadline(item.title)}
+                          </h3>
+                          {item.description && (
+                            <p className="text-xs sm:text-[13px] text-[#4e5d55] mt-1.5 leading-relaxed">
+                              {item.description}
+                            </p>
+                          )}
+                          {item.nutritionTags.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-3">
+                              {item.nutritionTags.map(tag => (
+                                <span
+                                  key={tag}
+                                  className="px-2 py-0.5 rounded-md bg-[#faf8f4] border border-[#e7e0d3] text-[11px] font-medium text-[#2d3b33]"
+                                >
+                                  {formatMenuHeadline(tag)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {hasPortions && (
+                          <div className="pt-3 border-t border-[#efe9dd] flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-[#55645c]">
+                            <span className="font-medium">Takaran saji</span>
+                            <span className="font-mono font-semibold text-[#141d18] tabular-nums">
+                              {[item.portionSmall && `Kecil ${item.portionSmall}`, item.portionLarge && `Besar ${item.portionLarge}`]
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+
+                {/* Kartu penghubung editorial ke halaman gizi lengkap (otomatis mengisi sisa kolom grid) */}
+                <li
+                  className={`relative overflow-hidden rounded-2xl bg-[linear-gradient(155deg,#174c36_0%,#103828_58%,#0a261b_100%)] text-white p-6 flex ${
+                    isFullWidthCta
+                      ? 'flex-col sm:flex-row sm:items-center justify-between gap-4'
+                      : 'flex-col justify-between gap-5'
+                  } ${ctaSmSpan} ${ctaLgSpan}`}
+                >
+                  <TrayCornerSprig flip className="-bottom-8 -right-8 w-40 h-40 opacity-90" />
+                  <div className="pointer-events-none absolute inset-2.5 rounded-xl border border-white/10" aria-hidden="true" />
+                  <div className="relative z-10 max-w-lg">
+                    <h3 className="text-xl font-bold font-serif-display text-white leading-snug">
+                      Cek alergen dan takaran porsi anak
+                    </h3>
+                    <p className="text-xs text-emerald-100/85 mt-2 leading-relaxed">
+                      Halaman menu hari ini memuat takaran porsi kecil dan besar, peringatan alergen, serta panduan Isi Piringku untuk siswa.
+                    </p>
+                  </div>
+                  <div className="relative z-10 shrink-0">
+                    <a
+                      href="/menu-mbg-hari-ini"
+                      className={`inline-flex items-center justify-center px-4 min-h-[44px] rounded-xl bg-white hover:bg-[#f4f1ea] text-[#103828] text-xs font-bold transition-colors duration-150 ${PUBLIC_FOCUS}`}
+                    >
+                      Lihat menu hari ini
+                    </a>
+                  </div>
+                </li>
+              </ul>
+            );
+          })()}
         </div>
       </section>
 
       {/* ========================================================
           SEKSI 4: ALUR OPERASIONAL (#alur-operasional)
           ======================================================== */}
-      <section id="alur-operasional" className="py-14 sm:py-20 bg-[#faf8f4] border-b border-[#e5dfd3]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section id="alur-operasional" className="relative overflow-hidden py-14 sm:py-20 bg-[#faf8f4] border-b border-[#e5dfd3]">
+        <FoodDoodles
+          width={760}
+          height={280}
+          seed={5}
+          className="top-0 right-0 w-3/4 md:w-3/5 h-64 md:h-72 text-[#133d2c] opacity-[0.13] [mask-image:linear-gradient(to_left,black_42%,transparent)]"
+        />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-10">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#133d2c] text-white text-xs font-semibold mb-3 shadow-2xs">
               <span>Alur Operasional</span>
@@ -1047,8 +1467,20 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* ========================================================
           SEKSI 6: SEKOLAH PENERIMA (#sekolah-penerima)
           ======================================================== */}
-      <section id="sekolah-penerima" className="py-14 sm:py-20 bg-[#faf8f4] border-b border-[#e5dfd3]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section id="sekolah-penerima" className="relative overflow-hidden py-14 sm:py-20 bg-[#faf8f4] border-b border-[#e5dfd3]">
+        <FoodDoodles
+          width={760}
+          height={280}
+          seed={6}
+          className="top-0 right-0 w-3/4 md:w-3/5 h-64 md:h-72 text-[#133d2c] opacity-[0.13] [mask-image:linear-gradient(to_left,black_40%,transparent)]"
+        />
+        <FoodDoodles
+          width={560}
+          height={220}
+          seed={11}
+          className="hidden md:block bottom-0 left-0 w-2/5 h-56 text-[#133d2c] opacity-[0.1] [mask-image:linear-gradient(to_right,black_30%,transparent)]"
+        />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#133d2c] text-white text-xs font-semibold mb-3 shadow-2xs">
@@ -1111,8 +1543,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* ========================================================
           SEKSI 7: PANDUAN ORANG TUA DAN SEKOLAH (#panduan-penerima)
           ======================================================== */}
-      <section id="panduan-penerima" className="py-14 sm:py-20 bg-white border-b border-[#e5dfd3]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
+      <section id="panduan-penerima" className="relative overflow-hidden py-14 sm:py-20 bg-white border-b border-[#e5dfd3]">
+        <FoodDoodles
+          width={420}
+          height={220}
+          seed={12}
+          className="lg:hidden top-0 right-0 w-3/5 h-48 text-[#133d2c] opacity-[0.11] [mask-image:linear-gradient(to_left,black_35%,transparent)]"
+        />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
           <div className="relative overflow-hidden lg:col-span-5">
             {/* Hanya di layar lebar: di layar sempit kolom ini setinggi judulnya, tidak ada ruang kosong. */}
             <FoodDoodles width={500} height={380} seed={4} className="hidden lg:block left-0 right-0 top-36 bottom-0 w-full h-[calc(100%-9rem)] text-[#133d2c] opacity-[0.16] [mask-image:linear-gradient(to_bottom,transparent,black_30%,black_70%,transparent)]" />
@@ -1176,11 +1614,25 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* ========================================================
           SEKSI 8: INFORMASI DAN KONTAK SPPG (#kontak-sppg)
           ======================================================== */}
-      <section id="kontak-sppg" className="py-14 sm:py-20 bg-[#faf8f4]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-[#0c2419] rounded-3xl p-6 sm:p-10 lg:p-12 text-white border border-[#1b4331] shadow-lg">
+      <section id="kontak-sppg" className="relative overflow-hidden py-14 sm:py-20 bg-[#faf8f4]">
+        <FoodDoodles
+          width={760}
+          height={260}
+          seed={10}
+          className="top-0 left-0 w-3/5 h-60 text-[#133d2c] opacity-[0.1] [mask-image:linear-gradient(to_right,black_35%,transparent)]"
+        />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="relative overflow-hidden bg-[#0c2419] rounded-3xl p-6 sm:p-10 lg:p-12 text-white border border-[#1b4331] shadow-lg">
+            <FoodDoodles
+              width={960}
+              height={460}
+              seed={8}
+              className="inset-0 w-full h-full text-emerald-100 opacity-[0.08] [mask-image:radial-gradient(ellipse_at_center,transparent_28%,black_88%)]"
+            />
+            <TrayCornerSprig className="-top-8 -left-8 w-40 h-40 opacity-65" />
+            <TrayCornerSprig flip className="-bottom-8 -right-8 w-44 h-44 opacity-70" />
             {/* Bagian Atas: Kiri Teks + CTA, Kanan Foto Bangunan SPPG */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
               <div className="lg:col-span-7 space-y-4">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#153e2c] text-emerald-200 border border-emerald-700/50 text-xs font-semibold">
                   <span>Informasi dan Kontak</span>
@@ -1216,7 +1668,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
 
             {/* Strip Informasi Bawah: Identitas, Alamat, Jam Operasional, Kontak */}
-            <div className="mt-10 pt-8 border-t border-white/15 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-xs text-slate-300">
+            <div className="relative z-10 mt-10 pt-8 border-t border-white/15 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-xs text-slate-300">
               {/* Kolom 1: Logo & Nama SPPG */}
               <div className="flex items-start gap-3">
                 <img

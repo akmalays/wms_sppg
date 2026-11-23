@@ -42,6 +42,8 @@ interface NavItem {
   label: string;
   // Menu disembunyikan bagi peran tanpa izin ini.
   permission?: PermissionAction;
+  // Disembunyikan pada navigasi mobile (< lg).
+  desktopOnly?: boolean;
 }
 
 // Urutan mengikuti alur kerja harian: rencana menu (H-1) → barang masuk → stok → barang keluar.
@@ -52,7 +54,7 @@ const DAILY_ITEMS: NavItem[] = [
   { id: 'receiving', label: 'Barang Masuk' },
   { id: 'inventory', label: 'Stok' },
   { id: 'daily_flow', label: 'Barang Keluar' },
-  { id: 'tools_forms', label: 'Cetak Form' },
+  { id: 'tools_forms', label: 'Cetak Form', desktopOnly: true },
 ];
 
 // Bilah bawah di HP dan tablet: empat halaman pertama alur harian dalam jangkauan jempol, sisanya di "Lainnya".
@@ -343,7 +345,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab, onViewLa
               <div key={group.id}>
                 <div className="text-[11px] font-semibold text-slate-600 mb-1 px-1">{group.label}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                  {group.items.filter(allowed).map(item => {
+                  {group.items.filter(item => allowed(item) && !item.desktopOnly).map(item => {
                     const isActive = activeTab === item.id;
                     return (
                       <button
