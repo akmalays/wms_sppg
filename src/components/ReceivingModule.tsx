@@ -51,7 +51,7 @@ import {
 } from 'lucide-react';
 import { SignaturePad } from './SignaturePad';
 import { SearchPicker, PickerOption } from './common/SearchPicker';
-import { FormDialog, FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST, FOCUS_RING, TABLE_INPUT } from './common/FormDialog';
+import { FormDialog, DialogShell, FIELD_INPUT, FIELD_LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST, FOCUS_RING, TABLE_INPUT } from './common/FormDialog';
 import { generateAutoSku, WarehouseSkuType, WAREHOUSE_SKU_DEFINITIONS } from '../utils/skuGenerator';
 import { buildItemReference, describePriceSource } from '../utils/itemReference';
 import { ReceivingDetailModal } from './ReceivingDetailModal';
@@ -299,7 +299,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
 
   // Supplier filter, View Mode, and Multi-select states
   const [selectedSupplierFilter, setSelectedSupplierFilter] = useState<string>('ALL');
-  const [viewMode, setViewMode] = useState<'TABLE' | 'SUPPLIER_GROUPS'>('TABLE');
+  const [viewMode, setViewMode] = useState<'TABLE' | 'SUPPLIER_GROUPS'>('SUPPLIER_GROUPS');
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
   const [supplierNotaPrompt, setSupplierNotaPrompt] = useState<{
     supplierName: string;
@@ -895,41 +895,197 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
     }
   };
 
-  // Betulkan jumlah barang yang sudah masuk stok: stok, belanja tertaut, dan notanya ikut disesuaikan.
-  const [qtyEdit, setQtyEdit] = useState<{ record: UnifiedRecord; value: string } | null>(null);
+  // Betulkan jumlah dan/atau tanggal barang yang sudah diterima: stok, belanja tertaut, mutasi, dan notanya ikut disesuaikan.
+  const [qtyEdit, setQtyEdit] = useState<{ record: UnifiedRecord; value: string; date: string; originalDate: string } | null>(null);
   const [qtyEditError, setQtyEditError] = useState('');
   const parseQtyInput = (v: string) => parseFloat(v.replace(',', '.'));
+  const toIsoDateInput = (dateStr?: string): string => {
+    if (!dateStr) return localDateIso();
+    if (/^\d{4}-\d{2}-\d{2}/.test(dateStr.trim())) return dateStr.trim().slice(0, 10);
+    const parsed = parseExpenseDate(dateStr);
+    return parsed ? localDateIso(parsed) : localDateIso();
+  };
 
   const openQtyEdit = (r: UnifiedRecord) => {
     setQtyEditError('');
-    setQtyEdit({ record: r, value: String(r.quantity) });
+    const isoDate = toIsoDateInput(r.date);
+    const parsedOldQty = parseQtyInput(String(r.quantity));
+    const initialQty = Number.isFinite(parsedOldQty) && parsedOldQty > 0 ? String(parsedOldQty) : '';
+    setQtyEdit({ record: r, value: initialQty, date: isoDate, originalDate: isoDate });
   };
 
   const handleSaveQtyEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!qtyEdit) return;
     const r = qtyEdit.record;
+    const isStock = r.source === 'DELIVERY_ORDER';
+    const parsedOldQty = parseQtyInput(String(r.quantity));
+    const oldQty = Number.isFinite(parsedOldQty) && parsedOldQty > 0 ? parsedOldQty : 0;
     const qty = parseQtyInput(qtyEdit.value);
-    if (!Number.isFinite(qty) || qty <= 0) {
+    const nextDate = qtyEdit.date.trim().slice(0, 10);
+    const dateChanged = nextDate !== qtyEdit.originalDate;
+    const qtyChanged = Number.isFinite(qty) && Math.round((qty - oldQty) * 1000) !== 0;
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
+      setQtyEditError('Pilih tanggal yang valid.');
+      return;
+    }
+    const needsValidQty = isStock || qtyEdit.value.trim() !== '' || oldQty > 0;
+    if (needsValidQty && (!Number.isFinite(qty) || qty <= 0)) {
       setQtyEditError('Isi jumlah lebih dari 0. Kalau barangnya tidak jadi diterima, hapus barisnya.');
       return;
     }
-    if (isCountableUnit(r.unit) && !Number.isInteger(qty)) {
+    if (qtyChanged && isCountableUnit(r.unit) && !Number.isInteger(qty)) {
       setQtyEditError(`Satuan ${r.unit} harus bilangan bulat.`);
       return;
     }
+    if (!qtyChanged && !dateChanged) {
+      setQtyEdit(null);
+      return;
+    }
+
     try {
-      if (!r.rawDoc || !r.lineId) throw new Error('Baris penerimaan ini tidak bisa diubah.');
-      const res = warehouseDb.updateReceivingLineQuantity(r.rawDoc.id, r.lineId, qty, currentUser, r.linkedExpenseId);
-      const stockNote =
-        res.stockDelta !== undefined
-          ? ` Stok ${res.stockDelta > 0 ? 'bertambah' : 'berkurang'} ${formatRecordQty(Math.abs(res.stockDelta))} ${res.stockUnit}.`
-          : '';
-      toast.success(`${r.itemName} jadi ${formatRecordQty(qty)} ${r.unit}.${stockNote}`, 'Jumlah diperbarui');
+      const notes: string[] = [];
+      if (r.source === 'DELIVERY_ORDER') {
+        if (!r.rawDoc || !r.lineId) throw new Error('Baris penerimaan ini tidak bisa diubah.');
+        if (qtyChanged) {
+          const res = warehouseDb.updateReceivingLineQuantity(r.rawDoc.id, r.lineId, qty, currentUser, r.linkedExpenseId);
+          const stockNote =
+            res.stockDelta !== undefined
+              ? ` (stok ${res.stockDelta > 0 ? '+' : ''}${formatRecordQty(res.stockDelta)} ${res.stockUnit})`
+              : '';
+          notes.push(`jumlah jadi ${formatRecordQty(qty)} ${r.unit}${stockNote}`);
+        }
+        if (dateChanged) {
+          const dateRes = warehouseDb.updateReceivingDate(r.rawDoc.id, nextDate, currentUser, r.linkedExpenseId);
+          const scopeNote = dateRes.updatedLineCount > 1 ? ` (${dateRes.updatedLineCount} barang dalam penerimaan ini)` : '';
+          notes.push(`tanggal jadi ${formatIndonesianDateWithDay(nextDate)}${scopeNote}`);
+        }
+      } else {
+        warehouseDb.updateNonFoodExpenseRecord(
+          r.id,
+          {
+            ...(qtyChanged ? { quantity: qty } : {}),
+            ...(dateChanged ? { date: nextDate } : {}),
+          },
+          currentUser
+        );
+        if (qtyChanged) notes.push(`jumlah jadi ${formatRecordQty(qty)} ${r.unit}`);
+        if (dateChanged) notes.push(`tanggal jadi ${formatIndonesianDateWithDay(nextDate)}`);
+      }
+
+      toast.success(`${r.itemName}: ${notes.join('; ')}.`, 'Data diperbarui');
       setQtyEdit(null);
       refreshAll();
     } catch (err: any) {
-      setQtyEditError(err?.message || 'Gagal mengubah jumlah.');
+      setQtyEditError(err?.message || 'Gagal menyimpan perubahan.');
+    }
+  };
+
+  // Ubah tanggal dan jumlah sekaligus untuk satu grup (supplier + tanggal) agar tidak perlu ubah satu per satu.
+  const [groupEdit, setGroupEdit] = useState<{
+    supplierName: string;
+    date: string;
+    originalDate: string;
+    rows: { record: UnifiedRecord; originalQty: number; value: string }[];
+  } | null>(null);
+  const [groupEditError, setGroupEditError] = useState('');
+
+  const openGroupEdit = (supplierName: string, dateKey: string, records: UnifiedRecord[]) => {
+    setGroupEditError('');
+    const isoDate = dateKey === 'Tanpa tanggal' ? localDateIso() : toIsoDateInput(dateKey);
+    const originalDate = dateKey === 'Tanpa tanggal' ? '' : isoDate;
+    setGroupEdit({
+      supplierName,
+      date: isoDate,
+      originalDate,
+      rows: records.map(record => {
+        const parsed = parseQtyInput(String(record.quantity));
+        const originalQty = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+        return {
+          record,
+          originalQty,
+          value: originalQty > 0 ? String(originalQty) : '',
+        };
+      }),
+    });
+  };
+
+  const handleSaveGroupEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!groupEdit) return;
+
+    const nextDate = groupEdit.date.trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
+      setGroupEditError('Pilih tanggal yang valid.');
+      return;
+    }
+    const dateChanged = nextDate !== groupEdit.originalDate;
+
+    // Validasi seluruh baris terlebih dahulu agar tidak tersimpan sebagian bila ada input yang keliru.
+    const parsedRows = groupEdit.rows.map(row => {
+      const isStock = row.record.source === 'DELIVERY_ORDER';
+      const qty = parseQtyInput(row.value);
+      const needsValidQty = isStock || row.value.trim() !== '' || row.originalQty > 0;
+      const qtyChanged = Number.isFinite(qty) && Math.round((qty - row.originalQty) * 1000) !== 0;
+      return { row, isStock, qty, needsValidQty, qtyChanged };
+    });
+
+    for (const item of parsedRows) {
+      if (item.needsValidQty && (!Number.isFinite(item.qty) || item.qty <= 0)) {
+        setGroupEditError(`Jumlah "${item.row.record.itemName}" harus lebih dari 0. Hapus barisnya jika tidak jadi diterima.`);
+        return;
+      }
+      if (item.qtyChanged && isCountableUnit(item.row.record.unit) && !Number.isInteger(item.qty)) {
+        setGroupEditError(`Jumlah "${item.row.record.itemName}" (${item.row.record.unit}) harus bilangan bulat.`);
+        return;
+      }
+    }
+
+    const anyQtyChanged = parsedRows.some(p => p.qtyChanged);
+    if (!dateChanged && !anyQtyChanged) {
+      setGroupEdit(null);
+      return;
+    }
+
+    try {
+      let qtyUpdatedCount = 0;
+      const updatedDocIds = new Set<string>();
+
+      // 1. Terapkan perubahan jumlah untuk barang masuk stok (DELIVERY_ORDER)
+      for (const item of parsedRows) {
+        const r = item.row.record;
+        if (item.isStock) {
+          if (item.qtyChanged) {
+            if (!r.rawDoc || !r.lineId) throw new Error(`Baris "${r.itemName}" tidak bisa diubah.`);
+            warehouseDb.updateReceivingLineQuantity(r.rawDoc.id, r.lineId, item.qty, currentUser, r.linkedExpenseId);
+            qtyUpdatedCount += 1;
+          }
+          if (dateChanged && r.rawDoc && !updatedDocIds.has(r.rawDoc.id)) {
+            warehouseDb.updateReceivingDate(r.rawDoc.id, nextDate, currentUser, r.linkedExpenseId);
+            updatedDocIds.add(r.rawDoc.id);
+          }
+        } else if (item.qtyChanged || dateChanged) {
+          warehouseDb.updateNonFoodExpenseRecord(
+            r.id,
+            {
+              ...(item.qtyChanged ? { quantity: item.qty } : {}),
+              ...(dateChanged ? { date: nextDate } : {}),
+            },
+            currentUser
+          );
+          if (item.qtyChanged) qtyUpdatedCount += 1;
+        }
+      }
+
+      const summaryParts: string[] = [];
+      if (qtyUpdatedCount > 0) summaryParts.push(`${qtyUpdatedCount} barang diubah jumlahnya`);
+      if (dateChanged) summaryParts.push(`tanggal dipindah ke ${formatIndonesianDateWithDay(nextDate)}`);
+      toast.success(`${groupEdit.supplierName}: ${summaryParts.join(', ')}.`, 'Penerimaan diperbarui');
+      setGroupEdit(null);
+      refreshAll();
+    } catch (err: any) {
+      setGroupEditError(err?.message || 'Gagal menyimpan perubahan grup.');
     }
   };
 
@@ -1272,13 +1428,28 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
     // Belanja yang tercatat dari penerimaan barang tertaut ke dokumennya: lewat penanda [GR: id]
     // (penerimaan baru) atau nomor PO di catatan dokumen (data lama). Belanja itu tidak ditampilkan
     // terpisah; harganya dipakai di baris penerimaan, agar satu barang tidak muncul dan terhitung dua kali.
-    const receivingIds = new Set(receivings.map(r => r.id));
+    const receivingById = new Map(receivings.map(r => [r.id, r]));
     const linkedByDoc = new Map<string, NonFoodExpense[]>();
     const linkTarget = (exp: NonFoodExpense): string | undefined => {
       const tag = exp.notes?.match(/\[GR:\s*([^\]]+)\]/)?.[1]?.trim();
-      if (tag && receivingIds.has(tag)) return tag;
+      if (tag && receivingById.has(tag)) {
+        const rec = receivingById.get(tag)!;
+        const taggedSupplier = exp.notes?.match(/\[(?:Toko\/Supplier|Toko|Supplier):\s*([^\]]+)\]/i)?.[1]?.trim();
+        if (
+          taggedSupplier &&
+          rec.supplierName &&
+          taggedSupplier.toLowerCase() !== rec.supplierName.trim().toLowerCase()
+        ) {
+          return undefined;
+        }
+        return tag;
+      }
       if (exp.receiptRef) {
-        return receivings.find(r => r.notes?.includes(`PO ${exp.receiptRef}`))?.id;
+        return receivings.find(
+          r =>
+            r.notes?.includes(`PO ${exp.receiptRef}`) &&
+            (!exp.recipient || !r.supplierName || exp.recipient.trim().toLowerCase() === r.supplierName.trim().toLowerCase())
+        )?.id;
       }
       return undefined;
     };
@@ -1501,25 +1672,77 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
     });
   }, [periodRecords, selectedCategoryTab, selectedSubcategory, sourceFilter, selectedSupplierFilter, searchQuery]);
 
-  // Tampilan per supplier memakai hasil filter yang sama dengan tabel, dikelompokkan per supplier lalu per tanggal
-  const supplierGroups = useMemo(() => {
-    const map = new Map<string, { name: string; total: number; byDate: Map<string, UnifiedRecord[]> }>();
+  // Pengelompokan utama: kronologis per tanggal (terbaru dulu), lalu per supplier & nomor NP agar beda nomor NP tidak tercampur.
+  const dateSupplierSections = useMemo(() => {
+    const byDate = new Map<string, Map<string, UnifiedRecord[]>>();
+    // Cek dulu apakah pada satu tanggal + supplier ada lebih dari satu nomor NP berbeda
+    const notaNumsByDateSupplier = new Map<string, Set<string>>();
+    const matchedNotaByRecordId = new Map<string, PurchaseOrderNota | undefined>();
+
     filteredRecords.forEach(r => {
-      const name = r.supplierOrStore && r.supplierOrStore !== '-' ? r.supplierOrStore : 'Belanja Rutin';
-      const group = map.get(name) || { name, total: 0, byDate: new Map<string, UnifiedRecord[]>() };
-      group.total += r.nominal;
-      const date = r.date || 'Tanpa tanggal';
-      group.byDate.set(date, [...(group.byDate.get(date) || []), r]);
-      map.set(name, group);
+      const dateKey = r.date ? toIsoDateInput(r.date) : 'Tanpa tanggal';
+      const supplierName = r.supplierOrStore && r.supplierOrStore !== '-' ? r.supplierOrStore : 'Belanja Rutin';
+      const nota = getMatchingNotaForRecord(r);
+      matchedNotaByRecordId.set(r.id, nota);
+      if (nota?.poNumber) {
+        const dsKey = `${dateKey}__${supplierName.toLowerCase().trim()}`;
+        const set = notaNumsByDateSupplier.get(dsKey) || new Set<string>();
+        set.add(nota.poNumber);
+        notaNumsByDateSupplier.set(dsKey, set);
+      }
     });
-    return Array.from(map.values())
-      .map(g => ({
-        name: g.name,
-        total: g.total,
-        count: Array.from(g.byDate.values()).reduce((sum, list) => sum + list.length, 0),
-        dates: Array.from(g.byDate.entries()).sort(([a], [b]) => b.localeCompare(a)),
-      }))
-      .sort((a, b) => b.count - a.count);
+
+    filteredRecords.forEach(r => {
+      const dateKey = r.date ? toIsoDateInput(r.date) : 'Tanpa tanggal';
+      const supplierName = r.supplierOrStore && r.supplierOrStore !== '-' ? r.supplierOrStore : 'Belanja Rutin';
+      const dsKey = `${dateKey}__${supplierName.toLowerCase().trim()}`;
+      const hasMultipleNotas = (notaNumsByDateSupplier.get(dsKey)?.size || 0) > 1;
+      const nota = matchedNotaByRecordId.get(r.id);
+      const groupKey = hasMultipleNotas ? `${supplierName}__${nota?.poNumber || 'TANPA_NP'}` : supplierName;
+      const suppMap = byDate.get(dateKey) || new Map<string, UnifiedRecord[]>();
+      suppMap.set(groupKey, [...(suppMap.get(groupKey) || []), r]);
+      byDate.set(dateKey, suppMap);
+    });
+
+    return Array.from(byDate.entries())
+      .sort(([a], [b]) => {
+        if (a === 'Tanpa tanggal') return 1;
+        if (b === 'Tanpa tanggal') return -1;
+        return b.localeCompare(a);
+      })
+      .map(([dateKey, suppMap]) => {
+        const groups = Array.from(suppMap.entries())
+          .map(([groupMapKey, records]) => {
+            const first = records[0];
+            const supplierName =
+              first && first.supplierOrStore && first.supplierOrStore !== '-' ? first.supplierOrStore : 'Belanja Rutin';
+            const total = records.reduce((s, r) => s + r.nominal, 0);
+            const latestTime = records.map(r => r.time || '').filter(Boolean).sort().pop() || '';
+            const pics = [...new Set(records.map(r => r.picOrUser).filter(Boolean))];
+            const docsMap = new Map<string, ReceivingDocument>();
+            records.forEach(r => {
+              if (r.rawDoc) docsMap.set(r.rawDoc.id, r.rawDoc);
+            });
+            return {
+              key: `${dateKey}__${groupMapKey}`,
+              dateKey,
+              supplierName,
+              records,
+              total,
+              latestTime,
+              pics,
+              docs: Array.from(docsMap.values()),
+            };
+          })
+          .sort((a, b) => b.latestTime.localeCompare(a.latestTime) || a.supplierName.localeCompare(b.supplierName));
+
+        return {
+          dateKey,
+          groups,
+          dayTotal: groups.reduce((s, g) => s + g.total, 0),
+          dayCount: groups.reduce((s, g) => s + g.records.length, 0),
+        };
+      });
   }, [filteredRecords]);
 
   // Supplier terpilih yang tidak ada lagi di periode ini (mis. periode diganti) dikembalikan ke semua supplier
@@ -2388,8 +2611,8 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
             <div className="px-4 py-3 bg-slate-50/60 flex flex-wrap items-center gap-2">
               <div role="group" aria-label="Tampilan" className="inline-flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs shrink-0">
                 {([
-                  { mode: 'TABLE', label: 'Tabel', icon: TableProperties, title: 'Tampilan tabel biasa' },
-                  { mode: 'SUPPLIER_GROUPS', label: 'Per supplier', icon: LayoutGrid, title: 'Kelompokkan barang per supplier lalu per tanggal' },
+                  { mode: 'SUPPLIER_GROUPS', label: 'Per supplier', icon: LayoutGrid, title: 'Kelompokkan per tanggal dan supplier' },
+                  { mode: 'TABLE', label: 'Tabel', icon: TableProperties, title: 'Tampilkan semua barang dalam satu tabel' },
                 ] as const).map(({ mode, label, icon: Icon, title }) => (
                   <button
                     key={mode}
@@ -2494,9 +2717,9 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
             </div>
           </div>
 
-          {/* VIEW: Kelompokkan Per Supplier & Per Tanggal */}
+          {/* VIEW: Kelompokkan Per Tanggal & Per Supplier */}
           {viewMode === 'SUPPLIER_GROUPS' ? (
-            supplierGroups.length === 0 ? (
+            dateSupplierSections.length === 0 ? (
               <div className="bg-white rounded-xl border border-slate-200 py-12 px-4 text-center">
                 <h4 className="text-xs font-semibold text-slate-800">
                   {searchQuery || selectedCategoryTab !== 'ALL' || sourceFilter !== 'ALL' || selectedSupplierFilter !== 'ALL'
@@ -2507,175 +2730,215 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
               </div>
             ) : (
               <div className="space-y-4">
-                {supplierGroups.map(supplier => {
-                    const supplierKey = supplier.name.toLowerCase().trim();
+                {dateSupplierSections.map(section => (
+                  <section
+                    key={section.dateKey}
+                    aria-label={section.dateKey === 'Tanpa tanggal' ? section.dateKey : formatIndonesianDateWithDay(section.dateKey)}
+                    className="bg-white rounded-xl border border-slate-200 overflow-hidden"
+                  >
+                    {/* Baris Tanggal */}
+                    <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                      <h3 className="text-xs font-semibold text-slate-900">
+                        {section.dateKey === 'Tanpa tanggal' ? section.dateKey : formatIndonesianDateWithDay(section.dateKey)}
+                      </h3>
+                      <p className="text-xs text-slate-600">
+                        {section.groups.length} supplier · {section.dayCount} barang
+                        {section.dayTotal > 0 && (
+                          <>
+                            {' · '}
+                            <span className="font-mono font-semibold text-slate-900 tabular-nums">
+                              Rp {section.dayTotal.toLocaleString('id-ID')}
+                            </span>
+                          </>
+                        )}
+                      </p>
+                    </div>
 
-                    return (
-                      <section key={supplier.name} aria-label={`Supplier ${supplier.name}`} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                        <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                          <h3 className="text-sm font-semibold text-slate-900">{supplier.name}</h3>
-                          <p className="text-xs text-slate-600">
-                            {supplier.count} barang · {supplier.dates.length} tanggal ·{' '}
-                            <span className="font-mono font-semibold text-slate-900 tabular-nums">Rp {supplier.total.toLocaleString('id-ID')}</span>
-                          </p>
-                        </div>
+                    {/* Blok per Supplier di dalam tanggal ini */}
+                    <div className="divide-y divide-slate-200">
+                      {section.groups.map(group => {
+                        const supplierKey = group.supplierName.toLowerCase().trim();
 
-                        <div className="divide-y divide-slate-200">
-                          {supplier.dates.map(([dateKey, dateRecords]) => {
-                            const dateSubtotal = dateRecords.reduce((sum, r) => sum + r.nominal, 0);
+                        const dateMatchingNotas: PurchaseOrderNota[] = [];
+                        const seenPoIds = new Set<string>();
+                        group.records.forEach(r => {
+                          const nota = getMatchingNotaForRecord(r);
+                          if (nota && !seenPoIds.has(nota.id)) {
+                            seenPoIds.add(nota.id);
+                            dateMatchingNotas.push(nota);
+                          }
+                        });
+                        purchaseOrders.forEach(po => {
+                          if (seenPoIds.has(po.id) || isAwaitingDelivery(po)) return;
+                          // Jika PO sudah tertaut ke dokumen penerimaan lain yang tidak ada di grup ini, jangan tempelkan ke grup ini
+                          if (po.relatedReceivingId && !group.docs.some(d => d.id === po.relatedReceivingId)) return;
+                          const isDateMatch =
+                            (po.date || '').slice(0, 10) === group.dateKey ||
+                            (po.deliveryDate || '').slice(0, 10) === group.dateKey;
+                          if (isDateMatch && (po.supplierName || '').toLowerCase().trim() === supplierKey) {
+                            seenPoIds.add(po.id);
+                            dateMatchingNotas.push(po);
+                          }
+                        });
 
-                            // Nota untuk barang di tanggal ini: yang tertaut ke barisnya, ditambah nota lain atas nama
-                            // supplier yang sama di tanggal itu. PO yang barangnya belum datang bukan nota, jadi tidak ikut.
-                            const dateMatchingNotas: PurchaseOrderNota[] = [];
-                            const seenPoIds = new Set<string>();
-                            dateRecords.forEach(r => {
-                              const nota = getMatchingNotaForRecord(r);
-                              if (nota && !seenPoIds.has(nota.id)) {
-                                seenPoIds.add(nota.id);
-                                dateMatchingNotas.push(nota);
-                              }
-                            });
-                            purchaseOrders.forEach(po => {
-                              if (seenPoIds.has(po.id) || isAwaitingDelivery(po)) return;
-                              const isDateMatch = (po.date || '').slice(0, 10) === dateKey || (po.deliveryDate || '').slice(0, 10) === dateKey;
-                              if (isDateMatch && (po.supplierName || '').toLowerCase().trim() === supplierKey) {
-                                seenPoIds.add(po.id);
-                                dateMatchingNotas.push(po);
-                              }
-                            });
+                        const unassignedRecords = group.records.filter(r => !getMatchingNotaForRecord(r));
+                        const primaryDoc = group.docs[0];
 
-                            const unassignedRecords = dateRecords.filter(r => !getMatchingNotaForRecord(r));
-
-                            return (
-                              <div key={dateKey}>
-                                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-2">
-                                  <p className="text-xs text-slate-600">
-                                    <span className="font-semibold text-slate-900">
-                                      {dateKey === 'Tanpa tanggal' ? dateKey : formatIndonesianDateWithDay(dateKey)}
-                                    </span>
-                                    {' · '}
-                                    {dateRecords.length} barang ·{' '}
-                                    <span className="font-mono text-slate-900 tabular-nums">Rp {dateSubtotal.toLocaleString('id-ID')}</span>
-                                  </p>
-
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    {dateMatchingNotas.map(nota => {
-                                      const inPool = poolNotaIds.includes(nota.id);
-                                      return (
-                                        <div key={nota.id} role="group" aria-label={`Nota ${nota.poNumber}`} className="flex flex-wrap items-center gap-1.5">
-                                          <button
-                                            type="button"
-                                            onClick={() => handleOpenExistingNota(nota)}
-                                            className={BTN_SECONDARY}
-                                            title={`Lihat dan cetak nota ${nota.poNumber}`}
-                                          >
-                                            <Receipt className="w-3.5 h-3.5 text-slate-500" />
-                                            Lihat nota{dateMatchingNotas.length > 1 ? ` ${nota.poNumber}` : ''}
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleTogglePool(nota.id)}
-                                            aria-pressed={inPool}
-                                            className={`inline-flex whitespace-nowrap items-center justify-center gap-1.5 px-3 min-h-[44px] sm:min-h-[32px] rounded-lg border text-xs font-medium cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1 ${
-                                              inPool
-                                                ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                                                : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'
-                                            }`}
-                                            title={inPool ? 'Keluarkan dari antrean cetak' : 'Masukkan ke antrean cetak (2 nota per lembar A4)'}
-                                          >
-                                            <Layers className="w-3.5 h-3.5" />
-                                            {inPool ? 'Di antrean cetak' : 'Antrean cetak'}
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleDeleteNota(nota)}
-                                            aria-label={`Hapus nota ${nota.poNumber}`}
-                                            title={`Hapus nota ${nota.poNumber}`}
-                                            className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] sm:min-w-[32px] sm:min-h-[32px] rounded-lg text-rose-700 hover:bg-rose-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
-                                          >
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                          </button>
-                                        </div>
-                                      );
-                                    })}
-
-                                    {dateMatchingNotas.length === 0 ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleCreateCombinedNotaForSupplier(supplier.name, dateRecords, dateKey)}
-                                        className={BTN_PRIMARY}
-                                        title="Buat nota gabungan untuk barang pada tanggal ini. Nota bisa diedit sebelum dicetak."
-                                      >
-                                        <FilePlus className="w-3.5 h-3.5" />
-                                        Buat nota
-                                      </button>
-                                    ) : unassignedRecords.length > 0 ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleCreateCombinedNotaForSupplier(supplier.name, unassignedRecords, dateKey)}
-                                        className={BTN_PRIMARY}
-                                        title="Buat nota untuk barang yang belum masuk nota pada tanggal ini"
-                                      >
-                                        <FilePlus className="w-3.5 h-3.5" />
-                                        Buat nota ({unassignedRecords.length} belum ada nota)
-                                      </button>
-                                    ) : null}
-                                  </div>
-                                </div>
-
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-left text-xs">
-                                    <thead className="text-slate-700 font-semibold border-b border-slate-200">
-                                      <tr>
-                                        <th className="py-2 px-4 w-20">Jam</th>
-                                        <th className="py-2 px-3 min-w-[200px]">Barang</th>
-                                        <th className="py-2 px-3 w-28 text-right">Jumlah</th>
-                                        <th className="py-2 px-3 w-32 text-right">Nilai</th>
-                                        <th className="py-2 px-3 w-32">Petugas</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                      {dateRecords.map(r => (
-                                        <tr key={r.id} className="hover:bg-slate-50 align-top">
-                                          <td className="py-2.5 px-4 text-slate-600 font-mono tabular-nums whitespace-nowrap">{r.time || '-'}</td>
-                                          <td className="py-2.5 px-3">
-                                            <div className="font-semibold text-slate-900">{r.itemName}</div>
-                                            <div className="text-[11px] text-slate-600">
-                                              {r.source === 'DELIVERY_ORDER' ? 'Masuk stok' : 'Belanja'} · {r.displayCategory || r.category}
-                                            </div>
-                                            {r.notes && <div className="text-[11px] text-slate-600 line-clamp-1">{r.notes}</div>}
-                                          </td>
-                                          <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-900 whitespace-nowrap">
-                                            {formatRecordQty(r.quantity)} {r.unit}
-                                          </td>
-                                          <td className="py-2.5 px-3 text-right">
-                                            {/* Penerimaan lama tanpa belanja tertaut tidak punya harga. */}
-                                            {r.nominal <= 0 ? (
-                                              <span className="text-slate-600" title="Harga belum tercatat">-</span>
-                                            ) : (
-                                              <>
-                                                <div className="font-mono font-semibold text-slate-900">Rp {r.nominal.toLocaleString('id-ID')}</div>
-                                                {r.unitPrice > 0 && (
-                                                  <div className="text-[11px] text-slate-600 font-mono">@ Rp {r.unitPrice.toLocaleString('id-ID')}</div>
-                                                )}
-                                              </>
-                                            )}
-                                          </td>
-                                          <td className="py-2.5 px-3 text-slate-700">
-                                            <div className="truncate max-w-[120px]">{r.picOrUser}</div>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
+                        return (
+                          <div key={group.key}>
+                            {/* Header Supplier */}
+                            <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <h4 className="text-sm font-semibold text-slate-900 truncate">{group.supplierName}</h4>
+                                <p className="text-xs text-slate-600 mt-0.5">
+                                  {group.latestTime && <><span className="font-mono">{group.latestTime} WIB</span>{' · '}</>}
+                                  {group.records.length} barang
+                                  {group.pics.length > 0 && <> · {group.pics.join(', ')}</>}
+                                  {group.total > 0 && (
+                                    <>
+                                      {' · '}
+                                      <span className="font-mono font-semibold text-slate-900 tabular-nums">
+                                        Rp {group.total.toLocaleString('id-ID')}
+                                      </span>
+                                    </>
+                                  )}
+                                </p>
                               </div>
-                            );
-                          })}
-                        </div>
-                      </section>
-                    );
-                  })}
+
+                              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                                {canDeleteRecords && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openGroupEdit(group.supplierName, group.dateKey, group.records)}
+                                    className={BTN_SECONDARY}
+                                    title="Ubah tanggal atau jumlah barang"
+                                  >
+                                    Ubah
+                                  </button>
+                                )}
+
+                                {primaryDoc && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedDocForDetail(primaryDoc)}
+                                    className={BTN_SECONDARY}
+                                    title={`Detail & foto dokumen ${primaryDoc.id}`}
+                                  >
+                                    Detail
+                                  </button>
+                                )}
+
+                                {dateMatchingNotas.map(nota => {
+                                  const inPool = poolNotaIds.includes(nota.id);
+                                  return (
+                                    <React.Fragment key={nota.id}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenExistingNota(nota)}
+                                        className={BTN_SECONDARY}
+                                        title={`Lihat dan cetak nota ${nota.poNumber}`}
+                                      >
+                                        Lihat nota{dateMatchingNotas.length > 1 ? ` ${nota.poNumber}` : ''}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleTogglePool(nota.id)}
+                                        aria-pressed={inPool}
+                                        className={`inline-flex whitespace-nowrap items-center justify-center px-3 min-h-[44px] sm:min-h-[32px] rounded-lg border text-xs font-medium cursor-pointer ${FOCUS_RING} ${
+                                          inPool
+                                            ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                                            : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'
+                                        }`}
+                                        title={inPool ? 'Keluarkan dari antrean cetak' : 'Masukkan ke antrean cetak (2 nota per lembar A4)'}
+                                      >
+                                        {inPool ? 'Di antrean cetak' : 'Antrean cetak'}
+                                      </button>
+                                    </React.Fragment>
+                                  );
+                                })}
+
+                                {dateMatchingNotas.length === 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCreateCombinedNotaForSupplier(group.supplierName, group.records, group.dateKey)}
+                                    className={BTN_PRIMARY}
+                                    title="Buat nota gabungan untuk barang pada tanggal ini"
+                                  >
+                                    Buat nota
+                                  </button>
+                                ) : unassignedRecords.length > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCreateCombinedNotaForSupplier(group.supplierName, unassignedRecords, group.dateKey)}
+                                    className={BTN_PRIMARY}
+                                    title="Buat nota untuk barang yang belum masuk nota pada tanggal ini"
+                                  >
+                                    Buat nota ({unassignedRecords.length})
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            {/* Rincian Barang */}
+                            <ul className="divide-y divide-slate-100 border-t border-slate-100">
+                              {group.records.map(r => (
+                                <li
+                                  key={r.id}
+                                  className="px-4 py-2 text-xs flex items-start sm:items-baseline justify-between gap-3 hover:bg-slate-50/70"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <span className="font-medium text-slate-900">{r.itemName}</span>
+                                    <span className="text-[11px] text-slate-500 ml-2">
+                                      {r.displayCategory || r.category}
+                                    </span>
+                                    {r.notes && (
+                                      <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{r.notes}</p>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center sm:items-baseline gap-3 sm:gap-5 shrink-0">
+                                    <span className="font-mono font-semibold text-slate-900 tabular-nums whitespace-nowrap sm:w-24 text-right">
+                                      {formatRecordQty(r.quantity)} {r.unit}
+                                    </span>
+
+                                    <div className="text-right whitespace-nowrap sm:w-36">
+                                      {r.nominal <= 0 ? (
+                                        <span className="text-slate-500" title="Harga belum tercatat">-</span>
+                                      ) : (
+                                        <>
+                                          <span className="font-mono font-semibold text-slate-900 tabular-nums">
+                                            Rp {r.nominal.toLocaleString('id-ID')}
+                                          </span>
+                                          {r.unitPrice > 0 && (
+                                            <span className="hidden md:inline text-[11px] text-slate-500 font-mono tabular-nums ml-1.5">
+                                              (@ {r.unitPrice.toLocaleString('id-ID')})
+                                            </span>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+
+                                    {canDeleteRecords && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteRecord(r)}
+                                        aria-label={`Hapus ${r.itemName}`}
+                                        title="Hapus baris ini"
+                                        className={`inline-flex items-center justify-center w-9 min-h-[44px] -mr-2 sm:mr-0 sm:w-7 sm:min-h-[28px] rounded-md text-slate-400 hover:text-rose-700 hover:bg-rose-50 cursor-pointer ${FOCUS_RING}`}
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
               </div>
             )
           ) : (
@@ -2822,12 +3085,12 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                                       Detail
                                     </button>
                                   ) : null}
-                                  {canDeleteRecords && isStock && r.rawDoc && r.lineId && (
+                                  {canDeleteRecords && ((isStock && r.rawDoc && r.lineId) || !isStock) && (
                                     <button
                                       type="button"
                                       onClick={() => openQtyEdit(r)}
-                                      aria-label={`Ubah jumlah ${r.itemName}`}
-                                      title="Ubah jumlah"
+                                      aria-label={`Ubah jumlah atau tanggal ${r.itemName}`}
+                                      title="Ubah jumlah atau tanggal"
                                       className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-emerald-800 hover:bg-emerald-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
                                     >
                                       <Pencil className="w-3.5 h-3.5" />
@@ -2913,11 +3176,11 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                                       Detail
                                     </button>
                                   )}
-                                  {canDeleteRecords && isStock && r.rawDoc && r.lineId && (
+                                  {canDeleteRecords && ((isStock && r.rawDoc && r.lineId) || !isStock) && (
                                     <button
                                       type="button"
                                       onClick={() => openQtyEdit(r)}
-                                      aria-label={`Ubah jumlah ${r.itemName}`}
+                                      aria-label={`Ubah jumlah atau tanggal ${r.itemName}`}
                                       className={`px-2.5 rounded-lg text-[11px] font-semibold text-slate-700 border border-slate-300 cursor-pointer min-h-[44px] ${FOCUS_RING}`}
                                     >
                                       Ubah
@@ -2987,25 +3250,206 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
         </div>
     )}
 
+      {groupEdit && (() => {
+        const dateValid = /^\d{4}-\d{2}-\d{2}$/.test(groupEdit.date.trim());
+        const dateChanged = dateValid && groupEdit.date.trim() !== groupEdit.originalDate;
+
+        const rowStates = groupEdit.rows.map(row => {
+          const isStock = row.record.source === 'DELIVERY_ORDER';
+          const qty = parseQtyInput(row.value);
+          const needsValidQty = isStock || row.value.trim() !== '' || row.originalQty > 0;
+          const valid = needsValidQty ? Number.isFinite(qty) && qty > 0 : true;
+          const diff = Number.isFinite(qty) && qty > 0 ? Math.round((qty - row.originalQty) * 1000) / 1000 : 0;
+          const changed = Number.isFinite(qty) && qty > 0 && diff !== 0;
+          const newNominal = Number.isFinite(qty) && qty > 0 && row.record.unitPrice > 0
+            ? Math.round(qty * row.record.unitPrice)
+            : row.record.nominal;
+          return { row, isStock, qty, valid, diff, changed, newNominal };
+        });
+
+        const allValid = dateValid && rowStates.every(s => s.valid);
+        const changedQtyCount = rowStates.filter(s => s.changed).length;
+        const hasChanges = dateChanged || changedQtyCount > 0;
+        const totalBefore = groupEdit.rows.reduce((sum, r) => sum + r.record.nominal, 0);
+        const totalAfter = rowStates.reduce((sum, s) => sum + s.newNominal, 0);
+
+        const uniqueDocs = new Map<string, ReceivingDocument>();
+        groupEdit.rows.forEach(r => {
+          if (r.record.rawDoc) uniqueDocs.set(r.record.rawDoc.id, r.record.rawDoc);
+        });
+        const totalDocLines = Array.from(uniqueDocs.values()).reduce((sum, d) => sum + d.lines.length, 0);
+        const hasHiddenDocLines = totalDocLines > groupEdit.rows.filter(r => r.record.source === 'DELIVERY_ORDER').length;
+
+        return (
+          <DialogShell
+            size="lg"
+            title="Ubah penerimaan"
+            description={`${groupEdit.supplierName} · ${groupEdit.rows.length} barang`}
+            onClose={() => setGroupEdit(null)}
+            onSubmit={handleSaveGroupEdit}
+            footer={
+              <>
+                <div className="mr-auto text-xs text-slate-700">
+                  {totalAfter > 0 && (
+                    <>
+                      Nilai <span className="font-mono font-semibold text-slate-900 tabular-nums">Rp {totalAfter.toLocaleString('id-ID')}</span>
+                      {totalBefore > 0 && totalAfter !== totalBefore && (
+                        <span className="text-slate-600"> (sebelumnya Rp {totalBefore.toLocaleString('id-ID')})</span>
+                      )}
+                    </>
+                  )}
+                </div>
+                <button type="button" onClick={() => setGroupEdit(null)} className={`${BTN_SECONDARY} ${BTN_GHOST}`}>
+                  Batal
+                </button>
+                <button type="submit" disabled={!allValid || !hasChanges} className={BTN_PRIMARY}>
+                  Simpan
+                </button>
+              </>
+            }
+          >
+            <div
+              className="space-y-4"
+              onKeyDown={e => {
+                if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') e.preventDefault();
+              }}
+            >
+              {groupEditError && (
+                <p role="alert" className="px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-900">
+                  {groupEditError}
+                </p>
+              )}
+
+              <div>
+                <label htmlFor="group-edit-date" className={FIELD_LABEL}>Tanggal diterima</label>
+                <input
+                  id="group-edit-date"
+                  type="date"
+                  required
+                  value={groupEdit.date}
+                  onChange={e => {
+                    setGroupEditError('');
+                    setGroupEdit(prev => (prev ? { ...prev, date: e.target.value } : prev));
+                  }}
+                  className={`${TABLE_INPUT} w-full sm:w-48`}
+                />
+                {dateChanged && hasHiddenDocLines && (
+                  <p className="mt-1 text-[11px] text-amber-800">
+                    Seluruh {totalDocLines} barang pada dokumen penerimaan ini ikut pindah tanggal.
+                  </p>
+                )}
+              </div>
+
+              <div className="border border-slate-200 rounded-xl overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="py-2 px-3 min-w-[160px]">Barang</th>
+                      <th className="py-2 px-3 text-right w-24">Tercatat</th>
+                      <th className="py-2 px-3 w-36">Diterima</th>
+                      <th className="py-2 px-3 text-right w-28">Nilai</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {rowStates.map(({ row, valid, diff, changed, newNominal }, idx) => (
+                      <tr key={row.record.id} className="align-top">
+                        <td className="py-2 px-3">
+                          <div className="font-semibold text-slate-900">{row.record.itemName}</div>
+                          {row.record.unitPrice > 0 && (
+                            <div className="text-[11px] text-slate-500 font-mono">@ Rp {row.record.unitPrice.toLocaleString('id-ID')}</div>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 pt-3 text-right font-mono text-slate-600 whitespace-nowrap tabular-nums">
+                          {formatRecordQty(row.originalQty)} {row.record.unit}
+                        </td>
+                        <td className="py-2 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              aria-label={`Jumlah diterima ${row.record.itemName}`}
+                              value={row.value}
+                              onChange={e => {
+                                const nextVal = e.target.value;
+                                setGroupEditError('');
+                                setGroupEdit(prev =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        rows: prev.rows.map((it, i) => (i === idx ? { ...it, value: nextVal } : it)),
+                                      }
+                                    : prev
+                                );
+                              }}
+                              className={`${TABLE_INPUT} w-20 text-right font-mono ${!valid ? 'border-rose-400' : ''}`}
+                            />
+                            <span className="text-slate-600 whitespace-nowrap">{row.record.unit}</span>
+                          </div>
+                          {changed && (
+                            <div className={`mt-0.5 text-[11px] font-mono ${diff > 0 ? 'text-sky-700' : 'text-amber-800'}`}>
+                              {diff > 0 ? '+' : ''}{formatRecordQty(diff)} {row.record.unit}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 pt-3 text-right font-mono font-semibold text-slate-900 whitespace-nowrap tabular-nums">
+                          {newNominal > 0 ? `Rp ${newNominal.toLocaleString('id-ID')}` : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </DialogShell>
+        );
+      })()}
+
       {qtyEdit && (() => {
         const r = qtyEdit.record;
-        const oldQty = Number(r.quantity) || 0;
+        const isStock = r.source === 'DELIVERY_ORDER';
+        const parsedOldQty = parseQtyInput(String(r.quantity));
+        const oldQty = Number.isFinite(parsedOldQty) && parsedOldQty > 0 ? parsedOldQty : 0;
         const qty = parseQtyInput(qtyEdit.value);
-        const valid = Number.isFinite(qty) && qty > 0;
-        const diff = valid ? Math.round((qty - oldQty) * 1000) / 1000 : 0;
+        const qtyValid = isStock || qtyEdit.value.trim() !== '' || oldQty > 0 ? Number.isFinite(qty) && qty > 0 : true;
+        const diff = Number.isFinite(qty) && qty > 0 ? Math.round((qty - oldQty) * 1000) / 1000 : 0;
+        const qtyChanged = Number.isFinite(qty) && qty > 0 && diff !== 0;
+        const dateValid = /^\d{4}-\d{2}-\d{2}$/.test(qtyEdit.date.trim());
+        const dateChanged = dateValid && qtyEdit.date.trim() !== qtyEdit.originalDate;
         const nota = getMatchingNotaForRecord(r);
         const newValue = Math.round(qty * r.unitPrice);
+        const docLineCount = r.rawDoc?.lines.length || 0;
         return (
           <FormDialog
-            title={`Ubah jumlah ${r.itemName}`}
-            description={`Diterima ${r.date} dari ${r.supplierOrStore}. Tercatat ${formatRecordQty(oldQty)} ${r.unit}.`}
+            title={`Ubah ${r.itemName}`}
+            description={`Dari ${r.supplierOrStore}. Tercatat ${formatRecordQty(oldQty)} ${r.unit} pada ${formatIndonesianDateWithDay(qtyEdit.originalDate)}.`}
             onClose={() => setQtyEdit(null)}
             onSubmit={handleSaveQtyEdit}
-            submitLabel="Simpan jumlah"
-            submitDisabled={!valid || diff === 0}
+            submitLabel="Simpan perubahan"
+            submitDisabled={!qtyValid || !dateValid || (!qtyChanged && !dateChanged)}
             error={qtyEditError}
           >
             <div className="space-y-3">
+              <div>
+                <label htmlFor="qty-edit-date" className={FIELD_LABEL}>
+                  {isStock ? 'Tanggal diterima' : 'Tanggal belanja'}
+                </label>
+                <input
+                  id="qty-edit-date"
+                  type="date"
+                  required
+                  value={qtyEdit.date}
+                  onChange={e => {
+                    setQtyEditError('');
+                    setQtyEdit(prev => (prev ? { ...prev, date: e.target.value } : prev));
+                  }}
+                  className={FIELD_INPUT}
+                />
+                {dateChanged && isStock && docLineCount > 1 && (
+                  <p className="mt-1 text-[11px] text-amber-800">
+                    Berlaku untuk seluruh {docLineCount} barang dari {r.supplierOrStore} pada penerimaan ini.
+                  </p>
+                )}
+              </div>
               <div>
                 <label htmlFor="qty-edit" className={FIELD_LABEL}>Jumlah diterima</label>
                 <div className="relative">
@@ -3016,21 +3460,30 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                     value={qtyEdit.value}
                     onChange={e => {
                       setQtyEditError('');
-                      setQtyEdit({ record: r, value: e.target.value });
+                      setQtyEdit(prev => (prev ? { ...prev, value: e.target.value } : prev));
                     }}
                     className={`${FIELD_INPUT} pr-14 font-mono`}
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-600 pointer-events-none">{r.unit}</span>
                 </div>
               </div>
-              {valid && diff !== 0 && (
-                <ul className="space-y-1 text-xs text-slate-700 leading-relaxed">
-                  <li>
-                    Stok {diff > 0 ? 'bertambah' : 'berkurang'}{' '}
-                    <span className="font-mono font-semibold text-slate-900">{formatRecordQty(Math.abs(diff))} {r.unit}</span>, dicatat sebagai
-                    koreksi di Buku Mutasi.
-                  </li>
-                  {r.unitPrice > 0 ? (
+              {(qtyChanged || dateChanged) && (
+                <ul className="space-y-1 text-xs text-slate-700 leading-relaxed pt-0.5">
+                  {dateChanged && (
+                    <li>
+                      Tanggal berubah dari <span className="font-mono">{qtyEdit.originalDate}</span> jadi{' '}
+                      <span className="font-mono font-semibold text-slate-900">{qtyEdit.date}</span>
+                      {isStock ? ' (belanja tertaut dan mutasi stok ikut diselaraskan).' : '.'}
+                    </li>
+                  )}
+                  {qtyChanged && isStock && (
+                    <li>
+                      Stok {diff > 0 ? 'bertambah' : 'berkurang'}{' '}
+                      <span className="font-mono font-semibold text-slate-900">{formatRecordQty(Math.abs(diff))} {r.unit}</span>, dicatat sebagai
+                      koreksi di Buku Mutasi.
+                    </li>
+                  )}
+                  {qtyChanged && (r.unitPrice > 0 ? (
                     <li>
                       Nilai <span className="font-mono">Rp {r.nominal.toLocaleString('id-ID')}</span> jadi{' '}
                       <span className="font-mono font-semibold text-slate-900">Rp {newValue.toLocaleString('id-ID')}</span>{' '}
@@ -3040,7 +3493,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
                     <li className="text-slate-600">
                       Harganya belum tercatat, jadi nilainya tetap kosong.{nota ? ' Isi harganya lewat Lihat nota.' : ''}
                     </li>
-                  )}
+                  ))}
                   {nota && <li>Nota {nota.poNumber} ikut diperbarui.</li>}
                 </ul>
               )}

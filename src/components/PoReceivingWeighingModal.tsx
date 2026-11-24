@@ -40,6 +40,22 @@ const parseRupiah = (raw: string): number => {
 };
 const formatRupiahInput = (n: number) => (n ? n.toLocaleString('id-ID', { maximumFractionDigits: 2 }) : '');
 
+const formatLongDate = (iso?: string): string => {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso || '-';
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  if (Number.isNaN(dt.getTime())) return iso;
+  return dt.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+const formatShortDate = (iso?: string): string => {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso || '-';
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  if (Number.isNaN(dt.getTime())) return iso;
+  return dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
 export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> = ({
   isOpen,
   onClose,
@@ -159,6 +175,8 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
   const isAlreadyReceived = po.status === 'SELESAI';
   const pendingSupplier = isPendingSupplierPo(po);
   const plannedSupplier = pendingSupplier ? '' : po.supplierName;
+  const poScheduleDate = (po.deliveryDate || po.date || '').slice(0, 10);
+  const isDateDifferentFromPo = Boolean(poScheduleDate && receiveDate && receiveDate.slice(0, 10) !== poScheduleDate);
 
   // Supplier yang benar-benar mengirim bahan: biaya tambahan hanya bisa ditagihkan ke salah satunya
   const receivedSuppliers = [
@@ -343,6 +361,18 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
       return;
     }
 
+    const chosenDate = (receiveDate || '').slice(0, 10);
+    if (poScheduleDate && chosenDate && chosenDate !== poScheduleDate) {
+      const confirmDateDiff = await askConfirm({
+        title: 'Tanggal tiba berbeda dengan jadwal PO',
+        message: `Tanggal tiba diisi ${formatLongDate(chosenDate)}, sedangkan jadwal PO ${po.poNumber} adalah ${formatLongDate(poScheduleDate)}.`,
+        confirmText: 'Tetap simpan',
+        cancelText: 'Ubah tanggal',
+        variant: 'warning',
+      });
+      if (!confirmDateDiff) return;
+    }
+
     setIsSubmitting(true);
     try {
       const notes = [generalNotes.trim(), courierName.trim() && `Diantar oleh: ${courierName.trim()}`].filter(Boolean).join('. ');
@@ -458,6 +488,7 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
       description={
         <>
           {pendingSupplier ? po.supplierName : `Supplier rencana: ${po.supplierName}`}
+          {poScheduleDate && <> · Jadwal PO: {formatShortDate(poScheduleDate)}</>}
           {menuName && <> · Menu: {menuName}</>}
         </>
       }
@@ -515,7 +546,26 @@ export const PoReceivingWeighingModal: React.FC<PoReceivingWeighingModalProps> =
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
                 <label htmlFor="rcv-date" className={FIELD_LABEL}>Tanggal tiba</label>
-                <input id="rcv-date" type="date" required value={receiveDate} onChange={e => setReceiveDate(e.target.value)} className={FIELD_INPUT} />
+                <input
+                  id="rcv-date"
+                  type="date"
+                  required
+                  value={receiveDate}
+                  onChange={e => setReceiveDate(e.target.value)}
+                  className={`${FIELD_INPUT} ${isDateDifferentFromPo ? 'border-amber-400' : ''}`}
+                />
+                {isDateDifferentFromPo && (
+                  <div className="mt-1 text-[11px] text-amber-800">
+                    Jadwal PO: {formatShortDate(poScheduleDate)} ·{' '}
+                    <button
+                      type="button"
+                      onClick={() => setReceiveDate(poScheduleDate)}
+                      className="font-semibold underline hover:text-amber-950 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 rounded"
+                    >
+                      Samakan
+                    </button>
+                  </div>
+                )}
               </div>
               <div>
                 <label htmlFor="rcv-time" className={FIELD_LABEL}>Jam tiba</label>

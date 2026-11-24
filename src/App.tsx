@@ -22,6 +22,7 @@ import { SuppliersModule } from './components/SuppliersModule';
 import { AuditLogModule } from './components/AuditLogModule';
 import { DocumentSignersModule } from './components/DocumentSignersModule';
 import { MenuPrintModule } from './components/MenuPrintModule';
+import { ManualNotaModule } from './components/print/ManualNotaPesananDoc';
 import { LoginPage } from './components/LoginPage';
 import { LandingPage } from './components/LandingPage';
 import { WebsiteCmsModule } from './components/WebsiteCmsModule';
@@ -332,6 +333,7 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'hedonic_recap' && <HedonicRecapModule />}
+          {activeTab === 'manual_nota' && <ManualNotaModule />}
           {activeTab === 'ai_assistant' && <AiAssistantModule />}
 
           {/* Kelola Pengguna digabung ke halaman Karyawan sebagai tab "Akun aplikasi". */}
@@ -437,7 +439,7 @@ const MainLayout: React.FC = () => {
   );
 };
 
-const SELF_SYNCING_TABS = new Set(['profile', 'menu_print', 'receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'hedonic_recap', 'ai_assistant', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit', 'scan', 'document_signers']);
+const SELF_SYNCING_TABS = new Set(['profile', 'menu_print', 'manual_nota', 'receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'hedonic_recap', 'ai_assistant', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit', 'scan', 'document_signers']);
 
 export default function App() {
   return (

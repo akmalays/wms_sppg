@@ -4332,6 +4332,223 @@ class WarehouseDatabase {
   }
 
   /**
+   * Ubah tanggal satu dokumen penerimaan barang. Catatan belanja tertaut, mutasi stok penerimaan,
+   * dan tanggal kirim pada nota tertaut ikut diselaraskan agar laporan tetap cocok.
+   */
+  public updateReceivingDate(
+    receivingId: string,
+    newDate: string,
+    user: User,
+    linkedExpenseId?: string
+  ): { updatedLineCount: number; updatedExpenseCount: number; updatedPoNumber?: string } {
+    const cleanDate = (newDate || '').trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
+      throw new Error('Format tanggal tidak valid. Pilih tanggal yang benar.');
+    }
+    const docIdx = this.receivings.findIndex(r => r.id === receivingId);
+    if (docIdx < 0) throw new Error('Dokumen penerimaan tidak ditemukan.');
+    const doc = this.receivings[docIdx];
+    const oldDate = (doc.date || '').slice(0, 10);
+    if (oldDate === cleanDate) {
+      return { updatedLineCount: 0, updatedExpenseCount: 0 };
+    }
+
+    const nowIso = new Date().toISOString();
+    const updatedDoc: ReceivingDocument = { ...doc, date: cleanDate };
+    this.receivings[docIdx] = updatedDoc;
+
+    // 1. Nota / PO yang tertaut dengan dokumen penerimaan ini
+    const poIdx = this.purchaseOrders.findIndex(p => p.relatedReceivingId === receivingId);
+    const matchedPo = poIdx >= 0 ? this.purchaseOrders[poIdx] : undefined;
+    let updatedPo: PurchaseOrderNota | undefined;
+    if (poIdx >= 0 && matchedPo) {
+      const isMenuLinked = Boolean(matchedPo.relatedMenuOrderId);
+      const poDateMatchesOld = (matchedPo.date || '').slice(0, 10) === oldDate;
+      updatedPo = {
+        ...matchedPo,
+        deliveryDate: cleanDate,
+        date: !isMenuLinked && poDateMatchesOld ? cleanDate : matchedPo.date,
+        updatedAt: nowIso,
+      };
+      this.purchaseOrders[poIdx] = updatedPo;
+      if (!isMenuLinked && poDateMatchesOld) {
+        const renumbered = this.renumberPurchaseOrders(updatedPo.id).get(updatedPo.id);
+        if (renumbered) updatedPo = renumbered;
+      }
+    }
+
+    // 2. Semua catatan belanja yang tertaut ke dokumen penerimaan ini
+    const linkedExpIds = new Set<string>(matchedPo?.relatedExpenseIds || []);
+    if (linkedExpenseId) linkedExpIds.add(linkedExpenseId);
+    const docSupplierLower = (doc.supplierName || '').trim().toLowerCase();
+    const updatedExpenses: NonFoodExpense[] = [];
+    this.nonFoodExpenses = this.nonFoodExpenses.map(exp => {
+      const tag = exp.notes?.match(/\[GR:\s*([^\]]+)\]/)?.[1]?.trim();
+      const taggedSup = exp.notes?.match(/\[(?:Toko\/Supplier|Toko|Supplier):\s*([^\]]+)\]/i)?.[1]?.trim().toLowerCase();
+      const sameSupplier = !taggedSup || !docSupplierLower || taggedSup === docSupplierLower;
+      const matchesDoc =
+        (tag === receivingId && sameSupplier) ||
+        linkedExpIds.has(exp.id) ||
+        Boolean(matchedPo && exp.receiptRef === matchedPo.poNumber && doc.notes?.includes(`PO ${matchedPo.poNumber}`));
+      if (!matchesDoc || (exp.date || '').slice(0, 10) === cleanDate) return exp;
+      const nextExp: NonFoodExpense = { ...exp, date: cleanDate };
+      updatedExpenses.push(nextExp);
+      return nextExp;
+    });
+
+    // 3. Mutasi stok penerimaan (RECEIVING) ikut dipindahkan tanggalnya agar Buku Mutasi selaras
+    const refs = [receivingId, matchedPo?.poNumber].filter(Boolean) as string[];
+    const fallbackClock = toClock(doc.arrivalTime);
+    const updatedTxs: InventoryTransaction[] = [];
+    this.transactions = this.transactions.map(tx => {
+      if (tx.transactionType !== 'RECEIVING' || !refs.includes(tx.referenceDocument)) return tx;
+      const timePartMatch = (tx.timestamp || '').match(/\d{2}[:.]\d{2}(?::\d{2})?/);
+      const clock = timePartMatch ? timePartMatch[0].replace('.', ':') : fallbackClock;
+      const nextTs = `${cleanDate} ${clock}`;
+      if (tx.timestamp === nextTs) return tx;
+      const nextTx: InventoryTransaction = { ...tx, timestamp: nextTs };
+      updatedTxs.push(nextTx);
+      return nextTx;
+    });
+
+    // 4. Sinkron ke Supabase Cloud
+    this.pushCloud(`tanggal penerimaan ${receivingId}`, () =>
+      supabase.from('receiving_documents').update({ date: cleanDate, updated_at: nowIso }).eq('id', receivingId)
+    );
+    updatedExpenses.forEach(exp => {
+      this.pushCloud(`tanggal belanja "${exp.itemName}"`, () =>
+        supabase.from('non_food_expenses').upsert(mapExpenseToSupabase(exp))
+      );
+    });
+    if (updatedPo) {
+      const poToSave = updatedPo;
+      this.pushCloud(`nota ${poToSave.poNumber}`, () => upsertPurchaseOrderRow(poToSave));
+    }
+    if (isSupabaseConfigured() && updatedTxs.length > 0) {
+      updatedTxs.forEach(tx => {
+        supabase
+          .from('inventory_transactions')
+          .update({ timestamp: localTsToIso(tx.timestamp) })
+          .eq('id', tx.id)
+          .then(({ error }) => {
+            if (error) console.warn(`Sinkron tanggal mutasi ${tx.id} dilewati:`, error.message);
+          });
+      });
+    }
+
+    this.notifyAllChanged();
+    this.logAudit(
+      user,
+      'RECEIVING_DATE_UPDATED',
+      'RECEIVING',
+      receivingId,
+      `Mengubah tanggal penerimaan ${receivingId} (${doc.supplierName}, ${doc.lines.length} barang) dari ${oldDate || '-'} jadi ${cleanDate}` +
+        (updatedExpenses.length > 0 ? `; ${updatedExpenses.length} belanja tertaut ikut diperbarui` : '') +
+        (updatedPo ? `; nota ${updatedPo.poNumber} ikut diperbarui.` : '.')
+    );
+
+    return {
+      updatedLineCount: doc.lines.length,
+      updatedExpenseCount: updatedExpenses.length,
+      updatedPoNumber: updatedPo?.poNumber,
+    };
+  }
+
+  /**
+   * Ubah tanggal dan/atau jumlah pada satu catatan belanja non-stok (Belanja Non-Menu / biaya tambahan).
+   */
+  public updateNonFoodExpenseRecord(
+    expenseId: string,
+    patch: { date?: string; quantity?: number },
+    user: User
+  ): NonFoodExpense {
+    const expIdx = this.nonFoodExpenses.findIndex(e => e.id === expenseId);
+    if (expIdx < 0) throw new Error('Catatan belanja tidak ditemukan.');
+    const exp = this.nonFoodExpenses[expIdx];
+
+    const nextDate = patch.date !== undefined ? patch.date.trim().slice(0, 10) : exp.date;
+    if (patch.date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
+      throw new Error('Format tanggal tidak valid. Pilih tanggal yang benar.');
+    }
+
+    const oldQty = typeof exp.quantity === 'number' ? exp.quantity : parseFloat(String(exp.quantity)) || 0;
+    const nextQty = patch.quantity !== undefined ? patch.quantity : exp.quantity;
+    if (patch.quantity !== undefined && (!(patch.quantity > 0) || !Number.isFinite(patch.quantity))) {
+      throw new Error('Jumlah harus lebih dari 0.');
+    }
+
+    const nextTotal =
+      patch.quantity !== undefined && (exp.unitPrice || 0) > 0
+        ? Math.round(patch.quantity * (exp.unitPrice || 0))
+        : exp.totalCost;
+
+    const updated: NonFoodExpense = {
+      ...exp,
+      date: nextDate,
+      quantity: nextQty,
+      totalCost: nextTotal,
+    };
+    this.nonFoodExpenses[expIdx] = updated;
+
+    // Sinkronkan nota tertaut bila ada
+    const poIdx = this.purchaseOrders.findIndex(p => p.relatedExpenseIds?.includes(expenseId));
+    let updatedPo: PurchaseOrderNota | undefined;
+    if (poIdx >= 0) {
+      const po = this.purchaseOrders[poIdx];
+      const norm = (s: string) => s.trim().toLowerCase();
+      let items = po.items;
+      if (patch.quantity !== undefined) {
+        const itemPos = po.items.findIndex(it => norm(it.name) === norm(exp.itemName));
+        if (itemPos >= 0) {
+          items = po.items.map((it, i) =>
+            i === itemPos
+              ? { ...it, quantity: patch.quantity!, subtotal: Math.round(patch.quantity! * (Number(it.unitPrice) || 0)) }
+              : it
+          );
+        }
+      }
+      const subtotal = items.reduce((sum, it) => sum + (it.subtotal || it.quantity * it.unitPrice), 0);
+      const grandTotal = Math.max(0, subtotal - (po.discount || 0) + (po.tax || 0));
+      const onlySingleExpense = (po.relatedExpenseIds?.length || 0) <= 1;
+      updatedPo = {
+        ...po,
+        items,
+        subtotal,
+        grandTotal,
+        terbilang: angkaTerbilang(grandTotal),
+        deliveryDate: patch.date && onlySingleExpense ? nextDate : po.deliveryDate,
+        date: patch.date && onlySingleExpense && (po.date || '').slice(0, 10) === (exp.date || '').slice(0, 10) ? nextDate : po.date,
+        updatedAt: new Date().toISOString(),
+      };
+      this.purchaseOrders[poIdx] = updatedPo;
+    }
+
+    this.pushCloud(`belanja "${updated.itemName}"`, () =>
+      supabase.from('non_food_expenses').upsert(mapExpenseToSupabase(updated))
+    );
+    if (updatedPo) {
+      const poToSave = updatedPo;
+      this.pushCloud(`nota ${poToSave.poNumber}`, () => upsertPurchaseOrderRow(poToSave));
+    }
+
+    const changes: string[] = [];
+    if (patch.date !== undefined && nextDate !== exp.date) changes.push(`tanggal ${exp.date} jadi ${nextDate}`);
+    if (patch.quantity !== undefined && patch.quantity !== oldQty) changes.push(`jumlah ${oldQty} jadi ${patch.quantity} ${exp.unit || ''}`.trim());
+
+    this.notifyAllChanged();
+    if (changes.length > 0) {
+      this.logAudit(
+        user,
+        'EXPENSE_RECORD_UPDATED',
+        'RECEIVING',
+        expenseId,
+        `Mengubah belanja ${exp.itemName}: ${changes.join(', ')}.`
+      );
+    }
+    return updated;
+  }
+
+  /**
    * Hapus satu baris penerimaan yang salah catat. Stok yang dulu ditambahkan baris ini dikurangi lagi
    * lewat transaksi koreksi (riwayat penerimaan tetap terlihat di Buku Mutasi), dan belanja yang tertaut
    * ikut dihapus agar nominalnya tidak tetap terhitung.

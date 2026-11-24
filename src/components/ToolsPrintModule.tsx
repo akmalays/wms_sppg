@@ -22,6 +22,7 @@ import { PicHandoverDoc } from './print/PicHandoverDoc';
 import { ExpenseReceiptDoc } from './print/ExpenseReceiptDoc';
 import { DailyPoSheetDoc } from './print/DailyPoSheetDoc';
 import { SalarySlipDoc } from './print/SalarySlipDoc';
+import { ManualNotaPesananDoc } from './print/ManualNotaPesananDoc';
 import { MealBoxLabelDoc, MealBoxLabelModel, MEAL_BOX_MODELS, findMealBoxModel, formatMm } from './print/MealBoxLabelDoc';
 import {
   Printer,
@@ -65,7 +66,7 @@ import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatu
 import type { SignatureDoc } from '../utils/documentSigners';
 import type { SignerRole } from '../db/storage';
 
-export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'DRY_ISSUE_FORM' | 'WET_ISSUE_FORM' | 'NONFOOD_ISSUE_FORM' | 'WASTE_RECAP_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'MEAL_BOX_LABEL' | 'RACK_LABEL' | 'RACK_SIGN' | 'SUPPLIER_EXPENSE_NOTE' | 'SOP_STORAGE' | 'DO_DONT_POSTER' | 'PHOTO_DOC' | 'PIC_HANDOVER' | 'EXPENSE_RECEIPT_BATCH' | 'SALARY_SLIP' | 'DAILY_PO_SHEET';
+export type FormType = 'RECEIVING_FORM' | 'OPNAME_SHEET' | 'BIN_CARD' | 'DRY_ISSUE_FORM' | 'WET_ISSUE_FORM' | 'NONFOOD_ISSUE_FORM' | 'WASTE_RECAP_FORM' | 'ITEM_TAG_LABEL' | 'EQUIPMENT_LABEL' | 'MEAL_BOX_LABEL' | 'RACK_LABEL' | 'RACK_SIGN' | 'SUPPLIER_EXPENSE_NOTE' | 'MANUAL_NOTA_PESANAN' | 'SOP_STORAGE' | 'DO_DONT_POSTER' | 'PHOTO_DOC' | 'PIC_HANDOVER' | 'EXPENSE_RECEIPT_BATCH' | 'SALARY_SLIP' | 'DAILY_PO_SHEET';
 
 export interface ItemTagData {
   uniqueKey: string;
@@ -125,6 +126,7 @@ const FORM_TABS: { id: FormType; label: string; hint: string }[] = [
   { id: 'EXPENSE_RECEIPT_BATCH', label: 'Kuitansi Pengeluaran', hint: 'Kuitansi pengeluaran dadakan (No. .../KULBanPer/bulan/tahun), dibuat sekaligus dari file Excel kuitansi. File tidak diunggah atau disimpan.' },
   { id: 'SALARY_SLIP', label: 'Slip Gaji', hint: 'Slip gaji per orang dari file Excel daftar gaji: honor harian, tunjangan, potongan, dan total diterima. Dicetak 2 sampai 4 slip per A4 dengan garis potong. File tidak diunggah atau disimpan.' },
   { id: 'PHOTO_DOC', label: 'Dokumentasi Foto', hint: 'Foto dokumentasi untuk laporan berkala, ditata otomatis 4 sampai 9 foto per lembar A4 dengan kop dan judul di tiap lembar. Foto tidak diunggah atau disimpan.' },
+  { id: 'MANUAL_NOTA_PESANAN', label: 'Nota Pesanan', hint: 'Nota Pesanan Bahan Makanan dan Operasional manual: nomor NP, tanggal, supplier, dan rincian barang bebas diubah serta disimpan.' },
   { id: 'SUPPLIER_EXPENSE_NOTE', label: 'Nota Kas Keluar', hint: 'Bukti pembayaran ke supplier dengan tanda tangan.' },
   { id: 'SOP_STORAGE', label: 'SOP Gudang', hint: 'SOP penanganan bahan di gudang kering, non-food, chiller, freezer, sisa bahan dari dapur, area krat, serta pemakaian APD di dapur.' },
   { id: 'DO_DONT_POSTER', label: "Plakat Do & Don't", hint: "Plakat aturan Lakukan & Jangan untuk chiller, freezer, gudang kering, non-food, palet sisa, area krat, dan pintu dapur (APD), diringkas dari SOP Gudang." },
@@ -161,6 +163,7 @@ export const FORM_CATEGORIES: FormCategoryGroup[] = [
     label: 'Keuangan & Laporan',
     shortLabel: 'Keuangan & Laporan',
     forms: [
+      'MANUAL_NOTA_PESANAN',
       'SUPPLIER_EXPENSE_NOTE',
       'PIC_HANDOVER',
       'EXPENSE_RECEIPT_BATCH',
@@ -191,7 +194,7 @@ export const FORM_CATEGORIES: FormCategoryGroup[] = [
   },
 ];
 
-const FORMS_WITH_OWN_SETTINGS: FormType[] = ['RACK_SIGN', 'PIC_HANDOVER', 'EXPENSE_RECEIPT_BATCH', 'SALARY_SLIP', 'PHOTO_DOC', 'DAILY_PO_SHEET', 'NONFOOD_ISSUE_FORM'];
+const FORMS_WITH_OWN_SETTINGS: FormType[] = ['RACK_SIGN', 'PIC_HANDOVER', 'EXPENSE_RECEIPT_BATCH', 'SALARY_SLIP', 'PHOTO_DOC', 'DAILY_PO_SHEET', 'NONFOOD_ISSUE_FORM', 'MANUAL_NOTA_PESANAN'];
 
 export const getCategoryForForm = (formId: FormType): FormCategory => {
   const cat = FORM_CATEGORIES.find(c => c.forms.includes(formId));
@@ -2936,7 +2939,10 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
         </div>
       </div>
 
-      {/* Printable Paper Document Container */}
+      {activeForm === 'MANUAL_NOTA_PESANAN' ? (
+        <ManualNotaPesananDoc />
+      ) : (
+      /* Printable Paper Document Container */
       <div
         id="print-area"
         className={`bg-white rounded-xl border border-slate-200 max-w-4xl mx-auto font-sans text-slate-900 overflow-x-auto ${
@@ -4074,6 +4080,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
           </div>
         )}
       </div>
+      )}
 
       {/* Dialog ubah isi satu label (hanya di layar) */}
       {editingModalData && (
