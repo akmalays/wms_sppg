@@ -237,6 +237,8 @@ export function convexRowSpans(component: Int32Array, id: number, width: number,
 }
 
 const SOLID_ALPHA = 128;
+const CORE_ALPHA = 220;
+const CORE_MIN_SHARE = 0.6;
 // Lebar tepi lembut yang dibiarkan apa adanya, supaya pinggir nampan tidak jadi bergerigi.
 const EDGE_PX = 3;
 
@@ -266,31 +268,40 @@ export async function cleanCutout(blob: Blob, source: string): Promise<Blob> {
   };
 
   // Bagian padat terbesar adalah nampan.
-  const component = new Int32Array(total);
-  let bestId = 0, bestSize = 0, nextId = 0;
   const stack: number[] = [];
-  for (let start = 0; start < total; start++) {
-    if (component[start] || alphaAt(start) < SOLID_ALPHA) continue;
-    const id = ++nextId;
-    let size = 0;
-    component[start] = id;
-    stack.push(start);
-    while (stack.length) {
-      const i = stack.pop()!;
-      size++;
-      neighbours(i, (n) => {
-        if (!component[n] && alphaAt(n) >= SOLID_ALPHA) {
-          component[n] = id;
-          stack.push(n);
-        }
-      });
+  const largestPart = (minAlpha: number) => {
+    const component = new Int32Array(total);
+    let bestId = 0, bestSize = 0, nextId = 0;
+    for (let start = 0; start < total; start++) {
+      if (component[start] || alphaAt(start) < minAlpha) continue;
+      const id = ++nextId;
+      let size = 0;
+      component[start] = id;
+      stack.push(start);
+      while (stack.length) {
+        const i = stack.pop()!;
+        size++;
+        neighbours(i, (n) => {
+          if (!component[n] && alphaAt(n) >= minAlpha) {
+            component[n] = id;
+            stack.push(n);
+          }
+        });
+      }
+      if (size > bestSize) {
+        bestSize = size;
+        bestId = id;
+      }
     }
-    if (size > bestSize) {
-      bestSize = size;
-      bestId = id;
-    }
-  }
-  if (!bestId) return blob;
+    return {component, bestId, bestSize};
+  };
+  // Nampan logam di atas meja logam: model memberi meja di sekitarnya alfa setengah (150-210). Dengan batas 128 meja itu
+  // menyambung ke nampan, lalu ikut tertambal lewat selubung cembung di bawah. Bentuk nampan diambil dari piksel yang
+  // yakin saja; bila bagian yakin itu jauh lebih kecil (model ragu pada nampannya sendiri), kembali ke batas 128.
+  const loose = largestPart(SOLID_ALPHA);
+  if (!loose.bestId) return blob;
+  const core = largestPart(CORE_ALPHA);
+  const {component, bestId} = core.bestSize >= loose.bestSize * CORE_MIN_SHARE ? core : loose;
   peelLightRim(data, width, height, component, bestId);
 
   // Area luar: menyebar dari tepi gambar lewat piksel yang bukan nampan. Yang tidak terjangkau berarti di dalam nampan.
