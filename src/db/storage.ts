@@ -43,7 +43,7 @@ import {
   REAL_ATTENDANCE_LOGS,
 } from './realSeedData';
 import { getRomanMonth, getYearFromDate, generateNextPoNumber, poNumberForDate } from '../utils/poNumberGenerator';
-import { isPendingSupplierPo, isRestockPurchaseOrder, PENDING_SUPPLIER_NAME } from '../utils/poSupplier';
+import { isPendingSupplierPo, isRestockPurchaseOrder, PENDING_SUPPLIER_NAME, poDateForMenu } from '../utils/poSupplier';
 import { angkaTerbilang } from '../utils/numberToWords';
 import { removeFromPrintPool } from '../utils/poPrintPool';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -5536,15 +5536,19 @@ class WarehouseDatabase {
 
   /**
    * PO milik satu menu. PO lama yang belum punya relatedMenuOrderId dikenali dari catatan otomatisnya,
-   * dengan tanggal dan judul menu yang persis sama, agar PO menu lain di tanggal yang sama tidak ikut terbawa.
+   * dengan tanggal sama dengan tanggal menu atau tanggal PO (H-1) dan judul menu yang persis sama,
+   * agar PO menu lain tidak ikut terbawa.
    */
   public getPurchaseOrdersByMenuOrderId(menuOrderId: string): PurchaseOrderNota[] {
     const targetOrder = this.menuOrders.find(o => o.id === menuOrderId);
+    const expectedPoDate = targetOrder
+      ? (/^\d{4}-\d{2}-\d{2}$/.test(targetOrder.poDate || '') ? targetOrder.poDate! : poDateForMenu(targetOrder.date))
+      : '';
     return this.purchaseOrders.filter(po =>
       po.relatedMenuOrderId
         ? po.relatedMenuOrderId === menuOrderId
         : !!targetOrder &&
-          po.date === targetOrder.date &&
+          (po.date === targetOrder.date || po.date === expectedPoDate || po.deliveryDate === expectedPoDate) &&
           !!po.notes?.includes(`Perencanaan Menu: ${targetOrder.menuTitle} (`)
     );
   }

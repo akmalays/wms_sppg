@@ -439,7 +439,7 @@ const MainLayout: React.FC = () => {
   );
 };
 
-const SELF_SYNCING_TABS = new Set(['profile', 'menu_print', 'manual_nota', 'receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'hedonic_recap', 'ai_assistant', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit', 'scan', 'document_signers']);
+const SELF_SYNCING_TABS = new Set(['profile', 'menu_orders', 'menu_portions', 'menu_print', 'manual_nota', 'receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'hedonic_recap', 'ai_assistant', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit', 'scan', 'document_signers']);
 
 export default function App() {
   return (

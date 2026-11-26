@@ -45,6 +45,7 @@ import {DateStepper} from "./common/DateStepper";
 import {SppgLogo} from "./SppgLogo";
 import {DeliveryNotesSubModule} from "./DeliveryNotesSubModule";
 import {PoEditModal} from "./PoEditModal";
+import {PoWhatsappPasteModal, WaImportedPoRow} from "./PoWhatsappPasteModal";
 import { DocSignatureToggle, OfficerSignatureImg } from './common/OfficerSignatureImg';
 import {handleGridKeyDown} from "../utils/gridNav";
 
@@ -128,11 +129,26 @@ const STANDARD_UNITS: Record<string, string> = {
   pouch: "Pouch",
   sak: "Sak",
   karung: "Sak",
+  krat: "Krat",
+  layah: "Layah",
+  bal: "Bal",
+  ball: "Bal",
+  papan: "Papan",
+  bks: "Bks",
+  bungkus: "Bks",
+  sachet: "Sachet",
+  ekor: "Ekor",
+  tray: "Tray",
+  kaleng: "Kaleng",
+  galon: "Galon",
+  tabung: "Tabung",
+  ons: "Ons",
+  ml: "Ml",
   unit: "Unit",
   set: "Set",
 };
 
-/** Menyeragamkan jumlah pesanan dengan satuan master barang (atau standar satuan WMS). */
+/** Menyeragamkan jumlah pesanan dengan satuan master barang (atau standar satuan WMS) tanpa menimpa satuan yang berbeda dimensi (mis. Krat/Layah vs Kg). */
 function formatStandardQty(rawQty: string, preferredUnit?: string): string {
   const trimmed = (rawQty || "").trim();
   if (!trimmed) return "";
@@ -141,6 +157,7 @@ function formatStandardQty(rawQty: string, preferredUnit?: string): string {
 
   const words = trimmed.match(/[a-zA-Z]+/g);
   const typedUnit = words ? words.join(" ") : "";
+  const stdTyped = typedUnit ? (STANDARD_UNITS[typedUnit.toLowerCase()] || typedUnit) : "";
 
   if (preferredUnit) {
     if (typedUnit) {
@@ -148,12 +165,12 @@ function formatStandardQty(rawQty: string, preferredUnit?: string): string {
       if (converted !== null) {
         return `${converted} ${preferredUnit}`;
       }
+      return `${num} ${stdTyped}`;
     }
     return `${num} ${preferredUnit}`;
   }
 
-  const std = typedUnit ? (STANDARD_UNITS[typedUnit.toLowerCase()] || typedUnit) : "Kg";
-  return `${num} ${std}`;
+  return `${num} ${stdTyped || "Kg"}`;
 }
 
 // Pembanding nama bahan dan supplier: abaikan huruf besar dan spasi berlebih.
@@ -168,11 +185,23 @@ const isArrivalConfirmed = (menuOrderId: string): boolean => {
 
 // Bahan dipesan untuk datang H-1. Tanggal datang diambil dari PO yang sudah terbit (bisa diubah manual),
 // bila belum ada PO dari tanggal PO di menu, bila kosong dihitung H-1 dari tanggal menu.
+// Bila ada beberapa PO (sebagian sudah diterima di hari lain, sebagian belum), utamakan jadwal PO yang belum diterima
+// agar revisi tanggal penerimaan satu PO tidak menggeser jadwal kedatangan PO lain ke hari ini.
+const pickMenuArrivalDate = (pos: PurchaseOrderNota[]): string => {
+  if (pos.length === 0) return "";
+  const pending = pos.filter((po) => !warehouseDb.isPurchaseOrderLocked(po));
+  const dates = (pending.length > 0 ? pending : pos)
+    .map((po) => (pending.length > 0 ? po.deliveryDate || po.date : po.date || po.deliveryDate || "").slice(0, 10))
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    .sort();
+  return dates[0] || pos[0].deliveryDate || pos[0].date || "";
+};
+
 type PoProgressState = "NONE" | "WAITING" | "PARTIAL" | "DONE";
 const menuPoProgress = (order: MenuOrder): {arrivalDate: string; poCount: number; received: number; state: PoProgressState} => {
   const pos = warehouseDb.getPurchaseOrdersByMenuOrderId(order.id);
   const plannedDate = /^\d{4}-\d{2}-\d{2}$/.test(order.poDate || "") ? order.poDate! : poDateForMenu(order.date);
-  const arrivalDate = pos.length > 0 ? pos[0].deliveryDate || pos[0].date : plannedDate;
+  const arrivalDate = pickMenuArrivalDate(pos) || plannedDate;
   const received = pos.filter((po) => warehouseDb.isPurchaseOrderLocked(po)).length;
   const state: PoProgressState = pos.length === 0 ? "NONE" : received === 0 ? "WAITING" : received < pos.length ? "PARTIAL" : "DONE";
   return {arrivalDate, poCount: pos.length, received, state};
@@ -539,6 +568,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
   // PO Edit modal (revisi PO satuan sebelum barang datang)
   const [poBeingEdited, setPoBeingEdited] = useState<PurchaseOrderNota | null>(null);
+  // Modal tempel daftar PO dari WhatsApp (tahap 1 kroscek sebelum masuk ke form PO)
+  const [isWaPoModalOpen, setIsWaPoModalOpen] = useState(false);
 
   // Form tambah PO / supplier baru untuk menu yang sudah punya PO terbit
   const [isAddingNewPo, setIsAddingNewPo] = useState(false);
@@ -555,12 +586,12 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     }>
   >([]);
 
-  const anyFormModalOpen = isMenuModalOpen || isPoModalOpen || isBeneficiaryModalOpen || isBeneficiaryPrintModalOpen || !!poBeingEdited;
+  const anyFormModalOpen = isMenuModalOpen || isPoModalOpen || isBeneficiaryModalOpen || isBeneficiaryPrintModalOpen || !!poBeingEdited || isWaPoModalOpen;
   useEffect(() => {
     if (!anyFormModalOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      // Dialog Ubah PO menumpuk di atas daftar PO; Escape cukup menutup dialog teratas (ditangani DialogShell).
-      if (e.key !== "Escape" || poBeingEdited) return;
+      // Dialog Ubah PO / Tempel WA menumpuk di atas daftar PO; Escape cukup menutup dialog teratas (ditangani DialogShell).
+      if (e.key !== "Escape" || poBeingEdited || isWaPoModalOpen) return;
       setIsMenuModalOpen(false);
       setIsPoModalOpen(false);
       setIsBeneficiaryModalOpen(false);
@@ -568,11 +599,28 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [anyFormModalOpen, poBeingEdited]);
+  }, [anyFormModalOpen, poBeingEdited, isWaPoModalOpen]);
 
+  const [syncVersion, setSyncVersion] = useState(0);
   const refreshOrders = () => {
     setOrders(warehouseDb.getMenuOrders());
+    setSyncVersion((v) => v + 1);
   };
+
+  // Sinkronkan data menu, PO, dan sekolah saat ada pembaruan tanpa me-remount halaman (agar modal dan tanggal aktif tidak reset ke hari ini).
+  useEffect(() => {
+    const onSync = () => {
+      setOrders(warehouseDb.getMenuOrders());
+      setBeneficiaries(warehouseDb.getSchoolBeneficiaries());
+      setSyncVersion((v) => v + 1);
+    };
+    window.addEventListener("sppg_storage_items_changed", onSync);
+    window.addEventListener("sppg_warehouse_sync", onSync);
+    return () => {
+      window.removeEventListener("sppg_storage_items_changed", onSync);
+      window.removeEventListener("sppg_warehouse_sync", onSync);
+    };
+  }, []);
 
   // Hanya kartu menu hari ini yang terbuka secara bawaan; hari lain tertutup sampai dibuka.
   const isOrderExpanded = (order: MenuOrder) => expandedOrderIds[order.id] ?? order.date === todayStr;
@@ -672,7 +720,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   }, [filteredOrders]);
 
   // Master inventory items for matching current stock
-  const inventoryItems = useMemo(() => warehouseDb.getItems(), []);
+  const inventoryItems = useMemo(() => warehouseDb.getItems(), [syncVersion]);
 
   // Operational metrics for active period
   const stats = useMemo(() => {
@@ -712,7 +760,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
       totalEstimatedCost,
       arrivedItemsCount,
     };
-  }, [filteredOrders, todayStr]);
+  }, [filteredOrders, todayStr, syncVersion]);
 
   // Master schools & beneficiary categories list (sourced from reactive beneficiaries state)
   const masterSchools = beneficiaries;
@@ -1446,14 +1494,20 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   // HANDLERS FOR MODAL 1: INPUT & EDIT MENU HARI INI
   // =========================================================================
   const handleOpenCreateMenuModal = (overrideDate?: string | React.MouseEvent) => {
-    const targetDate = typeof overrideDate === "string" && overrideDate ? overrideDate : selectedDailyDate || todayStr;
-    // Satu tanggal satu menu (dikirim sekali sehari): bila sudah ada, buka menu itu untuk diubah
-    const existingForDate = orders.find((o) => o.date === targetDate && o.status !== "CANCELLED");
-    if (existingForDate) {
-      toast.info(`${formatIndonesianDate(targetDate)} sudah punya menu. Menu itu dibuka untuk diubah.`, "Menu Sudah Ada");
-      handleOpenEditMenuModal(existingForDate);
-      return;
+    const explicitDate = typeof overrideDate === "string" && overrideDate ? overrideDate : "";
+    let targetDate = explicitDate || selectedDailyDate || todayStr;
+    const hasActiveMenuOn = (iso: string) => orders.some((o) => o.date === iso && o.status !== "CANCELLED");
+
+    // "Catat Menu" selalu membuka form menu baru (tidak pernah diam-diam membuka menu yang sudah ada untuk diubah),
+    // agar mengganti tanggal saat mencatat menu besok tidak memindahkan tanggal menu yang sudah dibuat dan ber-PO.
+    if (hasActiveMenuOn(targetDate)) {
+      let nextDate = addDaysIso(targetDate, 1);
+      for (let i = 0; i < 60 && hasActiveMenuOn(nextDate); i++) {
+        nextDate = addDaysIso(nextDate, 1);
+      }
+      targetDate = nextDate;
     }
+
     setEditingMenuOrderId(null);
     setMenuFormDate(targetDate);
 
@@ -1523,7 +1577,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     await changeBeneficiaryDate(menuFormDate);
   };
 
-  const handleSaveMenuForm = (e: React.FormEvent) => {
+  const handleSaveMenuForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!menuFormTitle.trim()) {
       toast.error("Menu reguler wajib diisi.", "Form Belum Lengkap");
@@ -1535,6 +1589,21 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     if (clash) {
       toast.error(`${formatIndonesianDate(menuFormDate)} sudah punya menu "${clash.menuTitle}". Satu tanggal hanya satu menu; ubah menu itu atau pilih tanggal lain.`, "Menu Sudah Ada");
       return;
+    }
+
+    const existingForConfirm = editingMenuOrderId ? orders.find((o) => o.id === editingMenuOrderId) : null;
+    if (existingForConfirm && existingForConfirm.date !== menuFormDate) {
+      const linkedPos = warehouseDb.getPurchaseOrdersByMenuOrderId(existingForConfirm.id);
+      if (linkedPos.length > 0) {
+        const poDateLabel = formatIndonesianDate(pickMenuArrivalDate(linkedPos) || poDateForMenu(existingForConfirm.date));
+        const ok = await askConfirm({
+          title: "Pindahkan tanggal menu yang sudah punya PO?",
+          message: `Menu ini sudah punya ${linkedPos.length} PO dengan jadwal datang ${poDateLabel}. Memindahkan tanggal masak dari ${formatIndonesianDate(existingForConfirm.date)} ke ${formatIndonesianDate(menuFormDate)} tidak mengubah tanggal PO yang sudah terbit. Bila ingin membuat menu baru untuk ${formatIndonesianDate(menuFormDate)}, batalkan lalu gunakan tombol Catat Menu.`,
+          confirmText: "Tetap pindahkan",
+          variant: "warning",
+        });
+        if (!ok) return;
+      }
     }
 
     try {
@@ -1596,22 +1665,11 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   // =========================================================================
   // HANDLERS FOR MODAL 2: INPUT & EDIT PO HARI INI
   // =========================================================================
-  const handleOpenPoModal = (targetOrderId?: string) => {
-    // Tentukan order mana yang akan diinput PO-nya
-    let targetOrder = targetOrderId ? orders.find((o) => o.id === targetOrderId) : null;
-
-    if (!targetOrder && orders.length > 0) {
-      // Prioritaskan order pada tanggal aktif terpilih, lalu hari ini, lalu order pertama
-      targetOrder = orders.find((o) => o.date === selectedDailyDate) || orders.find((o) => o.date === todayStr) || orders[0];
-    }
-
-    if (!targetOrder) {
-      toast.warning('Belum ada menu yang tercatat. Catat menu dulu lewat tombol "Catat Menu".', "Menu Belum Ada");
-      return;
-    }
-
+  const loadOrderIntoPoModal = (targetOrder: MenuOrder) => {
     setSelectedPoOrderId(targetOrder.id);
-    setPoFormDate(/^\d{4}-\d{2}-\d{2}$/.test(targetOrder.poDate || "") ? targetOrder.poDate! : poDateForMenu(targetOrder.date));
+    const issuedPos = warehouseDb.getPurchaseOrdersByMenuOrderId(targetOrder.id);
+    const plannedDate = /^\d{4}-\d{2}-\d{2}$/.test(targetOrder.poDate || "") ? targetOrder.poDate! : poDateForMenu(targetOrder.date);
+    setPoFormDate(pickMenuArrivalDate(issuedPos) || plannedDate);
 
     setPoFocusRow(null);
     if (targetOrder.poArrivalItems && targetOrder.poArrivalItems.length > 0) {
@@ -1634,7 +1692,25 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
 
     setIsAddingNewPo(false);
     setNewPoSupplier("");
+    setNewPoDeliveryDate("");
     setNewPoRows([]);
+  };
+
+  const handleOpenPoModal = (targetOrderId?: string) => {
+    // Tentukan order mana yang akan diinput PO-nya
+    let targetOrder = targetOrderId ? orders.find((o) => o.id === targetOrderId) : null;
+
+    if (!targetOrder && orders.length > 0) {
+      // Prioritaskan order pada tanggal aktif terpilih, lalu hari ini, lalu order pertama
+      targetOrder = orders.find((o) => o.date === selectedDailyDate) || orders.find((o) => o.date === todayStr) || orders[0];
+    }
+
+    if (!targetOrder) {
+      toast.warning('Belum ada menu yang tercatat. Catat menu dulu lewat tombol "Catat Menu".', "Menu Belum Ada");
+      return;
+    }
+
+    loadOrderIntoPoModal(targetOrder);
     setIsPoModalOpen(true);
   };
 
@@ -1646,7 +1722,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     } catch {
       return [];
     }
-  }, [supplierListVersion]);
+  }, [supplierListVersion, syncVersion]);
 
   const supplierOptions = useMemo(
     () =>
@@ -2071,7 +2147,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
           const master = findMasterItem(sItem.itemName);
           const unitMatch = (sItem.qtyOrder || sItem.qtyArrived || "").match(/[a-zA-Z]+/g);
           const typedUnit = unitMatch ? unitMatch.join(" ") : "";
-          const unitStr = master?.baseUnit || (typedUnit ? (STANDARD_UNITS[typedUnit.toLowerCase()] || typedUnit) : "Kg");
+          const stdTypedUnit = typedUnit ? (STANDARD_UNITS[typedUnit.toLowerCase()] || typedUnit) : "";
+          const unitStr = stdTypedUnit || master?.baseUnit || "Kg";
 
           const numQty = normalizeQtyForUnit(parseNumericQuantity(sItem.qtyOrder || sItem.qtyArrived) || 1, unitStr);
           const unitPrice = estimatePrice(sItem.itemName);
@@ -2133,6 +2210,25 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     } catch (err: any) {
       toast.error(err.message || "Gagal generate Draft PO.", "Gagal Generate PO");
     }
+  };
+
+  const handleApplyWhatsappPoRows = (imported: WaImportedPoRow[], mode: "append" | "replace") => {
+    const newRows: PoFormRow[] = imported.map((it) => ({
+      category: it.category || inferRowCategory(it.itemName, undefined, it.supplier),
+      itemName: it.itemName,
+      qtyOrder: it.qtyOrder,
+      qtyArrived: "",
+      supplier: it.supplier,
+      arrivalTime: "08.00",
+      pic: currentUser.name,
+      notes: "",
+    }));
+    setPoFocusRow(null);
+    setPoFormRows((prev) => (mode === "replace" ? newRows : [...prev, ...newRows]));
+    toast.success(
+      `${newRows.length} bahan dari WhatsApp masuk ke daftar PO. Kroscek lagi per supplier sebelum menekan Terbitkan PO.`,
+      "Siap dikroscek",
+    );
   };
 
   const handleApplyPoTemplate = async () => {
@@ -2280,7 +2376,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
       const existingPOs = warehouseDb.getPurchaseOrders();
       const poTargetDate = /^\d{4}-\d{2}-\d{2}$/.test(newPoDeliveryDate.trim())
         ? newPoDeliveryDate.trim()
-        : (targetOrder.poDate || poDateForMenu(targetOrder.date));
+        : (/^\d{4}-\d{2}-\d{2}$/.test(targetOrder.poDate || "") ? targetOrder.poDate! : poDateForMenu(targetOrder.date));
 
       let suppObj = findMasterSupplier(supplierClean);
       if (!suppObj && supplierClean !== PENDING_SUPPLIER_NAME) {
@@ -3048,8 +3144,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                                   type="button"
                                   onClick={() => {
                                     setOpenOrderMenuId(null);
-                                    const po = warehouseDb.getPurchaseOrdersByMenuOrderId(order.id)[0];
-                                    onPrintPoSheet(po.deliveryDate || po.date);
+                                    onPrintPoSheet(menuPoProgress(order).arrivalDate);
                                   }}
                                   className="w-full text-left px-3 py-2 min-h-[44px] sm:min-h-0 text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer">
                                   <Printer className="w-3.5 h-3.5 text-slate-500 shrink-0" />
@@ -4000,9 +4095,11 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                 onChange={(e) => {
                   const newD = e.target.value;
                   setMenuFormDate(newD);
-                  const d = parseMenuDate(newD) || new Date();
-                  d.setDate(d.getDate() - 1);
-                  setMenuFormPoDate(localDateIso(d));
+                  const d = parseMenuDate(newD);
+                  if (d) {
+                    d.setDate(d.getDate() - 1);
+                    setMenuFormPoDate(localDateIso(d));
+                  }
                 }}
                 className={FIELD_INPUT}
               />
@@ -4165,29 +4262,16 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                     <label className={FIELD_LABEL}>Menu</label>
                     <SearchPicker
                       value={selectedPoOrderId}
-                      options={orders.map((ord) => ({ value: ord.id, label: ord.menuTitle, hint: `${ord.date} · ${ord.targetPortions} porsi` }))}
+                      options={orders
+                        .filter((ord) => ord.status !== "CANCELLED" || ord.id === selectedPoOrderId)
+                        .map((ord) => ({ value: ord.id, label: ord.menuTitle, hint: `${ord.date} · ${ord.targetPortions} porsi` }))}
                       searchPlaceholder="Cari menu atau tanggal..."
                       ariaLabel="Menu tujuan untuk PO"
                       noun="menu"
                       onSelect={(opt) => {
                         if (!opt) return;
-                        const newId = opt.value;
-                        setSelectedPoOrderId(newId);
-                        const found = orders.find((o) => o.id === newId);
-                        if (found && found.poArrivalItems && found.poArrivalItems.length > 0) {
-                          setPoFormRows(
-                            withSuggestedSuppliers(found.poArrivalItems.map((p) => ({
-                              category: savedRowCategory(p),
-                              itemName: p.itemName,
-                              qtyOrder: p.qtyOrder || "",
-                              qtyArrived: p.qtyArrived || "",
-                              supplier: p.supplier || "",
-                              arrivalTime: p.arrivalTime || "",
-                              pic: p.pic || currentUser.name,
-                              notes: p.notes || "",
-                            }))),
-                          );
-                        }
+                        const found = orders.find((o) => o.id === opt.value);
+                        if (found) loadOrderIntoPoModal(found);
                       }}
                     />
                   </div>
@@ -4198,8 +4282,9 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                       id="po-date"
                       type={/^\d{4}-\d{2}-\d{2}$/.test(poFormDate) || !poFormDate ? "date" : "text"}
                       value={poFormDate}
+                      disabled={hasIssued}
                       onChange={(e) => setPoFormDate(e.target.value)}
-                      className={FIELD_INPUT}
+                      className={`${FIELD_INPUT} disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed`}
                     />
                   </div>
                 </div>
@@ -4272,9 +4357,8 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                             setIsAddingNewPo(true);
                             setNewPoSupplier("");
                             const defaultDelivery =
-                              issuedPos[0]?.deliveryDate ||
-                              issuedPos[0]?.date ||
-                              poFormDate ||
+                              pickMenuArrivalDate(issuedPos) ||
+                              (/^\d{4}-\d{2}-\d{2}$/.test(poFormDate) ? poFormDate : "") ||
                               (targetOrder ? poDateForMenu(targetOrder.date) : todayStr);
                             setNewPoDeliveryDate(defaultDelivery);
                             setNewPoRows([
@@ -4481,13 +4565,23 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
                     <h3 className="text-sm font-semibold text-slate-800">Bahan per supplier</h3>
                     <p className="text-[11px] text-slate-600">Satu kelompok supplier jadi satu PO. Supplier di luar daftar bisa diketik langsung. Pindah sel dengan panah atau Enter.</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleApplyPoTemplate}
-                    className={`${BTN_SECONDARY} self-start sm:self-auto`}
-                    title="Bahan yang sering dipesan di PO menu 30 hari terakhir, lengkap dengan jumlah, jam datang, dan supplier terakhirnya">
-                    Pakai bahan rutin{routinePoRows.length > 0 ? ` (${routinePoRows.length})` : ""}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => setIsWaPoModalOpen(true)}
+                      className={BTN_SECONDARY}
+                      title="Tempel daftar order dari WhatsApp, cek kesesuaian bahan, lalu masukkan ke daftar PO">
+                      <ClipboardPaste className="w-3.5 h-3.5 text-slate-600" />
+                      Tempel dari WhatsApp
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleApplyPoTemplate}
+                      className={BTN_SECONDARY}
+                      title="Bahan yang sering dipesan di PO menu 30 hari terakhir, lengkap dengan jumlah, jam datang, dan supplier terakhirnya">
+                      Pakai bahan rutin{routinePoRows.length > 0 ? ` (${routinePoRows.length})` : ""}
+                    </button>
+                  </div>
                 </div>
 
                 {poFormRows.length === 0 && (
@@ -4700,6 +4794,28 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
         </DialogShell>
         );
       })()}
+
+      {isWaPoModalOpen && (
+        <PoWhatsappPasteModal
+          isOpen={isWaPoModalOpen}
+          onClose={() => setIsWaPoModalOpen(false)}
+          existingRowCount={poFormRows.filter((r) => r.itemName.trim()).length}
+          masterItems={inventoryItems}
+          itemOptions={poItemOptions}
+          supplierOptions={supplierOptions}
+          suggestSupplier={(category, itemName, rawName) =>
+            poHistory.get(normName(itemName))?.supplier ||
+            (rawName ? poHistory.get(normName(rawName))?.supplier : "") ||
+            resolveSupplierForItem(
+              category,
+              itemName,
+              "",
+              masterSuppliers.filter((s) => s.isActive !== false),
+            )
+          }
+          onApply={handleApplyWhatsappPoRows}
+        />
+      )}
 
       {poBeingEdited && (
         <PoEditModal
