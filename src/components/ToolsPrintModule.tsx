@@ -604,6 +604,7 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
   const currentCategoryForms = FORM_TABS.filter(t => currentCategoryGroup.forms.includes(t.id));
 
   // Data sources
+  const [syncTick, setSyncTick] = useState(0);
   const [receivingDocs, setReceivingDocs] = useState<ReceivingDocument[]>(() => warehouseDb.getReceivings());
   const [items, setItems] = useState<ItemMaster[]>(() => warehouseDb.getItems());
   const nonFoodItems = useMemo(
@@ -617,9 +618,12 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       .sort((a, b) => a.name.localeCompare(b.name));
     return { dry: food.filter(i => !isWetItem(i)), wet: food.filter(isWetItem) };
   }, [items]);
-  const equipment = useMemo(() => warehouseDb.getEquipment(), []);
-  const suppliers = useMemo(() => warehouseDb.getSuppliers(), []);
-  const users = useMemo(() => warehouseDb.getUsers(), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const equipment = useMemo(() => warehouseDb.getEquipment(), [syncTick]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const suppliers = useMemo(() => warehouseDb.getSuppliers(), [syncTick]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const users = useMemo(() => warehouseDb.getUsers(), [syncTick]);
   const headOfficeName = warehouseDb.getSignerName('KEPALA_SPPG');
   const accountantName = warehouseDb.getSignerName('AKUNTAN');
 
@@ -632,16 +636,21 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
     return map;
   }, [receivingDocs]);
 
-  // Sync data sources automatically when storage changes or window receives focus
+  // Sync data sources automatically when storage changes or window receives focus (tanpa me-remount form aktif)
   useEffect(() => {
     const handleSync = () => {
       setItems(warehouseDb.getItems());
       setReceivingDocs(warehouseDb.getReceivings());
+      setSyncTick(v => v + 1);
     };
     window.addEventListener('sppg_storage_items_changed', handleSync);
+    window.addEventListener('sppg_warehouse_sync', handleSync);
+    window.addEventListener(APP_SETTINGS_CHANGED_EVENT, handleSync);
     window.addEventListener('focus', handleSync);
     return () => {
       window.removeEventListener('sppg_storage_items_changed', handleSync);
+      window.removeEventListener('sppg_warehouse_sync', handleSync);
+      window.removeEventListener(APP_SETTINGS_CHANGED_EVENT, handleSync);
       window.removeEventListener('focus', handleSync);
     };
   }, []);
@@ -1904,7 +1913,8 @@ export const ToolsPrintModule: React.FC<ToolsPrintModuleProps> = ({
       });
     }
     return { days, values, monthLabel };
-  }, [activeForm, wasteMonth, wasteDateMode, wasteBlankDays, wasteFillRecorded]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeForm, wasteMonth, wasteDateMode, wasteBlankDays, wasteFillRecorded, syncTick]);
 
   const printCount =
     activeForm === 'ITEM_TAG_LABEL'

@@ -56,7 +56,7 @@ import { generateAutoSku, WarehouseSkuType, WAREHOUSE_SKU_DEFINITIONS } from '..
 import { buildItemReference, describePriceSource } from '../utils/itemReference';
 import { ReceivingDetailModal } from './ReceivingDetailModal';
 import { PhotoUploadCompressor } from './PhotoUploadCompressor';
-import { exportToExcel } from '../lib/excelExport';
+import { ReceivingPoReportModal } from './ReceivingPoReportModal';
 import { NotaPesananModal } from './NotaPesananModal';
 import { BatchPrintNotaModal } from './BatchPrintNotaModal';
 import { PoReceivingWeighingModal } from './PoReceivingWeighingModal';
@@ -381,6 +381,7 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
 
   // Pool Antrean Cetak Nota (Batch Print) state
   const [isBatchPrintModalOpen, setIsBatchPrintModalOpen] = useState(false);
+  const [isPoReportModalOpen, setIsPoReportModalOpen] = useState(false);
   const [poolNotaIds, setPoolNotaIds] = useState<string[]>(() => getPrintPoolIds());
 
   const handleAddToPool = (id: string) => {
@@ -1776,37 +1777,6 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
 
   const selectedSupplierObj = suppliers.find(s => s.id === formSupplierId);
 
-  // Export to Excel
-  const handleExportExcel = () => {
-    if (filteredRecords.length === 0) {
-      toast.warning('Tidak ada data belanja atau barang masuk untuk diekspor.', 'Data Kosong');
-      return;
-    }
-
-    const rows = filteredRecords.map((r, i) => ({
-      No: i + 1,
-      Tanggal: r.date,
-      Jam: r.time,
-      Kategori: r.displayCategory,
-      'Nama Barang': r.itemName,
-      Jumlah: r.quantity,
-      Satuan: r.unit,
-      'Estimasi Harga Satuan (Rp)': r.unitPrice,
-      'Total Nominal (Rp)': r.nominal,
-      'Toko / Supplier': r.supplierOrStore,
-      'PIC Penerima': r.picOrUser,
-      'Relawan / Petugas': r.volunteer || '-',
-      Keterangan: r.notes || '-',
-    }));
-
-    exportToExcel(
-      rows,
-      `Rekap_Input_Barang_SPPG_MLG_TUMPANG_JERU_${today}.xlsx`,
-      'Input Barang & Belanja'
-    );
-    toast.success('Rekap belanja berhasil diekspor ke Excel.', 'Ekspor Sukses');
-  };
-
   return (
     <div className="space-y-5">
       {/* Detail Modal for Delivery Orders */}
@@ -1814,6 +1784,17 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
         document={selectedDocForDetail}
         onClose={() => setSelectedDocForDetail(null)}
         onPrint={onPrintReceiving}
+      />
+
+      {/* Modal Laporan Penerimaan & Penimbangan PO siap cetak berdasarkan rentang tanggal */}
+      <ReceivingPoReportModal
+        isOpen={isPoReportModalOpen}
+        onClose={() => setIsPoReportModalOpen(false)}
+        purchaseOrders={purchaseOrders}
+        receivings={receivings}
+        currentUser={currentUser}
+        initialStartDate={effectiveDateRange.start ? localDateIso(effectiveDateRange.start) : undefined}
+        initialEndDate={effectiveDateRange.end ? localDateIso(effectiveDateRange.end) : undefined}
       />
 
       {/* Notifications */}
@@ -1862,11 +1843,12 @@ export const ReceivingModule: React.FC<ReceivingModuleProps> = ({ onNavigate, on
               </button>
               <button
                 type="button"
-                onClick={handleExportExcel}
+                onClick={() => setIsPoReportModalOpen(true)}
                 className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer min-h-[44px] sm:min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-1"
-                title="Unduh riwayat sesuai filter ke Excel"
+                title="Cetak laporan penerimaan PO, nominal total, dan hasil timbangan per rentang tanggal"
               >
-                Ekspor Excel
+                <Printer className="w-3.5 h-3.5" aria-hidden />
+                Cetak Laporan PO
               </button>
             </div>
           )}

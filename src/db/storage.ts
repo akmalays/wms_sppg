@@ -4351,27 +4351,66 @@ class WarehouseDatabase {
     // 1. Nota / PO yang tertaut dengan dokumen penerimaan ini
     const poIdx = this.purchaseOrders.findIndex(p => p.relatedReceivingId === receivingId);
     const matchedPo = poIdx >= 0 ? this.purchaseOrders[poIdx] : undefined;
+    const oldPoNumber = matchedPo?.poNumber;
+    const oldMenuOrderId = matchedPo?.relatedMenuOrderId;
+    const oldMenuOrder = oldMenuOrderId ? this.menuOrders.find(m => m.id === oldMenuOrderId) : undefined;
+    const oldMenuPreviousArrivals = oldMenuOrder?.poArrivalItems ? [...oldMenuOrder.poArrivalItems] : [];
+    let nextMenuOrderId: string | undefined = oldMenuOrderId;
+    let nextMenuOrder: MenuOrder | undefined = oldMenuOrder;
     let updatedPo: PurchaseOrderNota | undefined;
     if (poIdx >= 0 && matchedPo) {
-      const isMenuLinked = Boolean(matchedPo.relatedMenuOrderId);
+      const isMenuLinked = Boolean(oldMenuOrderId);
       const poDateMatchesOld = (matchedPo.date || '').slice(0, 10) === oldDate;
+      let nextNotes = matchedPo.notes;
+
+      if (isMenuLinked) {
+        const expectedOldPoDate = oldMenuOrder
+          ? (/^\d{4}-\d{2}-\d{2}$/.test(oldMenuOrder.poDate || '') ? oldMenuOrder.poDate! : poDateForMenu(oldMenuOrder.date))
+          : '';
+        if (!oldMenuOrder || expectedOldPoDate !== cleanDate) {
+          // Cari menu tujuan yang tanggal PO-nya cocok dengan tanggal penerimaan baru; jika belum ada, lepas tautan dari menu lama
+          const targetMenu = this.menuOrders.find(m => {
+            if (m.status === 'CANCELLED') return false;
+            const expected = /^\d{4}-\d{2}-\d{2}$/.test(m.poDate || '') ? m.poDate! : poDateForMenu(m.date);
+            return expected === cleanDate;
+          });
+          nextMenuOrder = targetMenu;
+          nextMenuOrderId = targetMenu?.id;
+          if (oldMenuOrder && nextNotes) {
+            const escapedTitle = oldMenuOrder.menuTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const autoPattern = new RegExp(`Perencanaan Menu:\\s*${escapedTitle}\\s*\\([^)]*\\)`, 'i');
+            if (autoPattern.test(nextNotes)) {
+              nextNotes = targetMenu
+                ? nextNotes.replace(autoPattern, `Perencanaan Menu: ${targetMenu.menuTitle} (${targetMenu.targetPortions} porsi)`)
+                : nextNotes.replace(new RegExp(`PO dibuat otomatis dari\\s*Perencanaan Menu:\\s*${escapedTitle}\\s*\\([^)]*\\)\\.?\\s*`, 'i'), '').trim() ||
+                  `Tanggal penerimaan dipindah dari ${oldDate} ke ${cleanDate}.`;
+            }
+          }
+        }
+      }
+
+      const shouldMovePoDate = isMenuLinked || poDateMatchesOld;
       updatedPo = {
         ...matchedPo,
         deliveryDate: cleanDate,
-        date: !isMenuLinked && poDateMatchesOld ? cleanDate : matchedPo.date,
+        date: shouldMovePoDate ? cleanDate : matchedPo.date,
+        relatedMenuOrderId: nextMenuOrderId,
+        notes: nextNotes,
         updatedAt: nowIso,
       };
       this.purchaseOrders[poIdx] = updatedPo;
-      if (!isMenuLinked && poDateMatchesOld) {
+      if (shouldMovePoDate) {
         const renumbered = this.renumberPurchaseOrders(updatedPo.id).get(updatedPo.id);
         if (renumbered) updatedPo = renumbered;
       }
+      setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
     }
 
     // 2. Semua catatan belanja yang tertaut ke dokumen penerimaan ini
     const linkedExpIds = new Set<string>(matchedPo?.relatedExpenseIds || []);
     if (linkedExpenseId) linkedExpIds.add(linkedExpenseId);
     const docSupplierLower = (doc.supplierName || '').trim().toLowerCase();
+    const poNumberChanged = Boolean(updatedPo && oldPoNumber && updatedPo.poNumber !== oldPoNumber);
     const updatedExpenses: NonFoodExpense[] = [];
     this.nonFoodExpenses = this.nonFoodExpenses.map(exp => {
       const tag = exp.notes?.match(/\[GR:\s*([^\]]+)\]/)?.[1]?.trim();
@@ -4380,15 +4419,22 @@ class WarehouseDatabase {
       const matchesDoc =
         (tag === receivingId && sameSupplier) ||
         linkedExpIds.has(exp.id) ||
-        Boolean(matchedPo && exp.receiptRef === matchedPo.poNumber && doc.notes?.includes(`PO ${matchedPo.poNumber}`));
-      if (!matchesDoc || (exp.date || '').slice(0, 10) === cleanDate) return exp;
-      const nextExp: NonFoodExpense = { ...exp, date: cleanDate };
+        Boolean(oldPoNumber && exp.receiptRef === oldPoNumber && doc.notes?.includes(`PO ${oldPoNumber}`));
+      if (!matchesDoc) return exp;
+      const dateNeedsChange = (exp.date || '').slice(0, 10) !== cleanDate;
+      const nextReceiptRef = poNumberChanged && exp.receiptRef === oldPoNumber ? updatedPo!.poNumber : exp.receiptRef;
+      const nextExpNotes =
+        poNumberChanged && exp.notes && oldPoNumber && exp.notes.includes(oldPoNumber)
+          ? exp.notes.split(oldPoNumber).join(updatedPo!.poNumber)
+          : exp.notes;
+      if (!dateNeedsChange && nextReceiptRef === exp.receiptRef && nextExpNotes === exp.notes) return exp;
+      const nextExp: NonFoodExpense = { ...exp, date: cleanDate, receiptRef: nextReceiptRef, notes: nextExpNotes };
       updatedExpenses.push(nextExp);
       return nextExp;
     });
 
     // 3. Mutasi stok penerimaan (RECEIVING) ikut dipindahkan tanggalnya agar Buku Mutasi selaras
-    const refs = [receivingId, matchedPo?.poNumber].filter(Boolean) as string[];
+    const refs = [receivingId, oldPoNumber, updatedPo?.poNumber].filter(Boolean) as string[];
     const fallbackClock = toClock(doc.arrivalTime);
     const updatedTxs: InventoryTransaction[] = [];
     this.transactions = this.transactions.map(tx => {
@@ -4401,6 +4447,24 @@ class WarehouseDatabase {
       updatedTxs.push(nextTx);
       return nextTx;
     });
+
+    // 3b. Sinkronkan daftar bahan PO pada menu lama (hapus item yang dipindah) dan menu tujuan (tambahkan bila ada)
+    if (oldMenuOrderId && oldMenuOrderId !== nextMenuOrderId) {
+      this.syncMenuArrivalItems(oldMenuOrderId, oldMenuPreviousArrivals, user);
+      if (nextMenuOrderId && updatedPo) {
+        const movedNames = new Set(updatedPo.items.map(it => it.name.trim().toLowerCase()));
+        const movedSupplierLower = updatedPo.supplierName.trim().toLowerCase();
+        const movedPrevArrivals = oldMenuPreviousArrivals.filter(
+          it => movedNames.has(it.itemName.trim().toLowerCase()) && (!it.supplier || it.supplier.trim().toLowerCase() === movedSupplierLower)
+        );
+        const targetMenuCurrent = this.menuOrders.find(m => m.id === nextMenuOrderId);
+        this.syncMenuArrivalItems(
+          nextMenuOrderId,
+          [...(targetMenuCurrent?.poArrivalItems || []), ...movedPrevArrivals],
+          user
+        );
+      }
+    }
 
     // 4. Sinkron ke Supabase Cloud
     this.pushCloud(`tanggal penerimaan ${receivingId}`, () =>
@@ -4709,12 +4773,10 @@ class WarehouseDatabase {
     const saved = renumbered.get(updatedPoData.id) || updatedPoData;
     const repricedExpenses = idx >= 0 ? this.syncLinkedExpensePrices(saved) : [];
 
-    // Direct save to Supabase Cloud
-    if (isSupabaseConfigured()) {
-      upsertPurchaseOrderRow(saved).then(({ error }) => {
-        if (error) console.error('Supabase PO upsert error:', error);
-      });
-    }
+    setStored(STORAGE_KEYS.PURCHASE_ORDERS, this.purchaseOrders);
+
+    // Masuk antrean pushCloud agar penerbitan banyak PO sekaligus tidak saling balap dan kegagalan cloud selalu dilaporkan
+    this.pushCloud(`simpan nota ${saved.poNumber} (${saved.supplierName})`, () => upsertPurchaseOrderRow(saved));
 
     this.notifyAllChanged();
 
@@ -4785,12 +4847,10 @@ class WarehouseDatabase {
       changed.set(po.id, next);
       return next;
     });
-    if (changed.size > 0 && isSupabaseConfigured()) {
+    if (changed.size > 0) {
       changed.forEach(po => {
         if (po.id === skipPushId) return;
-        upsertPurchaseOrderRow(po).then(({ error }) => {
-          if (error) console.error('Supabase PO renumber error:', error);
-        });
+        this.pushCloud(`perbarui nomor nota ${po.poNumber}`, () => upsertPurchaseOrderRow(po));
       });
     }
     return changed;
@@ -5103,24 +5163,30 @@ class WarehouseDatabase {
   private syncMenuArrivalItems(menuOrderId: string, previousItems: MenuPoArrivalItem[], user: User): void {
     const menu = this.menuOrders.find(m => m.id === menuOrderId);
     if (!menu) return;
-    const previous = new Map(previousItems.map(it => [it.itemName.trim().toLowerCase(), it]));
-    const poArrivalItems = this.getPurchaseOrdersByMenuOrderId(menuOrderId).flatMap(p =>
-      p.items.filter(it => !isExtraCostPoItem(it)).map(it => {
-        const prev = previous.get(it.name.trim().toLowerCase());
+    const bySupplierAndItem = new Map(
+      previousItems.map(it => [`${(it.supplier || '').trim().toLowerCase()}|${it.itemName.trim().toLowerCase()}`, it])
+    );
+    const byItem = new Map(previousItems.map(it => [it.itemName.trim().toLowerCase(), it]));
+    const poArrivalItems = this.getPurchaseOrdersByMenuOrderId(menuOrderId).flatMap(p => {
+      const supName = isPendingSupplierPo(p) ? '' : p.supplierName;
+      const supKey = supName.trim().toLowerCase();
+      return p.items.filter(it => !isExtraCostPoItem(it)).map(it => {
+        const itemKey = it.name.trim().toLowerCase();
+        const prev = bySupplierAndItem.get(`${supKey}|${itemKey}`) || byItem.get(itemKey);
         return {
           category: prev?.category || it.category || 'Bahan Makanan',
           itemName: it.name,
           qtyOrder: `${it.quantity} ${it.unit}`,
-          qtyArrived: prev?.qtyArrived || '',
-          supplier: isPendingSupplierPo(p) ? '' : p.supplierName,
+          qtyArrived: prev?.qtyArrived || (p.status === 'SELESAI' ? `${it.quantity} ${it.unit}` : ''),
+          supplier: supName,
           arrivalTime: prev?.arrivalTime || '',
           pic: prev?.pic || '',
           unitPrice: it.unitPrice,
           totalCost: it.subtotal,
           notes: prev?.notes,
         };
-      })
-    );
+      });
+    });
     this.saveMenuOrder({ ...menu, poArrivalItems }, user, false);
   }
 

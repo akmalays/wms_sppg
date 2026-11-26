@@ -447,9 +447,13 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   );
   // Tab navbar kembali ke "Menu" setelah dibuka lewat pengingat, tanpa memuat ulang modul
   useEffect(() => {
-    if (initialView === "PORSI_HARI_INI") onNavigate?.("menu_orders");
+    if (initialView === "PORSI_HARI_INI") {
+      setActiveSubTab("BENEFICIARIES");
+      setBeneficiaryViewMode("DETAIL_HARIAN");
+      onNavigate?.("menu_orders");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [initialView]);
   const [beneficiaryPeriodPreset, setBeneficiaryPeriodPreset] = useState<"ALL_ORDERS" | "LAST_7_DAYS" | "THIS_MONTH" | "CUSTOM">("THIS_MONTH");
   const [beneficiaryStartDate, setBeneficiaryStartDate] = useState<string>(() => {
     const d = new Date();
@@ -477,7 +481,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
   const [beneficiaryFormName, setBeneficiaryFormName] = useState("");
   const [beneficiaryFormCategory, setBeneficiaryFormCategory] = useState<string>("SD / MI");
   const [beneficiaryFormPortions, setBeneficiaryFormPortions] = useState<number>(300);
-  const [beneficiaryFormDeliveryTime, setBeneficiaryFormDeliveryTime] = useState("09.45 WIB");
+  const [beneficiaryFormDeliveryTime, setBeneficiaryFormDeliveryTime] = useState("");
   const [beneficiaryFormContactPerson, setBeneficiaryFormContactPerson] = useState("");
   const [beneficiaryFormPhone, setBeneficiaryFormPhone] = useState("");
   const [beneficiaryFormStatus, setBeneficiaryFormStatus] = useState<"TERKIRIM" | "DALAM_PERJALANAN" | "SIAP_KIRIM" | "DIJADWALKAN">("DIJADWALKAN");
@@ -847,7 +851,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     setBeneficiaryFormName("");
     setBeneficiaryFormCategory("SD / MI");
     setBeneficiaryFormPortions(250);
-    setBeneficiaryFormDeliveryTime("09.45 WIB");
+    setBeneficiaryFormDeliveryTime("");
     setBeneficiaryFormContactPerson("");
     setBeneficiaryFormPhone("");
     setBeneficiaryFormStatus("DIJADWALKAN");
@@ -861,7 +865,7 @@ export const MenuOrdersModule: React.FC<MenuOrdersModuleProps> = ({onNavigate, o
     setBeneficiaryFormName(b.schoolName);
     setBeneficiaryFormCategory(b.category);
     setBeneficiaryFormPortions(b.portionCount || 0);
-    setBeneficiaryFormDeliveryTime(b.deliveryTime || "09.45 WIB");
+    setBeneficiaryFormDeliveryTime(b.deliveryTime || "");
     setBeneficiaryFormContactPerson(b.contactPerson || "");
     setBeneficiaryFormPhone(b.phone || "");
     setBeneficiaryFormStatus(b.status || "DIJADWALKAN");

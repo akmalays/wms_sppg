@@ -81,10 +81,53 @@ const MainLayout: React.FC = () => {
   React.useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
     const mq = window.matchMedia('(min-width: 1024px)');
-    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
-    setIsDesktop(mq.matches);
+    const printMq = window.matchMedia('print');
+    let isPrinting = printMq.matches;
+    let settleTimer: number | undefined;
+
+    const isInPrintMode = () => isPrinting || printMq.matches;
+    const syncDesktopAfterPrint = () => {
+      if (settleTimer !== undefined) window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        isPrinting = printMq.matches;
+        if (!isInPrintMode()) setIsDesktop(mq.matches);
+      }, 150);
+    };
+
+    const onChange = (e: MediaQueryListEvent) => {
+      // Saat dialog cetak terbuka, lebar kertas A4 portrait (< 1024px) membuat (min-width: 1024px) menjadi false.
+      // Abaikan saat mode cetak aktif agar Cetak Form tidak di-unmount dan reset ke form awal setelah cetak.
+      if (isInPrintMode()) return;
+      setIsDesktop(e.matches);
+    };
+    const onBeforePrint = () => {
+      if (settleTimer !== undefined) window.clearTimeout(settleTimer);
+      isPrinting = true;
+    };
+    const onAfterPrint = () => {
+      syncDesktopAfterPrint();
+    };
+    const onPrintMqChange = (e: MediaQueryListEvent) => {
+      if (e.matches) {
+        if (settleTimer !== undefined) window.clearTimeout(settleTimer);
+        isPrinting = true;
+      } else {
+        syncDesktopAfterPrint();
+      }
+    };
+
+    if (!isInPrintMode()) setIsDesktop(mq.matches);
     mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
+    printMq.addEventListener('change', onPrintMqChange);
+    window.addEventListener('beforeprint', onBeforePrint);
+    window.addEventListener('afterprint', onAfterPrint);
+    return () => {
+      if (settleTimer !== undefined) window.clearTimeout(settleTimer);
+      mq.removeEventListener('change', onChange);
+      printMq.removeEventListener('change', onPrintMqChange);
+      window.removeEventListener('beforeprint', onBeforePrint);
+      window.removeEventListener('afterprint', onAfterPrint);
+    };
   }, []);
   // Dibaca sekali saat aplikasi dibuka dari tautan QR, dan tetap tersimpan selama proses login.
   const [scanTarget, setScanTarget] = useState<ScanTarget | null>(() => {
@@ -288,7 +331,7 @@ const MainLayout: React.FC = () => {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-[calc(5.5rem_+_var(--safe-bottom))] lg:pb-6 print:pb-0">
         {/* Remounting on every data change resets open forms, tabs and post-save dialogs.
             These modules listen to the same sync events and reload their own data, so they are exempt. */}
-        <div key={SELF_SYNCING_TABS.has(activeTab) ? activeTab : dataVersion}>
+        <div key={getTabWrapperKey(activeTab, dataVersion)}>
           {/* Primary Focused Modules */}
           {activeTab === 'dashboard' && (
             <DashboardView
@@ -439,7 +482,14 @@ const MainLayout: React.FC = () => {
   );
 };
 
-const SELF_SYNCING_TABS = new Set(['profile', 'menu_orders', 'menu_portions', 'menu_print', 'manual_nota', 'receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'hedonic_recap', 'ai_assistant', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit', 'scan', 'document_signers']);
+const SELF_SYNCING_TABS = new Set(['profile', 'menu_orders', 'menu_portions', 'menu_print', 'manual_nota', 'tools_forms', 'receiving', 'inventory', 'stock_opname', 'daily_expenses', 'waste_logs', 'hedonic_recap', 'ai_assistant', 'daily_flow', 'equipment', 'suppliers', 'employees', 'user_management', 'audit', 'scan', 'document_signers']);
+
+// Tab yang menampilkan modul yang sama memakai key yang sama agar perpindahan alias (mis. menu_portions → menu_orders) tidak me-remount modul.
+const getTabWrapperKey = (tab: string, version: number): string | number => {
+  if (!SELF_SYNCING_TABS.has(tab)) return version;
+  if (tab === 'menu_portions') return 'menu_orders';
+  return tab;
+};
 
 export default function App() {
   return (

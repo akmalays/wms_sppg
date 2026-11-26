@@ -58,7 +58,8 @@ export type SignatureDoc =
   | 'bukti-belanja'
   | 'rekap-limbah'
   | 'log-limbah'
-  | 'sop-gudang';
+  | 'sop-gudang'
+  | 'laporan-penerimaan-po';
 
 export const docSignatureOn = (doc: SignatureDoc): boolean =>
   warehouseDb.getAppSetting<Partial<Record<SignatureDoc, boolean>>>(SETTING_DOC_SIGNATURES, {})[doc] ?? true;
