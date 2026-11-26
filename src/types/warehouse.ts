@@ -483,6 +483,15 @@ export interface DailyTodoItem {
   createdAt: string;
 }
 
+export interface DailyTodoReportNote {
+  date: string; // YYYY-MM-DD
+  summary: string;
+  issues?: string;
+  followUp?: string;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
 export type EmployeeDepartment =
   | 'Dapur & Masak'
   | 'Gudang & Logistik'

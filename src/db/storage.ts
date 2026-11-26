@@ -23,6 +23,7 @@ import {
   WastePhotoRecord,
   DisposalMethod,
   DailyTodoItem,
+  DailyTodoReportNote,
   SchoolBeneficiaryAllocation,
   Employee,
   EmployeeAttendance,
@@ -2193,6 +2194,7 @@ export function purgeLocalStorageOperationalData(): void {
     STORAGE_KEYS.PURCHASE_ORDERS,
     STORAGE_KEYS.MENU_ORDERS,
     STORAGE_KEYS.WASTE_LOGS,
+    STORAGE_KEYS.TODOS,
     // BENEFICIARIES tidak dihapus: tersimpan di cloud dan di-cache lokal.
     'sppg_master_items_cleared_v2',
     'sppg_transactions_cleared_v1',
@@ -2279,6 +2281,7 @@ class WarehouseDatabase {
   private isCloudInitialized = false;
   private realtimeChannel: any = null;
   private pendingReceivingIds = new Set<string>();
+  private pendingDeletedTodoIds = new Set<string>();
 
   constructor() {
     // 1. Bersihkan seluruh data operasional dari localStorage sesuai instruksi
@@ -2327,21 +2330,8 @@ class WarehouseDatabase {
     this.purchaseOrders = [];
     this.menuOrders = [];
     this.wasteLogs = [];
-    // Tugas harian dibuat per tanggal oleh getDailyTodos. Tugas lama yang masih memakai ID template
-    // (sama setiap hari) diberi akhiran tanggal agar tidak saling menimpa di database.
-    const templateIds = new Set(INITIAL_TODOS.map(t => t.id));
-    const loadedTodos = getStored<DailyTodoItem[]>(STORAGE_KEYS.TODOS, []);
-    this.todos = loadedTodos.map(t => (templateIds.has(t.id) ? { ...t, id: `${t.id}-${t.date}` } : t)).map(t => {
-      if (t.title.toLowerCase().includes('chiller') || t.title.toLowerCase().includes('cold storage')) {
-        return {
-          ...t,
-          title: 'Pemeriksaan kebersihan dan kesiapan area penyimpanan bahan',
-          notes: 'Area penyimpanan bersih, higienis, dan siap untuk operasional.',
-        };
-      }
-      return t;
-    });
-    setStored(STORAGE_KEYS.TODOS, this.todos);
+    // Tugas harian selalu mengikuti data cloud (dimulai kosong, tidak diisi otomatis dengan template).
+    this.todos = [];
     // Sebelumnya karyawan & absensi selalu di-reset ke data contoh setiap halaman dimuat,
     // sehingga data yang dicatat hilang. Sekarang dibaca dari penyimpanan; data contoh lama
     // (18 karyawan dummy) dibuang sekali lewat penanda migrasi.
@@ -2677,20 +2667,21 @@ class WarehouseDatabase {
       seed,
     });
 
-    // Tugas harian 60 hari terakhir cukup untuk tampilan; yang lebih lama tetap di database.
-    const since = localDateIso(new Date(Date.now() - 60 * 86400000));
-    await this.loadOrSeed<DailyTodoItem>({
-      table: 'daily_todos',
-      fetch: () => supabase.from('daily_todos').select('*').gte('date', since),
-      fromRow: mapSupabaseToTodo,
-      toRows: list => list.map(mapTodoToSupabase),
-      getLocal: () => this.todos,
-      setLocal: list => {
-        this.todos = list;
-        setStored(STORAGE_KEYS.TODOS, list);
-      },
-      seed,
-    });
+    // Tugas harian 90 hari terakhir: cloud selalu menjadi sumber utama (termasuk saat kosong),
+    // agar tugas yang sudah dihapus tidak pernah muncul kembali dari cache lokal.
+    const since = localDateIso(new Date(Date.now() - 90 * 86400000));
+    const { data: dbTodos, error: todoErr } = await supabase
+      .from('daily_todos')
+      .select('*')
+      .gte('date', since)
+      .order('date', { ascending: false });
+    if (todoErr) {
+      console.error('Supabase daily_todos gagal dimuat:', todoErr.message);
+    } else {
+      this.todos = (dbTodos || [])
+        .map(mapSupabaseToTodo)
+        .filter(t => !this.pendingDeletedTodoIds.has(t.id));
+    }
 
     // Opname: sesi dan rincian dimuat terpisah lalu digabung.
     const { data: sessions, error: sesErr } = await supabase
@@ -5795,18 +5786,24 @@ class WarehouseDatabase {
   // --- DAILY TODOS ---
   public getDailyTodos(date?: string): DailyTodoItem[] {
     const targetDate = date || localDateIso();
-    const filtered = this.todos.filter(t => t.date === targetDate);
-    // If no todos exist for requested date, and it's today, seed today's items
-    if (filtered.length === 0 && targetDate === localDateIso()) {
-      // ID diberi tanggal: dulu memakai ID template yang sama setiap hari sehingga saling menimpa.
-      const seeded = INITIAL_TODOS.map(t => ({ ...t, id: `${t.id}-${targetDate}`, date: targetDate, isCompleted: false, completedAt: undefined, completedBy: undefined }));
-      this.todos.push(...seeded);
-      setStored(STORAGE_KEYS.TODOS, this.todos);
-      this.pushCloud('daily_todos', () => supabase.from('daily_todos').upsert(seeded.map(mapTodoToSupabase)));
-      return [...seeded];
+    return this.todos
+      .filter(t => t.date === targetDate)
+      .sort((a, b) => (a.targetTime || '99:99').localeCompare(b.targetTime || '99:99') || (a.createdAt || '').localeCompare(b.createdAt || ''));
+  }
+
+  public getTodosInRange(startDate: string, endDate: string): DailyTodoItem[] {
+    if (!startDate || !endDate || startDate > endDate) return [];
+    return this.todos
+      .filter(t => t.date >= startDate && t.date <= endDate)
+      .sort((a, b) => b.date.localeCompare(a.date) || (a.targetTime || '99:99').localeCompare(b.targetTime || '99:99'));
+  }
+
+  public getLastTodoDateBefore(date: string): string | null {
+    let latest: string | null = null;
+    for (const t of this.todos) {
+      if (t.date < date && (!latest || t.date > latest)) latest = t.date;
     }
-    // Tanggal tanpa tugas tetap kosong; dulu mengembalikan seluruh riwayat sehingga progres dan daftar kacau.
-    return filtered;
+    return latest;
   }
 
   public getAllTodos(): DailyTodoItem[] {
@@ -5817,15 +5814,15 @@ class WarehouseDatabase {
     todo: Omit<DailyTodoItem, 'id' | 'createdAt'>,
     user?: User
   ): DailyTodoItem {
-    const newId = `TODO-${Date.now().toString().slice(-6)}`;
+    const newId = uniqueId('TODO');
     const newTodo: DailyTodoItem = {
       ...todo,
       id: newId,
       createdAt: new Date().toISOString(),
     };
     this.todos.unshift(newTodo);
-    setStored(STORAGE_KEYS.TODOS, this.todos);
     this.pushCloud('daily_todos', () => supabase.from('daily_todos').upsert(mapTodoToSupabase(newTodo)));
+    this.notifyAllChanged();
 
     if (user) {
       this.logAudit(
@@ -5837,6 +5834,44 @@ class WarehouseDatabase {
       );
     }
     return newTodo;
+  }
+
+  public updateTodo(
+    id: string,
+    patch: Partial<Omit<DailyTodoItem, 'id' | 'createdAt'>>,
+    user?: User
+  ): DailyTodoItem {
+    const idx = this.todos.findIndex(t => t.id === id);
+    if (idx < 0) throw new Error('Tugas harian tidak ditemukan');
+    const old = this.todos[idx];
+    const nextCompleted = patch.isCompleted !== undefined ? patch.isCompleted : old.isCompleted;
+    const nowTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+    const updated: DailyTodoItem = {
+      ...old,
+      ...patch,
+      isCompleted: nextCompleted,
+      completedAt: nextCompleted
+        ? (patch.completedAt !== undefined ? patch.completedAt : old.completedAt || nowTime)
+        : undefined,
+      completedBy: nextCompleted
+        ? (patch.completedBy !== undefined ? patch.completedBy : old.completedBy || (user ? `${user.name} (${user.role})` : 'Petugas'))
+        : undefined,
+    };
+    this.todos[idx] = updated;
+    this.pushCloud('daily_todos', () => supabase.from('daily_todos').upsert(mapTodoToSupabase(updated)));
+    this.notifyAllChanged();
+
+    if (user) {
+      this.logAudit(
+        user,
+        'TODO_UPDATED',
+        'OPERATIONAL',
+        id,
+        `Memperbarui Tugas Harian: ${updated.title}${updated.isCompleted ? ' (Selesai)' : ''}`
+      );
+    }
+    return updated;
   }
 
   public toggleTodo(id: string, user?: User): DailyTodoItem {
@@ -5853,8 +5888,8 @@ class WarehouseDatabase {
       completedBy: newCompleted ? (user ? `${user.name} (${user.role})` : 'Petugas') : undefined,
     };
     this.todos[idx] = updated;
-    setStored(STORAGE_KEYS.TODOS, this.todos);
     this.pushCloud('daily_todos', () => supabase.from('daily_todos').upsert(mapTodoToSupabase(updated)));
+    this.notifyAllChanged();
 
     if (user) {
       this.logAudit(
@@ -5873,8 +5908,20 @@ class WarehouseDatabase {
     if (idx < 0) return false;
     const old = this.todos[idx];
     this.todos.splice(idx, 1);
-    setStored(STORAGE_KEYS.TODOS, this.todos);
-    this.pushCloud('daily_todos', () => supabase.from('daily_todos').delete().eq('id', id));
+    this.pendingDeletedTodoIds.add(id);
+    if (isSupabaseConfigured()) {
+      supabase
+        .from('daily_todos')
+        .delete()
+        .eq('id', id)
+        .then(({ error }) => {
+          this.pendingDeletedTodoIds.delete(id);
+          if (error) reportCloudWriteError('hapus tugas harian', error);
+        });
+    } else {
+      this.pendingDeletedTodoIds.delete(id);
+    }
+    this.notifyAllChanged();
 
     if (user) {
       this.logAudit(
@@ -5888,22 +5935,134 @@ class WarehouseDatabase {
     return true;
   }
 
-  public resetDailyTodos(date?: string): DailyTodoItem[] {
+  public clearDailyTodos(date?: string, user?: User): number {
+    const targetDate = date || localDateIso();
+    const removedIds = this.todos.filter(t => t.date === targetDate).map(t => t.id);
+    if (removedIds.length === 0) return 0;
+    this.todos = this.todos.filter(t => t.date !== targetDate);
+    removedIds.forEach(id => this.pendingDeletedTodoIds.add(id));
+    if (isSupabaseConfigured()) {
+      supabase
+        .from('daily_todos')
+        .delete()
+        .in('id', removedIds)
+        .then(({ error }) => {
+          removedIds.forEach(id => this.pendingDeletedTodoIds.delete(id));
+          if (error) reportCloudWriteError('kosongkan tugas harian', error);
+        });
+    } else {
+      removedIds.forEach(id => this.pendingDeletedTodoIds.delete(id));
+    }
+    this.notifyAllChanged();
+
+    if (user) {
+      this.logAudit(
+        user,
+        'TODO_CLEARED',
+        'OPERATIONAL',
+        `TODO-DATE-${targetDate}`,
+        `Mengosongkan ${removedIds.length} tugas harian tanggal ${targetDate}`
+      );
+    }
+    return removedIds.length;
+  }
+
+  public copyDailyTodos(fromDate: string, toDate: string, user?: User): DailyTodoItem[] {
+    const source = this.getDailyTodos(fromDate);
+    if (source.length === 0) return [];
+    const nowIso = new Date().toISOString();
+    const copied: DailyTodoItem[] = source.map((t, idx) => ({
+      ...t,
+      id: `${uniqueId('TODO')}-${idx}`,
+      date: toDate,
+      isCompleted: false,
+      completedAt: undefined,
+      completedBy: undefined,
+      createdAt: nowIso,
+    }));
+    this.todos.push(...copied);
+    this.pushCloud('daily_todos', () => supabase.from('daily_todos').upsert(copied.map(mapTodoToSupabase)));
+    this.notifyAllChanged();
+
+    if (user) {
+      this.logAudit(
+        user,
+        'TODO_COPIED',
+        'OPERATIONAL',
+        `TODO-DATE-${toDate}`,
+        `Menyalin ${copied.length} tugas harian dari ${fromDate} ke ${toDate}`
+      );
+    }
+    return copied;
+  }
+
+  public resetDailyTodos(date?: string, user?: User): DailyTodoItem[] {
     const targetDate = date || localDateIso();
     const removedIds = this.todos.filter(t => t.date === targetDate).map(t => t.id);
     this.todos = this.todos.filter(t => t.date !== targetDate);
-    const seeded = INITIAL_TODOS.map(t => ({
+    const nowIso = new Date().toISOString();
+    const seeded = INITIAL_TODOS.map((t, idx) => ({
       ...t,
       date: targetDate,
-      id: `TODO-${Date.now().toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`,
+      id: `${uniqueId('TODO')}-${idx}`,
+      isCompleted: false,
+      completedAt: undefined,
+      completedBy: undefined,
+      createdAt: nowIso,
     }));
     this.todos.push(...seeded);
-    setStored(STORAGE_KEYS.TODOS, this.todos);
-    if (removedIds.length > 0) {
-      this.pushCloud('daily_todos', () => supabase.from('daily_todos').delete().in('id', removedIds));
+    removedIds.forEach(id => this.pendingDeletedTodoIds.add(id));
+    if (isSupabaseConfigured()) {
+      const steps: CloudStep[] = [];
+      if (removedIds.length > 0) {
+        steps.push(['hapus tugas lama', () => supabase.from('daily_todos').delete().in('id', removedIds)]);
+      }
+      steps.push(['simpan tugas standar', () => supabase.from('daily_todos').upsert(seeded.map(mapTodoToSupabase))]);
+      this.pushCloudSequence(steps, () => removedIds.forEach(id => this.pendingDeletedTodoIds.delete(id)));
+    } else {
+      removedIds.forEach(id => this.pendingDeletedTodoIds.delete(id));
     }
-    this.pushCloud('daily_todos', () => supabase.from('daily_todos').upsert(seeded.map(mapTodoToSupabase)));
+    this.notifyAllChanged();
+
+    if (user) {
+      this.logAudit(
+        user,
+        'TODO_RESET_STANDARD',
+        'OPERATIONAL',
+        `TODO-DATE-${targetDate}`,
+        `Memuat ${seeded.length} tugas standar untuk tanggal ${targetDate}`
+      );
+    }
     return seeded;
+  }
+
+  public getDailyTodoReportNote(date: string): DailyTodoReportNote | null {
+    const raw = this.getAppSetting<DailyTodoReportNote | null>(`daily_todo_report_${date}`, null);
+    if (!raw || typeof raw !== 'object') return null;
+    return {
+      date,
+      summary: typeof raw.summary === 'string' ? raw.summary : '',
+      issues: typeof raw.issues === 'string' ? raw.issues : '',
+      followUp: typeof raw.followUp === 'string' ? raw.followUp : '',
+      updatedBy: raw.updatedBy,
+      updatedAt: raw.updatedAt,
+    };
+  }
+
+  public saveDailyTodoReportNote(
+    note: Omit<DailyTodoReportNote, 'updatedAt' | 'updatedBy'>,
+    user?: User
+  ): DailyTodoReportNote {
+    const saved: DailyTodoReportNote = {
+      date: note.date,
+      summary: note.summary.trim(),
+      issues: note.issues?.trim() || '',
+      followUp: note.followUp?.trim() || '',
+      updatedBy: user?.name,
+      updatedAt: new Date().toISOString(),
+    };
+    this.saveAppSetting(`daily_todo_report_${note.date}`, saved, user);
+    return saved;
   }
 
   // --- EMPLOYEES & ATTENDANCE OPERATIONS ---
